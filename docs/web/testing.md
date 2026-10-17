@@ -98,6 +98,28 @@ Playwright runs Chromium headless, with GPU or SwiftShader for WebGL2.
 A case fails in the browser and passes on Linux: then it's a browser bug
 (the host, `win32hle` under Emscripten, or the page), not a lift bug.
 
+## The Linux host shares sources with this one
+
+`src/linux/` (`launcher.c`, `script.c`, `mods.c`, `blowfish.c`) and pcrecomp's
+`win32hle` build both hosts, so a change to either is checked on both. From
+Windows, a throwaway container does it, with nothing installed on the machine:
+Ubuntu 24.04 with `gcc-multilib` and the i386 SDL2, SDL2_ttf and ffmpeg
+libraries (the packages `setup.sh` lists), the two repos mounted read-only,
+and the build in a Docker volume:
+
+```
+cmake -S /src/redalert2-recomp -B /build -G Ninja       -DCMAKE_TOOLCHAIN_FILE=/src/redalert2-recomp/cmake/linux-i386.cmake -DPCRECOMP=/src/pcrecomp
+cmake --build /build
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy /build/ra2 --run --headless --mute --game /game
+sh pcrecomp/runtime/win32hle/build_selftests.sh
+```
+
+Run the game from the container's own file system, not a Windows folder
+mounted into it: a 32-bit program's `stat` fails with `EOVERFLOW` on Docker
+Desktop's 9p mounts (the inode numbers are wider than 32 bits), so the host
+reports "no gamemd.exe" with the file in plain sight. Copy the import
+allowlist into a volume first (1.1 GB, seconds).
+
 ## What runs where
 
 | Check | CI | Developer machine |

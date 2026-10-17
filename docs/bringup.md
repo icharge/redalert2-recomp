@@ -364,3 +364,9 @@ launch. The walls, in the order they came:
   exits only the worker (code 3 for it, 0 for the process). Only the main
   thread installs the handler; Emscripten forwards the worker's exception to
   it.
+- **Checking the Linux host from Windows.** The same sources build the native
+  Linux host, so it was built and run in an Ubuntu container: the 32-bit
+  binary links, and reaches the main menu in 14 s with the launcher check
+  passing; pcrecomp's native selftests pass. A Windows folder mounted into
+  the container is invisible to a 32-bit `stat` (`EOVERFLOW` on the 9p mount);
+  the game goes in a volume ([web/testing.md](web/testing.md)).
