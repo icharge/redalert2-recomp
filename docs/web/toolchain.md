@@ -35,7 +35,7 @@ The lift is the same as for Windows and Linux. `src/recomp/gen/` from
 |---|---|
 | `cmake/emscripten.cmake` | toolchain file: wraps emsdk's `Emscripten.cmake` and sets the flags below |
 | `CMakeLists.txt` | an `if(EMSCRIPTEN)` branch beside the Linux one: `src/web/*.c`, `win32hle`, the generated C |
-| `build-web.sh`, `build-web.cmd` | configure and build into `build-web/` (`build-web-game/` for Red Alert 2), then copy `ra2.js`, `ra2.wasm` and the worker scripts into `web/public/game/` |
+| `build-web.sh`, `build-web.cmd` | configure and build into `build-web/` (`build-web-game/` for Red Alert 2), then copy `ra2.js` and `ra2.wasm` into `web/public/game/` (a post-build step in `CMakeLists.txt`; `WEB_OUT` changes where) |
 | `src/web/main.c` | the browser host: `src/linux/main.c` without signals, `popen` or the watchdog, plus the exported functions in [protocol.md](protocol.md) |
 
 ## Compile flags
@@ -98,7 +98,7 @@ Measured on Windows 11, 12 logical cores, Release, no LTO (Yuri's Revenge). The 
 
 | | Yuri's Revenge | Red Alert 2 |
 |---|---|---|
-| clean build time (12 cores) | about 6 minutes to compile, about 4 to link | |
+| clean build time (12 cores) | 16 minutes (`build-web.cmd` into an empty folder: compile, link, copy) | |
 | `ra2.wasm` | 105.1 MB | |
 | `ra2.wasm.br` | 11.7 MB (quality 9) | |
 | to the main menu under Node | 12.8 s | |

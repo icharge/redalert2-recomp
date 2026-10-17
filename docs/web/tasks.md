@@ -20,7 +20,7 @@ Tick a task off here in the same pull request that finishes it.
 |---|---|---|---|---|---|
 | ~~W1.1~~ | Install emsdk, pick a version, record it in `build-web.sh` and [toolchain.md](toolchain.md) | here | | S | `emcc --version` matches the pinned version |
 | ~~W1.2~~ | `cmake/emscripten.cmake` and an `if(EMSCRIPTEN)` branch in `CMakeLists.txt`, with the compile flags from toolchain.md | here | W1.1 | S | `cmake -B build-web` configures |
-| W1.3 | `build-web.sh` and `build-web.cmd`: configure, build (done), copy output to `web/public/game/` (waits for W4.1) | here | W1.2 | S | both run end to end on an empty target |
+| ~~W1.3~~ | `build-web.sh` and `build-web.cmd`: configure, build, copy output to `web/public/game/` | here | W1.2 | S | both run end to end on an empty target |
 | ~~W1.4~~ | Compile `recomp_0000.c` alone; fix or list what fails | here | W1.2 | S | it compiles, or every error kind is listed in toolchain.md |
 | ~~W1.5~~ | Compile all 67 generated files; record the time | here | W1.4 | M | all compile; the time is in toolchain.md |
 | ~~W1.6~~ | Compile `win32hle`; list the errors by kind (signals, `mmap`, sockets, `popen`, ...) | pcrecomp | W1.2 | S | the list is in toolchain.md |

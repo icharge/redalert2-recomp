@@ -85,6 +85,11 @@ if(EMSCRIPTEN)
     -sEXIT_RUNTIME=1 -sENVIRONMENT=web,worker,node
     -sFORCE_FILESYSTEM -lnodefs.js)
   set_target_properties(ra2 PROPERTIES SUFFIX ".js")
+  # Where the page (web/) loads the game from, once it is scaffolded
+  set(WEB_OUT ${CMAKE_SOURCE_DIR}/web/public/game CACHE PATH "where the page finds ra2.js and ra2.wasm")
+  add_custom_command(TARGET ra2 POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${WEB_OUT}
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:ra2> $<TARGET_FILE_DIR:ra2>/ra2.wasm ${WEB_OUT})
   return()
 endif()
 
