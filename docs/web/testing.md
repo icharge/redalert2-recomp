@@ -53,6 +53,14 @@ primary surface, the first frame, the game's init, the main menu's dialog
 intro milestone of the Windows list is the launcher's answer here. This needs
 a local game folder, so it runs on a developer's machine, not in CI.
 
+**MEMFS, as in a browser.** `--memfs` copies the import allowlist
+([storage.md](storage.md): `*.mix` but not `.bak`, the sound bags, the data
+files, the exe and DLLs) into Emscripten's in-memory file system and runs from
+that, instead of reading the folder in place (NODEFS). For Yuri's Revenge that
+is 1,039 MB of the 2.6 GB folder, and the main menu opens 9 seconds after
+launch with the copy included. `conformance.py --host web --memfs` scores it:
+8/8, so the allowlist is enough to reach the menu.
+
 **A trap, on purpose.** `--trap N` makes the game's thread trap on its Nth
 trip through the pump hook. `src/web/pre.js` catches the exception on the main
 thread and calls `ra2_crash_report`, which prints the lifted function that was

@@ -43,7 +43,8 @@ comes before linking the whole game.
 `src/web/main.c`, a copy of `src/linux/main.c` without the signal handlers,
 the recorder and the watchdog thread. Linked with `-sPROXY_TO_PTHREAD` and
 SDL's dummy video and audio drivers. Run under Node with `--game` pointing at
-a NODEFS mount of the local `game/` folder. Faults show up as wasm traps;
+a NODEFS mount of the local `game/` folder, or with `--memfs` the allowlisted
+files copied into MEMFS (the table's check). Faults show up as wasm traps;
 [architecture.md](architecture.md) covers how to report them.
 
 ## Stage 4: the page

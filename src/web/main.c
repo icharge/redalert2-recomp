@@ -251,18 +251,15 @@ static uint32_t exe_stamp(const char *path) {
 }
 
 /* Under Node (the headless runs, docs/web/testing.md) --game names a folder
- * on the real disk: it is mounted at /game with NODEFS, on the main thread,
- * since the game's own thread has no file system of its own. In a browser
- * the files are already in the file system (OPFS, docs/web/storage.md). */
+ * on the real disk, put at /game on the main thread, since the game's own
+ * thread has no file system of its own: by default mounted with NODEFS, the
+ * files read in place; with --memfs copied into the in-memory file system,
+ * only what the page's import would keep (docs/web/storage.md: the allowlist),
+ * the way the files will be in a browser. */
+static int g_memfs;
 static const char *mount_node_game(const char *dir) {
-    int ok = MAIN_THREAD_EM_ASM_INT({
-        if (typeof process === 'undefined' || !process.versions || !process.versions.node) return 0;
-        var abs = require('path').resolve(UTF8ToString($0));
-        if (!require('fs').existsSync(abs)) return 0;
-        FS.mkdir('/game');
-        FS.mount(NODEFS, { root: abs }, '/game');
-        return 1;
-    }, dir);
+    /* Module.ra2MountGame is in pre.js (a macro argument cannot hold its commas) */
+    int ok = MAIN_THREAD_EM_ASM_INT({ return Module.ra2MountGame(UTF8ToString($0), $1); }, dir, g_memfs);
     return ok ? "/game" : dir;
 }
 
@@ -306,6 +303,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--game") && i + 1 < argc) game = argv[++i];
         else if (!strcmp(argv[i], "--mod") && i + 1 < argc) g_mod = argv[++i];
         else if (!strcmp(argv[i], "--trace")) win32hle_trace = 1;
+        else if (!strcmp(argv[i], "--memfs")) g_memfs = 1;
         else if (!strcmp(argv[i], "--trap") && i + 1 < argc) g_trap_after = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--hd-voxels")) hdvox_configure(1, NULL);
         else if (!strcmp(argv[i], "--hd-voxels-dump") && i + 1 < argc) {
@@ -322,7 +320,7 @@ int main(int argc, char **argv) {
             g_dump_dir = dir;                /* the run chdirs into the game folder */
         }
         else {
-            printf("usage: ra2 [--run] [--headless | --fullscreen] [--scale sharp|smooth|crt|nearest|integer] [--game DIR] [--mod NAME|none] [--debuglog] [--mute] [--trace] [--trap N] [--dump-frames DIR] [--hd-voxels] [--hd-voxels-dump DIR]\n"
+            printf("usage: ra2 [--run] [--headless | --fullscreen] [--scale sharp|smooth|crt|nearest|integer] [--game DIR] [--mod NAME|none] [--debuglog] [--mute] [--trace] [--memfs] [--trap N] [--dump-frames DIR] [--hd-voxels] [--hd-voxels-dump DIR]\n"
                    "           [--press DLG:CTRL@s] [--select DLG:CTRL=N@s] [--waitlog TEXT@s] [--move|--click x,y@s]\n"
                    "           [--key [c][s][a]+vk@s] [--wait VA@s] [--drag x1,y1,x2,y2@s]\n");
             return !strcmp(argv[i], "--help") || !strcmp(argv[i], "-h") ? 0 : 1;

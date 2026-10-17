@@ -43,7 +43,7 @@ Tick a task off here in the same pull request that finishes it.
 | ~~W3.1~~ | `src/web/main.c` from `src/linux/main.c`: no signals, recorder or watchdog; NODEFS mount under Node | here | W1.7 | S | it compiles |
 | ~~W3.2~~ | Link the whole game with the flags in toolchain.md; record the link time and `.wasm` size | here | W1.5, W2.2, W3.1 | M | `ra2.wasm` exists; the numbers are in toolchain.md |
 | ~~W3.3~~ | Dry run under Node: map and bind the exe | here | W3.2 | S | the log prints `mapped C:\gamemd.exe: 0x00400000-0x00B93000` |
-| ~~W3.4~~ | `--run` under Node with SDL's dummy drivers, to the main menu; each wall goes in `docs/bringup.md` | here | W3.3 | L | the log reaches the main menu's dialog (0xE2) |
+| ~~W3.4~~ | `--run` under Node with SDL's dummy drivers, to the main menu, from NODEFS and from MEMFS (`--memfs`); each wall goes in `docs/bringup.md` | here | W3.3 | L | the log reaches the main menu's dialog (0xE2) |
 | ~~W3.5~~ | Trap reports: `ra2_crash_report()` and `onAbort` printing it | here | W3.2 | S | a forced trap prints the lifted function and the indirect-call ring |
 | ~~W3.6~~ | `tools/conformance.py --host web` | here | W3.4 | S | 8/8 boot milestones under Node |
 | ~~W3.7~~ | Check the largest lifted functions compile in V8 (`sub_00618C58` and the next four) | here | W3.2 | S | Chromium instantiates `ra2.wasm`, or the lifter splits the function (a pcrecomp task) |

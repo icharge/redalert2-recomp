@@ -17,6 +17,7 @@ with a message and exits 0, so it can sit in CI without the corpus.
     py -3 tools/conformance.py              # run, compare, print the table
     py -3 tools/conformance.py --update     # ...and accept the result as the baseline
     py -3 tools/conformance.py --host web   # the browser build (build-web.sh) under Node
+    py -3 tools/conformance.py --host web --memfs   # ...with the files in memory, as in a browser
 
 --host web boots build-web/ra2.js (or build-web-game/ for RA2_TARGET=game)
 under Node with game/ mounted, headless, and stops the moment the main menu
@@ -88,11 +89,11 @@ WEB_MILESTONES = [
 WEB_HOST = os.path.join(ROOT, 'build-web-game' if GAME else 'build-web', 'ra2.js')
 
 
-def boot_web(seconds):
+def boot_web(seconds, memfs=False):
     """Run the browser build under Node until the main menu opens (or the
     time is up), reading its log as it comes."""
     import threading, time
-    p = subprocess.Popen(['node', WEB_HOST, '--run', '--game', 'game', '--headless', '--mute', '--debuglog'],
+    p = subprocess.Popen(['node', WEB_HOST, '--run', '--game', 'game', '--headless', '--mute', '--debuglog'] + (['--memfs'] if memfs else []),
                          cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                          text=True, errors='replace')
     lines, menu_at = [], [None]
@@ -155,6 +156,8 @@ def main():
     ap.add_argument('--update', action='store_true', help='accept this run as the baseline')
     ap.add_argument('--seconds', type=int, default=300,
                     help='headless run length (the intro alone is four minutes)')
+    ap.add_argument('--memfs', action='store_true',
+                    help='with --host web: copy the import allowlist into the in-memory file system, as a browser has it')
     ap.add_argument('--host', choices=('native', 'web'), default='native',
                     help='native: the Windows build (default); web: the browser build under Node')
     args = ap.parse_args()
@@ -167,7 +170,7 @@ def main():
               '(README, Building from source)' % ('build-web/ra2.js (build-web.sh)' if web else 'build/ra2.exe'))
         return 0
 
-    passed, code, last = boot_web(min(args.seconds, 120)) if web else boot(args.seconds)
+    passed, code, last = boot_web(min(args.seconds, 120), args.memfs) if web else boot(args.seconds)
     health = lift_health()
     now = {'milestones': len(passed), 'of': len(milestones), **health}
     base = json.load(open(baseline)) if os.path.exists(baseline) else None

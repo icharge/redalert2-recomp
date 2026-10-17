@@ -111,6 +111,8 @@ Measured on Windows 11, 12 logical cores, Release, no LTO (Yuri's Revenge). The 
 node build-web/ra2.js --run --game /path/to/game --headless --mute
 ```
 
-Under Node the game folder is a NODEFS mount (`src/web/main.c` mounts it when
-it runs under Node), so no import is needed. This is the stage 3 check, and
+Under Node the game folder is a NODEFS mount (`Module.ra2MountGame` in
+`src/web/pre.js`, called by `src/web/main.c` when it runs under Node), so no
+import is needed; `--memfs` copies the import allowlist into the in-memory
+file system instead, as a browser will have it. This is the stage 3 check, and
 the quickest way to tell a lift or host bug from a browser bug.

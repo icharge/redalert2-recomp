@@ -41,3 +41,30 @@ var Module = typeof Module !== 'undefined' ? Module : {};
     });
   }
 })();
+
+// Under Node (the headless runs): put a folder of the real disk at /game, on the
+// main thread. NODEFS reads the files in place; memfs copies the ones the page's
+// import would keep (docs/web/storage.md, the allowlist) into the in-memory file
+// system, the way they will be in a browser. Returns 1 if it mounted.
+Module.ra2MountGame = function (dir, memfs) {
+  if (typeof process === 'undefined' || !process.versions || !process.versions.node) return 0;
+  var fs = require('fs'), path = require('path');
+  var abs = path.resolve(dir);
+  if (!fs.existsSync(abs)) return 0;
+  FS.mkdir('/game');
+  if (!memfs) {
+    FS.mount(NODEFS, { root: abs }, '/game');
+    return 1;
+  }
+  var keep = ['.mix', '.bag', '.idx', '.ini', '.csf', '.mmx', '.map', '.mpr', '.yrm', '.exe', '.dll'];
+  var bytes = 0;
+  fs.readdirSync(abs).forEach(function (name) {
+    var low = name.toLowerCase(), file = path.join(abs, name);
+    if (!keep.some(function (e) { return low.endsWith(e); }) || !fs.statSync(file).isFile()) return;
+    var data = fs.readFileSync(file);
+    FS.writeFile('/game/' + name, new Uint8Array(data.buffer, data.byteOffset, data.length));
+    bytes += data.length;
+  });
+  console.error('[memfs] ' + (bytes / 1048576).toFixed(0) + ' MB copied into /game');
+  return 1;
+};
