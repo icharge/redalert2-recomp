@@ -1,0 +1,5 @@
+dist
+node_modules
+public/game
+fonts
+pnpm-lock.yaml

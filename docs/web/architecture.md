@@ -7,14 +7,15 @@ sound, files and faults.
 ```
 ┌──────────── Main thread: the page (web/, React) ──────────────────────┐
 │  Import, Library, Play, Settings                                      │
-│  ra2.js (Emscripten's loader): starts the game thread, proxies the    │
-│  calls that must run here (DOM events, canvas transfer)               │
+│  presenter.ts: draws the shared picture on a 2D canvas, each frame    │
+│  input.ts: mouse and keys in, as calls on the game's exports          │
 └───────────────┬──────────────────────────────────────────▲───────────┘
-   canvas transferred (OffscreenCanvas)       events (protocol.md)
+   input ring, ra2_* calls            picture, cursor (shared memory)
+                                       events (protocol.md)
 ┌───────────────▼─────────── Game thread (pthread) ─────────┴───────────┐
 │  main() in src/web/main.c                                             │
-│  lifted C ─► win32hle ─► SDL2 (Emscripten port) ─► WebGL2              │
-│  files: WasmFS, OPFS backend (/game read-only, /save read-write)      │
+│  lifted C ─► win32hle ─► presenter.c (RGBA frame, cursor, input ring)  │
+│  files: the file system (/game, later OPFS; /save read-write)         │
 │  more pthreads: the game's CreateThread, multimedia timers, script    │
 └───────────────┬──────────────────────────────────────────────────────┘
    shared memory (SharedArrayBuffer), ring buffer
@@ -49,27 +50,43 @@ so it is the last resort, not the plan ([decisions.md](decisions.md), D4).
 
 ## Rendering
 
-`win32hle/screen.c` draws with `SDL_Renderer`. It uploads the game's
-surface to a streaming texture, prescales it for sharp-bilinear, and draws
-it letterboxed. Emscripten's SDL2 renders that through WebGL. Nothing in
-`screen.c` needs to know it's in a browser, apart from these points:
+The game thread never touches a canvas. `win32hle/screen.c` runs headless (no
+SDL window): it builds each frame from the game's primary surface and calls
+`hle_screen_frame_hook`. `src/web/presenter.c` is that hook. It converts the
+frame (RGB565, 8-bit with a palette, or 32-bit) to RGBA in one of two buffers
+in shared memory and publishes it in `ra2_shared_t` (picture pointer, size, a
+sequence number; [protocol.md](protocol.md)). The page's `presenter.ts` reads
+the struct once per animation frame and, when the sequence moved, copies the
+pixels into an `ImageData` and draws them on a 2D canvas. The canvas is the
+picture's size, and CSS fits it to the window (`object-fit: contain`), so a
+resize costs the game nothing and the bars are the page's.
 
-- The canvas is transferred to the game thread (`-sOFFSCREENCANVAS_SUPPORT`)
-  so SDL's GL context lives where the game draws. If a browser can't do
-  that, `-sOFFSCREEN_FRAMEBUFFER` draws on the game thread and presents on
-  the main one, at the cost of a copy.
-- `SDL_RENDERER_PRESENTVSYNC` maps to `requestAnimationFrame` timing on the
-  main thread. The game paces itself, so present without vsync and let the
-  browser composite.
-- Fullscreen and window size come from the page (Fullscreen API, a
-  `ResizeObserver` on the canvas), not from SDL's window calls. The page
-  tells the game the new size ([protocol.md](protocol.md)).
+Why not SDL's renderer, as on Linux ([decisions.md](decisions.md), D10): the
+game's loop never returns to the browser, and a GL context made on that thread
+never presents (an OffscreenCanvas commits when its thread yields), or, with
+`OFFSCREEN_FRAMEBUFFER`, needs a context shared between threads that SDL does
+not set up. Both were tried in a small program first.
+
+What the Linux presenter does that is not here yet: its scaling modes (sharp,
+smooth, CRT: F12), the blurred bars, the HD-vehicle layer's 2x picture. The
+page scales with the browser's own filter. They come back as page settings
+(stage 9).
+
+The menu cursor: in the menus the game uses the Windows cursor from its
+resources, and in a battle it draws its own. `presenter.c` turns the cursor
+image (32x32, AND and XOR masks) into RGBA and the page makes a CSS cursor
+from it, or hides the system one when the game draws its own.
 
 ## Input
 
-SDL's Emscripten port listens for DOM events on the canvas and queues SDL
-events, and `win32hle` turns those into window messages, as on Linux. Two
-things are browser-only:
+The page listens, not SDL. `input.ts` takes the canvas's mouse events and the
+window's key events, maps the pointer into the picture's own pixels (allowing
+for the letterbox) and the key to a Windows virtual key and scan code, and
+calls `ra2_input_pointer` and `ra2_input_key` on the main thread. Those push
+into a ring (one producer, one consumer) that the game thread empties in its
+pump hook and turns into window messages with `hle_input_mouse` and
+`hle_input_key`, as `screen.c` does for SDL's events on Linux. Two things are
+browser-only:
 
 - **Keys the browser keeps.** F5, F11, Ctrl+W, Ctrl+T and Esc (in
   fullscreen) don't reach a page by default. In fullscreen, the page calls
@@ -79,10 +96,6 @@ things are browser-only:
   window, the cursor leaves the canvas instead. The Play screen offers
   Pointer Lock. When it's locked, the page draws no cursor and the game
   draws its own, as it does fullscreen on Windows.
-
-If SDL's event path doesn't work with the game on a pthread, the page
-forwards events itself ([protocol.md](protocol.md), `input` messages) into
-`win32hle`'s input queue.
 
 ## Sound
 
@@ -104,9 +117,14 @@ and the ring drops what isn't read.
 
 Bink goes through ffmpeg (`HLE_WITH_FFMPEG`, `win32hle/bink.c`). For the
 browser, build ffmpeg's `bink` and `binkaudio` decoders alone with emcc, with
-no demuxers or encoders beyond what `bink.c` uses. Until that's done, build
-without `HLE_WITH_FFMPEG`, and the game skips its movies as it does when the
-files are missing.
+no demuxers or encoders beyond what `bink.c` uses (stage 8).
+
+Until then the build defines `HLE_BINK_SKIP` for `bink.c`: `BinkOpen` returns a
+movie of two empty frames at 15 fps, so each movie plays for a tenth of a
+second drawing nothing, and the main menu's looping movie loops at a steady
+rate. Making `BinkOpen` fail is not enough: the game goes on with the null
+handle it got, reads the frame count from address 0 (readable zeros in wasm,
+a crash elsewhere) and loops forever without pumping messages.
 
 ## Files
 
@@ -128,6 +146,10 @@ fault at all.
   `onAbort` runs on the main thread, and the page calls an exported
   `ra2_crash_report()` that formats `g_cur_func` and the indirect-call ring
   from shared memory, which outlives the thread.
+- `src/web/pre.js` does this: on the main thread (under Node, `uncaughtException`;
+  in a page, `window.onerror`) it calls `ra2_crash_report`. A worker's exception
+  reaches the main thread, so only the main thread installs the handler.
+  `--trap N` forces one, to see it ([testing.md](testing.md)).
 - The page shows the report with a "copy" button, like the Linux log.
 - Accesses to low memory (address 0 and up) don't fault in wasm. The game's
   own null checks still work, but a lift bug that faults on Windows reads
@@ -146,7 +168,7 @@ unchanged.
 | Linux host feature | In the browser |
 |---|---|
 | `--record` (ffmpeg through `popen`) | `MediaRecorder` on the canvas from the page, later |
-| `--watchdog` | the page's own timer, for tests only |
+| `--watchdog` | not in the web host. `--heartbeat S` prints the machine lock's state from a non-guest thread; tests time out from outside |
 | `--dump-frames` | the test hook reads the canvas ([testing.md](testing.md)) |
 | `ra2.ini` next to the exe | IndexedDB ([storage.md](storage.md)) |
 | `--args FILE`, the command line | URL query parameters, passed as `Module.arguments` |

@@ -4,14 +4,14 @@ Red Alert 2 and Yuri's Revenge in a browser tab. The game is the same lifted
 C the Windows and Linux builds run, compiled to WebAssembly with Emscripten,
 and played from the player's own install, which they pick in the page.
 
-**Status: stages 1 to 3 done.** The host builds with Emscripten and, under
-Node, the lifted game boots to the main menu in about 13 seconds (8 of 8 boot
-milestones, `tools/conformance.py --host web`); pcrecomp's selftests pass as
-wasm; Chrome compiles the module. The page
-(stages 4 and 6), the main loop in a browser, sound and movies are still to
-do. These pages are the design and the plan, and change as the stages answer
-the open questions. When a page and the
-code disagree, the code wins, and the page gets fixed.
+**Status: stages 1 to 4 done.** The host builds with Emscripten and runs in a
+browser: the page (React, Radix) loads the game, draws it on a canvas and sends
+it the mouse and keys. In a local Chrome the main menu comes up, and a skirmish
+starts by clicking and runs at 60 frames a second. Not done yet: importing the
+player's own folder (stage 6; for now the dev server serves a local one), sound
+(7), movies (8: they are skipped), the remaster options (9) and the browser test
+suite (10). These pages are the design and the plan, and change as the stages
+answer the open questions.
 
 ## The one rule, in the browser
 

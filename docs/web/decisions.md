@@ -19,7 +19,7 @@ browser APIs.
 
 ## D2. Flat memory, with the image's range kept free
 
-**Decided.** Keep `RECOMP_FLAT_MEMORY`. Link with `-sGLOBAL_BASE=0x01000000`
+**Decided.** Keep `RECOMP_FLAT_MEMORY`. Link with `-sGLOBAL_BASE=16MB`
 so the guest image (0x00400000 to 0x00B93000) has its range in linear memory.
 Implement `VirtualAlloc` with aligned allocations ([memory.md](memory.md)).
 
@@ -33,8 +33,8 @@ B, offset memory with `g_mem_base`.
 
 ## D3. The game on its own thread (`PROXY_TO_PTHREAD`)
 
-**Decided.** `main()` runs on an Emscripten pthread. It owns the canvas
-through OffscreenCanvas and blocks as it does natively.
+**Decided.** `main()` runs on an Emscripten pthread and blocks as it does
+natively. (It does not own the canvas: see D10.)
 
 **Why.** The game's loop never returns. On a thread it doesn't have to, and
 the page stays responsive.
@@ -99,3 +99,32 @@ them.
 it falls under the rule against distributing the lifted C. Until this is
 decided, the browser build is served locally by the player
 ([deploy.md](deploy.md)).
+
+## D10. The game publishes frames; the page draws them
+
+**Decided.** No SDL video in the browser. `screen.c` runs headless; the host
+hooks the frame it builds, writes RGBA into shared memory, and the page draws
+it on a 2D canvas each animation frame. The mouse and keys come back as calls
+on exported functions, through a ring the game thread empties in its pump
+([architecture.md](architecture.md), [protocol.md](protocol.md)).
+
+**Why.** D3's loop never returns to the browser. A small SDL program built with
+the game's flags showed what that does to the usual routes: with
+`OFFSCREENCANVAS_SUPPORT` the EGL context is created on the main thread, which
+no longer has the canvas it gave away, and with `OFFSCREEN_FRAMEBUFFER` the
+context SDL makes on the game thread has no GL state, and the events the page
+proxies to a thread that never yields abort. Publishing pixels needs neither,
+and the page-side drawing and input are ordinary code with unit tests. It runs
+at 60 frames a second in Chrome.
+
+**Costs.** The page scales with the browser's filter, so the Linux presenter's
+sharp, CRT and blurred-bars modes and the HD layer are not there yet (stage 9).
+A frame is copied twice (to RGBA in wasm, into an `ImageData`), which is cheap
+at these sizes.
+
+**Would change if.** A frame budget at 4K or with HD vehicles is missed
+(stage 5's measurement). Then WebGL on the page side, texture upload from the
+same shared buffer.
+
+**Was (before the first build).** The canvas transferred to the game thread as
+an OffscreenCanvas, SDL's renderer on WebGL2, and SDL's DOM event handling.

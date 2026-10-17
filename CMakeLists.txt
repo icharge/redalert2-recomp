@@ -67,9 +67,11 @@ if(EMSCRIPTEN)
   set(HLE ${PCRECOMP}/runtime/win32hle)
   file(GLOB HLE_SOURCES CONFIGURE_DEPENDS "${HLE}/*.c")
   list(FILTER HLE_SOURCES EXCLUDE REGEX "_selftest\.c$")
-  add_executable(ra2 src/web/main.c src/linux/launcher.c src/linux/blowfish.c src/linux/script.c src/linux/mods.c src/runtime/hdvox.c src/runtime/queuefive.c ${HLE_SOURCES} ${GEN_SOURCES})
+  add_executable(ra2 src/web/main.c src/web/presenter.c src/linux/launcher.c src/linux/blowfish.c src/linux/script.c src/linux/mods.c src/runtime/hdvox.c src/runtime/queuefive.c ${HLE_SOURCES} ${GEN_SOURCES})
   target_include_directories(ra2 PRIVATE src/web src/linux src/runtime ${GEN_DIR} ${HLE} ${PCRECOMP}/runtime/recomp32)
   target_compile_definitions(ra2 PRIVATE RECOMP_RETADDR=0u RECOMP_FLAT_MEMORY RECOMP_LOCAL_REGS)
+  # no Bink decoder yet (stage 8): a movie is empty and short, see pcrecomp bink.c
+  set_source_files_properties(${HLE}/bink.c PROPERTIES COMPILE_DEFINITIONS HLE_BINK_SKIP)
   set(GEN_OPT "-O2" CACHE STRING "optimisation for the generated C")
   set(WEB_COMPILE -pthread -msimd128 -fwasm-exceptions -sSUPPORT_LONGJMP=wasm -sUSE_SDL=2 -sUSE_SDL_TTF=2)
   set_source_files_properties(${GEN_SOURCES} PROPERTIES COMPILE_OPTIONS "-w;${GEN_OPT};-fno-strict-aliasing;-fwrapv;${WEB_COMPILE}")
@@ -84,14 +86,25 @@ if(EMSCRIPTEN)
     -sSTACK_SIZE=8MB -sDEFAULT_PTHREAD_STACK_SIZE=8MB
     -sEXIT_RUNTIME=1 -sENVIRONMENT=web,worker,node
     -sFORCE_FILESYSTEM -lnodefs.js
-    -sEXPORTED_RUNTIME_METHODS=ccall,cwrap
-    --pre-js ${CMAKE_SOURCE_DIR}/src/web/pre.js)
-  set_target_properties(ra2 PROPERTIES SUFFIX ".js" LINK_DEPENDS ${CMAKE_SOURCE_DIR}/src/web/pre.js)
+    "-sEXPORTED_RUNTIME_METHODS=ccall,cwrap,FS,HEAP8,HEAPU8,HEAP32,HEAPU32"
+    "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/web/fonts/LiberationSans-Regular.ttf@/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
+    "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/web/fonts/LiberationSans-Bold.ttf@/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"
+    "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/web/fonts/LiberationSans-Italic.ttf@/usr/share/fonts/truetype/liberation/LiberationSans-Italic.ttf"
+    "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/web/fonts/LiberationSans-BoldItalic.ttf@/usr/share/fonts/truetype/liberation/LiberationSans-BoldItalic.ttf"
+    --pre-js ${CMAKE_SOURCE_DIR}/src/web/pre.js
+    --extern-pre-js ${CMAKE_SOURCE_DIR}/src/web/extern-pre.js)
+  # wasm-opt at -O3 takes about ten minutes on this much code: -DWEB_LINK_OPT=-O1 skips it,
+  # for a quick link while trying a change (the release build leaves it empty)
+  set(WEB_LINK_OPT "" CACHE STRING "an optimisation level to link with instead of the build type's, e.g. -O1")
+  if(WEB_LINK_OPT)
+    target_link_options(ra2 PRIVATE ${WEB_LINK_OPT})
+  endif()
+  set_target_properties(ra2 PROPERTIES SUFFIX ".js" LINK_DEPENDS "${CMAKE_SOURCE_DIR}/src/web/pre.js;${CMAKE_SOURCE_DIR}/src/web/extern-pre.js")
   # Where the page (web/) loads the game from, once it is scaffolded
   set(WEB_OUT ${CMAKE_SOURCE_DIR}/web/public/game CACHE PATH "where the page finds ra2.js and ra2.wasm")
   add_custom_command(TARGET ra2 POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory ${WEB_OUT}
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:ra2> $<TARGET_FILE_DIR:ra2>/ra2.wasm ${WEB_OUT})
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:ra2> $<TARGET_FILE_DIR:ra2>/ra2.wasm $<TARGET_FILE_DIR:ra2>/ra2.data ${WEB_OUT})
   return()
 endif()
 

@@ -37,6 +37,28 @@ NODE_PATH=<dir with playwright-core> python3 build_selftests_web.py --chrome /pa
 
 Without `--chrome` (or `CHROME_PATH`) it says so and skips that one.
 
+## The page and the game together: a local Chrome
+
+`web/e2e/` (Playwright, a Chrome on this machine) runs the page against the dev
+server, with a built game and a local game folder, and drives it through the
+page's own mouse and keys:
+
+```
+cd web && pnpm dev                       # another terminal: serves the page and ../game
+node e2e/smoke.mjs                       # waits for the main menu; checks the canvas shows a picture
+node e2e/drive.mjs --step "click 719,221@4" --step "click 720,305@7" --step "click 719,263@12" \
+                   --step "shot battle@45" --step "state@46"
+```
+
+`drive.mjs` takes steps `click X,Y`, `rclick`, `move`, `key CODE`, `shot NAME`,
+`picture NAME` (is the canvas lit, and a checksum that changes when it draws) and
+`state`, each `@SECONDS` after the main menu opened, with coordinates in the
+game's own pixels. The three clicks above are Single Player, Skirmish and Start
+Game on Yuri's Revenge's 800x600 menus; a skirmish loads and runs at 60 frames a
+second. Screenshots go to `web/e2e/shots/`. `CHROME_PATH` names the browser. The
+page exposes its store as `window.ra2Store` in development only, for these
+scripts. This is the base `tools/playtest.py --web` grows from (stage 10).
+
 ## The game without a browser: Node
 
 ```

@@ -370,3 +370,20 @@ launch. The walls, in the order they came:
   passing; pcrecomp's native selftests pass. A Windows folder mounted into
   the container is invisible to a 32-bit `stat` (`EOVERFLOW` on the 9p mount);
   the game goes in a volume ([web/testing.md](web/testing.md)).
+- **Text.** `gdidc.c` looks for Liberation Sans in `/usr/share/fonts/...` (and asks
+  `fc-match` through `popen`). A browser has neither, so dialogs had no text. The
+  build preloads Liberation Sans (OFL) at those paths into `ra2.data`. Under Node
+  `ra2.data` is looked for in the current directory, so `extern-pre.js` sets
+  `locateFile` before the data loader runs.
+- **The menu movie.** See the Bink entry in [web/architecture.md](web/architecture.md):
+  a failed `BinkOpen` leaves the game looping on a null handle, forever, in wasm.
+  `HLE_BINK_SKIP` gives it an empty two-frame movie until stage 8.
+- **Looking for what hangs.** The watchdog's "last function" is whichever thread
+  entered a function last (here the game's mouse thread, 2 billion indirect calls
+  of polling), not where the main thread is. `--heartbeat S` prints the machine
+  lock's takes, its waiters and the pump count from a thread that is not the
+  guest's; a pump count that stops while the takes go on says the main thread is
+  in a loop of its own.
+- **Waiting for the machine.** `sched_yield` is a no-op in WebAssembly, so the
+  fairness spins in `hle_block_end` gave a waiting thread no time. They sleep for
+  20 microseconds there.

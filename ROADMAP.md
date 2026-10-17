@@ -49,7 +49,9 @@ The lifted C compiled to WebAssembly with Emscripten, starting from the
 native Linux build (win32hle and SDL2), and played from the player's own
 install picked in the page. Nothing from the game is served. The design and
 the plan, its stages and their checks: docs/web/README.md. Started on the
-`web-port` branch.
+`web-port` branch. Running in a local Chrome: the main menu comes up and a
+skirmish plays at 60 frames a second, from a local game folder; importing the
+player's own folder, sound and movies are next.
 
 ## The remaster
 

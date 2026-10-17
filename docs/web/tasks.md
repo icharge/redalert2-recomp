@@ -52,15 +52,15 @@ Tick a task off here in the same pull request that finishes it.
 
 | ID | Task | Repo | Needs | Size | Done when |
 |---|---|---|---|---|---|
-| W4.1 | Scaffold `web/`: Vite, React 18, TypeScript strict, Radix Themes, ESLint, Prettier, Vitest, pnpm | here | | S | `pnpm dev`, `pnpm build`, `pnpm test` work; the dev server sends COOP/COEP |
-| W4.2 | `App` with `<Theme>` and the screen switch; the Browser check screen | here | W4.1 | S | it shows what a browser without `SharedArrayBuffer` lacks |
-| W4.3 | `game/protocol.ts` and `src/web/web_api.h`: the types and `RA2_WEB_PROTOCOL` ([protocol.md](protocol.md)) | here | W4.1 | S | both exist and agree |
-| W4.4 | `game/store.ts`: phases, `@ra2` line parsing, `useSyncExternalStore` | here | W4.3 | S | Vitest covers every phase change |
-| W4.5 | `game/loader.ts`: import `ra2.js`, create the module, pass the canvas and arguments | here | W4.4 | S | with no build present, Play says the game isn't built |
-| W4.6 | The `@ra2` events and exported functions in `src/web/main.c` | here | W3.4, W4.3 | M | the events show in a Node run's log |
-| W4.7 | Play screen: the canvas created once, full window, `ResizeObserver` calling `ra2_resize` | here | W4.5, W4.6 | M | the main menu shows in the page (with the dev-only local folder, W4.8) |
-| W4.8 | Dev-only "load from a local folder": the page mounts a folder served by Vite | here | W4.5 | S | the game finds its files without an import |
-| W4.9 | Input works: menus by mouse, the keyboard in game | here | W4.7 | M | a skirmish starts by clicking |
+| ~~W4.1~~ | Scaffold `web/`: Vite, React 18, TypeScript strict, Radix Themes, ESLint, Prettier, Vitest, pnpm | here | | S | `pnpm dev`, `pnpm build`, `pnpm test` work; the dev server sends COOP/COEP |
+| ~~W4.2~~ | `App` with `<Theme>` and the screen switch; the Browser check screen | here | W4.1 | S | it shows what a browser without `SharedArrayBuffer` lacks |
+| ~~W4.3~~ | `game/protocol.ts` and `src/web/web_api.h`: the types and `RA2_WEB_PROTOCOL` ([protocol.md](protocol.md)) | here | W4.1 | S | both exist and agree |
+| ~~W4.4~~ | `game/store.ts`: phases, `@ra2` line parsing, `useSyncExternalStore` | here | W4.3 | S | Vitest covers every phase change |
+| ~~W4.5~~ | `game/loader.ts`: set `window.Module`, load `ra2.js`, pass the arguments (the canvas is not handed over: D10) | here | W4.4 | S | with no build present, Play says the game isn't built |
+| ~~W4.6~~ | The `@ra2` events and exported functions in `src/web/main.c` | here | W3.4, W4.3 | M | the events show in a Node run's log |
+| ~~W4.7~~ | Play screen: the canvas created once, full window, drawn by `presenter.ts`, `ResizeObserver` calling `ra2_resize` | here | W4.5, W4.6 | M | the main menu shows in the page (with the dev-only local folder, W4.8) |
+| ~~W4.8~~ | Dev-only "load from a local folder": the page mounts a folder served by Vite | here | W4.5 | S | the game finds its files without an import |
+| ~~W4.9~~ | Input works: menus by mouse, the keyboard in game | here | W4.7 | M | a skirmish starts by clicking |
 
 ## Stage 5: the main loop
 

@@ -29,8 +29,10 @@ web/
   package.json, pnpm-lock.yaml
   vite.config.ts            COOP/COEP on the dev server, the PWA plugin
   tsconfig.json
+  e2e/                      local end-to-end checks in a real Chrome (testing.md)
+  fonts/                    Liberation Sans (OFL), preloaded into the game's file system
   public/
-    game/                   ra2.js, ra2.wasm, workers (from build-web.sh, not committed)
+    game/                   ra2.js, ra2.wasm, ra2.data (from build-web.sh, not committed)
     icons/, manifest.webmanifest
   src/
     main.tsx                mounts <App>, registers the service worker
@@ -46,10 +48,11 @@ web/
       CrashReport.tsx
       BrowserCheck.tsx      what this browser lacks, and what that means
     game/
-      loader.ts             imports ra2.js, creates the module, transfers the canvas
+      loader.ts             sets window.Module, loads ra2.js, puts the game's files in /game
       store.ts              the game's state, from its events (protocol.md)
-      protocol.ts           the types of every message and export
-      input.ts              key and pointer handling the browser needs (fullscreen, locks)
+      protocol.ts           the types of every message, export and shared-memory word
+      presenter.ts          draws the game's shared picture and cursor on the canvas
+      input.ts              the mouse and keys, as calls on the game's exports; the key table
       audio.ts              resumes the AudioContext on the first gesture
     storage/
       opfs.ts               copying into OPFS, reading back, removing
@@ -114,8 +117,9 @@ Rules:
 - **No React work per frame.** The canvas belongs to the game thread. `fps`
   updates the store at most once a second.
 - **The canvas is created once and never re-rendered.** `Play` creates it in
-  a ref, and `loader.ts` transfers it. React never touches it again. Its size
-  comes from CSS, and a `ResizeObserver` tells the game.
+  a ref, and `presenter.ts` draws on it once per animation frame from the
+  game's shared memory. React never touches it again. Its size comes from CSS
+  (`object-fit: contain`), and a `ResizeObserver` tells the game.
 - **No game logic in the page.** If something is about the game, it belongs
   in the C host.
 

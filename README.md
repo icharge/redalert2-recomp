@@ -78,7 +78,7 @@ for comparison.
 | Native Linux (`build-linux/ra2`, pcrecomp `win32hle`) | both games as Linux programs, no Wine: the Bink movies, every menu, skirmishes, both campaigns, saves, HD vehicles; the playtest suite in Docker ([Linux, native](#linux-native)) |
 | Red Alert 2 (`game.exe`) | a second target from the same install: 23,201 functions, 0 lift errors, the suite at 30 of 30, 720p to 4K, HD vehicles ([bringup.md](docs/bringup.md), section 13) |
 | macOS and Linux, under Wine | the Windows build cross-compiled with clang-cl and xwin, played under Wine or CrossOver ([Linux and macOS](#macos-and-linux-under-wine)) |
-| In the browser | planned: the native Linux build on Emscripten, played from the player's own install ([docs/web](docs/web/README.md)) |
+| In the browser | running locally: the native Linux build on Emscripten and a React page; a skirmish plays in Chrome. Import, sound and movies to do ([docs/web](docs/web/README.md)) |
 | Mods | a folder in `mods/`, laid over the game's without changing it, switched in game (F10, F9 on Linux) ([mods/README.md](mods/README.md)) |
 | Readable lifted C | functions named from RTTI, vtables and the game's messages, each with a header: 7,167 of Yuri's Revenge's named |
 | Compilers | MSVC (x86), Visual Studio 2022 or 2026; clang-cl (x86) |

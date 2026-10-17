@@ -42,6 +42,9 @@ static ev_t g_ev[MAX_EV];
 static int g_nev;
 
 static uint32_t now_ms(void) { return hle_ticks_ms(); }
+#ifdef __EMSCRIPTEN__
+void web_event_menu(void);                       /* src/web/presenter.c */
+#endif
 static void sleep_ms(uint32_t ms) { usleep(ms * 1000u); }
 
 int script_arg(int argc, char **argv, int i) {
@@ -111,7 +114,12 @@ static void dialog_created(uint32_t h, uint32_t id) {
     pthread_mutex_unlock(&g_lock);
     __sync_fetch_and_add(&g_dialogs_opened, 1);
     fprintf(stderr, "[dialog] open 0x%X\n", id);
-    if (id == 0xE2 && !__sync_lock_test_and_set(&g_menu_open, 1)) g_t0 = now_ms();
+    if (id == 0xE2 && !__sync_lock_test_and_set(&g_menu_open, 1)) {
+        g_t0 = now_ms();
+#ifdef __EMSCRIPTEN__
+        web_event_menu();                        /* the page's menu event (docs/web/protocol.md) */
+#endif
+    }
     if (id == 0xE2) g_main_menu = h;
 }
 

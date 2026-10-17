@@ -19,6 +19,7 @@
 #include <unistd.h>
 #include <limits.h>
 #include <sys/stat.h>
+#include <pthread.h>
 #include <emscripten.h>
 
 #include "win32hle.h"
@@ -26,6 +27,7 @@
 #include "host.h"
 #include "recomp_target.h"
 #include "launcher.h"
+#include "web_api.h"
 
 extern const uint32_t ra2_entry_va;   /* recomp_dispatch.c */
 
@@ -186,6 +188,26 @@ static int menus_use_windows_cursor(void) {
 
 /* Without a recording, the same checksum lines at the same rate, from the
  * pump; and --dump-frames writes those frames as BMPs. */
+/* --heartbeat S: a thread that is not the guest's says every S seconds what the machine is doing:
+ * takes of the lock (a thread hogging it makes this race while the pumps stop), threads
+ * waiting for it, the function it is in, and the pumps so far. A debugging aid. */
+static volatile unsigned g_pumps;
+static unsigned g_heartbeat_s;
+static void *heartbeat(void *unused) {
+    unsigned last = 0;
+    (void)unused;
+    for (;;) {
+        sleep(g_heartbeat_s);
+        unsigned takes;
+        int waiters;
+        uint32_t func;
+        hle_machine_state(&takes, &waiters, &func);
+        fprintf(stderr, "[heartbeat] takes %u (+%u) waiters %d in sub_%08X, last import %s, pumps %u\n", takes, takes - last,
+                waiters, func, g_cur_import ? g_cur_import : "(none)", g_pumps);
+        last = takes;
+    }
+    return NULL;
+}
 static int g_trap_after;   /* --trap N: trap after N pumps, to see the crash report (docs/web/testing.md) */
 static void frame_pump(void) {
     static uint32_t next;
@@ -195,6 +217,8 @@ static void frame_pump(void) {
     int w, h, pitch, bpp;
     hle_screen_pump();
     ra2_launcher_poll();
+    web_presenter_pump();
+    g_pumps++;
     if (g_trap_after && ++pumps == g_trap_after) __builtin_trap();
     uint32_t now = hle_ticks_ms();
     if ((int32_t)(now - next) < 0 || !hle_dd_frame(&px, &w, &h, &pitch, &bpp, &pal, NULL)) return;
@@ -263,10 +287,24 @@ static const char *mount_node_game(const char *dir) {
     return ok ? "/game" : dir;
 }
 
+/* a failure the page shows (protocol.md, the error event), and the log */
+static int fail(const char *fmt, ...) {
+    char msg[600];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(msg, sizeof msg, fmt, ap);
+    va_end(ap);
+    fprintf(stderr, "%s\n", msg);
+    web_event_error(msg);
+    return 1;
+}
+static void on_exit_event(int code) { web_event_exit(code); }
+
 int main(int argc, char **argv) {
     const char *game = "game";
     int run = 0;
     setvbuf(stderr, NULL, _IONBF, 0);
+    setenv("SDL_AUDIODRIVER", "none", 0);   /* stage 7 (docs/web/plan.md): silent until the audio worklet */
     /* --args FILE: more arguments, whitespace-separated, # to the end of a
      * line a comment (tools/lan's scripts), as the Windows host reads them. */
     for (int i = 1; i + 1 < argc; i++) {
@@ -304,6 +342,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--mod") && i + 1 < argc) g_mod = argv[++i];
         else if (!strcmp(argv[i], "--trace")) win32hle_trace = 1;
         else if (!strcmp(argv[i], "--memfs")) g_memfs = 1;
+        else if (!strcmp(argv[i], "--heartbeat") && i + 1 < argc) g_heartbeat_s = (unsigned)strtoul(argv[++i], NULL, 0);
         else if (!strcmp(argv[i], "--trap") && i + 1 < argc) g_trap_after = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--hd-voxels")) hdvox_configure(1, NULL);
         else if (!strcmp(argv[i], "--hd-voxels-dump") && i + 1 < argc) {
@@ -320,7 +359,7 @@ int main(int argc, char **argv) {
             g_dump_dir = dir;                /* the run chdirs into the game folder */
         }
         else {
-            printf("usage: ra2 [--run] [--headless | --fullscreen] [--scale sharp|smooth|crt|nearest|integer] [--game DIR] [--mod NAME|none] [--debuglog] [--mute] [--trace] [--memfs] [--trap N] [--dump-frames DIR] [--hd-voxels] [--hd-voxels-dump DIR]\n"
+            printf("usage: ra2 [--run] [--headless | --fullscreen] [--scale sharp|smooth|crt|nearest|integer] [--game DIR] [--mod NAME|none] [--debuglog] [--mute] [--trace] [--heartbeat S] [--memfs] [--trap N] [--dump-frames DIR] [--hd-voxels] [--hd-voxels-dump DIR]\n"
                    "           [--press DLG:CTRL@s] [--select DLG:CTRL=N@s] [--waitlog TEXT@s] [--move|--click x,y@s]\n"
                    "           [--key [c][s][a]+vk@s] [--wait VA@s] [--drag x1,y1,x2,y2@s]\n");
             return !strcmp(argv[i], "--help") || !strcmp(argv[i], "-h") ? 0 : 1;
@@ -328,17 +367,15 @@ int main(int argc, char **argv) {
     }
     game = mount_node_game(game);
     char game_full[PATH_MAX], exe_host[PATH_MAX + 16];
-    if (!realpath(game, game_full)) { fprintf(stderr, "no game folder at %s\n", game); return 1; }
+    if (!realpath(game, game_full)) return fail("no game folder at %s", game);
     hle_set_drive('C', game_full);
     if (!hle_host_path("C:\\" RA2_EXE_NAME, exe_host, sizeof exe_host)) {
-        fprintf(stderr, "no " RA2_EXE_NAME " in %s\n", game_full);
-        return 1;
+        return fail("no " RA2_EXE_NAME " in %s", game_full);
     }
     uint32_t stamp = exe_stamp(exe_host);
     if (stamp != RA2_EXE_STAMP) {
-        fprintf(stderr, "%s is not the build this host was lifted from (PE timestamp 0x%08X, wanted 0x%08X). "
-                "Lift and build from the Steam release's " RA2_EXE_NAME " (README, Getting Started).\n", exe_host, stamp, RA2_EXE_STAMP);
-        return 1;
+        return fail("%s is not the build this host was lifted from (PE timestamp 0x%08X, wanted 0x%08X). "
+                    "Lift and build from the Steam release's " RA2_EXE_NAME " (README, Getting Started).", exe_host, stamp, RA2_EXE_STAMP);
     }
 
     win32hle_register(g_ra2_shims);    /* first: the game's own answers win */
@@ -348,19 +385,19 @@ int main(int argc, char **argv) {
 
     pe_image img;
     if (recomp_pe_map(exe_host, &img) != 0 || img.base != RA2_IMAGE_BASE) {
-        fprintf(stderr, "cannot map %s at 0x%08X\n", exe_host, RA2_IMAGE_BASE);
-        return 1;
+        return fail("cannot map %s at 0x%08X", exe_host, RA2_IMAGE_BASE);
     }
     hle_module_add("C:\\" RA2_EXE_NAME, img.base, img.resource_rva, img.resource_size, 1);
     int unresolved = recomp_pe_bind(&img, hle_resolve_or_stub);
     printf("  mapped %s: 0x%08X-0x%08X, %d imports not implemented yet\n", exe_host, img.base, img.base + img.span, unresolved);
     hle_set_command_line("\"C:\\" RA2_EXE_NAME "\"");
+    web_event_boot(RA2_TITLE, RA2_EXE_NAME, stamp);
 
     if (!run) {
         printf("\n(dry run: image mapped and bound; --run enters 0x%08X)\n", ra2_entry_va);
         return 0;
     }
-    if (chdir(game_full) != 0) { fprintf(stderr, "cannot enter %s\n", game_full); return 1; }
+    if (chdir(game_full) != 0) return fail("cannot enter %s", game_full);
     {   /* ra2.ini, then the command line */
         char scale[32] = "sharp";
         int bars = 1, full = 0;
@@ -374,13 +411,22 @@ int main(int argc, char **argv) {
         hle_screen_bars(bars);
         hle_screen_settings_hook = settings_save;
         hle_screen_cursor_hook = menus_use_windows_cursor;
-        if (hle_screen_open(RA2_TITLE, full, g_headless) != 0) return 1;
+        /* No SDL window in the browser: screen.c runs headless, builds each frame and
+         * hands it to the presenter, which publishes it for the page's canvas. */
+        if (hle_screen_open(RA2_TITLE, full, 1) != 0) return 1;
+        web_presenter_start(menus_use_windows_cursor);
         mods_start(game_full, g_mod, g_saved_mod, argc, argv, settings_save_mod);
     }
     hle_set_pump_hook(frame_pump);
     hle_screen_compose_hook = compose_hd;
+    hle_on_exit = on_exit_event;
     ra2_launcher_start();
     script_start();
+    if (g_heartbeat_s) {
+        pthread_t t;
+        pthread_create(&t, NULL, heartbeat, NULL);
+        pthread_detach(t);
+    }
     printf("  entering 0x%08X\n\n", ra2_entry_va);
     fflush(stdout);
     uint32_t rc = hle_call_guest(ra2_entry_va, 0, NULL);

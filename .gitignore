@@ -33,6 +33,8 @@ __pycache__/
 # Command & Conquer: Red Alert 2 / Yuri's Revenge (c) 2000-2001 Westwood Studios / EA.
 # Bring your own copy; Setup.cmd copies it into game/.
 game/
+# ...but not the page's source, which has a game/ of its own (web/public/game/ stays out)
+!web/src/game/
 # setup.sh links game to the CrossOver bottle's install, and git sees a link
 # as a file, which game/ does not match.
 /game
