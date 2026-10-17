@@ -18,7 +18,6 @@
 #include <string.h>
 #include <unistd.h>
 #include <limits.h>
-#include <pthread.h>
 #include <sys/stat.h>
 #include <emscripten.h>
 
@@ -35,7 +34,6 @@ extern const uint32_t ra2_entry_va;   /* recomp_dispatch.c */
 static int g_debuglog, g_headless, g_fullscreen = -1;   /* -1: as ra2.ini says */
 static const char *g_scale;
 static const char *g_mod;              /* --mod NAME */
-static unsigned g_watchdog_s;
 
 /* ---- what the lift calls into ---------------------------------------------
  * run_lift.py PATCHES and HOOKS. */
@@ -118,7 +116,7 @@ static const uint8_t CLSID_Blowfish[16] = { 0x10, 0xAD, 0x40, 0x14, 0xA8, 0x6A, 
                                             0xB6, 0xF9, 0x00, 0xA0, 0x24, 0xDD, 0xAF, 0xD1 };
 uint32_t ra2_blowfish_create(const uint8_t *iid, uint32_t *out);
 
-/* ---- faults and the watchdog ---------------------------------------------- */
+/* ---- faults ------------------------------------------------------------------ */
 EMSCRIPTEN_KEEPALIVE void ra2_crash_report(const char *why);
 void ra2_crash_report(const char *why) {
     fprintf(stderr, "\n=== %s ===\n  in lifted sub_%08X, last import %s\n", why, g_cur_func,
@@ -134,16 +132,6 @@ void ra2_crash_report(const char *why) {
     fprintf(stderr, "guest stack at %08X:", g_esp);
     for (int k = 0; k < 64; k++) fprintf(stderr, "%s%08X", k % 8 ? " " : "\n  ", MEM32(g_esp + 4 * k));
     fprintf(stderr, "\n");
-}
-
-static void *watchdog(void *arg) {
-    (void)arg;
-    sleep(g_watchdog_s);
-    fprintf(stderr, "\n[watchdog] %u s: in sub_%08X, last import %s, %u indirect calls\n",
-            g_watchdog_s, g_cur_func, g_cur_import ? g_cur_import : "(none)", g_icall_count);
-    fflush(stderr);
-    hle_exit(4);
-    return NULL;
 }
 
 /* Every 100th frame shown, a checksum: a run's frames can be told apart
@@ -314,7 +302,6 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--mute")) hle_dsound_set_master(0.0f);
         else if (!strcmp(argv[i], "--game") && i + 1 < argc) game = argv[++i];
         else if (!strcmp(argv[i], "--mod") && i + 1 < argc) g_mod = argv[++i];
-        else if (!strcmp(argv[i], "--watchdog") && i + 1 < argc) g_watchdog_s = (unsigned)strtoul(argv[++i], NULL, 0);
         else if (!strcmp(argv[i], "--trace")) win32hle_trace = 1;
         else if (!strcmp(argv[i], "--hd-voxels")) hdvox_configure(1, NULL);
         else if (!strcmp(argv[i], "--hd-voxels-dump") && i + 1 < argc) {
@@ -331,7 +318,7 @@ int main(int argc, char **argv) {
             g_dump_dir = dir;                /* the run chdirs into the game folder */
         }
         else {
-            printf("usage: ra2 [--run] [--headless | --fullscreen] [--scale sharp|smooth|crt|nearest|integer] [--game DIR] [--mod NAME|none] [--debuglog] [--mute] [--watchdog S] [--trace] [--dump-frames DIR] [--hd-voxels] [--hd-voxels-dump DIR]\n"
+            printf("usage: ra2 [--run] [--headless | --fullscreen] [--scale sharp|smooth|crt|nearest|integer] [--game DIR] [--mod NAME|none] [--debuglog] [--mute] [--trace] [--dump-frames DIR] [--hd-voxels] [--hd-voxels-dump DIR]\n"
                    "           [--press DLG:CTRL@s] [--select DLG:CTRL=N@s] [--waitlog TEXT@s] [--move|--click x,y@s]\n"
                    "           [--key [c][s][a]+vk@s] [--wait VA@s] [--drag x1,y1,x2,y2@s]\n");
             return !strcmp(argv[i], "--help") || !strcmp(argv[i], "-h") ? 0 : 1;
@@ -392,11 +379,6 @@ int main(int argc, char **argv) {
     hle_screen_compose_hook = compose_hd;
     ra2_launcher_start();
     script_start();
-    if (g_watchdog_s) {
-        pthread_t t;
-        pthread_create(&t, NULL, watchdog, NULL);
-        pthread_detach(t);
-    }
     printf("  entering 0x%08X\n\n", ra2_entry_va);
     fflush(stdout);
     uint32_t rc = hle_call_guest(ra2_entry_va, 0, NULL);

@@ -34,11 +34,13 @@ Tick a task off here in the same pull request that finishes it.
 | ~~W2.2~~ | `kernel32.c`: `VirtualAlloc`, `VirtualFree` and `VirtualQuery` on aligned allocations; log fixed-address requests once | pcrecomp | W1.7 | S | `kernel32_ext_selftest` passes under Node |
 | ~~W2.3~~ | Build the other `win32hle` selftests with emcc and run them under Node | pcrecomp | W2.1, W2.2 | M | all pass, or the failures are filed as tasks here |
 
+| W2.4 | `present_selftest` under Node: it opens an SDL window, and Emscripten's SDL has no dummy video driver. Give `present.c` a headless path, or run it in a browser (W10) | pcrecomp | W2.3 | S | it passes under Node, or in the page's test run; `build_selftests_web.py` stops skipping it |
+
 ## Stage 3: headless boot
 
 | ID | Task | Repo | Needs | Size | Done when |
 |---|---|---|---|---|---|
-| ~~W3.1~~ | `src/web/main.c` from `src/linux/main.c`: no signals or recorder (the watchdog stays, for hangs); NODEFS mount under Node | here | W1.7 | S | it compiles |
+| ~~W3.1~~ | `src/web/main.c` from `src/linux/main.c`: no signals, recorder or watchdog; NODEFS mount under Node | here | W1.7 | S | it compiles |
 | ~~W3.2~~ | Link the whole game with the flags in toolchain.md; record the link time and `.wasm` size | here | W1.5, W2.2, W3.1 | M | `ra2.wasm` exists; the numbers are in toolchain.md |
 | ~~W3.3~~ | Dry run under Node: map and bind the exe | here | W3.2 | S | the log prints `mapped C:\gamemd.exe: 0x00400000-0x00B93000` |
 | ~~W3.4~~ | `--run` under Node with SDL's dummy drivers, to the main menu; each wall goes in `docs/bringup.md` | here | W3.3 | L | the log reaches the main menu's dialog (0xE2) |

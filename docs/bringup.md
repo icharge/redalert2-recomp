@@ -345,7 +345,7 @@ launch. The walls, in the order they came:
   `mapped /game/gamemd.exe: 0x00400000-0x00B93000`, 371 imports bound, none
   unresolved.
 - **Exit.** `_exit()` from the thread `PROXY_TO_PTHREAD` runs `main` on hangs
-  the process while any other thread lives (ExitProcess, the watchdog). The
+  the process while any other thread lives (ExitProcess). The
   runtime's `emscripten_force_exit` ends it with the right code.
 - **The launcher.** The retail and Ares exes quit with "Launcher not running"
   (the check the Windows host answers in `host.c`). The host now plays the
