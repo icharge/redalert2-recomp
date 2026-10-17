@@ -4,9 +4,11 @@ Red Alert 2 and Yuri's Revenge in a browser tab. The game is the same lifted
 C the Windows and Linux builds run, compiled to WebAssembly with Emscripten,
 and played from the player's own install, which they pick in the page.
 
-**Status: planned.** Nothing here is built yet. These pages are the design
-and the plan, written before the first line of code so the work has a shape.
-They change as the stages answer the open questions. When a page and the
+**Status: stages 1 to 3 done.** The host builds with Emscripten and, under
+Node, the lifted game boots to the main menu in about 13 seconds. The page
+(stages 4 and 6), the main loop in a browser, sound and movies are still to
+do. These pages are the design and the plan, and change as the stages answer
+the open questions. When a page and the
 code disagree, the code wins, and the page gets fixed.
 
 ## The one rule, in the browser

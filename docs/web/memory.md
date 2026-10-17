@@ -32,7 +32,7 @@ is control over where things are placed.
 
 1. **Keep the image's range free.** Emscripten places its static data,
    stack and heap from `GLOBAL_BASE` upward. Link with
-   `-sGLOBAL_BASE=0x01000000` (16 MB), above the image's end at 0x00B93000.
+   `-sGLOBAL_BASE=16MB`, above the image's end at 0x00B93000.
    Everything below 16 MB belongs to the guest image and nothing else.
 2. **`pe_loader.c`.** Under `__EMSCRIPTEN__`, a fixed-base map checks that
    `[image_base, image_base + span)` lies below `GLOBAL_BASE`, zeroes it and

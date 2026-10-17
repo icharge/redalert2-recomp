@@ -322,3 +322,40 @@ rate:
 | Red Alert 2 | 63 frames a second | 70 |
 | Yuri's Revenge | 63 | 70 |
 
+## 14. The browser build: what stood between emcc and the main menu
+
+`build-web.sh` compiles the same lifted C and pcrecomp's `win32hle` with
+Emscripten 6.0.12 ([docs/web](web/README.md)). Under Node, with the game
+folder mounted, the log reaches `[dialog] open 0xE2` about 13 seconds after
+launch. The walls, in the order they came:
+
+- **Compiling.** All 67 generated files and all of `win32hle` compiled the
+  first time. The one error was `__rdtsc`, which `recomp_types.h` takes from
+  `<x86intrin.h>` only on x86; a monotonic nanosecond counter stands in
+  elsewhere (pcrecomp).
+- **The link.** `-sGLOBAL_BASE=0x01000000` is refused: Emscripten wants a size
+  with a suffix, `16MB`. And `wasm-opt` crashed (exit 0xC0000409) when linking
+  RelWithDebInfo objects, because `-g` over this much code makes emcc run
+  limited passes first. The browser build defaults to Release; debug info is
+  `-gseparate-dwarf`, later.
+- **The guest image.** No `mmap` at an address in WebAssembly. With
+  `GLOBAL_BASE` at 16 MB the range below it is the guest's, so `pe_loader.c`
+  takes 0x00400000 to 0x00B93000 as it is, zeroed (pcrecomp,
+  [web/memory.md](web/memory.md)). The dry run prints
+  `mapped /game/gamemd.exe: 0x00400000-0x00B93000`, 371 imports bound, none
+  unresolved.
+- **Exit.** `_exit()` from the thread `PROXY_TO_PTHREAD` runs `main` on hangs
+  the process while any other thread lives (ExitProcess, the watchdog). The
+  runtime's `emscripten_force_exit` ends it with the right code.
+- **The launcher.** The retail and Ares exes quit with "Launcher not running"
+  (the check the Windows host answers in `host.c`). The host now plays the
+  launcher on Linux and in the browser too: `src/linux/launcher.c` holds the
+  mutex, answers the game's event with thread message 0xBEEF and a file mapping,
+  from the pump hook on the game's thread. `win32hle` had no file mappings
+  (`CreateFileMappingA`, `MapViewOfFile(Ex)` are new), and its named objects
+  shared one handle between creator and opener, so the game closing its handle
+  freed the host's; they are now one object with a handle each, counted.
+- **Files.** Under Node `--game` is a host folder, mounted at `/game` with
+  NODEFS on the main thread (the game's thread has no file system of its own).
+  Headless, the host never opens an SDL window, which is as well: Emscripten's
+  SDL has no dummy video driver.

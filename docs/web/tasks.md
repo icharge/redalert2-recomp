@@ -18,30 +18,30 @@ Tick a task off here in the same pull request that finishes it.
 
 | ID | Task | Repo | Needs | Size | Done when |
 |---|---|---|---|---|---|
-| W1.1 | Install emsdk, pick a version, record it in `build-web.sh` and [toolchain.md](toolchain.md) | here | | S | `emcc --version` matches the pinned version |
-| W1.2 | `cmake/emscripten.cmake` and an `if(EMSCRIPTEN)` branch in `CMakeLists.txt`, with the compile flags from toolchain.md | here | W1.1 | S | `cmake -B build-web` configures |
-| W1.3 | `build-web.sh` and `build-web.cmd`: configure, build, copy output to `web/public/game/` | here | W1.2 | S | both run end to end on an empty target |
-| W1.4 | Compile `recomp_0000.c` alone; fix or list what fails | here | W1.2 | S | it compiles, or every error kind is listed in toolchain.md |
-| W1.5 | Compile all 67 generated files; record the time | here | W1.4 | M | all compile; the time is in toolchain.md |
-| W1.6 | Compile `win32hle`; list the errors by kind (signals, `mmap`, sockets, `popen`, ...) | pcrecomp | W1.2 | S | the list is in toolchain.md |
-| W1.7 | `__EMSCRIPTEN__` guards in `win32hle` for everything in W1.6 except memory (that's W2) | pcrecomp | W1.6 | M | `win32hle` compiles with emcc |
+| ~~W1.1~~ | Install emsdk, pick a version, record it in `build-web.sh` and [toolchain.md](toolchain.md) | here | | S | `emcc --version` matches the pinned version |
+| ~~W1.2~~ | `cmake/emscripten.cmake` and an `if(EMSCRIPTEN)` branch in `CMakeLists.txt`, with the compile flags from toolchain.md | here | W1.1 | S | `cmake -B build-web` configures |
+| W1.3 | `build-web.sh` and `build-web.cmd`: configure, build (done), copy output to `web/public/game/` (waits for W4.1) | here | W1.2 | S | both run end to end on an empty target |
+| ~~W1.4~~ | Compile `recomp_0000.c` alone; fix or list what fails | here | W1.2 | S | it compiles, or every error kind is listed in toolchain.md |
+| ~~W1.5~~ | Compile all 67 generated files; record the time | here | W1.4 | M | all compile; the time is in toolchain.md |
+| ~~W1.6~~ | Compile `win32hle`; list the errors by kind (signals, `mmap`, sockets, `popen`, ...) | pcrecomp | W1.2 | S | the list is in toolchain.md |
+| ~~W1.7~~ | `__EMSCRIPTEN__` guards in `win32hle` for everything in W1.6 except memory (that's W2) | pcrecomp | W1.6 | M | `win32hle` compiles with emcc |
 
 ## Stage 2: memory
 
 | ID | Task | Repo | Needs | Size | Done when |
 |---|---|---|---|---|---|
-| W2.1 | `pe_loader.c`: the fixed-base map below `GLOBAL_BASE`, `aligned_alloc` for DLLs ([memory.md](memory.md)) | pcrecomp | W1.7 | S | `pe_loader_selftest` passes under Node |
-| W2.2 | `kernel32.c`: `VirtualAlloc`, `VirtualFree` and `VirtualQuery` on aligned allocations; log fixed-address requests once | pcrecomp | W1.7 | S | `kernel32_ext_selftest` passes under Node |
-| W2.3 | Build the other `win32hle` selftests with emcc and run them under Node | pcrecomp | W2.1, W2.2 | M | all pass, or the failures are filed as tasks here |
+| ~~W2.1~~ | `pe_loader.c`: the fixed-base map below `GLOBAL_BASE`, `aligned_alloc` for DLLs ([memory.md](memory.md)) | pcrecomp | W1.7 | S | `pe_loader_selftest` passes under Node |
+| ~~W2.2~~ | `kernel32.c`: `VirtualAlloc`, `VirtualFree` and `VirtualQuery` on aligned allocations; log fixed-address requests once | pcrecomp | W1.7 | S | `kernel32_ext_selftest` passes under Node |
+| ~~W2.3~~ | Build the other `win32hle` selftests with emcc and run them under Node | pcrecomp | W2.1, W2.2 | M | all pass, or the failures are filed as tasks here |
 
 ## Stage 3: headless boot
 
 | ID | Task | Repo | Needs | Size | Done when |
 |---|---|---|---|---|---|
-| W3.1 | `src/web/main.c` from `src/linux/main.c`: no signals, recorder or watchdog; NODEFS mount under Node | here | W1.7 | S | it compiles |
-| W3.2 | Link the whole game with the flags in toolchain.md; record the link time and `.wasm` size | here | W1.5, W2.2, W3.1 | M | `ra2.wasm` exists; the numbers are in toolchain.md |
-| W3.3 | Dry run under Node: map and bind the exe | here | W3.2 | S | the log prints `mapped C:\gamemd.exe: 0x00400000-0x00B93000` |
-| W3.4 | `--run` under Node with SDL's dummy drivers, to the main menu; each wall goes in `docs/bringup.md` | here | W3.3 | L | the log reaches the main menu's dialog (0xE2) |
+| ~~W3.1~~ | `src/web/main.c` from `src/linux/main.c`: no signals or recorder (the watchdog stays, for hangs); NODEFS mount under Node | here | W1.7 | S | it compiles |
+| ~~W3.2~~ | Link the whole game with the flags in toolchain.md; record the link time and `.wasm` size | here | W1.5, W2.2, W3.1 | M | `ra2.wasm` exists; the numbers are in toolchain.md |
+| ~~W3.3~~ | Dry run under Node: map and bind the exe | here | W3.2 | S | the log prints `mapped C:\gamemd.exe: 0x00400000-0x00B93000` |
+| ~~W3.4~~ | `--run` under Node with SDL's dummy drivers, to the main menu; each wall goes in `docs/bringup.md` | here | W3.3 | L | the log reaches the main menu's dialog (0xE2) |
 | W3.5 | Trap reports: `ra2_crash_report()` and `onAbort` printing it | here | W3.2 | S | a forced trap prints the lifted function and the indirect-call ring |
 | W3.6 | `tools/conformance.py --host web` | here | W3.4 | S | 8/8 boot milestones under Node |
 | W3.7 | Check the largest lifted functions compile in V8 (`sub_00618C58` and the next four) | here | W3.2 | S | Chromium instantiates `ra2.wasm`, or the lifter splits the function (a pcrecomp task) |

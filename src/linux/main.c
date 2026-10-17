@@ -29,6 +29,7 @@
 #include "pe_loader.h"
 #include "host.h"
 #include "recomp_target.h"
+#include "launcher.h"
 
 extern const uint32_t ra2_entry_va;   /* recomp_dispatch.c */
 
@@ -301,6 +302,7 @@ static void frame_pump(void) {
     const uint32_t *pal;
     int w, h, pitch, bpp;
     hle_screen_pump();
+    ra2_launcher_poll();
     uint32_t now = hle_ticks_ms();
     if ((int32_t)(now - next) < 0 || !hle_dd_frame(&px, &w, &h, &pitch, &bpp, &pal, NULL)) return;
     next = now + 3333;
@@ -505,6 +507,7 @@ int main(int argc, char **argv) {
         pthread_create(&t, NULL, recorder, NULL);
         pthread_detach(t);
     }
+    ra2_launcher_start();
     script_start();
     if (g_watchdog_s) {
         pthread_t t;

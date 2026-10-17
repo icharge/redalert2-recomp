@@ -15,7 +15,13 @@ if(NOT CMAKE_SIZEOF_VOID_P EQUAL 4)
   message(FATAL_ERROR "the host must be 32-bit: use build.cmd (vcvarsall x86), or on Linux build-linux.sh")
 endif()
 if(NOT CMAKE_BUILD_TYPE)
-  set(CMAKE_BUILD_TYPE RelWithDebInfo)
+  # -g on the browser build makes wasm-opt run limited passes and, on this
+  # much code, crash: debug info there is -gseparate-dwarf (docs/web/toolchain.md)
+  if(EMSCRIPTEN)
+    set(CMAKE_BUILD_TYPE Release)
+  else()
+    set(CMAKE_BUILD_TYPE RelWithDebInfo)
+  endif()
 endif()
 
 # ../pcrecomp, or ../tools where older setups put it
@@ -46,13 +52,39 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   set(HLE ${PCRECOMP}/runtime/win32hle)
   file(GLOB HLE_SOURCES CONFIGURE_DEPENDS "${HLE}/*.c")
   list(FILTER HLE_SOURCES EXCLUDE REGEX "_selftest\.c$")
-  add_executable(ra2 src/linux/main.c src/linux/blowfish.c src/linux/script.c src/linux/mods.c src/runtime/hdvox.c src/runtime/queuefive.c ${HLE_SOURCES} ${GEN_SOURCES})
+  add_executable(ra2 src/linux/main.c src/linux/launcher.c src/linux/blowfish.c src/linux/script.c src/linux/mods.c src/runtime/hdvox.c src/runtime/queuefive.c ${HLE_SOURCES} ${GEN_SOURCES})
   target_include_directories(ra2 PRIVATE src/linux src/runtime ${GEN_DIR} ${HLE} ${PCRECOMP}/runtime/recomp32)
   target_compile_definitions(ra2 PRIVATE RECOMP_RETADDR=0u RECOMP_FLAT_MEMORY RECOMP_LOCAL_REGS HLE_WITH_FFMPEG)
   set(GEN_OPT "-O2" CACHE STRING "optimisation for the generated C")
   set_source_files_properties(${GEN_SOURCES} PROPERTIES COMPILE_OPTIONS "-w;${GEN_OPT};-fno-strict-aliasing;-fwrapv")
   target_compile_options(ra2 PRIVATE -fno-strict-aliasing -fwrapv)
   target_link_libraries(ra2 PRIVATE PkgConfig::SDL2 PkgConfig::SDL2_TTF PkgConfig::FFMPEG pthread m)
+  return()
+endif()
+
+# ---- the browser: the same on Emscripten (cmake/emscripten.cmake, docs/web)
+if(EMSCRIPTEN)
+  set(HLE ${PCRECOMP}/runtime/win32hle)
+  file(GLOB HLE_SOURCES CONFIGURE_DEPENDS "${HLE}/*.c")
+  list(FILTER HLE_SOURCES EXCLUDE REGEX "_selftest\.c$")
+  add_executable(ra2 src/web/main.c src/linux/launcher.c src/linux/blowfish.c src/linux/script.c src/linux/mods.c src/runtime/hdvox.c src/runtime/queuefive.c ${HLE_SOURCES} ${GEN_SOURCES})
+  target_include_directories(ra2 PRIVATE src/web src/linux src/runtime ${GEN_DIR} ${HLE} ${PCRECOMP}/runtime/recomp32)
+  target_compile_definitions(ra2 PRIVATE RECOMP_RETADDR=0u RECOMP_FLAT_MEMORY RECOMP_LOCAL_REGS)
+  set(GEN_OPT "-O2" CACHE STRING "optimisation for the generated C")
+  set(WEB_COMPILE -pthread -msimd128 -fwasm-exceptions -sSUPPORT_LONGJMP=wasm -sUSE_SDL=2 -sUSE_SDL_TTF=2)
+  set_source_files_properties(${GEN_SOURCES} PROPERTIES COMPILE_OPTIONS "-w;${GEN_OPT};-fno-strict-aliasing;-fwrapv;${WEB_COMPILE}")
+  target_compile_options(ra2 PRIVATE -fno-strict-aliasing -fwrapv ${WEB_COMPILE})
+  # The link flags, and why: docs/web/toolchain.md. GLOBAL_BASE keeps the
+  # guest's 0x00400000..0x00B93000 clear of the host's own data and stack.
+  target_link_options(ra2 PRIVATE
+    -pthread -fwasm-exceptions -sSUPPORT_LONGJMP=wasm -sPROXY_TO_PTHREAD -sPTHREAD_POOL_SIZE=8
+    -sUSE_SDL=2 -sUSE_SDL_TTF=2
+    -sGLOBAL_BASE=16MB
+    -sINITIAL_MEMORY=1GB -sALLOW_MEMORY_GROWTH -sMAXIMUM_MEMORY=4GB
+    -sSTACK_SIZE=8MB -sDEFAULT_PTHREAD_STACK_SIZE=8MB
+    -sEXIT_RUNTIME=1 -sENVIRONMENT=web,worker,node
+    -sFORCE_FILESYSTEM -lnodefs.js)
+  set_target_properties(ra2 PROPERTIES SUFFIX ".js")
   return()
 endif()
 
