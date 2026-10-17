@@ -3,7 +3,7 @@
 The work is done in stages, in this order. Each stage is finished when its
 check passes, and the check goes in the suite or on these pages. Stages 4 and
 6 (the page) don't need the game to boot, so they can run in parallel with
-stages 1 to 3.
+stages 1 to 3. [tasks.md](tasks.md) breaks each stage into tasks.
 
 | # | Stage | Done when | Pages |
 |---|---|---|---|

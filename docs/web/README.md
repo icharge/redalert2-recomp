@@ -23,6 +23,7 @@ generated from `gamemd.exe`, so it is not committed or published either. See
 | Page | What it covers |
 |---|---|
 | [plan.md](plan.md) | The stages, from a first `emcc` compile to both games in a tab, each with its check |
+| [tasks.md](tasks.md) | The stages broken into tasks: repo, dependencies, size, and when each is done |
 | [architecture.md](architecture.md) | Threads, rendering, audio, input, files and crashes: how the native Linux build maps onto a browser |
 | [memory.md](memory.md) | The guest's address space in wasm linear memory: the pcrecomp change, which is the first risk |
 | [toolchain.md](toolchain.md) | Emscripten, `build-web.sh`, `cmake/emscripten.cmake`, the link flags and why |
