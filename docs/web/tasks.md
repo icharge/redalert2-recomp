@@ -34,7 +34,7 @@ Tick a task off here in the same pull request that finishes it.
 | ~~W2.2~~ | `kernel32.c`: `VirtualAlloc`, `VirtualFree` and `VirtualQuery` on aligned allocations; log fixed-address requests once | pcrecomp | W1.7 | S | `kernel32_ext_selftest` passes under Node |
 | ~~W2.3~~ | Build the other `win32hle` selftests with emcc and run them under Node | pcrecomp | W2.1, W2.2 | M | all pass, or the failures are filed as tasks here |
 
-| W2.4 | `present_selftest` under Node: it opens an SDL window, and Emscripten's SDL has no dummy video driver. Give `present.c` a headless path, or run it in a browser (W10) | pcrecomp | W2.3 | S | it passes under Node, or in the page's test run; `build_selftests_web.py` stops skipping it |
+| ~~W2.4~~ | `present_selftest`: it opens an SDL window, and neither Node nor Emscripten's SDL has a display or a dummy video driver. Run it as a page in headless Chrome | pcrecomp | W2.3 | S | it passes in headless Chrome (`build_selftests_web.py --chrome`) |
 
 ## Stage 3: headless boot
 
@@ -44,9 +44,9 @@ Tick a task off here in the same pull request that finishes it.
 | ~~W3.2~~ | Link the whole game with the flags in toolchain.md; record the link time and `.wasm` size | here | W1.5, W2.2, W3.1 | M | `ra2.wasm` exists; the numbers are in toolchain.md |
 | ~~W3.3~~ | Dry run under Node: map and bind the exe | here | W3.2 | S | the log prints `mapped C:\gamemd.exe: 0x00400000-0x00B93000` |
 | ~~W3.4~~ | `--run` under Node with SDL's dummy drivers, to the main menu; each wall goes in `docs/bringup.md` | here | W3.3 | L | the log reaches the main menu's dialog (0xE2) |
-| W3.5 | Trap reports: `ra2_crash_report()` and `onAbort` printing it | here | W3.2 | S | a forced trap prints the lifted function and the indirect-call ring |
-| W3.6 | `tools/conformance.py --host web` | here | W3.4 | S | 8/8 boot milestones under Node |
-| W3.7 | Check the largest lifted functions compile in V8 (`sub_00618C58` and the next four) | here | W3.2 | S | Chromium instantiates `ra2.wasm`, or the lifter splits the function (a pcrecomp task) |
+| ~~W3.5~~ | Trap reports: `ra2_crash_report()` and `onAbort` printing it | here | W3.2 | S | a forced trap prints the lifted function and the indirect-call ring |
+| ~~W3.6~~ | `tools/conformance.py --host web` | here | W3.4 | S | 8/8 boot milestones under Node |
+| ~~W3.7~~ | Check the largest lifted functions compile in V8 (`sub_00618C58` and the next four) | here | W3.2 | S | Chromium instantiates `ra2.wasm`, or the lifter splits the function (a pcrecomp task) |
 
 ## Stage 4: the page
 

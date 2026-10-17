@@ -16,6 +16,13 @@ with a message and exits 0, so it can sit in CI without the corpus.
 
     py -3 tools/conformance.py              # run, compare, print the table
     py -3 tools/conformance.py --update     # ...and accept the result as the baseline
+    py -3 tools/conformance.py --host web   # the browser build (build-web.sh) under Node
+
+--host web boots build-web/ra2.js (or build-web-game/ for RA2_TARGET=game)
+under Node with game/ mounted, headless, and stops the moment the main menu
+opens. Its milestones are the lines the web host prints (the intro is a Bink
+movie, which the browser build does not play yet, so that milestone is the
+launcher's answer instead), and its baseline is conformance-web.json.
 """
 import argparse
 import glob
@@ -34,6 +41,7 @@ HOST = os.environ.get('RA2_EXE') or os.path.join(ROOT, 'build-game' if GAME else
 GEN = os.path.join(ROOT, 'src', 'recomp', 'gen_game' if GAME else 'gen')
 STATS = os.path.join(ROOT, 'work', *(['game'] if GAME else []), 'lift_stats.json')
 BASELINE = os.path.join(ROOT, 'conformance-game.json' if GAME else 'conformance.json')
+WEB_BASELINE = os.path.join(ROOT, 'conformance-web-game.json' if GAME else 'conformance-web.json')
 # Off Windows the host is a cross build (build.sh) that runs under Wine:
 # CrossOver's Steam bottle on a Mac, wine on Linux, or RA2_WINE, the launcher
 # command.
@@ -64,6 +72,52 @@ MILESTONES = [
     # logs no such line, so for it the menu's dialog opening).
     ('main menu reached', r'\[dialog\] open 0xE2' if GAME else r'\[game\] Looping movie'),
 ]
+
+
+# The same boot, in what the browser host prints (build-web.sh, run under Node).
+WEB_MILESTONES = [
+    ('image mapped and imports bound', r'mapped \S+: 0x00400000-0x[0-9A-F]+, 0 imports not implemented'),
+    ('entry point entered', r'entering 0x00785AA0' if GAME else r'entering 0x007CD80F'),
+    ('launcher answered', r'The message says: '),
+    ('display mode set', r'\[ddraw\] SetDisplayMode\(800x600x16\)'),
+    ('primary surface created', r'\[ddraw\] CreateSurface 800x600 16 bpp caps 0x[0-9A-F]+ primary -> 0x[0-9a-f]*[1-9a-f]'),
+    ('first frame shown', r'\[record\] frame 0 checksum'),
+    ('game init completed', r'Game Init Completed'),
+    ('main menu reached', r'\[dialog\] open 0xE2'),
+]
+WEB_HOST = os.path.join(ROOT, 'build-web-game' if GAME else 'build-web', 'ra2.js')
+
+
+def boot_web(seconds):
+    """Run the browser build under Node until the main menu opens (or the
+    time is up), reading its log as it comes."""
+    import threading, time
+    p = subprocess.Popen(['node', WEB_HOST, '--run', '--game', 'game', '--headless', '--mute', '--debuglog'],
+                         cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                         text=True, errors='replace')
+    lines, menu_at = [], [None]
+
+    def pump():
+        for line in p.stdout:
+            lines.append(line)
+            if menu_at[0] is None and re.search(r'\[dialog\] open 0xE2', line):
+                menu_at[0] = time.time()
+    t = threading.Thread(target=pump, daemon=True)
+    t.start()
+    start = time.time()
+    while p.poll() is None and time.time() - start < seconds:
+        if menu_at[0] and time.time() - menu_at[0] > 2:      # a moment more: the log after the dialog
+            break
+        time.sleep(0.2)
+    code = p.poll()
+    if code is None:
+        p.kill()
+        code = 'stopped' if menu_at[0] else 'timeout'
+    t.join(5)
+    out = ''.join(lines)
+    passed = [name for name, pat in WEB_MILESTONES if re.search(pat, out)]
+    last = [l.strip() for l in out.splitlines() if l.startswith(('===', '[not-lifted]'))]
+    return passed, code, last[:2]
 
 
 def distinct_frames(out):
@@ -101,19 +155,25 @@ def main():
     ap.add_argument('--update', action='store_true', help='accept this run as the baseline')
     ap.add_argument('--seconds', type=int, default=300,
                     help='headless run length (the intro alone is four minutes)')
+    ap.add_argument('--host', choices=('native', 'web'), default='native',
+                    help='native: the Windows build (default); web: the browser build under Node')
     args = ap.parse_args()
-    if not (os.path.exists(HOST) and os.path.isdir(os.path.join(ROOT, 'game'))):
-        print('conformance: skipped -- needs game/ (your copy) and build/ra2.exe '
-              '(README, Building from source)')
+    web = args.host == 'web'
+    host = WEB_HOST if web else HOST
+    baseline = WEB_BASELINE if web else BASELINE
+    milestones = WEB_MILESTONES if web else MILESTONES
+    if not (os.path.exists(host) and os.path.isdir(os.path.join(ROOT, 'game'))):
+        print('conformance: skipped -- needs game/ (your copy) and %s '
+              '(README, Building from source)' % ('build-web/ra2.js (build-web.sh)' if web else 'build/ra2.exe'))
         return 0
 
-    passed, code, last = boot(args.seconds)
+    passed, code, last = boot_web(min(args.seconds, 120)) if web else boot(args.seconds)
     health = lift_health()
-    now = {'milestones': len(passed), 'of': len(MILESTONES), **health}
-    base = json.load(open(BASELINE)) if os.path.exists(BASELINE) else None
+    now = {'milestones': len(passed), 'of': len(milestones), **health}
+    base = json.load(open(baseline)) if os.path.exists(baseline) else None
 
-    print('boot milestones: %d/%d  (exit %s)' % (len(passed), len(MILESTONES), code))
-    for name, _ in MILESTONES:
+    print('boot milestones: %d/%d  (exit %s)' % (len(passed), len(milestones), code))
+    for name, _ in milestones:
         print('  [%s] %s' % ('x' if name in passed else ' ', name))
     for l in last:
         print('  stopped: ' + l)
@@ -128,8 +188,8 @@ def main():
             if now[k] > base[k]:
                 worse.append('%s %d -> %d' % (k, base[k], now[k]))
     if args.update or not base:
-        json.dump(now, open(BASELINE, 'w'), indent=1)
-        print('baseline written to ' + os.path.basename(BASELINE))
+        json.dump(now, open(baseline, 'w'), indent=1)
+        print('baseline written to ' + os.path.basename(baseline))
     if worse:
         print('REGRESSION: ' + '; '.join(worse))
         return 1

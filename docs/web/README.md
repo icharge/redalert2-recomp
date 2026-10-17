@@ -5,7 +5,9 @@ C the Windows and Linux builds run, compiled to WebAssembly with Emscripten,
 and played from the player's own install, which they pick in the page.
 
 **Status: stages 1 to 3 done.** The host builds with Emscripten and, under
-Node, the lifted game boots to the main menu in about 13 seconds. The page
+Node, the lifted game boots to the main menu in about 13 seconds (8 of 8 boot
+milestones, `tools/conformance.py --host web`); pcrecomp's selftests pass as
+wasm; Chrome compiles the module. The page
 (stages 4 and 6), the main loop in a browser, sound and movies are still to
 do. These pages are the design and the plan, and change as the stages answer
 the open questions. When a page and the

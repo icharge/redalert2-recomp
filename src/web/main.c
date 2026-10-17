@@ -186,13 +186,16 @@ static int menus_use_windows_cursor(void) {
 
 /* Without a recording, the same checksum lines at the same rate, from the
  * pump; and --dump-frames writes those frames as BMPs. */
+static int g_trap_after;   /* --trap N: trap after N pumps, to see the crash report (docs/web/testing.md) */
 static void frame_pump(void) {
     static uint32_t next;
+    static int pumps;
     const uint8_t *px;
     const uint32_t *pal;
     int w, h, pitch, bpp;
     hle_screen_pump();
     ra2_launcher_poll();
+    if (g_trap_after && ++pumps == g_trap_after) __builtin_trap();
     uint32_t now = hle_ticks_ms();
     if ((int32_t)(now - next) < 0 || !hle_dd_frame(&px, &w, &h, &pitch, &bpp, &pal, NULL)) return;
     next = now + 3333;
@@ -303,6 +306,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--game") && i + 1 < argc) game = argv[++i];
         else if (!strcmp(argv[i], "--mod") && i + 1 < argc) g_mod = argv[++i];
         else if (!strcmp(argv[i], "--trace")) win32hle_trace = 1;
+        else if (!strcmp(argv[i], "--trap") && i + 1 < argc) g_trap_after = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--hd-voxels")) hdvox_configure(1, NULL);
         else if (!strcmp(argv[i], "--hd-voxels-dump") && i + 1 < argc) {
             static char dir[PATH_MAX];               /* absolute: the run chdirs into the game folder */
@@ -318,7 +322,7 @@ int main(int argc, char **argv) {
             g_dump_dir = dir;                /* the run chdirs into the game folder */
         }
         else {
-            printf("usage: ra2 [--run] [--headless | --fullscreen] [--scale sharp|smooth|crt|nearest|integer] [--game DIR] [--mod NAME|none] [--debuglog] [--mute] [--trace] [--dump-frames DIR] [--hd-voxels] [--hd-voxels-dump DIR]\n"
+            printf("usage: ra2 [--run] [--headless | --fullscreen] [--scale sharp|smooth|crt|nearest|integer] [--game DIR] [--mod NAME|none] [--debuglog] [--mute] [--trace] [--trap N] [--dump-frames DIR] [--hd-voxels] [--hd-voxels-dump DIR]\n"
                    "           [--press DLG:CTRL@s] [--select DLG:CTRL=N@s] [--waitlog TEXT@s] [--move|--click x,y@s]\n"
                    "           [--key [c][s][a]+vk@s] [--wait VA@s] [--drag x1,y1,x2,y2@s]\n");
             return !strcmp(argv[i], "--help") || !strcmp(argv[i], "-h") ? 0 : 1;

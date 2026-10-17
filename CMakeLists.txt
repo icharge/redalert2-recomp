@@ -83,8 +83,10 @@ if(EMSCRIPTEN)
     -sINITIAL_MEMORY=1GB -sALLOW_MEMORY_GROWTH -sMAXIMUM_MEMORY=4GB
     -sSTACK_SIZE=8MB -sDEFAULT_PTHREAD_STACK_SIZE=8MB
     -sEXIT_RUNTIME=1 -sENVIRONMENT=web,worker,node
-    -sFORCE_FILESYSTEM -lnodefs.js)
-  set_target_properties(ra2 PROPERTIES SUFFIX ".js")
+    -sFORCE_FILESYSTEM -lnodefs.js
+    -sEXPORTED_RUNTIME_METHODS=ccall,cwrap
+    --pre-js ${CMAKE_SOURCE_DIR}/src/web/pre.js)
+  set_target_properties(ra2 PROPERTIES SUFFIX ".js" LINK_DEPENDS ${CMAKE_SOURCE_DIR}/src/web/pre.js)
   # Where the page (web/) loads the game from, once it is scaffolded
   set(WEB_OUT ${CMAKE_SOURCE_DIR}/web/public/game CACHE PATH "where the page finds ra2.js and ra2.wasm")
   add_custom_command(TARGET ra2 POST_BUILD

@@ -359,3 +359,8 @@ launch. The walls, in the order they came:
   NODEFS on the main thread (the game's thread has no file system of its own).
   Headless, the host never opens an SDL window, which is as well: Emscripten's
   SDL has no dummy video driver.
+- **Where a trap is caught.** `pre.js` runs in every pthread worker as well as
+  the main thread, and the trap happens in the worker, so a handler there
+  exits only the worker (code 3 for it, 0 for the process). Only the main
+  thread installs the handler; Emscripten forwards the worker's exception to
+  it.

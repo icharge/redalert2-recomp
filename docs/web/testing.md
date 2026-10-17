@@ -22,16 +22,51 @@ everything that doesn't need the game:
 
 No test touches game files, so CI can run them on every push.
 
+## pcrecomp's selftests: Node, and one in Chrome
+
+`runtime/win32hle/build_selftests_web.py` (pcrecomp) builds each `*_selftest.c`
+with emcc and runs it under Node: the PE loader at 0x00400000, the virtual
+memory calls, files, the message pump, named kernel objects. All seven pass.
+`present_selftest` needs a canvas, which Node has not and Emscripten's SDL has
+no dummy driver to stand in for, so it is built as a page and run by
+`browser_run.js` in headless Chrome:
+
+```
+NODE_PATH=<dir with playwright-core> python3 build_selftests_web.py --chrome /path/to/chrome
+```
+
+Without `--chrome` (or `CHROME_PATH`) it says so and skips that one.
+
 ## The game without a browser: Node
 
 ```
 node build-web/ra2.js --run --game ./game --headless --mute --debuglog
 ```
 
-The same arguments as the Linux build, so `tools/conformance.py` can run it
-with `--host web`: the boot milestones in `conformance.json` are the stage 3
-check. This needs a local game folder, so it runs on a developer's machine,
-not in CI.
+The same arguments as the Linux build. `tools/conformance.py --host web` runs
+it and scores eight boot milestones from the lines the host prints (the image
+mapped and bound, the entry point, the launcher's answer, the display mode, the
+primary surface, the first frame, the game's init, the main menu's dialog
+0xE2), stopping as soon as the menu opens. Its baseline is
+`conformance-web.json`; `RA2_TARGET=game` uses `build-web-game/` and
+`conformance-web-game.json`. The browser build plays no movies yet, so the
+intro milestone of the Windows list is the launcher's answer here. This needs
+a local game folder, so it runs on a developer's machine, not in CI.
+
+**A trap, on purpose.** `--trap N` makes the game's thread trap on its Nth
+trip through the pump hook. `src/web/pre.js` catches the exception on the main
+thread and calls `ra2_crash_report`, which prints the lifted function that was
+running, the last import, the registers, the last 40 indirect calls and the
+top of the guest stack; the process exits with code 3. (The label reads
+`uncaught: unreachable`: the error loses its type crossing from the worker.)
+In a page the same report goes to the console through `window.onerror`.
+
+**V8's limits.** `node tools/wasm-sizes.js build-web/ra2.wasm` lists the
+largest function bodies and local counts. In Yuri's Revenge's 27,884 functions
+the largest body is 312 KB (V8 refuses 7.6 MB) and the most locals in one is
+1,450 (it refuses 50,000), so the lifter need not split anything. Chrome 155
+validates and compiles the whole 105 MB module (`WebAssembly.compile`, served
+with COOP/COEP).
 
 ## The suite in a browser: Playwright
 
