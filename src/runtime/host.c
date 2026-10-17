@@ -407,6 +407,52 @@ static void shim_CreateMutexA(void) {
     g_esp += 4 + 3 * 4;
 }
 
+/* Retail and Ares installs (not the Steam/EA exes, which have the check
+ * patched out) bail with "Launcher not running" unless the launcher (RA2.exe /
+ * RA2MD.exe) holds this named mutex when the game starts. The host plays the
+ * launcher: it holds the mutex for the life of the process, under the plain name
+ * and under the per-process name the headless CreateMutexA shim looks up, and
+ * the event the game signals once its display is up. */
+static HANDLE g_launcher_event, g_launcher_map;
+static DWORD g_launcher_tid;
+
+/* The launcher's answer to the event: thread message 0xBEEF, whose lParam is a
+ * file mapping holding the string the game checks. */
+static DWORD WINAPI launcher_thread(LPVOID unused) {
+    (void)unused;
+    while (WaitForSingleObject(g_launcher_event, INFINITE) == WAIT_OBJECT_0)
+        PostThreadMessageA(g_launcher_tid, 0xBEEF, 0, (LPARAM)g_launcher_map);
+    return 0;
+}
+
+static void hold_launcher_mutex(void) {
+    static const char name[] = "48BC11BD-C4D7-466b-8A31-C6ABBAD47B3E";
+    char pname[MAX_PATH];
+    MSG msg;
+    char* view;
+    CreateMutexA(NULL, FALSE, name);
+    _snprintf(pname, sizeof pname - 1, "%s.%lu", name, GetCurrentProcessId()), pname[sizeof pname - 1] = 0;
+    CreateMutexA(NULL, FALSE, pname);
+    /* "Notify launcher": the game opens this event and signals it; Yuri's
+     * Revenge then waits up to ten seconds for the message, and takes one at
+     * startup too. The game runs on this thread; peeking first makes its queue. */
+    g_launcher_event = CreateEventA(NULL, FALSE, FALSE, "D6E7FC97-64F9-4d28-B52C-754EDF721C6F");
+    g_launcher_map = CreateFileMappingA(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, 4096, NULL);
+    view = g_launcher_map ? (char*)MapViewOfFile(g_launcher_map, FILE_MAP_ALL_ACCESS, 0, 0, 0) : NULL;
+    if (!g_launcher_event || !view) return;
+    /* What each game compares the launcher's data with: Red Alert 2 re-checks it
+     * every 1024 frames and queues an event against the player when it differs. */
+#ifdef RA2_TARGET_GAME
+    strcpy(view, "(c) 2000 Electronic Arts, Inc. All Rights Reserved");
+#else
+    strcpy(view, "UIDATA,3DDATA,MAPS");
+#endif
+    g_launcher_tid = GetCurrentThreadId();
+    PeekMessageA(&msg, NULL, 0, 0, PM_NOREMOVE);
+    PostThreadMessageA(g_launcher_tid, 0xBEEF, 0, (LPARAM)g_launcher_map);
+    CloseHandle(CreateThread(NULL, 0, launcher_thread, NULL, 0, NULL));
+}
+
 static void shim_OpenMutexA(void) {
     char name[MAX_PATH];
     const char* n = (const char*)(uintptr_t)ARG(2);
@@ -1333,6 +1379,7 @@ int main(int argc, char** argv) {
                 live[n++] = shims[k];
         shims = live, nshims = n;
     }
+    hold_launcher_mutex();
     if (g_original) {
         /* The shipping machine code under the same host, shims and input
          * (oracle.c): the reference a lifted run is compared against. */
