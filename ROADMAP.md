@@ -43,6 +43,13 @@ exe's addresses. It started from this repo's host, presenter, scripted input
 and test tools, and has the same platforms, mods and remaster. Moving that
 shared host into pcrecomp, so both repos use one copy, is still to do.
 
+## In the browser
+
+The lifted C compiled to WebAssembly with Emscripten, starting from the
+native Linux build (win32hle and SDL2), and played from the player's own
+install picked in the page. Nothing from the game is served. The plan, its
+stages and their checks: docs/web.md. Started on the `web-port` branch.
+
 ## The remaster
 
 The reason for the project. Each item sits on code the recompilation owns,
