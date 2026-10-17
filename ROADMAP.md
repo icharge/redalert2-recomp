@@ -47,8 +47,9 @@ shared host into pcrecomp, so both repos use one copy, is still to do.
 
 The lifted C compiled to WebAssembly with Emscripten, starting from the
 native Linux build (win32hle and SDL2), and played from the player's own
-install picked in the page. Nothing from the game is served. The plan, its
-stages and their checks: docs/web.md. Started on the `web-port` branch.
+install picked in the page. Nothing from the game is served. The design and
+the plan, its stages and their checks: docs/web/README.md. Started on the
+`web-port` branch.
 
 ## The remaster
 
