@@ -107,6 +107,92 @@ compression is recorded on this page.
 | Mods | `mods/` | Second folder pick, later |
 | LAN | IPX emulation over UDP | Out of scope at first. Later, a WebSocket relay or WebRTC data channels in place of the UDP socket |
 
+## Web architecture
+
+The page is a React app that hosts the game but does not run it. The game
+runs in a dedicated worker and draws to a canvas the page handed over, so it
+can block in its own loop without freezing the tab. That is the worker
+option in problem 2. Asyncify is the fallback if the worker hits a blocker.
+
+```
+┌──────────── Main thread: React app (web/) ────────────────────────────┐
+│  Screens: import, library, play, settings overlay                     │
+│  Input:   pointer, keyboard, wheel  ──postMessage──────────┐          │
+│  Audio:   AudioContext + AudioWorklet ◄── SharedArrayBuffer ring ──┐  │
+└──────────────────────────────────────────────────────────────────┬─┘
+   canvas.transferControlToOffscreen()                            │
+┌──────────── Game worker ─────────────────────────────────────────▼───┐
+│  ra2.wasm: lifted C + win32hle + SDL2                                │
+│  OffscreenCanvas, WebGL2: palette to RGBA, scaling shader            │
+│  WasmFS on OPFS: /game (read-only), /save (read-write)               │
+└──────────────────────────────────────────────────────────────────────┘
+┌──────────── Service worker ──────────────────────────────────────────┐
+│  adds COOP/COEP (threads need them on any static host)               │
+│  caches ra2.wasm and the page: runs offline, installable (PWA)       │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+### Stack
+
+| Concern | Choice |
+|---|---|
+| Language | TypeScript, strict |
+| UI | React 18 and Radix: Radix Themes for the look, Radix Primitives (Dialog, DropdownMenu, Slider, Tabs, Toast, Progress) where Themes has no component |
+| Icons | Radix Icons |
+| Styling | Radix Themes tokens, with CSS Modules for our own components. No Tailwind |
+| State | React state, plus one small store for the worker's messages read with `useSyncExternalStore`. A state library only if this outgrows it |
+| Build | Vite with `vite-plugin-pwa`. The dev server sends COOP/COEP |
+| Page–worker link | One typed message union (`web/src/protocol.ts`), shared by both sides |
+| Game thread | Dedicated Web Worker, OffscreenCanvas, WebGL2 through SDL2 |
+| Audio | AudioWorklet reading a SharedArrayBuffer ring that the game's SDL audio callback fills |
+| Files in | `showDirectoryPicker` on Chromium, a dropped folder elsewhere |
+| Storage | OPFS for the asset copy and saves, IndexedDB for settings and the import manifest |
+| Input extras | Pointer Lock, Fullscreen API, `navigator.keyboard.lock()` so F-keys and Esc reach the game |
+| Tests | Vitest for the page, Playwright for the game through the script hook |
+| Hosting | Any static host. The service worker supplies the headers |
+
+### Screens
+
+- **Import.** Pick or drop the install folder. Check that `gamemd.exe` /
+  `game.exe` and the `.mix` files are there. Copy them into OPFS with a
+  progress bar. This is resumable, and the manifest in IndexedDB says what is
+  already copied.
+- **Library.** Red Alert 2 and Yuri's Revenge, whichever the import found.
+  Shows storage use and offers "remove from this browser".
+- **Play.** The canvas, full window. A thin bar shows until the first click,
+  because audio may only start after a user gesture.
+- **Settings overlay** (Radix Dialog). Only the things that belong to the
+  browser: fullscreen, pointer lock, volume, storage. Game settings stay in
+  the game's own F10 menu, so there is a single copy of each.
+
+### Rules
+
+- React never re-renders per frame. The canvas belongs to the worker, and
+  the page only hears about state changes (loading, running, crashed).
+- Nothing from the game is fetched from our host or sent anywhere. It goes
+  from the player's disk to the player's OPFS.
+- The page works without the game loaded, so the import and library screens
+  can be built and tested before stage 3.
+
+### Layout
+
+```
+web/
+  index.html
+  vite.config.ts
+  src/
+    main.tsx, App.tsx
+    protocol.ts          messages between the page and the worker
+    screens/             Import, Library, Play
+    components/          SettingsDialog, StorageMeter, ...
+    game/
+      worker.ts          loads ra2.wasm, mounts OPFS, starts the game
+      audio-worklet.ts
+      input.ts           DOM events to protocol messages
+    storage/             OPFS copy, manifest
+  public/                ra2.wasm, ra2.js (from build-web.sh)
+```
+
 ## Stages
 
 1. **Toolchain.** Add `cmake/emscripten.cmake` and an `EMSCRIPTEN` branch in
@@ -119,12 +205,16 @@ compression is recorded on this page.
    files preloaded into MEMFS from a local copy, and run it in Node or a page
    with a hidden canvas. Done when the log reaches the main menu, the same
    milestones as `conformance.json`.
-4. **Picture and input.** Canvas output and mouse and keyboard. Done when the
-   main menu is visible and a skirmish can be started by clicking.
-5. **The main-loop decision.** Measure Asyncify against the worker. Keep one.
-6. **Files.** Folder picker, OPFS cache, saves. Done when a fresh browser
-   profile goes from "pick your folder" to the main menu, and a save
-   survives a reload.
+4. **The page.** Scaffold `web/` (Vite, React, TypeScript, Radix Themes) with
+   the Play screen, the game worker and input forwarding. Done when the
+   main menu is visible in the page and a skirmish can be started by
+   clicking.
+5. **The main loop.** Confirm that the worker holds a steady frame rate. Fall
+   back to Asyncify only if it does not.
+6. **Files.** The Import and Library screens, the OPFS copy, saves, and the
+   service worker (COOP/COEP, offline). Done when a fresh browser profile
+   goes from "pick your folder" to the main menu, and a save survives a
+   reload.
 7. **Sound.** Done when a skirmish has sound for 5 minutes with no deadlock.
 8. **Movies.** Bink through ffmpeg in wasm.
 9. **Remaster features.** Resolution picker, HD vehicles, modern controls,
@@ -135,8 +225,6 @@ compression is recorded on this page.
 
 ## Things to decide along the way
 
-- **Hosting.** A static site with COOP and COEP headers. It serves only our
-  wasm and page, never game files.
 - **Browsers.** Chromium first (File System Access, OPFS, threads). Firefox
   and Safari get drag and drop instead of the folder picker, and are tested
   once stage 6 works.
