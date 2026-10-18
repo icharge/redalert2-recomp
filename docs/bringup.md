@@ -387,3 +387,18 @@ launch. The walls, in the order they came:
 - **Waiting for the machine.** `sched_yield` is a no-op in WebAssembly, so the
   fairness spins in `hle_block_end` gave a waiting thread no time. They sleep for
   20 microseconds there.
+- **A window that goes away exposes what it covered.** Everything is drawn into one
+  picture, so nothing repainted what a closing window had covered: a skirmish
+  drop-down list stayed after a pick and the minimap stayed black. Hiding or
+  destroying a window now invalidates the area in its parent (a child) or in the
+  other top-level windows.
+- **Right-drag.** The game pans on a right-drag only past the drag threshold, which
+  it reads with `GetSystemMetrics(SM_CXDRAG)` (68, and 69): 0 here, so it never
+  began. Both answer 4.
+- **A loading screen draws and never pumps.** The picture was made from the pump,
+  so a game start showed one frozen frame for 15 seconds. The primary's `Unlock`
+  now calls `hle_dd_unlock_hook`, a whole frame by then. A thread that took the
+  machine to copy the primary instead starved the game in the menu's movie loop.
+- **A modal box that is not drawn.** After Save a confirmation dialog (resource
+  `0xCE`) is created, shown and painted by the game and never reaches the picture;
+  the game waits for it. Enter closes it. Open: [web/issues.md](web/issues.md).

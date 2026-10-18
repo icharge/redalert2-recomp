@@ -66,12 +66,12 @@ Tick a task off here in the same pull request that finishes it.
 
 | ID | Task | Repo | Needs | Size | Done when |
 |---|---|---|---|---|---|
-| W4.10 | Reproduce the issues in `web/e2e/` (a timeline through a load, a dropdown, a right-drag, the in-game menu and Save) | here | W4.9 | S | each has a script and a screenshot that shows it |
-| W4.11 | Publish frames from a thread of their own, so the game's loading screens show | here | W4.10 | S | a timeline of a skirmish load shows the loading screen |
-| W4.12 | The page's loading screen: byte progress for the copy, then "starting" until the first frame | here | W4.10 | S | no black canvas from page load to the menu |
-| W4.13 | Right-drag panning: Pointer Lock and a virtual cursor, with the game's cursor warps published to the page | here | W4.10 | M | holding the right button pans the battle map; the cursor cannot leave the canvas |
-| W4.14 | Dropdowns draw correctly | pcrecomp or here | W4.10 | S | the skirmish screen's Side, Color, Start and Team lists open and show |
-| W4.15 | Saving a game does not freeze | pcrecomp or here | W4.10 | S | Esc, Save Game, name, Save: the game goes on and the file is there |
+| ~~W4.10~~ | Reproduce the issues in `web/e2e/` (a timeline through a load, a dropdown, a right-drag, the in-game menu and Save) | here | W4.9 | S | `timeline.mjs`, `drive.mjs` (`rdrag`, `LOG_GREP`), `save.mjs` |
+| ~~W4.11~~ | Publish frames from the primary's Unlock, so the game's loading screens show | here, pcrecomp | W4.10 | S | a skirmish load's frames change through the 15 s |
+| ~~W4.12~~ | The page's loading screen: byte progress for the copy, then "starting" | here | W4.10 | S | `LoadingScreen`, with tests |
+| ~~W4.13~~ | Right-drag panning | pcrecomp | W4.10 | S | `SM_CXDRAG` answered; the battle map pans (Pointer Lock is W9.5) |
+| ~~W4.14~~ | Dropdowns draw correctly | pcrecomp | W4.10 | S | a closed list repaints what it covered; the minimap shows |
+| W4.15 | A modal message box that is never drawn (after Save): draw the dialog | pcrecomp | W4.10 | M | Esc, Save Game, Save: the confirmation shows and OK closes it ([issues.md](issues.md), 6) |
 
 ## Stage 5: the main loop
 

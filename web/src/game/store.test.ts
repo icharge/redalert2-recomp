@@ -30,6 +30,19 @@ describe("GameStore", () => {
     expect(store.getSnapshot()).toMatchObject({ fps: 29, ms: 34 });
   });
 
+  it("keeps the copy's progress until the game boots", () => {
+    const store = new GameStore();
+    store.begin();
+    store.copying({ doneBytes: 5, totalBytes: 10, doneFiles: 1, totalFiles: 2, file: "a.mix" });
+    expect(store.getSnapshot()).toMatchObject({
+      phase: "loading",
+      loading: "a.mix (1 of 2)",
+      copy: { doneBytes: 5, totalBytes: 10 },
+    });
+    store.line(boot());
+    expect(store.getSnapshot().copy).toBeNull();
+  });
+
   it("exits with the code", () => {
     const store = new GameStore();
     store.begin();

@@ -61,10 +61,23 @@ export async function startPage(opts) {
     const point = await windowPoint(x, y);
     await page.mouse.move(point.x, point.y);
   };
+  /** The right button down at (x, y), the mouse moved to (x2, y2) in ten steps, held there, then released. */
+  const rdrag = async (x, y, x2, y2, holdMs = 2000) => {
+    const a = await windowPoint(x, y);
+    const b = await windowPoint(x2, y2);
+    await page.mouse.move(a.x, a.y);
+    await page.mouse.down({ button: "right" });
+    for (let i = 1; i <= 10; i++) {
+      await page.mouse.move(a.x + ((b.x - a.x) * i) / 10, a.y + ((b.y - a.y) * i) / 10);
+      await page.waitForTimeout(100);
+    }
+    await page.waitForTimeout(holdMs);
+    await page.mouse.up({ button: "right" });
+  };
   const clickGame = async (x, y, button = "left") => {
     const point = await windowPoint(x, y);
     await page.mouse.move(point.x, point.y);
-    await page.mouse.click(point.x, point.y, { button });
+    await page.mouse.click(point.x, point.y, { button, delay: Number(process.env.HOLD_MS ?? 80) }); // a person holds the button for a moment
   };
 
   const query = opts.pageArgs.map((a) => `arg=${encodeURIComponent(a)}`).join("&");
@@ -88,7 +101,20 @@ export async function startPage(opts) {
     }
   };
 
-  return { browser, page, lines, state, log, shot, fail, clickGame, moveGame, waitFor, started };
+  return {
+    browser,
+    page,
+    lines,
+    state,
+    log,
+    shot,
+    fail,
+    clickGame,
+    moveGame,
+    rdrag,
+    waitFor,
+    started,
+  };
 }
 
 /** How much of the canvas is lit, and how many distinct frames it showed: is it drawing? */

@@ -5,6 +5,7 @@ import {
   GameNotBuilt,
   gameArguments,
   isBuilt,
+  readBody,
   startGame,
 } from "./loader";
 import { GameStore } from "./store";
@@ -49,6 +50,42 @@ describe("isBuilt", () => {
     expect(
       await isBuilt((() => Promise.reject(new Error("offline"))) as unknown as typeof fetch),
     ).toBe(false);
+  });
+});
+
+describe("readBody", () => {
+  const streamOf = (...chunks: number[][]) =>
+    new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          for (const chunk of chunks) controller.enqueue(new Uint8Array(chunk));
+          controller.close();
+        },
+      }),
+    );
+
+  it("collects a stream into one array of the size it was told, counting as it goes", async () => {
+    const seen: number[] = [];
+    const bytes = await readBody(streamOf([1, 2], [3], [4, 5]), 5, (n) => seen.push(n));
+    expect([...bytes]).toEqual([1, 2, 3, 4, 5]);
+    expect(seen).toEqual([2, 3, 5]);
+  });
+
+  it("copes with a file longer or shorter than the size said", async () => {
+    expect([...(await readBody(streamOf([1, 2, 3, 4]), 2, () => {}))]).toEqual([1, 2, 3, 4]);
+    expect([...(await readBody(streamOf([1]), 4, () => {}))]).toEqual([1]);
+  });
+
+  it("takes a body that cannot be streamed whole", async () => {
+    const response = {
+      body: null,
+      arrayBuffer: () => Promise.resolve(new Uint8Array([7, 8]).buffer),
+    };
+    const seen: number[] = [];
+    expect([...(await readBody(response as unknown as Response, 2, (n) => seen.push(n)))]).toEqual([
+      7, 8,
+    ]);
+    expect(seen).toEqual([2]);
   });
 });
 

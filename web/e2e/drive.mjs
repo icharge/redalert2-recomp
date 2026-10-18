@@ -5,6 +5,7 @@
 // A step is `ACTION@SECONDS`: the seconds are counted from when the main menu opened.
 //   click X,Y      a left click at a point in the game's pixels
 //   rclick X,Y     a right click
+//   rdrag X,Y,X2,Y2  press the right button at a point, move to the second one over a second, hold it there 2 s, release
 //   move X,Y       move the mouse
 //   key CODE       press a key (a KeyboardEvent.code: Escape, KeyA, Enter)
 //   shot NAME      save e2e/shots/NAME.png
@@ -32,7 +33,15 @@ for (const step of steps) {
   if (wait > 0) await t.page.waitForTimeout(wait);
   const [verb, arg = ""] = step.action.split(/\s+/);
   const at = `${((Date.now() - menuAt) / 1000).toFixed(1)}s`;
-  if (verb === "click" || verb === "rclick" || verb === "move") {
+  if (process.env.LOG_GREP)
+    t.lines.push(
+      `### ${step.action} (log line ${await t.page.evaluate(() => window.ra2Store?.getLog().length ?? 0)})`,
+    );
+  if (verb === "rdrag") {
+    const [x, y, x2, y2] = arg.split(",").map(Number);
+    await t.rdrag(x, y, x2, y2);
+    console.log(`${at} ${step.action}`);
+  } else if (verb === "click" || verb === "rclick" || verb === "move") {
     const [x, y] = arg.split(",").map(Number);
     if (verb === "move") {
       await t.moveGame(x, y);
@@ -57,5 +66,13 @@ for (const step of steps) {
   if (s?.phase === "crashed") await t.fail(`the game crashed: ${s.error}`);
 }
 console.log("log tail:");
-console.log((await t.log()).slice(-12).join("\n"));
+const lines = await t.log();
+console.log(lines.slice(-12).join("\n"));
+// LOG_GREP=regex prints every log line that matches (a trace the game prints)
+if (process.env.LOG_GREP) {
+  const re = new RegExp(process.env.LOG_GREP);
+  console.log(`log lines matching ${re}:`);
+  const all = await t.page.evaluate(() => window.ra2Store?.getLog() ?? []);
+  console.log([...all, ...t.lines].filter((l) => re.test(l)).join("\n"));
+}
 await t.browser.close();

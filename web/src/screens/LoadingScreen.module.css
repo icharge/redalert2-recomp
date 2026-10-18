@@ -1,0 +1,17 @@
+.screen {
+  position: absolute;
+  inset: 0;
+  background: var(--color-background);
+}
+
+.card {
+  width: min(520px, 100%);
+}
+
+/* a long file name must not push the clock off the line */
+.detail {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -59,6 +59,24 @@ second. Screenshots go to `web/e2e/shots/`. `CHROME_PATH` names the browser. The
 page exposes its store as `window.ra2Store` in development only, for these
 scripts. This is the base `tools/playtest.py --web` grows from (stage 10).
 
+More steps and switches, from chasing the first play's issues ([issues.md](issues.md)):
+
+- `rdrag X,Y,X2,Y2` presses the right button, moves over a second, holds, releases.
+- `HOLD_MS=300` holds each click that long (a person holds it for a moment).
+- `LOG_GREP=REGEX` prints, at the end, every game log line that matches, with a `###`
+  line per step and the log's length then. The page keeps the last 3000 lines.
+- `--arg --heartbeat --arg 3` (the page passes `arg=` values to the game) prints the
+  machine's state every 3 s; add `--arg --windows` to list every window each time, and
+  `--arg --msgtrace --arg N` to trace the messages to windows numbered N and up;
+  `--arg --env --arg NAME=VALUE` sets an environment variable for the game.
+- `save.mjs` plays a skirmish to the in-game menu and Save, then shoots 8 frames
+  (`SLOW=1.8` on a slow run, `LOG_FILE=path` keeps the game's log). `timeline.mjs
+  --every 1 --skirmish` shoots the page from its load on.
+- The battle is not 800x600: it runs at the size in the game folder's own settings
+  (2580x1080 for the author's), so give battle clicks in that size.
+- A click a moment before the next screen is up is lost; leave a few seconds between
+  steps.
+
 ## The game without a browser: Node
 
 ```

@@ -8,9 +8,10 @@
  * thread never waits for the page and the page never waits for the game.
  *
  * Threads: the page calls the ra2_* exports on the main thread; everything
- * else here runs on the game's thread, from its pump. The only data that
- * crosses is the ring (one producer, one consumer) and ra2_shared_t, which
- * the page reads.
+ * else here runs on the game's thread: input and the cursor from its pump, the
+ * picture from the pump and from the primary's Unlock (a loading screen draws
+ * for many seconds without pumping messages). The only data that crosses is
+ * the ring (one producer, one consumer) and ra2_shared_t, which the page reads.
  */
 #define _GNU_SOURCE
 #include <stdint.h>
@@ -81,9 +82,8 @@ static int g_front;
 
 EMSCRIPTEN_KEEPALIVE ra2_shared_t *ra2_shared(void) { return &g_sh; }
 
-/* hle_screen_frame_hook, on the game's thread: the primary surface as RGBA
- * bytes (R lowest) in the buffer the page is not reading. */
-static void on_frame(const uint8_t *px, int w, int h, int pitch, int bpp) {
+/* The primary surface as RGBA bytes (R lowest) in the buffer the page is not reading. */
+static void publish(const uint8_t *px, int w, int h, int pitch, int bpp, const uint32_t *pal) {
     static uint32_t last_w, last_h;
     size_t n = (size_t)w * (size_t)h;
     int back = g_front ^ 1;
@@ -103,10 +103,7 @@ static void on_frame(const uint8_t *px, int w, int h, int pitch, int bpp) {
             }
         }
     } else if (bpp == 8) {                               /* palette entries are r | g << 8 | b << 16 */
-        const uint8_t *fpx;
-        const uint32_t *pal = NULL;
-        int fw, fh, fp, fb;
-        if (!hle_dd_frame(&fpx, &fw, &fh, &fp, &fb, &pal, NULL) || !pal) return;
+        if (!pal) return;
         for (int y = 0; y < h; y++)
             for (int x = 0; x < w; x++) out[(size_t)y * (size_t)w + x] = 0xFF000000u | pal[px[(size_t)y * (size_t)pitch + x]];
     } else {                                             /* 32-bit: B, G, R, X in memory */
@@ -129,6 +126,26 @@ static void on_frame(const uint8_t *px, int w, int h, int pitch, int bpp) {
         snprintf(line, sizeof line, "{\"e\":\"mode\",\"w\":%d,\"h\":%d}", w, h);
         event_line(line);
     }
+}
+
+/* The primary as it is now, if it changed (or a quarter second has gone) and the last frame is not
+ * newer than 15 ms: from the pump, and from the primary's Unlock. On the game's thread. */
+static void present_now(void) {
+    static unsigned shown_seq = ~0u;
+    static uint32_t last;
+    const uint8_t *px;
+    const uint32_t *pal;
+    int w, h, pitch, bpp;
+    unsigned seq;
+    if (!hle_dd_frame(&px, &w, &h, &pitch, &bpp, &pal, &seq)) return;
+    uint32_t now = hle_ticks_ms();
+    if (now - last < 15 || (seq == shown_seq && now - last < 250)) return;
+    shown_seq = seq, last = now;
+    publish(px, w, h, pitch, bpp, pal);
+}
+static void on_frame(const uint8_t *px, int w, int h, int pitch, int bpp) {
+    (void)px, (void)w, (void)h, (void)pitch, (void)bpp;
+    present_now();
 }
 
 /* ---- the cursor ------------------------------------------------------------ */
@@ -237,6 +254,7 @@ static void drain_input(void) {
 void web_presenter_start(int (*menus_use_windows_cursor)(void)) {
     g_menus_cursor = menus_use_windows_cursor;
     hle_screen_frame_hook = on_frame;
+    hle_dd_unlock_hook = present_now;
 }
 
 void web_presenter_pump(void) {

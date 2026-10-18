@@ -29,9 +29,16 @@ while (Date.now() - t0 < total) {
   if (s?.phase === "running" && !menuAt) menuAt = Date.now();
   if (skirmish && menuAt) {
     const since = (Date.now() - menuAt) / 1000;
-    if (since > 3 && clicked === 0) (await t.clickGame(719, 221), (clicked = 1));
-    else if (since > 6 && clicked === 1) (await t.clickGame(720, 305), (clicked = 2));
-    else if (since > 10 && clicked === 2) (await t.clickGame(719, 263), (clicked = 3));
+    if (since > 3 && clicked === 0) {
+      await t.clickGame(719, 221);
+      clicked = 1;
+    } else if (since > 6 && clicked === 1) {
+      await t.clickGame(720, 305);
+      clicked = 2;
+    } else if (since > 10 && clicked === 2) {
+      await t.clickGame(719, 263);
+      clicked = 3;
+    }
   }
   await t.page.waitForTimeout(every);
 }

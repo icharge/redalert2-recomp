@@ -3,10 +3,21 @@ import { RA2_WEB_PROTOCOL, parseEventLine, type GameEvent } from "./protocol";
 
 export type Phase = "idle" | "loading" | "booting" | "running" | "exited" | "crashed";
 
+/** The game files going into the in-memory file system: bytes, and which file. */
+export interface CopyProgress {
+  doneBytes: number;
+  totalBytes: number;
+  doneFiles: number;
+  totalFiles: number;
+  file: string;
+}
+
 export interface GameState {
   phase: Phase;
   /** what is being loaded, while it loads (a file name, "game files") */
   loading: string | null;
+  /** how far the copy of the game files is, while it runs */
+  copy: CopyProgress | null;
   title: string | null;
   size: { w: number; h: number } | null;
   fps: number | null;
@@ -19,6 +30,7 @@ export interface GameState {
 const INITIAL: GameState = {
   phase: "idle",
   loading: null,
+  copy: null,
   title: null,
   size: null,
   fps: null,
@@ -68,6 +80,15 @@ export class GameStore {
     this.set({ phase: "loading", loading: what });
   }
 
+  /** The copy of the game files moved on. */
+  copying(copy: CopyProgress): void {
+    this.set({
+      phase: "loading",
+      loading: `${copy.file} (${copy.doneFiles} of ${copy.totalFiles})`,
+      copy,
+    });
+  }
+
   /** One line of the game's output: logged, and applied if it is an event. */
   line(text: string): void {
     this.lines.push(text);
@@ -88,7 +109,7 @@ export class GameStore {
           });
           return;
         }
-        this.set({ phase: "booting", loading: null, title: event.title });
+        this.set({ phase: "booting", loading: null, copy: null, title: event.title });
         return;
       case "menu":
         this.set({ phase: "running", loading: null });

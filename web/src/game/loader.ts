@@ -80,6 +80,38 @@ interface DevIndex {
   files: { name: string; size: number }[];
 }
 
+/**
+ * The body of a response as bytes, telling `onBytes` how many have come as they do. A file of a
+ * known size is read straight into one array; a body that cannot be streamed comes whole.
+ */
+export async function readBody(
+  response: Response,
+  size: number,
+  onBytes: (received: number) => void,
+): Promise<Uint8Array> {
+  const reader = response.body?.getReader();
+  if (!reader) {
+    const whole = new Uint8Array(await response.arrayBuffer());
+    onBytes(whole.length);
+    return whole;
+  }
+  let out = new Uint8Array(size > 0 ? size : 1 << 20);
+  let received = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (received + value.length > out.length) {
+      const bigger = new Uint8Array(Math.max(out.length * 2, received + value.length));
+      bigger.set(out.subarray(0, received));
+      out = bigger;
+    }
+    out.set(value, received);
+    received += value.length;
+    onBytes(received);
+  }
+  return received === out.length ? out : out.subarray(0, received);
+}
+
 /** Dev only (W4.8): the dev server's local game folder, into the in-memory file system. */
 async function loadDevFiles(
   fs: EmscriptenFs,
@@ -92,13 +124,35 @@ async function loadDevFiles(
   const index = (await response.json()) as DevIndex;
   if (index.files.length === 0) throw new Error("The dev server's game folder has no game files.");
   fs.mkdir("/game");
-  let done = 0;
+  const totalBytes = index.files.reduce((sum, file) => sum + file.size, 0);
+  let doneBytes = 0;
+  let doneFiles = 0;
   for (const file of index.files) {
-    store.loading(`${file.name} (${++done} of ${index.files.length})`);
+    const progress = (inFile: number) =>
+      store.copying({
+        doneBytes: doneBytes + inFile,
+        totalBytes,
+        doneFiles,
+        totalFiles: index.files.length,
+        file: file.name,
+      });
+    progress(0);
     const data = await fetcher(`/dev-game/${encodeURIComponent(file.name)}`);
     if (!data.ok) throw new Error(`The dev server would not give ${file.name}.`);
-    fs.writeFile(`/game/${file.name}`, new Uint8Array(await data.arrayBuffer()));
+    let last = 0;
+    const bytes = await readBody(data, file.size, (received) => {
+      // a screen's worth of updates is enough: a few a second
+      const now = performance.now();
+      if (now - last > 100) {
+        last = now;
+        progress(received);
+      }
+    });
+    fs.writeFile(`/game/${file.name}`, bytes);
+    doneBytes += bytes.length;
+    doneFiles++;
   }
+  store.loading("the game");
 }
 
 function createHandle(module: Ra2Module): GameHandle {

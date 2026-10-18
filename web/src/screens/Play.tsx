@@ -1,10 +1,11 @@
 import { CrossCircledIcon, ExclamationTriangleIcon } from "@radix-ui/react-icons";
-import { Button, Callout, Code, Flex, Heading, ScrollArea, Spinner, Text } from "@radix-ui/themes";
+import { Button, Callout, Code, Flex, Heading, ScrollArea } from "@radix-ui/themes";
 import { useEffect, useRef, useState } from "react";
 import { attachInput } from "../game/input";
 import { argsFromQuery, GameNotBuilt, startGame, type GameHandle } from "../game/loader";
 import { Presenter } from "../game/presenter";
 import { gameStore, useGameState } from "../game/store";
+import { LoadingScreen } from "./LoadingScreen";
 import styles from "./Play.module.css";
 
 // The game starts once per page load, whatever React remounts (StrictMode, a screen switch).
@@ -26,7 +27,8 @@ export function Play() {
   const canvas = useRef<HTMLCanvasElement>(null);
   const [startError, setStartError] = useState<Error | null>(null);
   const phase = useGameState((s) => s.phase);
-  const loading = useGameState((s) => s.loading);
+  const copy = useGameState((s) => s.copy);
+  const title = useGameState((s) => s.title);
   const error = useGameState((s) => s.error);
   const exitCode = useGameState((s) => s.exitCode);
 
@@ -74,19 +76,7 @@ export function Play() {
   return (
     <div className={styles.stage}>
       <canvas ref={canvas} className={styles.canvas} tabIndex={0} aria-label="The game" />
-      {waiting && (
-        <Flex
-          className={styles.overlay}
-          align="center"
-          justify="center"
-          direction="column"
-          gap="3"
-          aria-live="polite"
-        >
-          <Spinner size="3" />
-          <Text size="3">{loading ? `Loading ${loading}` : "Starting the game"}</Text>
-        </Flex>
-      )}
+      {waiting && <LoadingScreen state={{ phase, copy, title }} />}
       {!HAS_FILES && (
         <Flex className={styles.overlay} align="center" justify="center" p="6">
           <Callout.Root color="amber" role="alert" size="3">

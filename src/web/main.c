@@ -193,6 +193,7 @@ static int menus_use_windows_cursor(void) {
  * waiting for it, the function it is in, and the pumps so far. A debugging aid. */
 static volatile unsigned g_pumps;
 static unsigned g_heartbeat_s;
+static int g_dump_windows;                       /* --windows: the heartbeat also lists the windows */
 static void *heartbeat(void *unused) {
     unsigned last = 0;
     (void)unused;
@@ -205,6 +206,7 @@ static void *heartbeat(void *unused) {
         fprintf(stderr, "[heartbeat] takes %u (+%u) waiters %d in sub_%08X, last import %s, pumps %u\n", takes, takes - last,
                 waiters, func, g_cur_import ? g_cur_import : "(none)", g_pumps);
         last = takes;
+        if (g_dump_windows) hle_dump_windows();
     }
     return NULL;
 }
@@ -342,6 +344,9 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--mod") && i + 1 < argc) g_mod = argv[++i];
         else if (!strcmp(argv[i], "--trace")) win32hle_trace = 1;
         else if (!strcmp(argv[i], "--memfs")) g_memfs = 1;
+        else if (!strcmp(argv[i], "--windows")) g_dump_windows = 1;
+        else if (!strcmp(argv[i], "--msgtrace") && i + 1 < argc) setenv("HLE_MSGTRACE", argv[++i], 1);
+        else if (!strcmp(argv[i], "--env") && i + 1 < argc) putenv(strdup(argv[++i]));   /* --env NAME=VALUE: a debugging switch for the host or win32hle */
         else if (!strcmp(argv[i], "--heartbeat") && i + 1 < argc) g_heartbeat_s = (unsigned)strtoul(argv[++i], NULL, 0);
         else if (!strcmp(argv[i], "--trap") && i + 1 < argc) g_trap_after = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--hd-voxels")) hdvox_configure(1, NULL);
