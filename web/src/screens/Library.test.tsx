@@ -22,6 +22,8 @@ function show(games: GameRecord[], over: Partial<Parameters<typeof Library>[0]> 
     onPlay: vi.fn(),
     onImport: vi.fn(),
     onRemove: vi.fn(async () => {}),
+    onDownloadSaves: vi.fn(async () => "The saved games are downloading."),
+    onImportSaves: vi.fn(async () => "2 saved games brought in."),
     estimate: async () => ({ quota: 10_000_000_000, usage: 2_000_000_000 }),
     ...over,
   };
@@ -67,6 +69,17 @@ describe("Library", () => {
     await user.click(screen.getByRole("button", { name: "Remove…" }));
     await user.click(await screen.findByRole("button", { name: "Keep it" }));
     expect(props.onRemove).not.toHaveBeenCalled();
+  });
+
+  it("downloads the saves, and brings some in from a zip, saying what happened", async () => {
+    const { props, user } = show([game()]);
+    await user.click(screen.getByText("Download saves"));
+    expect(await screen.findByText("The saved games are downloading.")).toBeInTheDocument();
+    expect(props.onDownloadSaves).toHaveBeenCalledWith(expect.objectContaining({ id: "ra2md" }));
+    const zip = new File(["x"], "saves.zip", { type: "application/zip" });
+    await user.upload(screen.getByLabelText("Saves for Yuri's Revenge"), zip);
+    expect(await screen.findByText("2 saved games brought in.")).toBeInTheDocument();
+    expect(props.onImportSaves).toHaveBeenCalledWith(expect.objectContaining({ id: "ra2md" }), zip);
   });
 
   it("says why a removal failed", async () => {

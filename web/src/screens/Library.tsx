@@ -1,4 +1,4 @@
-import { AlertDialog, Button, Callout, Card, Flex, Heading, Text } from "@radix-ui/themes";
+import { AlertDialog, Button, Callout, Card, Flex, Heading, Link, Text } from "@radix-ui/themes";
 import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
 import { useState } from "react";
 import { formatBytes } from "../components/format";
@@ -13,12 +13,34 @@ export interface LibraryProps {
   onImport(): void;
   /** forget the game and delete what only it reads; resolves when done */
   onRemove(game: GameRecord): Promise<void>;
+  /** hands the player a zip of the game's saved games; says what happened ("No saved games yet") */
+  onDownloadSaves(game: GameRecord): Promise<string>;
+  /** takes saved games from a zip the player chose; says what happened */
+  onImportSaves(game: GameRecord, zip: File): Promise<string>;
   estimate?: () => Promise<{ quota?: number; usage?: number }>;
 }
 
-export function Library({ games, onPlay, onImport, onRemove, estimate }: LibraryProps) {
+export function Library({
+  games,
+  onPlay,
+  onImport,
+  onRemove,
+  onDownloadSaves,
+  onImportSaves,
+  estimate,
+}: LibraryProps) {
   const [removed, setRemoved] = useState(0);
   const [failure, setFailure] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  async function say(work: Promise<string>) {
+    try {
+      setNotice(await work);
+      setFailure(null);
+    } catch (error) {
+      setFailure(error instanceof Error ? error.message : String(error));
+    }
+  }
 
   async function remove(game: GameRecord) {
     try {
@@ -33,6 +55,11 @@ export function Library({ games, onPlay, onImport, onRemove, estimate }: Library
     <Flex className={styles.page} align="center" justify="center" p="4">
       <Flex direction="column" gap="4" className={styles.column}>
         <Heading size="6">Your games</Heading>
+        {notice && !failure && (
+          <Text size="2" color="green" role="status">
+            {notice}
+          </Text>
+        )}
         {failure && (
           <Callout.Root color="red" role="alert">
             <Callout.Icon>
@@ -50,6 +77,40 @@ export function Library({ games, onPlay, onImport, onRemove, estimate }: Library
                   {formatBytes(game.bytes)} · {Object.keys(game.files).length} files · imported{" "}
                   {new Date(game.importedAt).toLocaleDateString()}
                 </Text>
+                <Flex gap="3" mt="1">
+                  <Link
+                    href="#"
+                    size="2"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      void say(onDownloadSaves(game));
+                    }}
+                  >
+                    Download saves
+                  </Link>
+                  <Link
+                    href="#"
+                    size="2"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      document.getElementById(`saves-${game.id}`)?.click();
+                    }}
+                  >
+                    Import saves…
+                  </Link>
+                  <input
+                    id={`saves-${game.id}`}
+                    type="file"
+                    accept=".zip,application/zip"
+                    className={styles.hidden}
+                    aria-label={`Saves for ${game.title}`}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      event.target.value = "";
+                      if (file) void say(onImportSaves(game, file));
+                    }}
+                  />
+                </Flex>
                 {!game.complete && (
                   <Text size="2" color="amber">
                     The import did not finish. Import it again to carry on.

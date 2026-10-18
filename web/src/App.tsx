@@ -9,7 +9,8 @@ import { Library } from "./screens/Library";
 import { Play } from "./screens/Play";
 import { loadBuildInfo, type BuildInfo } from "./storage/install";
 import { Manifest, type GameRecord } from "./storage/manifest";
-import { opfsTarget, removeFiles } from "./storage/opfs";
+import { opfsSaveStore, opfsTarget, removeFiles } from "./storage/opfs";
+import { exportSaves, importSaves } from "./storage/saves";
 
 type Boot =
   | { name: "loading" }
@@ -101,6 +102,23 @@ function Main() {
       games={games}
       onPlay={(game) => setView({ play: { kind: "opfs", record: game, video } })}
       onImport={() => setView("import")}
+      onDownloadSaves={async (game) => {
+        const zip = await exportSaves(opfsSaveStore(), game.id);
+        if (!zip) return "There are no saved games yet.";
+        const url = URL.createObjectURL(new Blob([zip as BlobPart], { type: "application/zip" }));
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `${game.id}-saves.zip`;
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(url), 10_000);
+        return "The saved games are downloading.";
+      }}
+      onImportSaves={async (game, file) => {
+        const count = await importSaves(new Uint8Array(await file.arrayBuffer()), target, game.id);
+        return count === 0
+          ? "That zip has no saved games in it."
+          : `${count} saved game${count === 1 ? "" : "s"} brought in. They are there when the game starts.`;
+      }}
       onRemove={async (game) => {
         const doomed = await manifest.removeGame(game.id);
         await removeFiles(target, doomed);

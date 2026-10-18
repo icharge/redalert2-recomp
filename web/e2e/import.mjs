@@ -7,7 +7,7 @@
 // Needs `pnpm dev` and a built game. The profile is a temporary folder, removed at the end (--keep
 // leaves it, to look at what OPFS holds).
 import { chromium } from "playwright-core";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { options } from "./lib.mjs";
@@ -106,6 +106,17 @@ page = context.pages()[0] ?? (await context.newPage());
 await page.goto(address);
 await page.getByText("Your games").waitFor({ timeout: 30_000 });
 check(true, "after a reload the Library is there without importing again");
+// the saves come out as a zip a desktop install can take
+const download = page.waitForEvent("download");
+await page.getByText("Download saves").click();
+const zipFile = await download;
+const zipPath = await zipFile.path();
+const zipBytes = readFileSync(zipPath);
+check(
+  zipFile.suggestedFilename() === "ra2md-saves.zip" &&
+    zipBytes.includes(Buffer.from("Saved Games/e2e.sav")),
+  "Download saves gives a zip with the saved game in it",
+);
 await page.getByRole("button", { name: "Play" }).click();
 await running(page);
 const saved = await page.evaluate(() => {

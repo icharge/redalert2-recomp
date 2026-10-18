@@ -143,3 +143,40 @@ export function startSaveSync(
     },
   };
 }
+
+// ---- carrying saves between this browser and a desktop install --------------------------------------
+
+const SAVES_FOLDER = "Saved Games/";
+
+/** The saved games of a game, zipped as `Saved Games/<name>`, or null if there are none yet. */
+export async function exportSaves(store: SaveStore, game: GameId): Promise<Uint8Array | null> {
+  const files = (await store.list(game)).filter((file) => file.path.startsWith(SAVES_FOLDER));
+  if (files.length === 0) return null;
+  const { writeZip } = await import("./zip");
+  return writeZip(
+    await Promise.all(files.map(async (f) => ({ path: f.path, data: await f.read() }))),
+  );
+}
+
+/**
+ * Takes the saved games out of a zip into OPFS, to be put back the next time the game starts. A zip made by
+ * this page has `Saved Games/<name>`; a zip of just the files is taken too. Returns how many there were.
+ */
+export async function importSaves(
+  zip: Uint8Array,
+  target: CopyTarget,
+  game: GameId,
+): Promise<number> {
+  const { readZip } = await import("./zip");
+  const files = await readZip(zip);
+  let count = 0;
+  for (const file of files) {
+    const name = file.path.startsWith(SAVES_FOLDER)
+      ? file.path.slice(SAVES_FOLDER.length)
+      : file.path;
+    if (name.includes("/") || !/\.(sav|sva|ini|txt)$/i.test(name)) continue;
+    await target.write(`save/${game}/${SAVES_FOLDER}${name}`, bytesStream(file.data));
+    count++;
+  }
+  return count;
+}

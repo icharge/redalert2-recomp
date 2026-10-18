@@ -5,3 +5,7 @@
 .column {
   width: min(640px, 100%);
 }
+
+.hidden {
+  display: none;
+}

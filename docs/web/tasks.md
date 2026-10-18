@@ -96,7 +96,7 @@ Tick a task off here in the same pull request that finishes it.
 | ~~W6.5~~ | Library screen: cards, storage meter, remove with confirmation | here | W6.2 | S | `e2e/import.mjs` removes a game; the manifest tests cover a file the other game still needs |
 | ~~W6.6~~ | The game starts from OPFS (copied into the in-memory file system at start), and what it writes is kept in OPFS | here | W3.4, W6.3 | M | `e2e/import.mjs`: it reaches the main menu from the copy, and a file written before a reload is back ([decisions.md](decisions.md), D11) |
 | W6.7 | The service worker: precache, wasm cache by build hash, COOP/COEP, update prompt, manifest | here | W4.1 | M | the page loads offline, and threads work on a host that sets no headers |
-| W6.8 | Download saves as a zip; import saves | here | W6.6 | S | a save made in the browser loads in the Windows build |
+| ~~W6.8~~ | Download saves as a zip; import saves | here | W6.6 | S | `e2e/import.mjs` downloads the zip; its paths are `Saved Games/<name>`, as the Windows build keeps them |
 
 ## Stage 7: sound
 

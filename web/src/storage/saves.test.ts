@@ -1,6 +1,14 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { CopyTarget } from "./opfs";
-import { restoreSaves, startSaveSync, type FsLike, type SaveStore } from "./saves";
+import {
+  exportSaves,
+  importSaves,
+  restoreSaves,
+  startSaveSync,
+  type FsLike,
+  type SaveStore,
+} from "./saves";
+import { writeZip } from "./zip";
 
 /** A tiny in-memory file system, enough for FsLike: paths under /game. */
 function fakeFs(initial: Record<string, string> = {}) {
@@ -119,5 +127,43 @@ describe("restoreSaves", () => {
     expect(await restoreSaves(game.fs, store, "ra2md")).toBe(2);
     expect(new TextDecoder().decode(game.fs.readFile("/game/RA2MD.INI"))).toBe("mine");
     expect(new TextDecoder().decode(game.fs.readFile("/game/Saved Games/one.sav"))).toBe("save");
+  });
+});
+
+describe("exportSaves and importSaves", () => {
+  const store = (files: Record<string, string>): SaveStore => ({
+    async list() {
+      return Object.entries(files).map(([path, text]) => ({
+        path,
+        read: async () => new TextEncoder().encode(text),
+      }));
+    },
+  });
+
+  it("zips the saved games, not the settings, and takes them back in", async () => {
+    const zip = await exportSaves(
+      store({ "Saved Games/one.sav": "one", "Saved Games/two.sav": "two", "RA2MD.INI": "[Video]" }),
+      "ra2md",
+    );
+    expect(zip).not.toBeNull();
+    const target = memoryTarget();
+    expect(await importSaves(zip!, target, "ra2md")).toBe(2);
+    expect([...target.files.keys()].sort()).toEqual([
+      "save/ra2md/Saved Games/one.sav",
+      "save/ra2md/Saved Games/two.sav",
+    ]);
+    expect(target.files.get("save/ra2md/Saved Games/two.sav")).toBe("two");
+  });
+
+  it("has nothing to export before the first save, and takes a flat zip of saves", async () => {
+    expect(await exportSaves(store({ "RA2MD.INI": "x" }), "ra2md")).toBeNull();
+    const flat = writeZip([
+      { path: "a.sav", data: new TextEncoder().encode("a") },
+      { path: "readme.exe", data: new TextEncoder().encode("no") },
+      { path: "deep/b.sav", data: new TextEncoder().encode("no") },
+    ]);
+    const target = memoryTarget();
+    expect(await importSaves(flat, target, "ra2md")).toBe(1);
+    expect([...target.files.keys()]).toEqual(["save/ra2md/Saved Games/a.sav"]);
   });
 });
