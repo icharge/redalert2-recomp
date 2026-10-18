@@ -92,6 +92,7 @@ export class GameStore {
   /** One line of the game's output: logged, and applied if it is an event. */
   line(text: string): void {
     this.lines.push(text);
+    (globalThis as { ra2Tap?: (line: string) => void }).ra2Tap?.(text); // the e2e scripts keep every line
     if (this.lines.length > LOG_LINES) this.lines.splice(0, this.lines.length - LOG_LINES);
     const event = parseEventLine(text);
     if (event) this.apply(event);

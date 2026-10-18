@@ -7,6 +7,8 @@
 //   rclick X,Y     a right click
 //   rdrag X,Y,X2,Y2  press the right button at a point, move to the second one over a second, hold it there 2 s, release
 //   move X,Y       move the mouse
+//   down X,Y       press the left button at a point and keep it down (up releases it)
+//   up             release the left button
 //   key CODE       press a key (a KeyboardEvent.code: Escape, KeyA, Enter)
 //   shot NAME      save e2e/shots/NAME.png
 //   picture NAME   print how much of the canvas is lit, and a checksum (a change = it drew)
@@ -33,10 +35,7 @@ for (const step of steps) {
   if (wait > 0) await t.page.waitForTimeout(wait);
   const [verb, arg = ""] = step.action.split(/\s+/);
   const at = `${((Date.now() - menuAt) / 1000).toFixed(1)}s`;
-  if (process.env.LOG_GREP)
-    t.lines.push(
-      `### ${step.action} (log line ${await t.page.evaluate(() => window.ra2Store?.getLog().length ?? 0)})`,
-    );
+  if (process.env.LOG_GREP) t.all.push(`### ${step.action} (log line ${t.all.length})`);
   if (verb === "rdrag") {
     const [x, y, x2, y2] = arg.split(",").map(Number);
     await t.rdrag(x, y, x2, y2);
@@ -48,6 +47,14 @@ for (const step of steps) {
     } else {
       await t.clickGame(x, y, verb === "rclick" ? "right" : "left");
     }
+    console.log(`${at} ${step.action}`);
+  } else if (verb === "down") {
+    const [x, y] = arg.split(",").map(Number);
+    await t.moveGame(x, y);
+    await t.page.mouse.down();
+    console.log(`${at} ${step.action}`);
+  } else if (verb === "up") {
+    await t.page.mouse.up();
     console.log(`${at} ${step.action}`);
   } else if (verb === "key") {
     await t.page.keyboard.press(arg);
@@ -72,7 +79,6 @@ console.log(lines.slice(-12).join("\n"));
 if (process.env.LOG_GREP) {
   const re = new RegExp(process.env.LOG_GREP);
   console.log(`log lines matching ${re}:`);
-  const all = await t.page.evaluate(() => window.ra2Store?.getLog() ?? []);
-  console.log([...all, ...t.lines].filter((l) => re.test(l)).join("\n"));
+  console.log([...t.all, ...t.lines].filter((l) => re.test(l)).join("\n"));
 }
 await t.browser.close();

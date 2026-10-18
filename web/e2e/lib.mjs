@@ -27,6 +27,9 @@ export async function startPage(opts) {
   });
   const page = await browser.newPage({ viewport: { width: 1280, height: 960 } });
   const lines = [];
+  /** Every line the game printed (the page keeps only the last 3000). */
+  const all = [];
+  await page.exposeFunction("ra2Tap", (line) => all.push(line));
   page.on("console", (m) => lines.push(`[console.${m.type()}] ${m.text()}`));
   page.on("pageerror", (e) => lines.push(`[pageerror] ${e.message}`));
 
@@ -105,6 +108,7 @@ export async function startPage(opts) {
     browser,
     page,
     lines,
+    all,
     state,
     log,
     shot,
