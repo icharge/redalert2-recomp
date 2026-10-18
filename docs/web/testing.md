@@ -61,6 +61,7 @@ scripts. This is the base `tools/playtest.py --web` grows from (stage 10).
 
 More steps and switches, from chasing the first play's issues ([issues.md](issues.md)):
 
+- `down X,Y` presses the left button and keeps it down, `up` lets go; `node e2e/diff.mjs A.png B.png` counts the pixels that differ (`RECT=x0,y0,x1,y1` to look at one area).
 - `rdrag X,Y,X2,Y2` presses the right button, moves over a second, holds, releases.
 - `HOLD_MS=300` holds each click that long (a person holds it for a moment).
 - `LOG_GREP=REGEX` prints, at the end, every game log line that matches, with a `###`
