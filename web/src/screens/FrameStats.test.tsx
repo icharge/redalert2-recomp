@@ -71,3 +71,17 @@ describe("statsWanted", () => {
     ).not.toThrow();
   });
 });
+
+describe("describeFrameStats with the game's pacing", () => {
+  it("adds the worst gap and the publish cost to a running game, not to a menu", () => {
+    const rates = { pictures: 58, ticks: 165, drawMs: 0.5 };
+    const pacing = { worstMs: 41, late: 3, published: 57, publishMs: 3.456 };
+    const lines = describeFrameStats(rates, { fps: 55, ms: 18, pacing }, { w: 800, h: 600 });
+    expect(lines.slice(0, 3)).toEqual([
+      "game 55 fps (18 ms a frame)",
+      "worst gap 41 ms, 3 late",
+      "publish 57/s, 3.5 ms each",
+    ]);
+    expect(describeFrameStats(rates, { fps: 0, ms: 0, pacing }, null)[1]).toMatch(/^page /);
+  });
+});

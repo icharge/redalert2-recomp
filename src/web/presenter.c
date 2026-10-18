@@ -76,6 +76,10 @@ void web_event_exit(int code) {
 /* ---- the picture ------------------------------------------------------------- */
 
 static ra2_shared_t g_sh = { .protocol = RA2_WEB_PROTOCOL };
+/* Pacing, for the overlay: how long each publish took, and how evenly the game's frames come. */
+static double g_pub_ms, g_worst_gap, g_frame_at;
+static unsigned g_pub_n, g_late, g_frame_seen;
+
 static uint32_t *g_buf[2];
 static size_t g_cap[2];
 static int g_front;
@@ -85,6 +89,7 @@ EMSCRIPTEN_KEEPALIVE ra2_shared_t *ra2_shared(void) { return &g_sh; }
 /* The primary surface as RGBA bytes (R lowest) in the buffer the page is not reading. */
 static void publish(const uint8_t *px, int w, int h, int pitch, int bpp, const uint32_t *pal) {
     static uint32_t last_w, last_h;
+    double began = emscripten_get_now();
     size_t n = (size_t)w * (size_t)h;
     int back = g_front ^ 1;
     if (g_cap[back] < n) {
@@ -120,6 +125,7 @@ static void publish(const uint8_t *px, int w, int h, int pitch, int bpp, const u
     g_sh.frame_ptr = (uint32_t)(uintptr_t)out;
     g_front = back;
     __atomic_add_fetch(&g_sh.frame_seq, 1, __ATOMIC_RELEASE);
+    g_pub_ms += emscripten_get_now() - began, g_pub_n++;
     if ((uint32_t)w != last_w || (uint32_t)h != last_h) {
         char line[64];
         last_w = (uint32_t)w, last_h = (uint32_t)h;
@@ -262,13 +268,26 @@ void web_presenter_pump(void) {
     drain_input();
     update_cursor();
     uint32_t now = hle_ticks_ms();
+    uint32_t seen = MEM32(RA2_GAME_FRAME_VA);
+    if (seen != g_frame_seen) {                          /* a game frame came: how long since the last */
+        double at = emscripten_get_now();
+        if (g_frame_seen && g_frame_at) {
+            double gap = at - g_frame_at;
+            if (gap > g_worst_gap) g_worst_gap = gap;
+            if (gap > 25.0) g_late++;
+        }
+        g_frame_at = at, g_frame_seen = seen;
+    }
     if ((int32_t)(now - next_fps) >= 0) {
         uint32_t frames = MEM32(RA2_GAME_FRAME_VA);
         if (next_fps) {
             uint32_t dt = now - (next_fps - 1000), fps = dt ? (frames - last_frames) * 1000u / dt : 0;
             char line[96];
-            snprintf(line, sizeof line, "{\"e\":\"fps\",\"fps\":%u,\"ms\":%u}", fps, fps ? 1000u / fps : 0);
+            snprintf(line, sizeof line,
+                     "{\"e\":\"fps\",\"fps\":%u,\"ms\":%u,\"worst\":%u,\"late\":%u,\"pub\":%u,\"pubms\":%.2f}", fps,
+                     fps ? 1000u / fps : 0, (unsigned)(g_worst_gap + 0.5), g_late, g_pub_n, g_pub_n ? g_pub_ms / g_pub_n : 0.0);
             event_line(line);
+            g_worst_gap = 0, g_late = 0, g_pub_ms = 0, g_pub_n = 0;
         }
         last_frames = frames;
         next_fps = now + 1000;

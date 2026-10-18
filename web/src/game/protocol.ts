@@ -6,11 +6,22 @@ export const RA2_WEB_PROTOCOL = 1;
 // ---- game to page: events -----------------------------------------------------------
 // One line on stdout, "@ra2 " and JSON.
 
+/** How evenly the game's frames came in the last second (the game's own clock). */
+export interface Pacing {
+  /** the longest gap between two game frames, ms */
+  worstMs: number;
+  /** how many game frames came more than 25 ms after the one before */
+  late: number;
+  /** pictures the game published, and the mean ms one took to make */
+  published: number;
+  publishMs: number;
+}
+
 export type GameEvent =
   | { e: "boot"; protocol: number; title: string; exe: string; stamp: number }
   | { e: "menu" }
   | { e: "mode"; w: number; h: number }
-  | { e: "fps"; fps: number; ms: number }
+  | { e: "fps"; fps: number; ms: number; pacing: Pacing | null }
   | { e: "exit"; code: number }
   | { e: "error"; message: string };
 
@@ -18,6 +29,16 @@ const PREFIX = "@ra2 ";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function pacingOf(value: Record<string, unknown>): Pacing | null {
+  const { worst, late, pub, pubms } = value;
+  return typeof worst === "number" &&
+    typeof late === "number" &&
+    typeof pub === "number" &&
+    typeof pubms === "number"
+    ? { worstMs: worst, late, published: pub, publishMs: pubms }
+    : null;
 }
 
 /** The event a log line carries, or null for any other line (or a malformed one). */
@@ -55,7 +76,7 @@ export function parseEventLine(line: string): GameEvent | null {
         : null;
     case "fps":
       return typeof value.fps === "number" && typeof value.ms === "number"
-        ? { e: "fps", fps: value.fps, ms: value.ms }
+        ? { e: "fps", fps: value.fps, ms: value.ms, pacing: pacingOf(value) }
         : null;
     case "exit":
       return typeof value.code === "number" ? { e: "exit", code: value.code } : null;

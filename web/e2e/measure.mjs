@@ -48,6 +48,10 @@ const sample = () =>
     const draw = /draw ([\d.]+) ms/.exec(text ?? "");
     return {
       fps: snapshot?.fps ?? 0,
+      worst: snapshot?.pacing?.worstMs ?? null,
+      late: snapshot?.pacing?.late ?? null,
+      published: snapshot?.pacing?.published ?? null,
+      publishMs: snapshot?.pacing?.publishMs ?? null,
       pictures: page ? Number(page[1]) : null,
       ticks: page ? Number(page[2]) : null,
       drawMs: draw ? Number(draw[1]) : null,
@@ -67,10 +71,19 @@ const phase = async (name, action) => {
     rows.push(await sample());
   }
   const last = rows.at(-1);
+  // a long run: one line for each half minute, to see the game slow down as it fills with units
+  for (let i = 0; rows.length > 40 && i < rows.length; i += 30) {
+    const part = rows.slice(i, i + 30);
+    console.log(
+      `  ${String(i).padStart(4)}s game ${median(part.map((r) => r.fps))} fps (min ${Math.min(...part.map((r) => r.fps))})  publish ${median(part.map((r) => r.publishMs))} ms, worst gap ${Math.max(...part.map((r) => r.worst ?? 0))} ms, ${part.reduce((n, r) => n + (r.late ?? 0), 0)} late`,
+    );
+  }
   console.log(
     `${name.padEnd(8)} ${last?.size?.w}x${last?.size?.h}  game ${median(rows.map((r) => r.fps))} fps` +
       ` (min ${Math.min(...rows.map((r) => r.fps))})  page ${median(rows.map((r) => r.pictures))} pictures/s` +
-      ` ${median(rows.map((r) => r.ticks))} frames/s  draw ${median(rows.map((r) => r.drawMs))} ms`,
+      ` ${median(rows.map((r) => r.ticks))} frames/s  draw ${median(rows.map((r) => r.drawMs))} ms` +
+      `  publish ${median(rows.map((r) => r.published))}/s ${median(rows.map((r) => r.publishMs))} ms,` +
+      ` worst gap ${Math.max(...rows.map((r) => r.worst ?? 0))} ms, ${rows.reduce((n, r) => n + (r.late ?? 0), 0)} late`,
   );
 };
 await phase("idle");

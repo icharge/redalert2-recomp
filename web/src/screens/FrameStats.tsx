@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { Pacing } from "../game/protocol";
 import type { Presenter, PresenterCounters } from "../game/presenter";
 import { useGameState } from "../game/store";
 import styles from "./FrameStats.module.css";
@@ -29,12 +30,19 @@ export function frameRates(
 /** The overlay's text: the game's own rate (0 in a menu), what the page draws, and the picture's size. */
 export function describeFrameStats(
   rates: FrameRates,
-  game: { fps: number | null; ms: number | null },
+  game: { fps: number | null; ms: number | null; pacing?: Pacing | null },
   size: { w: number; h: number } | null,
 ): string[] {
   const gameLine = game.fps ? `game ${game.fps} fps (${game.ms} ms a frame)` : "game: in a menu";
+  const pacing = game.fps && game.pacing ? game.pacing : null;
   return [
     gameLine,
+    ...(pacing
+      ? [
+          `worst gap ${pacing.worstMs} ms, ${pacing.late} late`,
+          `publish ${pacing.published}/s, ${pacing.publishMs.toFixed(1)} ms each`,
+        ]
+      : []),
     `page ${Math.round(rates.pictures)} pictures/s, ${Math.round(rates.ticks)} frames/s`,
     `draw ${rates.drawMs.toFixed(2)} ms a frame`,
     size ? `${size.w} x ${size.h}` : "no picture yet",
@@ -75,6 +83,7 @@ export function FrameStats({ presenter }: { presenter: Presenter | null }) {
   const [rates, setRates] = useState<FrameRates>({ pictures: 0, ticks: 0, drawMs: 0 });
   const fps = useGameState((s) => s.fps);
   const ms = useGameState((s) => s.ms);
+  const pacing = useGameState((s) => s.pacing);
   const size = useGameState((s) => s.size);
 
   useEffect(() => {
@@ -108,7 +117,7 @@ export function FrameStats({ presenter }: { presenter: Presenter | null }) {
   if (!on) return null;
   return (
     <div className={styles.stats} aria-hidden="true">
-      {describeFrameStats(rates, { fps, ms }, size).map((line) => (
+      {describeFrameStats(rates, { fps, ms, pacing }, size).map((line) => (
         <div key={line.split(" ")[0]}>{line}</div>
       ))}
     </div>

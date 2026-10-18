@@ -22,6 +22,15 @@ describe("parseEventLine", () => {
       e: "fps",
       fps: 30,
       ms: 33,
+      pacing: null,
+    });
+    expect(
+      parseEventLine('@ra2 {"e":"fps","fps":60,"ms":16,"worst":24,"late":2,"pub":58,"pubms":3.25}'),
+    ).toEqual({
+      e: "fps",
+      fps: 60,
+      ms: 16,
+      pacing: { worstMs: 24, late: 2, published: 58, publishMs: 3.25 },
     });
     expect(parseEventLine('@ra2 {"e":"exit","code":0}')).toEqual({ e: "exit", code: 0 });
     expect(parseEventLine('@ra2 {"e":"error","message":"no gamemd.exe in /game"}')).toEqual({

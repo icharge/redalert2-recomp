@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { RA2_WEB_PROTOCOL, parseEventLine, type GameEvent } from "./protocol";
+import { RA2_WEB_PROTOCOL, parseEventLine, type GameEvent, type Pacing } from "./protocol";
 
 export type Phase = "idle" | "loading" | "booting" | "running" | "exited" | "crashed";
 
@@ -22,6 +22,7 @@ export interface GameState {
   size: { w: number; h: number } | null;
   fps: number | null;
   ms: number | null;
+  pacing: Pacing | null;
   /** something the player should see: a missing file, or why the game stopped */
   error: string | null;
   exitCode: number | null;
@@ -35,6 +36,7 @@ const INITIAL: GameState = {
   size: null,
   fps: null,
   ms: null,
+  pacing: null,
   error: null,
   exitCode: null,
 };
@@ -119,7 +121,7 @@ export class GameStore {
         this.set({ size: { w: event.w, h: event.h } });
         return;
       case "fps":
-        this.set({ fps: event.fps, ms: event.ms });
+        this.set({ fps: event.fps, ms: event.ms, pacing: event.pacing });
         return;
       case "exit":
         // a crash already says why; an exit after it is the runtime shutting down
