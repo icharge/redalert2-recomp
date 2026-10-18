@@ -73,9 +73,9 @@ Tick a task off here in the same pull request that finishes it.
 | ~~W4.14~~ | Dropdowns draw correctly | pcrecomp | W4.10 | S | a closed list repaints what it covered; the minimap shows |
 | ~~W4.15~~ | The dialog box that is never drawn (after Save): draw it | pcrecomp | W4.10 | M | a dialog is not painted over by the older dialog under it; `save.mjs`: the confirmation shows and OK closes it ([issues.md](issues.md), 6) |
 | ~~W4.16~~ | A combo box with no room for its list: the opponent and resolution drop-downs | pcrecomp | W4.15 | S | the opponent list opens with its four entries; Options, Set Game Resolution lists the modes |
-| W4.17 | Drop-down lists draw their border | pcrecomp | W4.16 | M | the colour and resolution lists have the frame the Windows build shows (find what draws it first) |
-| W4.18 | A pressed and a hovered sidebar button show their frames | pcrecomp, here | W4.16 | M | a button held down in the lobby differs from the idle one in a screenshot (`drive.mjs down`, `up`) |
-| W4.19 | The lobby's right panel finishes (title tab, minimap) without a repaint | pcrecomp, here | W4.16 | M | `lobby-c` after 40 s idle equals the picture after a drop-down was used |
+| W4.17 (parked) | Drop-down lists draw their border | pcrecomp | W4.16 | M | the colour and resolution lists have the frame the Windows build shows (find what draws it first) |
+| W4.18 (parked) | A pressed and a hovered sidebar button show their frames | pcrecomp, here | W4.16 | M | a button held down in the lobby differs from the idle one in a screenshot (`drive.mjs down`, `up`) |
+| W4.19 (parked) | The lobby's right panel finishes (title tab, minimap) without a repaint | pcrecomp, here | W4.16 | M | `lobby-c` after 40 s idle equals the picture after a drop-down was used |
 
 ## Stage 5: the main loop
 
