@@ -23,15 +23,17 @@ level:
 
 | Kind | Files |
 |---|---|
-| Exe | `gamemd.exe` (Yuri's Revenge), `game.exe` (Red Alert 2), and `Blowfish.dll` and `binkw32.dll` only to check they're present |
+| Exe | `gamemd.exe` (Yuri's Revenge), `game.exe` (Red Alert 2) |
+| Libraries | `Blowfish.dll` (the host reads the archive key from it: without it the game stops at start, so the import refuses a folder that lacks it) and `binkw32.dll` (a warning if missing) |
 | Archives | `*.mix` (but not `*.mix.bak`) |
 | Sound | `audio.bag`, `audio.idx`, `audiomd.bag`, `audiomd.idx` |
 | Data | `*.ini`, `*.csf`, `*.mmx`, `*.map`, `*.mpr`, `*.yrm` |
 | Movies | `movies*.mix`, `movmd*.mix`: optional, the game runs without them. The Import screen shows their size and lets the player skip them |
 | Saves | `Saved Games/*` if present, offered as "bring your saves" |
 
-Anything else is skipped. The list lives in `web/src/storage/install.ts`,
-and the Import screen can show what it skipped.
+Anything else is skipped. The list lives in `web/src/storage/install.ts` (`classify`);
+the dev server serves the same list, so a run from the local folder has what an import
+would have given it, and the Import screen can show what it skipped.
 
 ## The checks, before copying
 

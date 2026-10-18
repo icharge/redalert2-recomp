@@ -12,7 +12,7 @@ export interface BuildInfo {
   >;
 }
 
-export type FileKind = "exe" | "archive" | "movie" | "sound" | "data" | "save";
+export type FileKind = "exe" | "library" | "archive" | "movie" | "sound" | "data" | "save";
 
 export interface InstallFile {
   /** relative to the install folder, `/` or `\` between parts */
@@ -27,6 +27,9 @@ export interface Classified {
 }
 
 const BOTH: GameId[] = ["ra2", "ra2md"];
+
+/** DLLs the host reads from the game's folder: Blowfish.dll holds the archive key, binkw32.dll names the movie decoder. */
+const LIBRARIES = ["blowfish.dll", "binkw32.dll"];
 
 /** Where `Saved Games/...` starts, as a path with `/`. */
 const SAVES = "saved games/";
@@ -47,6 +50,7 @@ export function classify(path: string): Classified | null {
   if (name.includes("/")) return null;
   if (name === "gamemd.exe") return { kind: "exe", needs: ["ra2md"] };
   if (name === "game.exe") return { kind: "exe", needs: ["ra2"] };
+  if (LIBRARIES.includes(name)) return { kind: "library", needs: BOTH };
   const md: GameId[] = name.includes("md") ? ["ra2md"] : BOTH;
   if (/^(movies|movmd)[^/]*\.mix$/.test(name)) return { kind: "movie", needs: md };
   if (name.endsWith(".mix")) return { kind: "archive", needs: md };
@@ -54,9 +58,6 @@ export function classify(path: string): Classified | null {
   if (/\.(ini|csf|mmx|map|mpr|yrm)$/.test(name)) return { kind: "data", needs: md };
   return null;
 }
-
-/** DLLs the game's own folder has and the import only looks for. */
-const PRESENT_ONLY = ["blowfish.dll", "binkw32.dll"];
 
 export interface ImportOptions {
   /** copy the movies (optional: the game runs without them) */
@@ -114,8 +115,7 @@ export function planImport(
   for (const file of files) {
     const what = classify(file.path);
     if (!what) {
-      if (!PRESENT_ONLY.includes(normalise(file.path)))
-        plan.skipped.push({ path: file.path, reason: "not read by the game" });
+      plan.skipped.push({ path: file.path, reason: "not read by the game" });
       continue;
     }
     if (what.kind === "movie") plan.movieBytes += file.size;
@@ -130,8 +130,11 @@ export function planImport(
       plan.bytes += file.size;
     }
   }
-  for (const dll of PRESENT_ONLY)
-    if (!names.has(dll)) plan.warnings.push(`${dll} is missing: this may not be a full install.`);
+  if (!names.has("blowfish.dll"))
+    plan.error =
+      "Blowfish.dll is missing from this folder: the game cannot open its archives without it.";
+  if (!names.has("binkw32.dll"))
+    plan.warnings.push("binkw32.dll is missing: this may not be a full install.");
   return plan;
 }
 

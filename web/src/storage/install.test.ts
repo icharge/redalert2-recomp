@@ -25,6 +25,7 @@ describe("classify", () => {
     expect(classify("rules.ini")).toEqual({ kind: "data", needs: ["ra2", "ra2md"] });
     expect(classify("GameMD.exe")).toEqual({ kind: "exe", needs: ["ra2md"] });
     expect(classify("Game.exe")).toEqual({ kind: "exe", needs: ["ra2"] });
+    expect(classify("Blowfish.dll")).toEqual({ kind: "library", needs: ["ra2", "ra2md"] });
     expect(classify("movmd01.mix")?.kind).toBe("movie");
     expect(classify("MOVIES01.MIX")?.kind).toBe("movie");
     expect(classify("Saved Games\\a.sav")?.kind).toBe("save");
@@ -70,7 +71,9 @@ describe("planImport", () => {
     expect(plan.copy.map((f) => f.path).sort()).toEqual(
       [
         "Saved Games/one.sav",
+        "Blowfish.dll",
         "audio.bag",
+        "binkw32.dll",
         "expandmd01.mix",
         "gamemd.exe",
         "movmd01.mix",
@@ -87,7 +90,9 @@ describe("planImport", () => {
         280_000_000 +
         50_000_000 +
         400_000 +
-        5_000,
+        5_000 +
+        30_000 +
+        300_000,
     );
     expect(plan.skipped.map((s) => s.path)).toContain("Ares.dll");
     expect(plan.skipped.find((s) => s.path === "game.exe")?.reason).toMatch(/does not have/);
@@ -101,9 +106,20 @@ describe("planImport", () => {
     expect(plan.skipped.find((s) => s.path === "movmd01.mix")?.reason).toBe("movies skipped");
   });
 
-  it("warns about a missing DLL and explains a folder with no program", () => {
+  it("stops without Blowfish.dll, warns without binkw32.dll, and explains a folder with no program", () => {
     const thin = planImport([{ path: "gamemd.exe", size: 1 }], yuri, { movies: true, saves: true });
-    expect(thin.warnings).toHaveLength(2);
+    expect(thin.error).toMatch(/Blowfish.dll is missing/);
+    expect(thin.warnings).toHaveLength(1);
+    const noBink = planImport(
+      [
+        { path: "gamemd.exe", size: 1 },
+        { path: "Blowfish.dll", size: 1 },
+      ],
+      yuri,
+      { movies: true, saves: true },
+    );
+    expect(noBink.error).toBeNull();
+    expect(noBink.warnings[0]).toMatch(/binkw32.dll/);
     const none = planImport([{ path: "ra2.mix", size: 1 }], yuri, { movies: true, saves: true });
     expect(none.error).toMatch(/no gamemd\.exe at the top/);
     const wrong = planImport([{ path: "game.exe", size: 1 }], yuri, { movies: true, saves: true });
