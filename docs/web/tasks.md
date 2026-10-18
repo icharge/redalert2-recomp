@@ -90,7 +90,7 @@ Tick a task off here in the same pull request that finishes it.
 | ID | Task | Repo | Needs | Size | Done when |
 |---|---|---|---|---|---|
 | ~~W6.1~~ | `storage/install.ts`: the allowlist, finding which game, the PE stamp check, `build.json` from `build-web.sh` | here | W4.1 | M | Vitest covers a recorded file list and synthetic headers |
-| W6.2 | `storage/manifest.ts`: IndexedDB `ra2-web`, resumable state, shared files | here | W4.1 | S | Vitest (`fake-indexeddb`) covers resume, mismatch and removal |
+| ~~W6.2~~ | `storage/manifest.ts`: IndexedDB `ra2-web`, resumable state, shared files | here | W4.1 | S | Vitest (`fake-indexeddb`) covers resume, mismatch and removal |
 | W6.3 | `storage/opfs.ts`: streamed copy, cancel, resume, remove | here | W6.2 | M | a 280 MB file copies without the tab's memory growing by that much |
 | W6.4 | Import screen: picker, drop zone, checks, quota, `persist()`, progress | here | W6.1, W6.3 | M | a real install imports in Chromium and in Firefox |
 | W6.5 | Library screen: cards, storage meter, remove with confirmation | here | W6.2 | S | removing one game keeps the files the other needs |
