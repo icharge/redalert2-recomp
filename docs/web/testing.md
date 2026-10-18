@@ -79,6 +79,10 @@ More steps and switches, from chasing the first play's issues ([issues.md](issue
   leaves the profile to look at). `node e2e/opfs.mjs --mb 300` streams a large file into the real OPFS and
   checks the live JS heap stays flat. The other scripts add `?dev` so they go straight to Play with the dev
   server's folder.
+- `node e2e/offline.mjs` (after `pnpm build`, which makes `dist/` with the worker): serves `dist/` with no
+  isolation headers, and checks the page isolates itself after one reload, the game starts through the
+  worker and its three files are kept by build id, a changed `sw.js` + `build.json` offers the update and
+  leaves only the new build's files, and, with the server shut down, the page and the game still start.
 - The battle is not 800x600: it runs at the size in the game folder's own settings
   (2580x1080 for the author's), so give battle clicks in that size.
 - A click a moment before the next screen is up is lost; leave a few seconds between

@@ -1,5 +1,5 @@
 import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
-import { Callout, Code, Flex, Text, Theme } from "@radix-ui/themes";
+import { Button, Callout, Code, Flex, Text, Theme } from "@radix-ui/themes";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BrowserCheck } from "./components/BrowserCheck";
 import { checkBrowser, missingRequired } from "./components/features";
@@ -10,6 +10,7 @@ import { Play } from "./screens/Play";
 import { loadBuildInfo, type BuildInfo } from "./storage/install";
 import { Manifest, type GameRecord } from "./storage/manifest";
 import { opfsSaveStore, opfsTarget, removeFiles } from "./storage/opfs";
+import { useUpdate } from "./update";
 import { exportSaves, importSaves } from "./storage/saves";
 
 type Boot =
@@ -30,6 +31,7 @@ export function App() {
   return (
     <Theme appearance="dark" accentColor="red" grayColor="slate" radius="small">
       {missing ? <BrowserCheck requirements={requirements} /> : <Main />}
+      <UpdatePrompt />
     </Theme>
   );
 }
@@ -127,6 +129,30 @@ function Main() {
         if (left.length === 0) setView("import");
       }}
     />
+  );
+}
+
+/** A new build of the page and the game is waiting: say so, and let the player choose when to reload. */
+function UpdatePrompt() {
+  const apply = useUpdate();
+  if (!apply) return null;
+  return (
+    <Flex
+      justify="center"
+      style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 10 }}
+      p="2"
+    >
+      <Callout.Root color="blue" role="status" size="1">
+        <Callout.Text>
+          <Flex align="center" gap="3">
+            A new version is ready.
+            <Button size="1" onClick={apply}>
+              Reload
+            </Button>
+          </Flex>
+        </Callout.Text>
+      </Callout.Root>
+    </Flex>
   );
 }
 

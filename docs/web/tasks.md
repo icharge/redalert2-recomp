@@ -95,7 +95,7 @@ Tick a task off here in the same pull request that finishes it.
 | ~~W6.4~~ | Import screen: picker, drop zone, checks, quota, `persist()`, progress | here | W6.1, W6.3 | M | `e2e/import.mjs`: a real install imports in Chrome through the file input (Firefox and Safari: not yet tried) |
 | ~~W6.5~~ | Library screen: cards, storage meter, remove with confirmation | here | W6.2 | S | `e2e/import.mjs` removes a game; the manifest tests cover a file the other game still needs |
 | ~~W6.6~~ | The game starts from OPFS (copied into the in-memory file system at start), and what it writes is kept in OPFS | here | W3.4, W6.3 | M | `e2e/import.mjs`: it reaches the main menu from the copy, and a file written before a reload is back ([decisions.md](decisions.md), D11) |
-| W6.7 | The service worker: precache, wasm cache by build hash, COOP/COEP, update prompt, manifest | here | W4.1 | M | the page loads offline, and threads work on a host that sets no headers |
+| ~~W6.7~~ | The service worker: precache, wasm cache by build hash, COOP/COEP, update prompt, manifest | here | W4.1 | M | `e2e/offline.mjs`: with no headers from the host the page isolates itself, a new build is offered and swaps the kept game files, and with the server gone the page and the game still start |
 | ~~W6.8~~ | Download saves as a zip; import saves | here | W6.6 | S | `e2e/import.mjs` downloads the zip; its paths are `Saved Games/<name>`, as the Windows build keeps them |
 
 ## Stage 7: sound
@@ -150,7 +150,7 @@ Tick a task off here in the same pull request that finishes it.
 | W12.2 | `wsock32.c`: IPX over a WebRTC data channel | pcrecomp | W12.1 | L | two tabs see each other in the LAN lobby |
 | W12.3 | Signalling: a small server, or a code pasted between players | here | W12.1 | M | a match starts |
 
-## Open, before W6.7 ships to a public host
+## Open, before the page ships to a public host
 
 | ID | Task | Needs | Done when |
 |---|---|---|---|

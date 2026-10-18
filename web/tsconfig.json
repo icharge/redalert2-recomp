@@ -17,5 +17,6 @@
     "noEmit": true,
     "types": ["vite/client", "node"]
   },
-  "include": ["src", "e2e", "vite.config.ts", "vite.dev-game.ts"]
+  "include": ["src", "e2e", "vite.config.ts", "vite.dev-game.ts"],
+  "exclude": ["src/sw.ts"]
 }
