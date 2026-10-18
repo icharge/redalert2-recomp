@@ -101,9 +101,11 @@ describe("planImport", () => {
 
   it("leaves the movies and the saves out when asked, and says how big the movies are", () => {
     const plan = planImport(folder, yuri, { movies: false, saves: false });
-    expect(plan.copy.some((f) => f.kind === "movie" || f.kind === "save")).toBe(false);
+    expect(plan.copy.some((f) => f.kind === "save")).toBe(false);
+    // the game stops at start without the archive, so an empty one is written in its place
+    expect(plan.copy.find((f) => f.path === "movmd01.mix")).toMatchObject({ size: 12, stub: true });
     expect(plan.movieBytes).toBe(280_000_000);
-    expect(plan.skipped.find((s) => s.path === "movmd01.mix")?.reason).toBe("movies skipped");
+    expect(plan.bytes).toBeLessThan(plan.movieBytes + 1_000_000_000 - 280_000_000);
   });
 
   it("stops without Blowfish.dll, warns without binkw32.dll, and explains a folder with no program", () => {

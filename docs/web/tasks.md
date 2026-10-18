@@ -92,9 +92,9 @@ Tick a task off here in the same pull request that finishes it.
 | ~~W6.1~~ | `storage/install.ts`: the allowlist, finding which game, the PE stamp check, `build.json` from `build-web.sh` | here | W4.1 | M | Vitest covers a recorded file list and synthetic headers |
 | ~~W6.2~~ | `storage/manifest.ts`: IndexedDB `ra2-web`, resumable state, shared files | here | W4.1 | S | Vitest (`fake-indexeddb`) covers resume, mismatch and removal |
 | ~~W6.3~~ | `storage/opfs.ts`: streamed copy, cancel, resume, remove | here | W6.2 | M | a 280 MB file copies without the tab's memory growing by that much |
-| W6.4 | Import screen: picker, drop zone, checks, quota, `persist()`, progress | here | W6.1, W6.3 | M | a real install imports in Chromium and in Firefox |
-| W6.5 | Library screen: cards, storage meter, remove with confirmation | here | W6.2 | S | removing one game keeps the files the other needs |
-| W6.6 | WasmFS OPFS mount in `src/web/main.c`, with `/save` laid over `/game` | here | W3.4, W6.3 | M | the game starts from OPFS, and a save survives a reload |
+| ~~W6.4~~ | Import screen: picker, drop zone, checks, quota, `persist()`, progress | here | W6.1, W6.3 | M | `e2e/import.mjs`: a real install imports in Chrome through the file input (Firefox and Safari: not yet tried) |
+| ~~W6.5~~ | Library screen: cards, storage meter, remove with confirmation | here | W6.2 | S | `e2e/import.mjs` removes a game; the manifest tests cover a file the other game still needs |
+| ~~W6.6~~ | The game starts from OPFS (copied into the in-memory file system at start), and what it writes is kept in OPFS | here | W3.4, W6.3 | M | `e2e/import.mjs`: it reaches the main menu from the copy, and a file written before a reload is back ([decisions.md](decisions.md), D11) |
 | W6.7 | The service worker: precache, wasm cache by build hash, COOP/COEP, update prompt, manifest | here | W4.1 | M | the page loads offline, and threads work on a host that sets no headers |
 | W6.8 | Download saves as a zip; import saves | here | W6.6 | S | a save made in the browser loads in the Windows build |
 

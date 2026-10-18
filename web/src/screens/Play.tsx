@@ -6,7 +6,7 @@ import {
   argsFromQuery,
   GameNotBuilt,
   startGame,
-  videoFromQuery,
+  type FileSource,
   type GameHandle,
 } from "../game/loader";
 import { Presenter } from "../game/presenter";
@@ -17,22 +17,13 @@ import styles from "./Play.module.css";
 
 // The game starts once per page load, whatever React remounts (StrictMode, a screen switch).
 let session: Promise<GameHandle> | null = null;
-function startOnce(): Promise<GameHandle> {
-  session ??= startGame({
-    // until the import exists (stage 6), the dev server's local game folder
-    files: import.meta.env.DEV
-      ? { kind: "dev-folder", video: videoFromQuery(window.location.search) }
-      : { kind: "already-there" },
-    args: argsFromQuery(window.location.search),
-  });
+function startOnce(files: FileSource): Promise<GameHandle> {
+  session ??= startGame({ files, args: argsFromQuery(window.location.search) });
   return session;
 }
 
-/** Until the import exists (stage 6), only the dev server has a game folder to give. */
-const HAS_FILES = import.meta.env.DEV;
-
 /** The canvas fills the window; the game draws into it through shared memory. React never touches it again. */
-export function Play() {
+export function Play({ files }: { files: FileSource }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const [startError, setStartError] = useState<Error | null>(null);
   const [presenter, setPresenter] = useState<Presenter | null>(null);
@@ -44,10 +35,10 @@ export function Play() {
 
   useEffect(() => {
     const element = canvas.current;
-    if (!element || !HAS_FILES) return;
+    if (!element) return;
     let cancelled = false;
     let stop = () => {};
-    startOnce().then(
+    startOnce(files).then(
       (game) => {
         if (cancelled) return;
         const presenter = new Presenter(element, game.memory, game.shared);
@@ -61,10 +52,16 @@ export function Play() {
         });
         observer.observe(element);
         element.focus();
+        // what the game saved is in OPFS within a moment of leaving the tab
+        const onHidden = () => {
+          if (document.visibilityState === "hidden") void game.saves?.flush();
+        };
+        document.addEventListener("visibilitychange", onHidden);
         stop = () => {
           presenter.stop();
           detach();
           observer.disconnect();
+          document.removeEventListener("visibilitychange", onHidden);
         };
       },
       (reason: unknown) => {
@@ -75,34 +72,17 @@ export function Play() {
       cancelled = true;
       stop();
     };
-  }, []);
+  }, [files]);
 
   const crashed = phase === "crashed";
   const waiting =
-    HAS_FILES &&
-    !startError &&
-    !crashed &&
-    (phase === "idle" || phase === "loading" || phase === "booting");
+    !startError && !crashed && (phase === "idle" || phase === "loading" || phase === "booting");
 
   return (
     <div className={styles.stage}>
       <canvas ref={canvas} className={styles.canvas} tabIndex={0} aria-label="The game" />
       <FrameStats presenter={presenter} />
       {waiting && <LoadingScreen state={{ phase, copy, title }} />}
-      {!HAS_FILES && (
-        <Flex className={styles.overlay} align="center" justify="center" p="6">
-          <Callout.Root color="amber" role="alert" size="3">
-            <Callout.Icon>
-              <ExclamationTriangleIcon />
-            </Callout.Icon>
-            <Callout.Text>
-              There is no game to start yet: importing your own game folder isn't built (stage 6 in
-              docs/web/plan.md). To try it now, put the game folder at <Code>../game</Code> and run{" "}
-              <Code>pnpm dev</Code> in <Code>web/</Code>.
-            </Callout.Text>
-          </Callout.Root>
-        </Flex>
-      )}
       {startError instanceof GameNotBuilt && (
         <Flex className={styles.overlay} align="center" justify="center" p="6">
           <Callout.Root color="amber" role="alert" size="3">

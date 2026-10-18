@@ -83,8 +83,11 @@ export async function startPage(opts) {
     await page.mouse.click(point.x, point.y, { button, delay: Number(process.env.HOLD_MS ?? 80) }); // a person holds the button for a moment
   };
 
-  const query = opts.pageArgs.map((a) => `arg=${encodeURIComponent(a)}`).join("&");
-  await page.goto(opts.url + (query ? `?${query}` : ""));
+  // `dev`: straight to Play with the dev server's game folder, not the Import and Library screens
+  const url = new URL(opts.url);
+  if (!opts.noDev) url.searchParams.set("dev", "1");
+  for (const arg of opts.pageArgs) url.searchParams.append("arg", arg);
+  await page.goto(url.toString());
   const started = Date.now();
 
   const waitFor = async (what, done, seconds = 600) => {

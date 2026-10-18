@@ -73,6 +73,12 @@ More steps and switches, from chasing the first play's issues ([issues.md](issue
 - `save.mjs` plays a skirmish to the in-game menu and Save, then shoots 8 frames
   (`SLOW=1.8` on a slow run, `LOG_FILE=path` keeps the game's log). `timeline.mjs
   --every 1 --skirmish` shoots the page from its load on.
+- Stage 6, in a real Chrome with a fresh profile: `node e2e/import.mjs` imports `../game` through the
+  page's file input, checks the Library, plays from the copy in OPFS to the main menu, checks that a file
+  the game wrote survives a reload, and removes the game (`--movies` brings the real movie archives; `--keep`
+  leaves the profile to look at). `node e2e/opfs.mjs --mb 300` streams a large file into the real OPFS and
+  checks the live JS heap stays flat. The other scripts add `?dev` so they go straight to Play with the dev
+  server's folder.
 - The battle is not 800x600: it runs at the size in the game folder's own settings
   (2580x1080 for the author's), so give battle clicks in that size.
 - A click a moment before the next screen is up is lost; leave a few seconds between

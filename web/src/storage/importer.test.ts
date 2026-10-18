@@ -126,6 +126,7 @@ describe("runImport", () => {
         "game/ra2md/Saved Games/one.sav",
         "game/ra2md/binkw32.dll",
         "game/ra2md/gamemd.exe",
+        "game/ra2md/movmd01.mix",
         "game/ra2md/ra2.mix",
         "game/ra2md/ra2md.mix",
       ].sort(),
@@ -133,7 +134,9 @@ describe("runImport", () => {
     const record = await manifest.getGame("ra2md");
     expect(record?.complete).toBe(true);
     expect(record?.exeStamp).toBe(STAMP);
-    expect(seen.at(-1)).toBe(20 + 10 + 10 + 40 + 30 + 3);
+    // the movie archive is a 12-byte empty one in its place
+    expect(seen.at(-1)).toBe(20 + 10 + 10 + 40 + 30 + 3 + 12);
+    expect(target.files.get("game/ra2md/movmd01.mix")).toBe(12);
   });
 
   it("takes up where a cancelled import stopped, copying only what is left", async () => {

@@ -6,6 +6,7 @@
 
 import type { GameId } from "./install";
 import type { PlannedFile } from "./manifest";
+import type { SaveStore } from "./saves";
 
 /** Where files go: paths like `game/ra2md/ra2.mix`. */
 export interface CopyTarget {
@@ -135,12 +136,14 @@ export async function removeFiles(
 
 /** The origin-private file system, as a `CopyTarget`. */
 export function opfsTarget(root?: Promise<FileSystemDirectoryHandle>): CopyTarget {
-  const base = root ?? navigator.storage.getDirectory();
+  let opened: Promise<FileSystemDirectoryHandle> | undefined;
+  // not before it is used: a page with no OPFS (a test, an old browser) can still make a target
+  const base = () => (opened ??= root ?? navigator.storage.getDirectory());
   async function folder(
     parts: string[],
     create: boolean,
   ): Promise<FileSystemDirectoryHandle | null> {
-    let dir = await base;
+    let dir = await base();
     for (const part of parts) {
       try {
         dir = await dir.getDirectoryHandle(part, { create });
@@ -184,6 +187,64 @@ export function opfsTarget(root?: Promise<FileSystemDirectoryHandle>): CopyTarge
       } catch (error) {
         if (!(error instanceof DOMException && error.name === "NotFoundError")) throw error;
       }
+    },
+  };
+}
+
+/** A folder in OPFS by path (`game/ra2md`), or null if there is none. */
+async function openFolder(
+  root: Promise<FileSystemDirectoryHandle>,
+  path: string,
+): Promise<FileSystemDirectoryHandle | null> {
+  let dir = await root;
+  for (const part of path.split("/").filter(Boolean)) {
+    try {
+      dir = await dir.getDirectoryHandle(part);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "NotFoundError") return null;
+      throw error;
+    }
+  }
+  return dir;
+}
+
+/** One file of a game as it was imported, for the loader. Throws if it is not there. */
+export async function readGameFile(
+  home: GameId,
+  name: string,
+  root: Promise<FileSystemDirectoryHandle> = navigator.storage.getDirectory(),
+): Promise<Uint8Array> {
+  const parts = `game/${home}/${name}`.split("/");
+  const dir = await openFolder(root, parts.slice(0, -1).join("/"));
+  if (!dir) throw new Error(`${name} is not in this browser's copy of the game (reimport it).`);
+  const file = await (await dir.getFileHandle(parts[parts.length - 1] ?? "")).getFile();
+  return new Uint8Array(await file.arrayBuffer());
+}
+
+/** What the game saved last time, in OPFS under `save/<game>/`. */
+export function opfsSaveStore(
+  root: Promise<FileSystemDirectoryHandle> = navigator.storage.getDirectory(),
+): SaveStore {
+  return {
+    async list(game) {
+      const out: { path: string; read(): Promise<Uint8Array> }[] = [];
+      const walk = async (dir: FileSystemDirectoryHandle, prefix: string) => {
+        const entries = (dir as unknown as { values(): AsyncIterable<FileSystemHandle> }).values();
+        for await (const entry of entries) {
+          if (entry.kind === "directory") {
+            await walk(entry as FileSystemDirectoryHandle, `${prefix}${entry.name}/`);
+          } else {
+            const handle = entry as FileSystemFileHandle;
+            out.push({
+              path: prefix + entry.name,
+              read: async () => new Uint8Array(await (await handle.getFile()).arrayBuffer()),
+            });
+          }
+        }
+      };
+      const dir = await openFolder(root, `save/${game}`);
+      if (dir) await walk(dir, "");
+      return out;
     },
   };
 }

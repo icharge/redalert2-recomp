@@ -128,3 +128,28 @@ same shared buffer.
 
 **Was (before the first build).** The canvas transferred to the game thread as
 an OffscreenCanvas, SDL's renderer on WebGL2, and SDL's DOM event handling.
+
+## D11. The game reads OPFS through a copy into memory, not a WasmFS mount
+
+**Decision.** At start the page copies the game's files from OPFS into Emscripten's in-memory
+file system (`/game`), one file at a time, then puts back what the game saved last time and keeps
+watching its writes (`web/src/storage/saves.ts`): a file the game adds or changes is written to
+OPFS under `save/<game>/` within a few seconds, and when the tab is hidden. The WasmFS OPFS backend
+that [storage.md](storage.md) first described is not used.
+
+**Why.** The in-memory route is what the dev server's folder already used and it plays at full
+speed; a WasmFS mount would replace the whole file layer the game and `win32hle` run on (open, read,
+the memory maps the archives rely on) to save memory, and it can be done later without changing the
+import or the manifest. The copy from OPFS takes a few seconds for 1 GB.
+
+**Costs.** The game's files are in memory twice at most for one file at a time, and then once: about
+1 GB for Yuri's Revenge. A phone or a small machine may not have it. A save made in the last couple of
+seconds before the tab is killed can be lost (a hidden tab flushes first).
+
+**Would change if.** Memory is the limit on real machines (then WasmFS reads the archives on demand), or
+the game needs a file layer feature the in-memory one lacks.
+
+**Also found.** The game stops at start ("Failed to initialize") if `MOVMD03.MIX` is missing, though it
+takes an empty archive in its place: the import writes a 12-byte empty one for each movie archive the
+player leaves out. And it needs `Blowfish.dll` in its folder (the host reads the archive key from it),
+so the import copies it and refuses a folder without one.

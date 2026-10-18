@@ -15,6 +15,7 @@ import {
 } from "./install";
 import type { Manifest, PlannedFile } from "./manifest";
 import { copyInstall, type CopyJob, type CopyProgress, type CopyTarget } from "./opfs";
+import { EMPTY_ARCHIVE } from "./install";
 
 /** One file of the folder the player picked. */
 export interface SourceFile {
@@ -83,6 +84,15 @@ export function fileListSource(files: Iterable<File>): FolderSource {
       });
     },
   };
+}
+
+function bytesStream(data: Uint8Array): ReadableStream<Uint8Array> {
+  return new ReadableStream({
+    start(controller) {
+      controller.enqueue(data.slice());
+      controller.close();
+    },
+  });
 }
 
 export interface Prepared {
@@ -167,10 +177,11 @@ export async function runImport(options: RunOptions): Promise<void> {
       const source = prepared.files.get(file.name);
       if (!source) throw new Error(`${file.name} is no longer in the folder.`);
       counted.add(file.name);
+      const stub = prepared.plan.copy.find((entry) => entry.path === file.name)?.stub;
       return {
         ...file,
         home: record.files[file.name]?.home ?? id,
-        open: () => source.stream(),
+        open: () => (stub ? bytesStream(EMPTY_ARCHIVE) : source.stream()),
       };
     });
     const before = { bytes: doneBytes, files: doneFiles };
@@ -191,4 +202,68 @@ export async function runImport(options: RunOptions): Promise<void> {
     doneBytes += jobs.reduce((sum, job) => sum + job.size, 0);
     doneFiles += jobs.length;
   }
+}
+
+// ---- a dropped folder ---------------------------------------------------------------------------
+
+interface LegacyEntry {
+  isFile: boolean;
+  isDirectory: boolean;
+  name: string;
+  file?(ok: (file: File) => void, fail: (error: unknown) => void): void;
+  createReader?(): {
+    readEntries(ok: (entries: LegacyEntry[]) => void, fail: (error: unknown) => void): void;
+  };
+}
+
+/** Every entry of a legacy directory (readEntries answers in batches until it gives none). */
+async function readAll(entry: LegacyEntry): Promise<LegacyEntry[]> {
+  const reader = entry.createReader?.();
+  const out: LegacyEntry[] = [];
+  if (!reader) return out;
+  for (;;) {
+    const batch = await new Promise<LegacyEntry[]>((ok, fail) => reader.readEntries(ok, fail));
+    if (batch.length === 0) return out;
+    out.push(...batch);
+  }
+}
+
+/** A folder from the old entry API (`webkitGetAsEntry`): Firefox and Safari, and Chromium without handles. */
+export function entrySource(root: LegacyEntry): FolderSource {
+  async function walk(dir: LegacyEntry, prefix: string, out: SourceFile[]) {
+    for (const entry of await readAll(dir)) {
+      if (entry.isFile && entry.file) {
+        const file = await new Promise<File>((ok, fail) => entry.file?.(ok, fail));
+        out.push(fromFile(prefix + entry.name, file));
+      } else if (entry.isDirectory && prefix === "" && entry.name.toLowerCase() === "saved games") {
+        await walk(entry, "Saved Games/", out);
+      }
+    }
+  }
+  return {
+    name: root.name,
+    async list() {
+      const out: SourceFile[] = [];
+      await walk(root, "", out);
+      return out;
+    },
+  };
+}
+
+/** The folder the player dropped, or null if what they dropped is not a folder. */
+export async function droppedSource(items: DataTransferItemList): Promise<FolderSource | null> {
+  const item = items[0];
+  if (!item) return null;
+  const withHandle = item as DataTransferItem & {
+    getAsFileSystemHandle?(): Promise<FileSystemHandle | null>;
+  };
+  if (withHandle.getAsFileSystemHandle) {
+    const handle = await withHandle.getAsFileSystemHandle();
+    if (handle?.kind === "directory") return directorySource(handle as FileSystemDirectoryHandle);
+    return null;
+  }
+  const entry = (
+    item as DataTransferItem & { webkitGetAsEntry?(): LegacyEntry | null }
+  ).webkitGetAsEntry?.();
+  return entry?.isDirectory ? entrySource(entry) : null;
 }

@@ -28,7 +28,7 @@ level:
 | Archives | `*.mix` (but not `*.mix.bak`) |
 | Sound | `audio.bag`, `audio.idx`, `audiomd.bag`, `audiomd.idx` |
 | Data | `*.ini`, `*.csf`, `*.mmx`, `*.map`, `*.mpr`, `*.yrm` |
-| Movies | `movies*.mix`, `movmd*.mix`: optional, the game runs without them. The Import screen shows their size and lets the player skip them |
+| Movies | `movies*.mix`, `movmd*.mix`: optional, but the game stops at start if the file is missing, so a movie archive the player skips is written as an empty 12-byte archive instead. The Import screen shows their size and lets the player skip them (the default, until movies play: stage 8) |
 | Saves | `Saved Games/*` if present, offered as "bring your saves" |
 
 Anything else is skipped. The list lives in `web/src/storage/install.ts` (`classify`);
@@ -74,8 +74,8 @@ manifest. A file whose size doesn't match is copied again.
 ```
 
 The game sees one folder as `C:\` ([architecture.md](architecture.md)).
-`src/web/main.c` mounts the OPFS backend at `/game/<id>` and overlays
-`/save/<id>`: a write goes to `/save`, and a read looks in `/save` first.
+At start the page copies `/game/<id>` into the game's in-memory file system and puts `/save/<id>` over it;
+what the game then writes is copied back to `/save/<id>` (decisions.md, D11).
 Removing a game deletes `/game/<id>` and keeps `/save/<id>` unless the
 player asks. On Linux, the mods layer (`src/linux/mods.c`) does the same job
 of laying one folder over another, so it's reused where it fits.

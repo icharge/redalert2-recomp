@@ -66,10 +66,17 @@ export interface ImportOptions {
   saves: boolean;
 }
 
+/**
+ * What is written in place of a movie archive the player did not bring: an empty archive. The game
+ * stops at start ("Failed to initialize") if MOVMD03.MIX is missing, though it takes an empty one.
+ */
+export const EMPTY_ARCHIVE = new Uint8Array(12);
+
 export interface ImportPlan {
   /** the games whose exe is in the folder and that this build can run */
   games: GameId[];
-  copy: (InstallFile & Classified)[];
+  /** `stub`: not the folder's file but an empty archive of 12 bytes in its place (`size` is that) */
+  copy: (InstallFile & Classified & { stub?: boolean })[];
   /** what was left out, and why */
   skipped: { path: string; reason: string }[];
   /** bytes of everything to copy */
@@ -122,7 +129,8 @@ export function planImport(
     if (!what.needs.some((id) => games.includes(id))) {
       plan.skipped.push({ path: file.path, reason: "for a game this folder does not have" });
     } else if (what.kind === "movie" && !options.movies) {
-      plan.skipped.push({ path: file.path, reason: "movies skipped" });
+      plan.copy.push({ ...file, ...what, size: EMPTY_ARCHIVE.length, stub: true });
+      plan.bytes += EMPTY_ARCHIVE.length;
     } else if (what.kind === "save" && !options.saves) {
       plan.skipped.push({ path: file.path, reason: "saves not brought" });
     } else {

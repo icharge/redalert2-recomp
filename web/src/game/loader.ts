@@ -1,6 +1,9 @@
 import { EXPORT_SIGNATURES, type Ra2Exports } from "./protocol";
 import { type GameStore, gameStore } from "./store";
 import type { WasmMemory } from "./presenter";
+import type { GameRecord } from "../storage/manifest";
+import { opfsSaveStore, opfsTarget, readGameFile } from "../storage/opfs";
+import { restoreSaves, startSaveSync, type FsLike, type SaveSync } from "../storage/saves";
 
 /** Where the build leaves the game (web/public/game, build-web.sh). */
 export const GAME_SCRIPT = "/game/ra2.js";
@@ -14,7 +17,7 @@ export class GameNotBuilt extends Error {
 }
 
 /** What the loader needs of Emscripten's Module. */
-interface EmscriptenFs {
+interface EmscriptenFs extends FsLike {
   mkdir(path: string): void;
   writeFile(path: string, data: Uint8Array): void;
 }
@@ -45,11 +48,16 @@ export interface GameHandle {
   memory: () => WasmMemory;
   /** the address of the game's shared picture and cursor (ra2_shared_t) */
   shared: number;
+  /** keeps the game's writes (saves, settings) in OPFS; null when the files are not from the import */
+  saves: SaveSync | null;
 }
 
 /** Where /game comes from. The import (stage 6) adds OPFS; for now the dev server's folder. */
 export type FileSource =
-  { kind: "dev-folder"; video?: VideoSize | null } | { kind: "already-there" };
+  | { kind: "dev-folder"; video?: VideoSize | null }
+  /** a game the import put in OPFS (storage/importer.ts) */
+  | { kind: "opfs"; record: GameRecord; video?: VideoSize | null }
+  | { kind: "already-there" };
 
 /** A battle's picture size. The game takes it from RA2MD.INI when a game starts. */
 export interface VideoSize {
@@ -204,7 +212,54 @@ async function loadDevFiles(
   store.loading("the game");
 }
 
-function createHandle(module: Ra2Module): GameHandle {
+/**
+ * A game the import put in OPFS, into the in-memory file system: each file whole, one at a time. Then
+ * what the game saved last time goes back over it, and from then on its writes are kept (saves.ts).
+ */
+async function loadOpfsFiles(
+  fs: EmscriptenFs,
+  store: GameStore,
+  record: GameRecord,
+  video: VideoSize | null,
+): Promise<SaveSync> {
+  fs.mkdir("/game");
+  const names = Object.keys(record.files);
+  const totalBytes = names.reduce((sum, name) => sum + (record.files[name]?.size ?? 0), 0);
+  let doneBytes = 0;
+  let doneFiles = 0;
+  for (const name of names) {
+    const entry = record.files[name];
+    if (!entry) continue;
+    store.copying({
+      doneBytes,
+      totalBytes,
+      doneFiles,
+      totalFiles: names.length,
+      file: name,
+    });
+    const parts = name.split("/");
+    for (let i = 1; i < parts.length; i++) {
+      try {
+        fs.mkdir(`/game/${parts.slice(0, i).join("/")}`);
+      } catch {
+        // already there
+      }
+    }
+    const bytes = await readGameFile(entry.home, name);
+    const stored =
+      video && name.toLowerCase() === "ra2md.ini"
+        ? new TextEncoder().encode(withVideoSize(new TextDecoder("latin1").decode(bytes), video))
+        : bytes;
+    fs.writeFile(`/game/${name}`, stored);
+    doneBytes += entry.size;
+    doneFiles++;
+  }
+  await restoreSaves(fs, opfsSaveStore(), record.id);
+  store.loading("the game");
+  return startSaveSync(fs, opfsTarget(), record.id);
+}
+
+function createHandle(module: Ra2Module, saves: SaveSync | null): GameHandle {
   const exports = {} as Record<string, unknown>;
   for (const [name, { returns, args }] of Object.entries(EXPORT_SIGNATURES)) {
     exports[name] = module.cwrap(name, returns, args);
@@ -217,6 +272,7 @@ function createHandle(module: Ra2Module): GameHandle {
       return { HEAPU8: module.HEAPU8, HEAP32: module.HEAP32 };
     },
     shared: ra2.ra2_shared(),
+    saves,
   };
 }
 
@@ -248,8 +304,24 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
       preRun: [] as (() => void)[],
     } as Partial<Ra2Module> as Ra2Module;
 
-    module.onRuntimeInitialized = () => resolve(createHandle(module));
+    let saves: SaveSync | null = null;
+    module.onRuntimeInitialized = () => resolve(createHandle(module, saves));
 
+    const files = options.files;
+    if (files.kind === "opfs") {
+      module.preRun.push(() => {
+        module.addRunDependency("game-files");
+        const fs = module.FS;
+        if (!fs) return fail(new Error("the game's file system is not up yet"));
+        loadOpfsFiles(fs, store, files.record, files.video ?? null).then(
+          (sync) => {
+            saves = sync;
+            module.removeRunDependency("game-files");
+          },
+          (error: unknown) => fail(error),
+        );
+      });
+    }
     if (options.files.kind === "dev-folder") {
       module.preRun.push(() => {
         module.addRunDependency("game-files");
