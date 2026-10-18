@@ -105,6 +105,27 @@ if(EMSCRIPTEN)
   add_custom_command(TARGET ra2 POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory ${WEB_OUT}
     COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:ra2> $<TARGET_FILE_DIR:ra2>/ra2.wasm $<TARGET_FILE_DIR:ra2>/ra2.data ${WEB_OUT})
+  # build.json: which game this build runs and the exe it was lifted from, for the page's import
+  # checks (web/src/storage/install.ts, docs/web/storage.md). Written when cmake configures; a
+  # change to the lifted target header configures again.
+  set(_target_h ${CMAKE_SOURCE_DIR}/${GEN_DIR}/recomp_target.h)
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${_target_h})
+  file(READ ${_target_h} _target)
+  string(REGEX MATCH "define RA2_EXE_NAME \"([^\"]+)\"" _m "${_target}")
+  set(_exe "${CMAKE_MATCH_1}")
+  string(REGEX MATCH "define RA2_INI_NAME \"([^\"]+)\"" _m "${_target}")
+  set(_ini "${CMAKE_MATCH_1}")
+  string(REGEX MATCH "define RA2_TITLE \"([^\"]+)\"" _m "${_target}")
+  set(_title "${CMAKE_MATCH_1}")
+  string(REGEX MATCH "define RA2_EXE_STAMP (0x[0-9A-Fa-f]+)u" _m "${_target}")
+  math(EXPR _stamp "${CMAKE_MATCH_1}" OUTPUT_FORMAT DECIMAL)
+  if(_target MATCHES "RA2_TARGET_GAMEMD")
+    set(_id ra2md)
+  else()
+    set(_id ra2)
+  endif()
+  file(WRITE ${WEB_OUT}/build.json
+    "{\"games\":{\"${_id}\":{\"title\":\"${_title}\",\"exe\":\"${_exe}\",\"ini\":\"${_ini}\",\"stamp\":${_stamp}}}}\n")
   return()
 endif()
 
