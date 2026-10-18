@@ -81,8 +81,8 @@ Tick a task off here in the same pull request that finishes it.
 
 | ID | Task | Repo | Needs | Size | Done when |
 |---|---|---|---|---|---|
-| W5.1 | Frame-time overlay (the `fps` event) | here | W4.7 | S | it shows in Play |
-| W5.2 | Measure a skirmish at 800x600 and 1080p | here | W4.9, W5.1 | S | the numbers are in [testing.md](testing.md) |
+| ~~W5.1~~ | Frame-time overlay (the `fps` event) | here | W4.7 | S | Alt+Shift+F or `?stats`: game fps, worst gap, late frames, publish cost, page frames |
+| ~~W5.2~~ | Measure a skirmish at 800x600 and 1080p | here | W4.9, W5.1 | S | `e2e/measure.mjs`; the numbers are in [testing.md](testing.md) |
 | W5.3 | Only if W4.7 or W4.9 fail: the fallbacks in order (`OFFSCREEN_FRAMEBUFFER`, the page's own input path, Asyncify); record which in decisions.md | here | W4.9 | L | a skirmish plays |
 
 ## Stage 6: files

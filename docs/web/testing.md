@@ -172,10 +172,29 @@ allowlist into a volume first (1.1 GB, seconds).
 
 ## Performance
 
-The frame-time overlay (Settings) and the `fps` event give a number per run.
-Stage 5 records skirmish frame times at 800x600 and 1080p here, and stage 9
-the same with HD vehicles on. Use Chrome's Performance panel with
-`-gseparate-dwarf` builds to see lifted function names.
+The frame-time overlay (Alt+Shift+F, or `?stats` in the address) and the `fps` event give
+a number per run. `node e2e/measure.mjs [--video WxH] [--seconds N]` plays a skirmish and
+prints them (`?video=WxH` puts the picture size into RA2MD.INI in memory; the game folder
+is not touched). Stage 9 records the same with HD vehicles on. Use Chrome's Performance
+panel with `-gseparate-dwarf` builds to see lifted function names.
+
+Measured on the author's machine (desktop Chrome, a game folder whose own setting is
+2580x1080), the full-speed build, one skirmish against one Brutal AI:
+
+| | game fps (median, worst second) | late frames a second | pictures a second |
+|---|---|---|---|
+| 800x600, 15 s idle, before the Sleep fix | 62, 61 | 3.5 | 59 |
+| 1920x1080, 15 s idle, before the Sleep fix | 62, 61 | | 53 to 55 |
+| 2580x1080, 3 minutes to the end of the match | 62, 60 | 0.3 | 62 |
+| 2580x1080, 5 minutes, before the Sleep fix | 55 to 62, 41 | 4 | 54 |
+| 2580x1080, 15 s idle, after | 62, 57 | 0.4 | 61 |
+
+A "late frame" is one that came more than 25 ms after the one before. The last row is why
+it exists: the browser's timed wait woke on the system tick (15.6 ms on Windows), the game's
+frame loop waits with `Sleep(1)`, and a quarter of its sleeps ran 16 ms over (pcrecomp
+`kernel32.c`, `wait_ms`). The picture costs about 1 ms a frame to publish at 2580x1080 and
+0.2 ms at 800x600, and about 0.5 ms for the page to draw. A headless Chrome has no vertical
+sync, so its page numbers (165 frames a second) are not a real window's.
 
 | Run | 800x600 | 1080p | 1080p, HD vehicles |
 |---|---|---|---|

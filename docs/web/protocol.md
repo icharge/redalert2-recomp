@@ -86,7 +86,7 @@ in test logs.
 | `boot` | `title`, `exe`, `stamp` | the exe is mapped and bound |
 | `menu` | none | the main menu's dialog (0xE2) opened: `phase` becomes `running` |
 | `mode` | `w`, `h` | the picture's size changed (the game set a display mode) |
-| `fps` | `fps`, `ms` | once a second: the game's own frames per second. The page shows it only if the overlay is on |
+| `fps` | `fps`, `ms`, and `worst`, `late`, `pub`, `pubms` | once a second: the game's own frames per second, the longest gap between two game frames (ms), how many came more than 25 ms after the one before, how many pictures were published and the mean ms to make one. The page shows them only if the overlay is on |
 | `exit` | `code` | the game's entry returned |
 | `error` | `message` | something the player should see that isn't a crash (a missing file) |
 
