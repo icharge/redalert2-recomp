@@ -7,6 +7,8 @@ import {
   isBuilt,
   readBody,
   startGame,
+  videoFromQuery,
+  withVideoSize,
 } from "./loader";
 import { GameStore } from "./store";
 
@@ -97,5 +99,31 @@ describe("startGame", () => {
       GameNotBuilt,
     );
     expect(store.getSnapshot().phase).toBe("loading"); // begin() ran; Play shows the not-built message itself
+  });
+});
+
+describe("video size", () => {
+  it("reads ?video=WxH, and nothing else", () => {
+    expect(videoFromQuery("?video=1280x720")).toEqual({ w: 1280, h: 720 });
+    expect(videoFromQuery("?stats&video=800x600&arg=x")).toEqual({ w: 800, h: 600 });
+    expect(videoFromQuery("?video=big")).toBeNull();
+    expect(videoFromQuery("")).toBeNull();
+  });
+
+  it("sets the two keys in [Video] and leaves the file's other lines and endings", () => {
+    const ini =
+      "[Options]\r\nScreenWidth=1\r\n[Video]\r\nScreenWidth=2580\r\nScreenHeight=1080\r\nWindowed=no\r\n";
+    expect(withVideoSize(ini, { w: 800, h: 600 })).toBe(
+      "[Options]\r\nScreenWidth=1\r\n[Video]\r\nScreenWidth=800\r\nScreenHeight=600\r\nWindowed=no\r\n",
+    );
+  });
+
+  it("adds the keys when [Video] lacks them, or the section when there is none", () => {
+    expect(withVideoSize("[Video]\nWindowed=no", { w: 1280, h: 720 })).toBe(
+      "[Video]\nScreenWidth=1280\nScreenHeight=720\nWindowed=no",
+    );
+    expect(withVideoSize("[Audio]\nx=1", { w: 1280, h: 720 })).toBe(
+      "[Audio]\nx=1\n[Video]\nScreenWidth=1280\nScreenHeight=720",
+    );
   });
 });

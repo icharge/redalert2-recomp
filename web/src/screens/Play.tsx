@@ -2,9 +2,16 @@ import { CrossCircledIcon, ExclamationTriangleIcon } from "@radix-ui/react-icons
 import { Button, Callout, Code, Flex, Heading, ScrollArea } from "@radix-ui/themes";
 import { useEffect, useRef, useState } from "react";
 import { attachInput } from "../game/input";
-import { argsFromQuery, GameNotBuilt, startGame, type GameHandle } from "../game/loader";
+import {
+  argsFromQuery,
+  GameNotBuilt,
+  startGame,
+  videoFromQuery,
+  type GameHandle,
+} from "../game/loader";
 import { Presenter } from "../game/presenter";
 import { gameStore, useGameState } from "../game/store";
+import { FrameStats } from "./FrameStats";
 import { LoadingScreen } from "./LoadingScreen";
 import styles from "./Play.module.css";
 
@@ -13,7 +20,9 @@ let session: Promise<GameHandle> | null = null;
 function startOnce(): Promise<GameHandle> {
   session ??= startGame({
     // until the import exists (stage 6), the dev server's local game folder
-    files: import.meta.env.DEV ? { kind: "dev-folder" } : { kind: "already-there" },
+    files: import.meta.env.DEV
+      ? { kind: "dev-folder", video: videoFromQuery(window.location.search) }
+      : { kind: "already-there" },
     args: argsFromQuery(window.location.search),
   });
   return session;
@@ -26,6 +35,7 @@ const HAS_FILES = import.meta.env.DEV;
 export function Play() {
   const canvas = useRef<HTMLCanvasElement>(null);
   const [startError, setStartError] = useState<Error | null>(null);
+  const [presenter, setPresenter] = useState<Presenter | null>(null);
   const phase = useGameState((s) => s.phase);
   const copy = useGameState((s) => s.copy);
   const title = useGameState((s) => s.title);
@@ -42,6 +52,7 @@ export function Play() {
         if (cancelled) return;
         const presenter = new Presenter(element, game.memory, game.shared);
         presenter.start();
+        setPresenter(presenter);
         const detach = attachInput(element, game.exports);
         const observer = new ResizeObserver(([entry]) => {
           if (!entry) return;
@@ -76,6 +87,7 @@ export function Play() {
   return (
     <div className={styles.stage}>
       <canvas ref={canvas} className={styles.canvas} tabIndex={0} aria-label="The game" />
+      <FrameStats presenter={presenter} />
       {waiting && <LoadingScreen state={{ phase, copy, title }} />}
       {!HAS_FILES && (
         <Flex className={styles.overlay} align="center" justify="center" p="6">

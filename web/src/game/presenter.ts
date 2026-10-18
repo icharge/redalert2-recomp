@@ -6,6 +6,12 @@ export interface WasmMemory {
   HEAP32: Int32Array;
 }
 
+export interface PresenterCounters {
+  pictures: number;
+  ticks: number;
+  drawMs: number;
+}
+
 /**
  * Draws what the game thread publishes (src/web/presenter.c) on the canvas, once per
  * animation frame: the picture, and the cursor the game sets in its menus. The canvas
@@ -18,6 +24,9 @@ export class Presenter {
   private cursorSeq = -1;
   private image: ImageData | null = null;
   private readonly context: CanvasRenderingContext2D;
+  private pictures = 0;
+  private ticks = 0;
+  private drawMs = 0;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -30,9 +39,17 @@ export class Presenter {
     this.context = context;
   }
 
+  /** Running totals, for the frame-time overlay: pictures put on the canvas, animation frames, time spent drawing. */
+  counters(): PresenterCounters {
+    return { pictures: this.pictures, ticks: this.ticks, drawMs: this.drawMs };
+  }
+
   start(): void {
     const tick = () => {
+      const began = performance.now();
       this.draw();
+      this.drawMs += performance.now() - began;
+      this.ticks++;
       this.raf = requestAnimationFrame(tick);
     };
     this.raf = requestAnimationFrame(tick);
@@ -64,6 +81,7 @@ export class Presenter {
         // a view on shared memory cannot back an ImageData, so the pixels are copied
         this.image.data.set(HEAPU8.subarray(pointer, pointer + width * height * 4));
         this.context.putImageData(this.image, 0, 0);
+        this.pictures++;
       }
     }
 

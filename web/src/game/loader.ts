@@ -48,7 +48,50 @@ export interface GameHandle {
 }
 
 /** Where /game comes from. The import (stage 6) adds OPFS; for now the dev server's folder. */
-export type FileSource = { kind: "dev-folder" } | { kind: "already-there" };
+export type FileSource =
+  { kind: "dev-folder"; video?: VideoSize | null } | { kind: "already-there" };
+
+/** A battle's picture size. The game takes it from RA2MD.INI when a game starts. */
+export interface VideoSize {
+  w: number;
+  h: number;
+}
+
+/** `?video=1280x720`: measure or try a size without editing the game folder (dev only). */
+export function videoFromQuery(search: string): VideoSize | null {
+  const match = /^(\d{3,5})x(\d{3,5})$/.exec(new URLSearchParams(search).get("video") ?? "");
+  return match ? { w: Number(match[1]), h: Number(match[2]) } : null;
+}
+
+/** RA2MD.INI's text with [Video] ScreenWidth and ScreenHeight set, the rest as it was. */
+export function withVideoSize(ini: string, size: VideoSize): string {
+  const eol = ini.includes("\r\n") ? "\r\n" : "\n";
+  const wanted = new Map([
+    ["screenwidth", `ScreenWidth=${size.w}`],
+    ["screenheight", `ScreenHeight=${size.h}`],
+  ]);
+  const seen = new Set<string>();
+  let section = "";
+  let videoAt = -1;
+  const lines = ini.split(/\r?\n/).map((line, index) => {
+    const header = /^\s*\[([^\]]*)\]/.exec(line);
+    if (header) {
+      section = (header[1] ?? "").trim().toLowerCase();
+      if (section === "video" && videoAt < 0) videoAt = index;
+      return line;
+    }
+    const key = /^\s*([^=;\s]+)\s*=/.exec(line)?.[1]?.toLowerCase();
+    const replacement = section === "video" && key ? wanted.get(key) : undefined;
+    if (key && replacement) seen.add(key);
+    return replacement ?? line;
+  });
+  const missing = [...wanted].filter(([key]) => !seen.has(key)).map(([, line]) => line);
+  if (missing.length > 0) {
+    if (videoAt >= 0) lines.splice(videoAt + 1, 0, ...missing);
+    else lines.push("[Video]", ...missing);
+  }
+  return lines.join(eol);
+}
 
 export interface StartOptions {
   files: FileSource;
@@ -116,6 +159,7 @@ export async function readBody(
 async function loadDevFiles(
   fs: EmscriptenFs,
   store: GameStore,
+  video: VideoSize | null = null,
   fetcher: typeof fetch = fetch,
 ): Promise<void> {
   const response = await fetcher("/dev-game/index.json");
@@ -148,7 +192,12 @@ async function loadDevFiles(
         progress(received);
       }
     });
-    fs.writeFile(`/game/${file.name}`, bytes);
+    // the picture size asked for in the address replaces what the game's own settings say
+    const stored =
+      video && file.name.toLowerCase() === "ra2md.ini"
+        ? new TextEncoder().encode(withVideoSize(new TextDecoder("latin1").decode(bytes), video))
+        : bytes;
+    fs.writeFile(`/game/${file.name}`, stored);
     doneBytes += bytes.length;
     doneFiles++;
   }
@@ -206,7 +255,8 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
         module.addRunDependency("game-files");
         const fs = module.FS;
         if (!fs) return fail(new Error("the game's file system is not up yet"));
-        loadDevFiles(fs, store).then(
+        const video = options.files.kind === "dev-folder" ? options.files.video : null;
+        loadDevFiles(fs, store, video ?? null).then(
           () => module.removeRunDependency("game-files"),
           (error: unknown) => fail(error),
         );
