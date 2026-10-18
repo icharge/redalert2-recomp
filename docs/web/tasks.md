@@ -71,7 +71,7 @@ Tick a task off here in the same pull request that finishes it.
 | ~~W4.12~~ | The page's loading screen: byte progress for the copy, then "starting" | here | W4.10 | S | `LoadingScreen`, with tests |
 | ~~W4.13~~ | Right-drag panning | pcrecomp | W4.10 | S | `SM_CXDRAG` answered; the battle map pans (Pointer Lock is W9.5) |
 | ~~W4.14~~ | Dropdowns draw correctly | pcrecomp | W4.10 | S | a closed list repaints what it covered; the minimap shows |
-| W4.15 | A modal message box that is never drawn (after Save): draw the dialog | pcrecomp | W4.10 | M | Esc, Save Game, Save: the confirmation shows and OK closes it ([issues.md](issues.md), 6) |
+| ~~W4.15~~ | The dialog box that is never drawn (after Save): draw it | pcrecomp | W4.10 | M | a dialog is not painted over by the older dialog under it; `save.mjs`: the confirmation shows and OK closes it ([issues.md](issues.md), 6) |
 
 ## Stage 5: the main loop
 

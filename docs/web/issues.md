@@ -14,25 +14,24 @@ gets them too. Tasks: the W4.1x series in [tasks.md](tasks.md).
 | 4a | No loading screen at the start | Partly | the page had a spinner and a file name, no bar, nothing between "files copied" and the menu | fixed: `LoadingScreen` (bytes copied of bytes, file, seconds; then a bar over the usual start-up time) |
 | 4b | No loading screen when a game starts: 15 seconds of one frozen picture | New | the game's own loading screen draws without pumping messages, and the picture was made only from the pump | fixed: the primary's `Unlock` calls `hle_dd_unlock_hook`, which publishes the frame (pcrecomp `b6dda7d`, `src/web/presenter.c`) |
 | 5 | Holding the right button does not pan | New | the game pans on a right-drag only past the drag threshold, read with `GetSystemMetrics(SM_CXDRAG)`, which answered 0 | fixed: 4, as on Windows (pcrecomp `c9d924a`). Also true of the native host |
-| 6 | Saving a game seems to freeze it | New | not a freeze: the save is made (Delete Game appears), then a confirmation box, a modal dialog (resource `0xCE`, an OK button), is never drawn, and the game waits for the click on it | **open**: Enter, or a click where its OK button is, dismisses it. Cause below |
+| 6 | Saving a game seems to freeze it | New | not a freeze: the save is made (Delete Game appears), then a confirmation box (resource `0xCE`, an OK button) waits for a click, and the box was never visible: the game painted it, then the save list under it (a full-screen sibling dialog the game invalidates) repainted over it | fixed: a window under a newer visible sibling dialog gets no WM_PAINT until that one is gone (pcrecomp `4413f81`). Also true of the native host |
 
-## What is known about 6
+## What was behind 6
 
-`DialogBox` runs a modal loop and the game's own dialogs are drawn by the game
-into the picture. The in-game menu (`0xB5`), the save list (`0x2B4`), the abort
-confirmation (`0xB6`) all show. The two that follow a save, a short one (`0xF0`)
-and the confirmation (`0xCE`, 451 x 328, centred, an owner-drawn OK button and a
-text static), receive `WM_INITDIALOG`, `WM_SHOWWINDOW`, `WM_PAINT` and the game's
-own `0x4AF` to their controls, and nothing reaches the picture, though the game
-goes on drawing the picture (the primary is locked 40 times a second). Tools for
-the next step: `--heartbeat 3 --windows` lists every window each time
-(`hle_dump_windows`), `--msgtrace N` traces the messages to windows numbered N
-and up, `LOG_FILE=... node e2e/save.mjs --arg --msgtrace --arg 65856`.
-`gdidc.c` draws nothing on a window's DC ("nothing here draws windows"), so the
-likely cause is GDI drawing on the dialog's window DC; the proof is a trace of
-which GDI calls the game makes on a DC with no pixels. It reproduces on the
-native host too, so it is pcrecomp's to fix, by binding a window's DC to the
-primary at the window's origin.
+The game makes its dialogs with `CreateDialog` and runs its own message loop (there is no
+`DialogBox` modal loop here). The in-game menu (`0xB5`), the save list (`0x2B4`) and the
+abort confirmation (`0xB6`) showed; the two that follow a save, a short one (`0xF0`) and the
+confirmation (`0xCE`, 451 x 328, centred, an owner-drawn OK button and a text static), did
+not. A trace of what the game does to the primary (Lock/Unlock) and of every invalidation
+showed it: the game paints the box, then calls `InvalidateRect` on the save list, a dialog
+the size of the screen, which repaints, and the picture is composed with the list on top of
+the box. Windows paints into what shows; here every window is drawn into one picture, so a
+repaint of a window under a newer one now waits until the newer one goes (the close exposes
+it). It was not GDI on a window DC, the first guess.
+
+Tools that found it: `--heartbeat 3 --windows`, `--msgtrace N` (messages to windows numbered
+N and up), `LOG_FILE=... node e2e/save.mjs --arg --msgtrace --arg 65700`. `save.mjs` now also
+clicks OK and shoots the screen without the box.
 
 ## What went wrong on the way (worth knowing)
 

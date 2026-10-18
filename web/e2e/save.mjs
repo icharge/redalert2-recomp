@@ -1,5 +1,6 @@
 // Issue 6 (docs/web/issues.md): start a skirmish, open the in-game menu (Esc), Save Game, Save, then
-// shoot the screen every 400 ms. The message box that follows must show on the picture.
+// shoot the screen every 400 ms. The message box that follows must show on the picture; its OK
+// button is clicked and the last shot (save-3-after-ok) is the screen without it.
 //
 //   node e2e/save.mjs [--shots DIR]
 //
@@ -44,6 +45,10 @@ for (let i = 0; i < 8; i++) {
   await t.page.waitForTimeout(400);
   await t.shot(`save-2-after-${i}`);
 }
+// the box is 451x328 at the screen's centre; its OK button sits at (310, 285) in it, 125x25
+await click(Math.round((size.w - 451) / 2 + 310 + 62), Math.round((size.h - 328) / 2 + 285 + 12));
+await t.page.waitForTimeout(1500);
+await t.shot("save-3-after-ok");
 const log = await t.log();
 console.log(
   log

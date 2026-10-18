@@ -399,6 +399,11 @@ launch. The walls, in the order they came:
   so a game start showed one frozen frame for 15 seconds. The primary's `Unlock`
   now calls `hle_dd_unlock_hook`, a whole frame by then. A thread that took the
   machine to copy the primary instead starved the game in the menu's movie loop.
-- **A modal box that is not drawn.** After Save a confirmation dialog (resource
-  `0xCE`) is created, shown and painted by the game and never reaches the picture;
-  the game waits for it. Enter closes it. Open: [web/issues.md](web/issues.md).
+- **A dialog painted over by the one under it.** After Save a confirmation box
+  (resource `0xCE`) is created over the save list (`0x2B4`), a sibling dialog the size
+  of the screen. The game paints the box, then invalidates the list, which repaints
+  over it, and the game waits for a box nobody can see. Windows clips that; here one
+  picture takes everything. WM_PAINT for a window under a newer visible sibling dialog
+  now waits until that one is gone (`under_modal`). These dialogs are made with
+  `CreateDialog` and the game's own message loop, not `DialogBox`, so there is no modal
+  loop to hang this on.
