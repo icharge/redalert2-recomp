@@ -8,8 +8,8 @@ gets them too. Tasks: the W4.1x series in [tasks.md](tasks.md).
 
 | # | What was seen | Known? | Cause | Status |
 |---|---|---|---|---|
-| 1 | No Bink movies | Known | no decoder yet (stage 8); `HLE_BINK_SKIP` stubs | open, stage 8 |
-| 2 | No animation in the main menu's sidebar | Known: the same as 1 | the menu opens a movie by file handle right after its dialog (`[bink] open (handle)`); the stub plays two empty frames | open, stage 8 |
+| 1 | No Bink movies | Known | no decoder yet; `HLE_BINK_SKIP` stubs | fixed: FFmpeg’s Bink decoder is built into `ra2.wasm` (stage 8, [architecture.md](architecture.md), "Movies"); `e2e/movies.mjs` |
+| 2 | No animation in the main menu's sidebar | Known: the same as 1 | the menu opens a movie by file handle right after its dialog (`[bink] open (handle)`); the stub played two empty frames | fixed with 1: the menu’s TV and the sidebar animate (`e2e/movies.mjs`) |
 | 3 | A drop-down list stays on the screen after a pick (and the skirmish minimap stayed black) | New | `win32hle` painted windows into one picture but never told the windows under a closing one to repaint: the list is a window of its own, and hiding it left its pixels | fixed: `ShowWindow(SW_HIDE)`, `SWP_HIDEWINDOW` and `DestroyWindow` expose what the window covered (pcrecomp `7710d40`) |
 | 4a | No loading screen at the start | Partly | the page had a spinner and a file name, no bar, nothing between "files copied" and the menu | fixed: `LoadingScreen` (bytes copied of bytes, file, seconds; then a bar over the usual start-up time) |
 | 4b | No loading screen when a game starts: 15 seconds of one frozen picture | New | the game's own loading screen draws without pumping messages, and the picture was made only from the pump | fixed: the primary's `Unlock` calls `hle_dd_unlock_hook`, which publishes the frame (pcrecomp `b6dda7d`, `src/web/presenter.c`) |

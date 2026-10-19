@@ -73,6 +73,9 @@ More steps and switches, from chasing the first play's issues ([issues.md](issue
 - `save.mjs` plays a skirmish to the in-game menu and Save, then shoots 8 frames
   (`SLOW=1.8` on a slow run, `LOG_FILE=path` keeps the game's log). `timeline.mjs
   --every 1 --skirmish` shoots the page from its load on.
+- `node e2e/movies.mjs` (stage 8): the game decodes the main menu’s Bink movies out of `ra2md.mix` (the log
+  says which, with its size and frame count) and the sidebar’s gauge changes from one picture to the next.
+  Needs a build with FFmpeg (`tools/build-ffmpeg-web.sh` first) and the dev server up.
 - `node e2e/audio.mjs [--skirmish --minutes 5]` (stage 7): a sine through the worklet in a page with no
   game, then the game: the sound runs after a click, the game's music is in the ring, volume 0 is silent, and
   the mixer and the worklet keep 44.1 kHz with no underrun at the menu. With `--skirmish` it plays

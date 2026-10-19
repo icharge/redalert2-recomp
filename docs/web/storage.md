@@ -28,7 +28,7 @@ level:
 | Archives | `*.mix` (but not `*.mix.bak`) |
 | Sound | `audio.bag`, `audio.idx`, `audiomd.bag`, `audiomd.idx` |
 | Data | `*.ini`, `*.csf`, `*.mmx`, `*.map`, `*.mpr`, `*.yrm` |
-| Movies | `movies*.mix`, `movmd*.mix`: optional, but the game stops at start if the file is missing, so a movie archive the player skips is written as an empty 12-byte archive instead. The Import screen shows their size and lets the player skip them (the default, until movies play: stage 8) |
+| Movies | `movies*.mix`, `movmd*.mix`: optional, but the game stops at start if the file is missing, so a movie archive the player skips is written as an empty 12-byte archive instead. The Import screen shows their size and lets the player skip them (the default: they are the biggest files, and the menu’s own movies are in `ra2md.mix`, so the game is complete without them) |
 | Saves | `Saved Games/*` if present, offered as "bring your saves" |
 
 Anything else is skipped. The list lives in `web/src/storage/install.ts` (`classify`);

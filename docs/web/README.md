@@ -7,10 +7,10 @@ and played from the player's own install, which they pick in the page.
 **Status: stages 1 to 4 done.** The host builds with Emscripten and runs in a
 browser: the page (React, Radix) loads the game, draws it on a canvas and sends
 it the mouse and keys. In a local Chrome the main menu comes up, and a skirmish
-starts by clicking and runs at 60 frames a second. Not done yet: importing the
-player's own folder (stage 6; for now the dev server serves a local one), sound
-(7), movies (8: they are skipped), the remaster options (9) and the browser test
-suite (10). These pages are the design and the plan, and change as the stages
+starts by clicking and runs at 60 frames a second. The player's own folder is
+imported into the browser (6), the game has sound (7) and plays its Bink movies
+(8). Not done yet: the remaster options (9), the browser test suite (10), Red
+Alert 2 (11) and multiplayer (12). These pages are the design and the plan, and change as the stages
 answer the open questions.
 
 ## The one rule, in the browser

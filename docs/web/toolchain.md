@@ -10,6 +10,14 @@
 | Node.js | 20 or later | the headless runs in stage 3, and the page's build |
 | pnpm | 9 or later | the page's packages (`web/`) |
 
+## FFmpeg, for the movies
+
+The Bink decoder is FFmpeg's, built with the same emcc (stage 8). The source goes beside the repository:
+download `ffmpeg-7.1.1.tar.xz` from https://ffmpeg.org/releases/ (11 MB) and unpack it into `../ffmpeg-src`,
+then run `tools/build-ffmpeg-web.sh` (`tools\build-ffmpeg-web.cmd` on Windows, which needs Git for Windows' `sh`).
+It writes `../ffmpeg-src/build`, and the next `build-web` picks it up (`-DFFMPEG_WEB_DIR=<dir>` names
+another). Without it the build still works, and movies are skipped.
+
 ## Installing it
 
 emsdk is a sibling checkout, as `pcrecomp` is (`build-web.sh` finds it through
@@ -36,6 +44,7 @@ The lift is the same as for Windows and Linux. `src/recomp/gen/` from
 | `cmake/emscripten.cmake` | toolchain file: wraps emsdk's `Emscripten.cmake` and sets the flags below |
 | `CMakeLists.txt` | an `if(EMSCRIPTEN)` branch beside the Linux one: `src/web/*.c`, `win32hle`, the generated C |
 | `build-web.sh`, `build-web.cmd` | configure and build into `build-web/` (`build-web-game/` for Red Alert 2), then copy `ra2.js` and `ra2.wasm` into `web/public/game/` (a post-build step in `CMakeLists.txt`; `WEB_OUT` changes where) |
+| `tools/build-ffmpeg-web.sh`, `.cmd`, `tools/ffmpeg-web.mjs` | configure FFmpeg for the Bink decoder and list the files to compile (no GNU make here) |
 | `src/web/main.c` | the browser host: `src/linux/main.c` without signals, `popen` or the watchdog, plus the exported functions in [protocol.md](protocol.md) |
 
 ## Compile flags

@@ -111,8 +111,8 @@ Tick a task off here in the same pull request that finishes it.
 
 | ID | Task | Repo | Needs | Size | Done when |
 |---|---|---|---|---|---|
-| W8.1 | Build ffmpeg's `bink` and `binkaudio` decoders alone with emcc; a script for it | here | W1.1 | M | the static libraries link |
-| W8.2 | Link with `HLE_WITH_FFMPEG` | here | W8.1, W3.4 | S | the intro plays with sound |
+| ~~W8.1~~ | Build ffmpeg's `bink` and `binkaudio` decoders alone with emcc; a script for it | here | W1.1 | M | `tools/build-ffmpeg-web.sh` configures it and `CMakeLists.txt` builds the static library: 173 files, LGPL |
+| ~~W8.2~~ | Link with `HLE_WITH_FFMPEG` | here | W8.1, W3.4 | S | `e2e/movies.mjs`: the menu’s two movies decode (640x480 with sound, 632x570) and the sidebar animates; the intro movies are not in the author’s install, so they are untried |
 
 ## Stage 9: remaster features
 

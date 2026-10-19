@@ -127,13 +127,27 @@ game waits for the page.
 
 ## Movies
 
-Bink goes through ffmpeg (`HLE_WITH_FFMPEG`, `win32hle/bink.c`). For the
-browser, build ffmpeg's `bink` and `binkaudio` decoders alone with emcc, with
-no demuxers or encoders beyond what `bink.c` uses (stage 8).
+Bink goes through ffmpeg (`HLE_WITH_FFMPEG`, `win32hle/bink.c`), decoded in the
+game's own wasm as the game asks for frames: it opens a movie by name or by a
+handle positioned inside an archive (`ra2md.mix` holds the menu's), and takes one
+frame at a time. Converting the movies to another format when the game is
+imported would need the same decoder, would lose their sound in a picture format,
+and would multiply their size, so nothing is converted.
 
-Until then the build defines `HLE_BINK_SKIP` for `bink.c`: `BinkOpen` returns a
-movie of two empty frames at 15 fps, so each movie plays for a tenth of a
-second drawing nothing, and the main menu's looping movie loops at a steady
+The browser build compiles only what the movies need, from the FFmpeg source
+(`../ffmpeg-src`, not in the repository): the `bink` video decoder, the
+`binkaudio_dct` and `binkaudio_rdft` decoders, the `bink` demuxer and the `file`
+protocol, with libavutil and libswresample. That is 173 files, about 0.8 MB of
+`ra2.wasm`, all LGPL. `tools/build-ffmpeg-web.sh` (`.cmd` on Windows) runs FFmpeg's
+`configure` with emcc and `tools/ffmpeg-web.mjs` turns the Makefiles' object lists
+into `ffmpeg_sources.cmake`, since there is no GNU make on the Windows machine this
+is built on; `CMakeLists.txt` compiles that list into a static library and defines
+`HLE_WITH_FFMPEG`. The movie's sound goes to the same mixer as the game's
+(`hle_audio_stream_*`, so through the ring above).
+
+Without `../ffmpeg-src/build` the build defines `HLE_BINK_SKIP` for `bink.c` instead:
+`BinkOpen` returns a movie of two empty frames at 15 fps, so each movie plays for a
+tenth of a second drawing nothing, and the main menu's looping movie loops at a steady
 rate. Making `BinkOpen` fail is not enough: the game goes on with the null
 handle it got, reads the frame count from address 0 (readable zeros in wasm,
 a crash elsewhere) and loops forever without pumping messages.
