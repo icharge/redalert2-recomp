@@ -73,6 +73,12 @@ More steps and switches, from chasing the first play's issues ([issues.md](issue
 - `save.mjs` plays a skirmish to the in-game menu and Save, then shoots 8 frames
   (`SLOW=1.8` on a slow run, `LOG_FILE=path` keeps the game's log). `timeline.mjs
   --every 1 --skirmish` shoots the page from its load on.
+- `node e2e/audio.mjs [--skirmish --minutes 5]` (stage 7): a sine through the worklet in a page with no
+  game, then the game: the sound runs after a click, the game's music is in the ring, volume 0 is silent, and
+  the mixer and the worklet keep 44.1 kHz with no underrun at the menu. With `--skirmish` it plays
+  skirmishes (an idle player loses in about two minutes, so it clicks Continue and starts another) until
+  there are `--minutes` of battle, printing every 10 s the frames mixed and played, the ring's fill and low
+  point, the underruns and the game's frame rate. Needs the dev server up.
 - Stage 6, in a real Chrome with a fresh profile: `node e2e/import.mjs` imports `../game` through the
   page's file input, checks the Library, plays from the copy in OPFS to the main menu, checks that a file
   the game wrote survives a reload, and removes the game (`--movies` brings the real movie archives; `--keep`

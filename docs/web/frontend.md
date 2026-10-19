@@ -44,6 +44,7 @@ web/
     components/
       SettingsDialog.tsx    browser-side settings (below)
       StorageMeter.tsx
+      SoundControl.tsx      the "click to start sound" bar, and the volume
       ImportProgress.tsx
       CrashReport.tsx
       BrowserCheck.tsx      what this browser lacks, and what that means
@@ -53,7 +54,8 @@ web/
       protocol.ts           the types of every message, export and shared-memory word
       presenter.ts          draws the game's shared picture and cursor on the canvas
       input.ts              the mouse and keys, as calls on the game's exports; the key table
-      audio.ts              resumes the AudioContext on the first gesture
+      audio.ts              the AudioContext and the worklet over the sound ring; resumes on the first gesture
+      volume.ts             the volume, kept in the manifest's settings
     storage/
       opfs.ts               copying into OPFS, reading back, removing
       manifest.ts           what is imported (IndexedDB)

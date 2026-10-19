@@ -104,14 +104,26 @@ callback. In the browser, SDL's audio runs on the main thread through a
 deprecated ScriptProcessorNode, and calling into the mixer from there would
 mean the main thread waiting on the game's locks.
 
-Instead, the mixer runs on the game side and writes into a lock-free ring
-buffer in shared memory. A Wasm Audio Worklet (`-sAUDIO_WORKLET
--sWASM_WORKERS`) reads the ring on the audio thread. This is a small backend
-in `dsound.c` under `__EMSCRIPTEN__`, with the same mixer.
+Instead, a mixer thread of the game's own calls the same `mix()` and writes
+into a lock-free ring buffer in shared memory (`hle_audio_ring_t`, in
+`win32hle.h`: 16384 frames of 16-bit stereo at 44.1 kHz, and the read and
+write counts). This is a small backend in `dsound.c` under `__EMSCRIPTEN__`;
+SDL's audio is not opened. The mixer wakes every 5 ms and keeps about 90 ms queued; each time the worklet
+reports an underrun it keeps 46 ms more, up to 280 ms, because a short sleep,
+or a busy machine, can hold a thread for longer than that in a browser.
 
-Browsers start audio only after a user gesture. The Play screen resumes the
-`AudioContext` on the first click or key. Until then the game runs silently,
-and the ring drops what isn't read.
+The page's end is `public/audio-worklet.js`, an ordinary audio worklet in
+JavaScript, not the Emscripten one: it reads the ring through the wasm memory,
+which is a `SharedArrayBuffer`, with `Atomics`, and needs nothing else from
+the game. It takes 128 frames a quantum and counts the quanta that found the
+ring short (`underruns`). `src/game/audio.ts` makes an `AudioContext` at
+44100 Hz (so nothing is resampled) and the worklet.
+
+Browsers start audio only after a user gesture. While the context is held the
+page shows "Click to start sound", and the first key or click resumes it.
+Until the ring is `live` the mixer keeps real time on its own clock and drops
+what it mixes, so the game's sound buffers' play cursors move and nothing in the
+game waits for the page.
 
 ## Movies
 

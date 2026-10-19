@@ -220,6 +220,9 @@ EMSCRIPTEN_KEEPALIVE void ra2_input_key(int down, int vk, int scan) { push(down 
 EMSCRIPTEN_KEEPALIVE void ra2_quit(void) { push(IN_QUIT, 0, 0, 0); }
 EMSCRIPTEN_KEEPALIVE void ra2_focus(int focused) { push(IN_FOCUS, (uint32_t)(focused != 0), 0, 0); }
 EMSCRIPTEN_KEEPALIVE void ra2_set_volume(float v) { hle_dsound_set_master(v < 0 ? 0 : v > 1 ? 1 : v); }
+/* The sound ring (win32hle.h, hle_audio_ring_t): the page's audio worklet reads it while ra2_audio_live(1) holds. */
+EMSCRIPTEN_KEEPALIVE void *ra2_audio(void) { return hle_audio_ring(); }
+EMSCRIPTEN_KEEPALIVE void ra2_audio_live(int live) { hle_audio_live(live); }
 EMSCRIPTEN_KEEPALIVE void ra2_resize(int w, int h, float dpr) {
     g_sh.view_w = (uint32_t)(w > 0 ? w : 0), g_sh.view_h = (uint32_t)(h > 0 ? h : 0), g_sh.view_dpr = dpr;
 }

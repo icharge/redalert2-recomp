@@ -1,6 +1,8 @@
 import { CrossCircledIcon, ExclamationTriangleIcon } from "@radix-ui/react-icons";
 import { Button, Callout, Code, Flex, Heading, ScrollArea } from "@radix-ui/themes";
 import { useEffect, useRef, useState } from "react";
+import { SoundControl } from "../components/SoundControl";
+import { GameAudio } from "../game/audio";
 import { attachInput } from "../game/input";
 import {
   argsFromQuery,
@@ -11,6 +13,7 @@ import {
 } from "../game/loader";
 import { Presenter } from "../game/presenter";
 import { gameStore, useGameState } from "../game/store";
+import { loadVolume, saveVolume } from "../game/volume";
 import { FrameStats } from "./FrameStats";
 import { LoadingScreen } from "./LoadingScreen";
 import styles from "./Play.module.css";
@@ -27,6 +30,9 @@ export function Play({ files }: { files: FileSource }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const [startError, setStartError] = useState<Error | null>(null);
   const [presenter, setPresenter] = useState<Presenter | null>(null);
+  const [audio, setAudio] = useState<GameAudio | null>(null);
+  const [volume, setVolume] = useState(1);
+  const handle = useRef<GameHandle | null>(null);
   const phase = useGameState((s) => s.phase);
   const copy = useGameState((s) => s.copy);
   const title = useGameState((s) => s.title);
@@ -44,6 +50,17 @@ export function Play({ files }: { files: FileSource }) {
         const presenter = new Presenter(element, game.memory, game.shared);
         presenter.start();
         setPresenter(presenter);
+        handle.current = game;
+        const sound = new GameAudio(game.exports, game.memory);
+        void sound.start();
+        setAudio(sound);
+        // the checks in e2e/ look at the ring through this, as they do at ra2Store
+        if ("ra2Store" in window) (window as unknown as { ra2Audio: GameAudio }).ra2Audio = sound;
+        void loadVolume().then((saved) => {
+          if (cancelled) return;
+          game.exports.ra2_set_volume(saved);
+          setVolume(saved);
+        });
         const detach = attachInput(element, game.exports);
         const observer = new ResizeObserver(([entry]) => {
           if (!entry) return;
@@ -59,6 +76,8 @@ export function Play({ files }: { files: FileSource }) {
         document.addEventListener("visibilitychange", onHidden);
         stop = () => {
           presenter.stop();
+          sound.close();
+          setAudio(null);
           detach();
           observer.disconnect();
           document.removeEventListener("visibilitychange", onHidden);
@@ -82,6 +101,18 @@ export function Play({ files }: { files: FileSource }) {
     <div className={styles.stage}>
       <canvas ref={canvas} className={styles.canvas} tabIndex={0} aria-label="The game" />
       <FrameStats presenter={presenter} />
+      {audio && (
+        <SoundControl
+          audio={audio}
+          volume={volume}
+          onVolume={(next) => {
+            setVolume(next);
+            handle.current?.exports.ra2_set_volume(next);
+            void saveVolume(next);
+          }}
+          giveBack={() => canvas.current?.focus()}
+        />
+      )}
       {waiting && <LoadingScreen state={{ phase, copy, title }} />}
       {startError instanceof GameNotBuilt && (
         <Flex className={styles.overlay} align="center" justify="center" p="6">

@@ -67,6 +67,8 @@ hook (`hle_set_pump_hook`).
 | `ra2_input_key` | `int down, int vk, int scan` | a Windows virtual key and set-1 scan code |
 | `ra2_resize` | `int w, int h, float dpr` | the canvas's CSS size; stored for the game's use (stage 9: a resolution to match the window) |
 | `ra2_set_volume` | `float v` (0 to 1) | `hle_dsound_set_master(v)` |
+| `ra2_audio` | none | the address of the sound ring (`hle_audio_ring_t`); `AudioRing` and `AUDIO_PCM_OFFSET` in protocol.ts say where its words are |
+| `ra2_audio_live` | `int live` | 1 while the page's audio context runs and the worklet reads the ring (the ring is emptied first); 0 and the game's mixer drops what it mixes |
 | `ra2_focus` | `int focused` | the window gained or lost focus: `WM_ACTIVATEAPP` to the game's window |
 | `ra2_quit` | none | posts `WM_CLOSE` to the game's window |
 | `ra2_crash_report` | `const char *why` | prints the lifted function, the registers, the indirect-call ring and the guest stack to stderr. Safe after the game thread has died, because it only reads memory |

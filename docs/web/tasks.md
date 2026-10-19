@@ -102,10 +102,10 @@ Tick a task off here in the same pull request that finishes it.
 
 | ID | Task | Repo | Needs | Size | Done when |
 |---|---|---|---|---|---|
-| W7.1 | `dsound.c`: the lock-free ring and an `__EMSCRIPTEN__` audio worklet backend | pcrecomp | W1.7 | M | a test tone plays under a page with no game |
-| W7.2 | `audio.ts`: resume on the first gesture; the "click to start sound" bar | here | W4.7 | S | sound starts on the first click and not before |
-| W7.3 | Volume: Settings to `ra2_set_volume` | here | W7.1, W7.2 | S | the slider changes the game's volume |
-| W7.4 | 5 minutes of skirmish | here | W7.1, W7.2 | S | no deadlock, no underrun in the log |
+| ~~W7.1~~ | `dsound.c`: the lock-free ring and an `__EMSCRIPTEN__` mixer thread; the worklet is plain JavaScript (D5) | pcrecomp | W1.7 | M | `e2e/audio.mjs`: a test tone plays through the worklet in a page with no game |
+| ~~W7.2~~ | `audio.ts`: resume on the first gesture; the "click to start sound" bar | here | W4.7 | S | Vitest: the context is resumed from a gesture and not before; `e2e/audio.mjs`: the game's sound runs after a click |
+| ~~W7.3~~ | Volume: a slider on the Play screen to `ra2_set_volume`, kept in the manifest's settings | here | W7.1, W7.2 | S | `e2e/audio.mjs`: volume 0 is silent in the ring and it comes back |
+| ~~W7.4~~ | 5 minutes of skirmish | here | W7.1, W7.2 | S | `e2e/audio.mjs --skirmish --minutes 5`: 300 s of battle in two skirmishes, no underrun, the game at 62 fps |
 
 ## Stage 8: movies
 

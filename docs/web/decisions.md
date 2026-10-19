@@ -53,8 +53,12 @@ Expect a much bigger and slower binary.
 
 ## D5. Sound through a Wasm Audio Worklet
 
-**Decided.** The mixer in `dsound.c` fills a ring buffer in shared memory,
-and a Wasm Audio Worklet plays it. SDL's audio isn't used in the browser.
+**Decided.** The mixer in `dsound.c` runs on a thread of its own and fills a
+ring buffer in shared memory, and an audio worklet plays it. SDL's audio isn't
+used in the browser. The worklet is a short JavaScript file reading the ring
+with `Atomics`, not a Wasm Audio Worklet (`-sAUDIO_WORKLET`): it needs no
+code from the game, so the build keeps its flags and nothing in the worklet
+can fault.
 
 **Why.** SDL2's Emscripten audio runs its callback on the main thread
 (ScriptProcessorNode, deprecated), which would need the main thread to take

@@ -121,6 +121,26 @@ export const CursorKind = {
 } as const;
 export type CursorKind = (typeof CursorKind)[keyof typeof CursorKind];
 
+// ---- the sound: a ring in shared memory ---------------------------------------------------
+// ra2_audio() returns the address of hle_audio_ring_t (pcrecomp win32hle.h): words, then 16-bit
+// stereo frames. The game's mixer thread writes `wr`; while `live` is 1 the audio worklet
+// (public/audio-worklet.js) reads and moves `rd`. Both count frames and only go up.
+
+/** Word indexes into the ring header, as an Int32Array over the wasm memory sees it. */
+export const AudioRing = {
+  rd: 0,
+  wr: 1,
+  live: 2,
+  capacity: 3,
+  rate: 4,
+  underruns: 5,
+  mixed: 6,
+  low: 7,
+} as const;
+
+/** Byte offset of the ring's interleaved s16 frames. */
+export const AUDIO_PCM_OFFSET = 32;
+
 // ---- page to game: exported functions -------------------------------------------------
 
 /** The kinds of ra2_input_pointer. */
@@ -131,6 +151,10 @@ export interface Ra2Exports {
   ra2_shared(): number;
   ra2_resize(width: number, height: number, dpr: number): void;
   ra2_set_volume(volume: number): void;
+  /** the address of the sound ring (hle_audio_ring_t) */
+  ra2_audio(): number;
+  /** 1 while the page has an audio context running and reads the ring; 0 otherwise */
+  ra2_audio_live(live: number): void;
   ra2_focus(focused: number): void;
   ra2_quit(): void;
   /** kind: PointerKind; x and y in game pixels; button as the DOM numbers it (0 left, 1 middle, 2 right) */
@@ -146,6 +170,8 @@ export const EXPORT_SIGNATURES: {
   ra2_shared: { returns: "number", args: [] },
   ra2_resize: { returns: null, args: ["number", "number", "number"] },
   ra2_set_volume: { returns: null, args: ["number"] },
+  ra2_audio: { returns: "number", args: [] },
+  ra2_audio_live: { returns: null, args: ["number"] },
   ra2_focus: { returns: null, args: ["number"] },
   ra2_quit: { returns: null, args: [] },
   ra2_input_pointer: { returns: null, args: ["number", "number", "number", "number"] },

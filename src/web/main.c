@@ -306,7 +306,6 @@ int main(int argc, char **argv) {
     const char *game = "game";
     int run = 0;
     setvbuf(stderr, NULL, _IONBF, 0);
-    setenv("SDL_AUDIODRIVER", "none", 0);   /* stage 7 (docs/web/plan.md): silent until the audio worklet */
     /* --args FILE: more arguments, whitespace-separated, # to the end of a
      * line a comment (tools/lan's scripts), as the Windows host reads them. */
     for (int i = 1; i + 1 < argc; i++) {
