@@ -4,7 +4,7 @@
 # cmake/emscripten.cmake, docs/web/toolchain.md).
 #
 #   ./build-web.sh            # build-web/ra2.js + ra2.wasm: Yuri's Revenge
-#   BUILD_DIR=build-web-game CMAKE_ARGS=-DRA2_TARGET=game ./build-web.sh   # Red Alert 2
+#   RA2_TARGET=game ./build-web.sh   # Red Alert 2, alongside Yuri's Revenge
 #   node build-web/ra2.js --run --game ./game --headless --mute
 #
 # Needs a lift (run_lift.py), cmake, ninja and emsdk, which it finds through
@@ -14,7 +14,12 @@ cd "$(dirname "$0")"
 # The Emscripten this was built and tested with: another one may work, but a
 # bug report should say which.
 EMSCRIPTEN_VERSION=6.0.12
-BUILD_DIR=${BUILD_DIR:-build-web}
+RA2_TARGET=${RA2_TARGET:-gamemd}
+case "$RA2_TARGET" in
+  gamemd) BUILD_DIR=${BUILD_DIR:-build-web} ;;
+  game) BUILD_DIR=${BUILD_DIR:-build-web-game} ;;
+  *) echo "RA2_TARGET must be gamemd or game" >&2; exit 1 ;;
+esac
 if [ -z "$PCRECOMP" ]; then
   if [ ! -d ../pcrecomp ] && [ -d ../tools/runtime/win32hle ]; then PCRECOMP=$(cd ../tools && pwd)
   else PCRECOMP=$(cd .. && pwd)/pcrecomp; fi
@@ -26,8 +31,6 @@ if ! command -v emcc >/dev/null 2>&1; then
 fi
 have=$(emcc --version | sed -n '1s/.* \([0-9][0-9.]*\) (.*/\1/p')
 [ "$have" = "$EMSCRIPTEN_VERSION" ] || echo "note: Emscripten $have; this was built with $EMSCRIPTEN_VERSION" >&2
-if [ ! -f "$BUILD_DIR/build.ninja" ]; then
-  # shellcheck disable=SC2086  # CMAKE_ARGS is a list of flags
-  cmake -S . -B "$BUILD_DIR" -G Ninja -DCMAKE_TOOLCHAIN_FILE=cmake/emscripten.cmake -DPCRECOMP="$PCRECOMP" $CMAKE_ARGS
-fi
+# shellcheck disable=SC2086  # CMAKE_ARGS is a list of flags
+cmake -S . -B "$BUILD_DIR" -G Ninja -DCMAKE_TOOLCHAIN_FILE=cmake/emscripten.cmake -DPCRECOMP="$PCRECOMP" -DRA2_TARGET="$RA2_TARGET" $CMAKE_ARGS
 cmake --build "$BUILD_DIR" "$@"

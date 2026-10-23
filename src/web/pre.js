@@ -56,7 +56,7 @@ Module.ra2MountGame = function (dir, memfs) {
     FS.mount(NODEFS, { root: abs }, '/game');
     return 1;
   }
-  var keep = ['.mix', '.bag', '.idx', '.ini', '.csf', '.mmx', '.map', '.mpr', '.yrm', '.exe', '.dll'];
+  var keep = ['.mix', '.bag', '.idx', '.ini', '.csf', '.fnt', '.mmx', '.map', '.mpr', '.yrm', '.exe', '.dll'];
   var bytes = 0;
   fs.readdirSync(abs).forEach(function (name) {
     var low = name.toLowerCase(), file = path.join(abs, name);

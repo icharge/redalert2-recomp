@@ -1,30 +1,43 @@
-# Writes build.json for the page: which game this build runs and the exe it was lifted from (the import's
-# checks, web/src/storage/install.ts), and an id for the build (the start of ra2.wasm's SHA-256), which the
-# service worker keys its cache of the game's files by (web/src/sw.ts). Run by CMakeLists.txt when it
-# configures and after each link:
-#
-#   cmake -DTARGET_H=<recomp_target.h> -DOUT=<build.json> [-DWASM=<ra2.wasm>] -P build_json.cmake
-#
-# Without a ra2.wasm there is no id yet; the page and the worker cope with that.
+# Publish one successfully linked module without removing the other game.
+# cmake -DTARGET_H=... -DOUT=.../build.json -DLOCK=... -DWASM=.../ra2.wasm -P build_json.cmake
 file(READ "${TARGET_H}" _target)
-string(REGEX MATCH "define RA2_EXE_NAME \"([^\"]+)\"" _m "${_target}")
-set(_exe "${CMAKE_MATCH_1}")
-string(REGEX MATCH "define RA2_INI_NAME \"([^\"]+)\"" _m "${_target}")
-set(_ini "${CMAKE_MATCH_1}")
-string(REGEX MATCH "define RA2_TITLE \"([^\"]+)\"" _m "${_target}")
-set(_title "${CMAKE_MATCH_1}")
+foreach(_field EXE_NAME INI_NAME TITLE)
+  string(REGEX MATCH "define RA2_${_field} \"([^\"]+)\"" _m "${_target}")
+  set(_${_field} "${CMAKE_MATCH_1}")
+endforeach()
 string(REGEX MATCH "define RA2_EXE_STAMP (0x[0-9A-Fa-f]+)u" _m "${_target}")
 math(EXPR _stamp "${CMAKE_MATCH_1}" OUTPUT_FORMAT DECIMAL)
 if(_target MATCHES "RA2_TARGET_GAMEMD")
   set(_id ra2md)
+  set(_script "/game/ra2.js")
 else()
   set(_id ra2)
+  set(_script "/game/ra2/ra2.js")
 endif()
-set(_build "")
-if(WASM AND EXISTS "${WASM}")
-  file(SHA256 "${WASM}" _sha)
-  string(SUBSTRING "${_sha}" 0 16 _short)
-  set(_build ",\"build\":\"${_short}\"")
+if(NOT WASM OR NOT EXISTS "${WASM}")
+  message(FATAL_ERROR "Publish build.json only after linking the module")
 endif()
-file(WRITE "${OUT}"
-  "{\"games\":{\"${_id}\":{\"title\":\"${_title}\",\"exe\":\"${_exe}\",\"ini\":\"${_ini}\",\"stamp\":${_stamp}}}${_build}}\n")
+get_filename_component(_module_dir "${WASM}" DIRECTORY)
+set(_hashes "")
+foreach(_ext js wasm data)
+  file(SHA256 "${_module_dir}/ra2.${_ext}" _sha)
+  string(APPEND _hashes "${_sha}")
+endforeach()
+string(SHA256 _sha "${_hashes}")
+string(SUBSTRING "${_sha}" 0 16 _short)
+set(_info "{\"title\":\"${_TITLE}\",\"exe\":\"${_EXE_NAME}\",\"ini\":\"${_INI_NAME}\",\"stamp\":${_stamp},\"script\":\"${_script}\",\"build\":\"${_short}\"}")
+# Lock outside the served directory so two target builds can publish safely.
+if(NOT LOCK)
+  message(FATAL_ERROR "Pass LOCK outside the served directory")
+endif()
+file(LOCK "${LOCK}" GUARD PROCESS TIMEOUT 60)
+set(_games "{}")
+if(EXISTS "${OUT}")
+  file(READ "${OUT}" _previous)
+  string(JSON _games GET "${_previous}" games)
+endif()
+string(JSON _games SET "${_games}" "${_id}" "${_info}")
+# The worker's cache changes if either game changes, in either build order.
+string(SHA256 _sha "${_games}")
+string(SUBSTRING "${_sha}" 0 16 _build)
+file(WRITE "${OUT}" "{\"games\":${_games},\"build\":\"${_build}\"}\n")

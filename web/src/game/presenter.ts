@@ -36,6 +36,7 @@ export class Presenter {
     private readonly shared: number,
     private readonly backdrop?: HTMLCanvasElement | null,
     private readonly cursorOverlay?: HTMLImageElement | null,
+    private readonly capturePointer?: (active: boolean) => void,
   ) {
     const context = canvas.getContext("2d", { alpha: false });
     if (!context) throw new Error("this browser gave no 2D canvas");
@@ -130,6 +131,7 @@ export class Presenter {
       );
     }
     this.drawCursorOverlay(word);
+    this.capturePointer?.(word(Shared.frameW) > 0 && word(Shared.cursorKind) === CursorKind.None);
   }
 
   private drawCursorOverlay(word: (index: number) => number): void {

@@ -3,6 +3,7 @@
 import { chromium } from "playwright-core";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
+import { serveGame } from "./files-server.mjs";
 
 export function options(argv) {
   const option = (name, fallback) => {
@@ -15,6 +16,7 @@ export function options(argv) {
     headed: argv.includes("--headed"),
     chrome: process.env.CHROME_PATH ?? "C:/Program Files/Google/Chrome/Application/chrome.exe",
     pageArgs: argv.filter((a, i) => argv[i - 1] === "--arg"),
+    testGame: option("--game", null),
   };
 }
 
@@ -25,7 +27,13 @@ export async function startPage(opts) {
     headless: !opts.headed,
     args: ["--no-sandbox"],
   });
-  const page = await browser.newPage({ viewport: { width: 1280, height: 960 } });
+  const context = await browser.newContext({ viewport: { width: 1280, height: 960 }, serviceWorkers: "block" });
+  if (opts.testGame) {
+    const server = await serveGame(path.resolve(opts.testGame), new URL(opts.url).origin);
+    await server.route(context);
+    browser.on("disconnected", () => { void server.close(); });
+  }
+  const page = await context.newPage();
   const lines = [];
   /** Every line the game printed (the page keeps only the last 3000). */
   const all = [];
@@ -51,11 +59,14 @@ export async function startPage(opts) {
     page.evaluate(
       ([gx, gy]) => {
         const c = document.querySelector("canvas");
+        const size = window.ra2Store?.getSnapshot().size;
+        const width = size?.w ?? c.width;
+        const height = size?.h ?? c.height;
         const r = c.getBoundingClientRect();
-        const scale = Math.min(r.width / c.width, r.height / c.height);
+        const scale = Math.min(r.width / width, r.height / height);
         return {
-          x: r.left + (r.width - c.width * scale) / 2 + (gx + 0.5) * scale,
-          y: r.top + (r.height - c.height * scale) / 2 + (gy + 0.5) * scale,
+          x: r.left + (r.width - width * scale) / 2 + (gx + 0.5) * scale,
+          y: r.top + (r.height - height * scale) / 2 + (gy + 0.5) * scale,
         };
       },
       [x, y],
@@ -85,7 +96,8 @@ export async function startPage(opts) {
 
   // `dev`: straight to Play with the dev server's game folder, not the Import and Library screens
   const url = new URL(opts.url);
-  if (!opts.noDev) url.searchParams.set("dev", "1");
+  if (opts.testGame) url.searchParams.set("test", "1");
+  else if (!opts.noDev) url.searchParams.set("dev", "1");
   for (const arg of opts.pageArgs) url.searchParams.append("arg", arg);
   await page.goto(url.toString());
   const started = Date.now();

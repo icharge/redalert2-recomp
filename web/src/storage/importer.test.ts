@@ -6,8 +6,15 @@ import { Manifest } from "./manifest";
 import type { CopyTarget } from "./opfs";
 
 const STAMP = 0x3bdf544e;
+const RA2_STAMP = 0x3b1ebbed;
 const build: BuildInfo = {
   games: { ra2md: { title: "Yuri's Revenge", exe: "gamemd.exe", ini: "RA2MD.INI", stamp: STAMP } },
+};
+const bothBuild: BuildInfo = {
+  games: {
+    ra2: { title: "Red Alert 2", exe: "game.exe", ini: "RA2.INI", stamp: RA2_STAMP },
+    ra2md: { title: "Yuri's Revenge", exe: "gamemd.exe", ini: "RA2MD.INI", stamp: STAMP },
+  },
 };
 
 /** The first 4 KB of a PE file with a timestamp in it. */
@@ -137,6 +144,40 @@ describe("runImport", () => {
     // the movie archive is a 12-byte empty one in its place
     expect(seen.at(-1)).toBe(20 + 10 + 10 + 40 + 30 + 3 + 12);
     expect(target.files.get("game/ra2md/movmd01.mix")).toBe(12);
+  });
+
+  it("imports both games and keeps their shared files in OPFS only once", async () => {
+    const manifest = await Manifest.open(new IDBFactory());
+    const target = memoryTarget();
+    const both = [
+      file("game.exe", 21, peHead(RA2_STAMP)),
+      file("gamemd.exe", 20, peHead(STAMP)),
+      file("Blowfish.dll", 10),
+      file("binkw32.dll", 10),
+      file("ra2.mix", 40),
+      file("ra2md.mix", 30),
+      file("expandmd01.mix", 25),
+      file("rules.ini", 5),
+      file("rulesmd.ini", 6),
+    ];
+    const prepared = await prepareImport(source(both), bothBuild, all, roomy);
+    expect(prepared.plan.games).toEqual(["ra2", "ra2md"]);
+    expect(prepared.exes).toEqual({
+      ra2: { ok: true, message: null },
+      ra2md: { ok: true, message: null },
+    });
+    await runImport({ prepared, build: bothBuild, manifest, target });
+
+    const ra2 = await manifest.getGame("ra2");
+    const yuri = await manifest.getGame("ra2md");
+    expect(ra2?.complete).toBe(true);
+    expect(yuri?.complete).toBe(true);
+    expect(ra2?.files["ra2.mix"]?.home).toBe("ra2");
+    expect(yuri?.files["ra2.mix"]?.home).toBe("ra2");
+    expect([...target.files.keys()].filter((path) => path.endsWith("/ra2.mix"))).toEqual([
+      "game/ra2/ra2.mix",
+    ]);
+    expect(target.files.has("game/ra2md/ra2.mix")).toBe(false);
   });
 
   it("takes up where a cancelled import stopped, copying only what is left", async () => {

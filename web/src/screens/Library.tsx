@@ -71,7 +71,7 @@ export function Library({
           </Callout.Root>
         )}
         {games.map((game) => (
-          <Card key={game.id} size="3">
+          <Card key={game.id} size="3" data-game-id={game.id}>
             <Flex justify="between" align="center" gap="4" wrap="wrap">
               <Flex direction="column" gap="1">
                 <Heading size="4">{game.title}</Heading>

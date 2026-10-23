@@ -43,9 +43,16 @@ The lift is the same as for Windows and Linux. `src/recomp/gen/` from
 |---|---|
 | `cmake/emscripten.cmake` | toolchain file: wraps emsdk's `Emscripten.cmake` and sets the flags below |
 | `CMakeLists.txt` | an `if(EMSCRIPTEN)` branch beside the Linux one: `src/web/*.c`, `win32hle`, the generated C |
-| `build-web.sh`, `build-web.cmd` | configure and build into `build-web/` (`build-web-game/` for Red Alert 2), then copy `ra2.js` and `ra2.wasm` into `web/public/game/` (a post-build step in `CMakeLists.txt`; `WEB_OUT` changes where) |
+| `build-web.sh`, `build-web.cmd` | configure and build into `build-web/` (Yuri's Revenge) or `build-web-game/` (Red Alert 2); copy the modules into `web/public/game/` and `web/public/game/ra2/`, respectively, and update the shared `build.json` (a post-build step in `CMakeLists.txt`; `WEB_OUT` changes the root) |
 | `tools/build-ffmpeg-web.sh`, `.cmd`, `tools/ffmpeg-web.mjs` | configure FFmpeg for the Bink decoder and list the files to compile (no GNU make here) |
 | `src/web/main.c` | the browser host: `src/linux/main.c` without signals, `popen` or the watchdog, plus the exported functions in [protocol.md](protocol.md) |
+
+Build Yuri's Revenge with the default target. To build the separate Red Alert 2
+module as well, run `RA2_TARGET=game ./build-web.sh` on Linux/macOS, or set
+`RA2_TARGET=game` and run `build-web.cmd` from Command Prompt on Windows. Each
+target has its own CMake directory and lifted sources (`src/recomp/gen/` for
+Yuri's Revenge, `src/recomp/gen_game/` for Red Alert 2); building one does not
+replace the other. The page loads the matching module for each imported game.
 
 ## Compile flags
 

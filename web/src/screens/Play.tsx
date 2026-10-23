@@ -1,11 +1,12 @@
 import { CrossCircledIcon, ExclamationTriangleIcon } from "@radix-ui/react-icons";
-import { Button, Callout, Code, Flex, Heading, ScrollArea } from "@radix-ui/themes";
+import { Button, Callout, Flex, Heading, ScrollArea } from "@radix-ui/themes";
 import { useEffect, useRef, useState } from "react";
 import { SoundControl } from "../components/SoundControl";
 import { SettingsDialog } from "../components/SettingsDialog";
 import { Setting } from "../game/protocol";
 import {
   enterFullscreen,
+  autoLockPointer,
   leaveFullscreen,
   lockPointer,
   releaseBrowserControls,
@@ -27,7 +28,11 @@ import { LoadingScreen } from "./LoadingScreen";
 import styles from "./Play.module.css";
 
 // The game starts once per page load, whatever React remounts (StrictMode, a screen switch).
-declare global { interface Window { ra2Session?: Promise<GameHandle> } }
+declare global {
+  interface Window {
+    ra2Session?: Promise<GameHandle>;
+  }
+}
 function startOnce(files: FileSource): Promise<GameHandle> {
   window.ra2Session ??= startGame({ files, args: argsFromQuery(window.location.search) });
   return window.ra2Session;
@@ -47,7 +52,6 @@ export function Play({ files }: { files: FileSource }) {
   const [pointerLocked, setPointerLocked] = useState(false);
   const [browserError, setBrowserError] = useState<string | null>(null);
   const handle = useRef<GameHandle | null>(null);
-  const pendingPointer = useRef(false);
   const phase = useGameState((s) => s.phase);
   const copy = useGameState((s) => s.copy);
   const title = useGameState((s) => s.title);
@@ -62,10 +66,6 @@ export function Play({ files }: { files: FileSource }) {
   useEffect(() => {
     if (!settings || settings.open || !canvas.current) return;
     canvas.current.focus();
-    if (pendingPointer.current) {
-      pendingPointer.current = false;
-      void lockPointer(canvas.current).catch((e: unknown) => setBrowserError(String(e)));
-    }
   }, [settings]);
   useEffect(() => {
     if (!restart) return;
@@ -78,9 +78,9 @@ export function Play({ files }: { files: FileSource }) {
   }, [restart, files]);
 
   const toggleFullscreen = () => {
-    void (document.fullscreenElement ? leaveFullscreen() : enterFullscreen(document.documentElement)).catch(
-      (e: unknown) => setBrowserError(e instanceof Error ? e.message : String(e)),
-    );
+    void (
+      document.fullscreenElement ? leaveFullscreen() : enterFullscreen(document.documentElement)
+    ).catch((e: unknown) => setBrowserError(e instanceof Error ? e.message : String(e)));
   };
   useEffect(() => {
     const full = () => setFullscreen(!!document.fullscreenElement);
@@ -102,7 +102,20 @@ export function Play({ files }: { files: FileSource }) {
     startOnce(files).then(
       (game) => {
         if (cancelled) return;
-        const presenter = new Presenter(element, game.memory, game.shared, backdrop.current, cursor.current);
+        const pointer = autoLockPointer(element);
+        const presenter = new Presenter(
+          element,
+          game.memory,
+          game.shared,
+          backdrop.current,
+          cursor.current,
+          (active) =>
+            pointer.update(
+              active &&
+                gameStore.getSnapshot().phase === "running" &&
+                !gameStore.getSnapshot().settings?.open,
+            ),
+        );
         presenter.start();
         setPresenter(presenter);
         handle.current = game;
@@ -126,7 +139,7 @@ export function Play({ files }: { files: FileSource }) {
                 void (
                   document.fullscreenElement
                     ? leaveFullscreen()
-                  : enterFullscreen(document.documentElement)
+                    : enterFullscreen(document.documentElement)
                 ).catch((e: unknown) => setBrowserError(String(e)));
               return true;
             }
@@ -155,6 +168,7 @@ export function Play({ files }: { files: FileSource }) {
         document.addEventListener("visibilitychange", onHidden);
         stop = () => {
           presenter.stop();
+          pointer.dispose();
           sound.close();
           setAudio(null);
           detach();
@@ -202,8 +216,8 @@ export function Play({ files }: { files: FileSource }) {
         onPointerLock={() => {
           if (document.pointerLockElement) document.exitPointerLock();
           else if (canvas.current) {
-            pendingPointer.current = true;
             handle.current?.exports.ra2_setting(Setting.Menu, 0, 0);
+            void lockPointer(canvas.current).catch((e: unknown) => setBrowserError(String(e)));
           }
         }}
         command={(key, value, extra = 0) => handle.current?.exports.ra2_setting(key, value, extra)}
@@ -241,10 +255,7 @@ export function Play({ files }: { files: FileSource }) {
             <Callout.Icon>
               <ExclamationTriangleIcon />
             </Callout.Icon>
-            <Callout.Text>
-              The game isn't built. Run <Code>build-web.cmd</Code> (or <Code>./build-web.sh</Code>)
-              in the repository root, then reload.
-            </Callout.Text>
+            <Callout.Text>{startError.message}</Callout.Text>
           </Callout.Root>
         </Flex>
       )}

@@ -141,8 +141,9 @@ export function Import({ deps, onDone }: { deps: ImportDeps; onDone: () => void 
         <Flex direction="column" gap="4">
           <Heading size="6">Bring your game</Heading>
           <Text color="gray">
-            Pick the folder Yuri&apos;s Revenge is installed in. The files are copied into this
-            browser and stay there; nothing is uploaded.
+            Pick the folder Red Alert 2 or Yuri&apos;s Revenge is installed in. If it contains both,
+            they can share files. The files are copied into this browser and stay there; nothing is
+            uploaded.
           </Text>
 
           {stage.name === "choose" && (

@@ -7,7 +7,7 @@ export interface BuildInfo {
   games: Partial<
     Record<
       GameId,
-      { title: string; exe: string; ini: string; /** the PE timestamp lifted */ stamp: number }
+      { title: string; exe: string; ini: string; script?: string; build?: string; /** the PE timestamp lifted */ stamp: number }
     >
   >;
 }
@@ -55,7 +55,7 @@ export function classify(path: string): Classified | null {
   if (/^(movies|movmd)[^/]*\.mix$/.test(name)) return { kind: "movie", needs: md };
   if (name.endsWith(".mix")) return { kind: "archive", needs: md };
   if (/^audio(md)?\.(bag|idx)$/.test(name)) return { kind: "sound", needs: md };
-  if (/\.(ini|csf|mmx|map|mpr|yrm)$/.test(name)) return { kind: "data", needs: md };
+  if (/\.(ini|csf|fnt|mmx|map|mpr|yrm)$/.test(name)) return { kind: "data", needs: md };
   return null;
 }
 

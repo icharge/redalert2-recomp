@@ -27,7 +27,7 @@ await click(719, 263); // Start Game
 await at(52);
 const size = await t.page.evaluate(() => {
   const c = document.querySelector("canvas");
-  return { w: c.width, h: c.height };
+  return window.ra2Store?.getSnapshot().size ?? { w: c.width, h: c.height };
 });
 console.log(`battle at ${size.w}x${size.h}`);
 // the sidebar's menu buttons sit 3% in from the right edge; Save Game is the third

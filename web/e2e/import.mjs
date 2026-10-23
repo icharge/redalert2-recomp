@@ -65,9 +65,9 @@ await page.getByText("Bring your game").waitFor({ timeout: 30_000 });
 check(true, "a browser with nothing imported shows the Import screen");
 
 await page.locator('input[type="file"]').setInputFiles(gameDir);
-await page.getByText(/^Found Yuri's Revenge/).waitFor({ timeout: 120_000 });
-console.log("    " + (await page.getByText(/^Found Yuri's Revenge/).innerText()));
-check(true, "the folder is read, and its exe passes the build check");
+await page.getByText(/^Found /).waitFor({ timeout: 120_000 });
+console.log("    " + (await page.getByText(/^Found /).innerText()));
+check(true, "the folder is read, and each available exe passes the build check");
 
 if (argv.includes("--movies"))
   await page.getByRole("checkbox", { name: /Include the movies/ }).click();
@@ -77,13 +77,30 @@ await page.getByRole("button", { name: /^Import / }).click();
 await page.getByText("Your games").waitFor({ timeout: 900_000 });
 console.log(`    imported in ${((Date.now() - started) / 1000).toFixed(0)} s`);
 check(true, "the import finishes and the Library shows");
-check(
-  await page.getByText("Yuri's Revenge").first().isVisible(),
-  "the Library lists Yuri's Revenge",
-);
+check(await page.locator('[data-game-id="ra2md"]').isVisible(), "the Library lists Yuri's Revenge");
+const hasRa2 = (await page.locator('[data-game-id="ra2"]').count()) > 0;
+if (argv.includes("--both")) check(hasRa2, "the Library lists both games from one import");
+const opfsGameFiles = async () =>
+  page.evaluate(async () => {
+    const root = await navigator.storage.getDirectory();
+    const gameRoot = await root.getDirectoryHandle("game");
+    const files = [];
+    const walk = async (dir, prefix) => {
+      for await (const [name, handle] of dir.entries()) {
+        if (handle.kind === "directory") await walk(handle, `${prefix}${name}/`);
+        else files.push(`${prefix}${name}`);
+      }
+    };
+    await walk(gameRoot, "");
+    return files;
+  });
+if (hasRa2) {
+  const shared = (await opfsGameFiles()).filter((name) => name.toLowerCase().endsWith("/ra2.mix"));
+  check(shared.length === 1, "the shared RA2 archive is stored once");
+}
 
 // ---- play from OPFS -----------------------------------------------------------------------------
-await page.getByRole("button", { name: "Play" }).click();
+await page.locator('[data-game-id="ra2md"]').getByRole("button", { name: "Play" }).click();
 await running(page);
 check(true, "the game starts from the copy in OPFS and reaches its main menu");
 
@@ -108,7 +125,7 @@ await page.getByText("Your games").waitFor({ timeout: 30_000 });
 check(true, "after a reload the Library is there without importing again");
 // the saves come out as a zip a desktop install can take
 const download = page.waitForEvent("download");
-await page.getByText("Download saves").click();
+await page.locator('[data-game-id="ra2md"]').getByText("Download saves").click();
 const zipFile = await download;
 const zipPath = await zipFile.path();
 const zipBytes = readFileSync(zipPath);
@@ -117,7 +134,7 @@ check(
     zipBytes.includes(Buffer.from("Saved Games/e2e.sav")),
   "Download saves gives a zip with the saved game in it",
 );
-await page.getByRole("button", { name: "Play" }).click();
+await page.locator('[data-game-id="ra2md"]').getByRole("button", { name: "Play" }).click();
 await running(page);
 const saved = await page.evaluate(() => {
   try {
@@ -128,14 +145,37 @@ const saved = await page.evaluate(() => {
 });
 check(saved === "a save from the e2e check", "a file the game wrote before the reload is back");
 
-// ---- remove -----------------------------------------------------------------------------------------
+// ---- Red Alert 2 can also play from the same shared import ---------------------------------------
+if (hasRa2) {
+  await context.close();
+  context = await launch();
+  page = context.pages()[0] ?? (await context.newPage());
+  await page.goto(address);
+  await page.getByText("Your games").waitFor({ timeout: 30_000 });
+  await page.locator('[data-game-id="ra2"]').getByRole("button", { name: "Play" }).click();
+  await running(page);
+  check(true, "Red Alert 2 starts from the shared import in OPFS");
+}
+
+// ---- remove --------------------------------------------------------------------------------------
 await context.close();
 context = await launch();
 page = context.pages()[0] ?? (await context.newPage());
 await page.goto(address);
 await page.getByText("Your games").waitFor({ timeout: 30_000 });
-await page.getByRole("button", { name: "Remove…" }).click();
-await page.getByRole("button", { name: "Remove", exact: true }).click();
+const removeGame = async (id) => {
+  const card = page.locator(`[data-game-id="${id}"]`);
+  await card.getByRole("button", { name: "Remove…" }).click();
+  await page.getByRole("button", { name: "Remove", exact: true }).click();
+  await card.waitFor({ state: "detached", timeout: 60_000 });
+};
+await removeGame("ra2md");
+if (hasRa2) {
+  check(await page.locator('[data-game-id="ra2"]').isVisible(), "removing Yuri keeps Red Alert 2");
+  const shared = (await opfsGameFiles()).filter((name) => name.toLowerCase().endsWith("/ra2.mix"));
+  check(shared.length === 1, "shared files remain available to the other game");
+  await removeGame("ra2");
+}
 await page.getByText("Bring your game").waitFor({ timeout: 60_000 });
 /** Every file under an OPFS folder, as paths. */
 const left = await page.evaluate(async () => {
@@ -152,7 +192,10 @@ const left = await page.evaluate(async () => {
 });
 const gameFiles = left.game.filter((p) => p.startsWith("game/"));
 const saveFiles = left.game.filter((p) => p.startsWith("save/"));
-check(gameFiles.length === 0, "removing the game deletes its files and goes back to Import");
+check(
+  gameFiles.length === 0,
+  "removing the imported game(s) deletes their files and goes back to Import",
+);
 console.log("    left in OPFS:", JSON.stringify({ game: gameFiles.length, save: saveFiles }));
 check(saveFiles.length > 0, "its saves are kept");
 

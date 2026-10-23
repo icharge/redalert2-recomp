@@ -3,7 +3,7 @@
 
 /** The files of one build of the game: they must all come from the same build, or the page and the game disagree. */
 export function isGameBuildFile(pathname: string): boolean {
-  return /^\/game\/ra2\.(js|wasm|data)$/.test(pathname);
+  return /^\/game\/(ra2\/)?ra2\.(js|wasm|data)$/.test(pathname);
 }
 
 export const BUILD_JSON = "/game/build.json";

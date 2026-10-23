@@ -5,14 +5,17 @@ import type { GameRecord } from "../storage/manifest";
 import { opfsSaveStore, opfsTarget, readGameFile } from "../storage/opfs";
 import { restoreSaves, startSaveSync, type FsLike, type SaveSync } from "../storage/saves";
 import { loadMods } from "../storage/mods";
+import type { GameId } from "../storage/install";
 
-/** Where the build leaves the game (web/public/game, build-web.sh). */
+/** Yuri's Revenge module; Red Alert 2 is nested below /game/ra2. */
 export const GAME_SCRIPT = "/game/ra2.js";
+export const gameScript = (game: GameId) => game === "ra2" ? "/game/ra2/ra2.js" : GAME_SCRIPT;
+const gameIni = (game: GameId) => game === "ra2" ? "ra2.ini" : "ra2md.ini";
 
-/** There is no ra2.js to load: the game has not been built (docs/web/toolchain.md). */
+/** No module for this game is present (docs/web/toolchain.md). */
 export class GameNotBuilt extends Error {
-  constructor() {
-    super("The game is not built. Run build-web.cmd (or build-web.sh) in the repository root.");
+  constructor(game: GameId = "ra2md") {
+    super(`The game is not built. Run build-web.cmd (or build-web.sh) in the repository root${game === "ra2" ? " with RA2_TARGET=game" : ""}.`);
     this.name = "GameNotBuilt";
   }
 }
@@ -55,11 +58,15 @@ export interface GameHandle {
 
 /** Where /game comes from. The import (stage 6) adds OPFS; for now the dev server's folder. */
 export type FileSource =
-  | { kind: "dev-folder"; video?: VideoSize | null }
-  | { kind: "test-folder"; video?: VideoSize | null }
+  | { kind: "dev-folder"; game?: GameId; video?: VideoSize | null }
+  | { kind: "test-folder"; game?: GameId; video?: VideoSize | null }
   /** a game the import put in OPFS (storage/importer.ts) */
   | { kind: "opfs"; record: GameRecord; video?: VideoSize | null }
-  | { kind: "already-there" };
+  | { kind: "already-there"; game?: GameId };
+
+export function sourceGame(files: FileSource): GameId {
+  return files.kind === "opfs" ? files.record.id : files.game ?? "ra2md";
+}
 
 /** A battle's picture size. The game takes it from RA2MD.INI when a game starts. */
 export interface VideoSize {
@@ -119,10 +126,10 @@ export function gameArguments(extra: string[] = []): string[] {
   return ["--run", "--game", "/game", ...extra];
 }
 
-/** Whether ra2.js is there. The dev server answers a missing file with the page, so look at what came back. */
-export async function isBuilt(fetcher: typeof fetch = fetch): Promise<boolean> {
+/** Whether this game's module is there. The dev server answers a missing file with the page, so check its content type. */
+export async function isBuilt(fetcher: typeof fetch = fetch, game: GameId = "ra2md"): Promise<boolean> {
   try {
-    const response = await fetcher(GAME_SCRIPT, { method: "HEAD" });
+    const response = await fetcher(gameScript(game), { method: "HEAD" });
     return response.ok && (response.headers.get("content-type") ?? "").includes("javascript");
   } catch {
     return false;
@@ -172,6 +179,7 @@ async function loadDevFiles(
   video: VideoSize | null = null,
   fetcher: typeof fetch = fetch,
   base = "/dev-game",
+  game: GameId = "ra2md",
 ): Promise<void> {
   const response = await fetcher(`${base}/index.json`);
   if (!response.ok)
@@ -205,7 +213,7 @@ async function loadDevFiles(
     });
     // the picture size asked for in the address replaces what the game's own settings say
     const stored =
-      video && file.name.toLowerCase() === "ra2md.ini"
+      video && file.name.toLowerCase() === gameIni(game)
         ? new TextEncoder().encode(withVideoSize(new TextDecoder("latin1").decode(bytes), video))
         : bytes;
     fs.writeFile(`/game/${file.name}`, stored);
@@ -250,7 +258,7 @@ async function loadOpfsFiles(
     }
     const bytes = await readGameFile(entry.home, name);
     const stored =
-      video && name.toLowerCase() === "ra2md.ini"
+      video && name.toLowerCase() === gameIni(record.id)
         ? new TextEncoder().encode(withVideoSize(new TextDecoder("latin1").decode(bytes), video))
         : bytes;
     fs.writeFile(`/game/${name}`, stored);
@@ -289,8 +297,11 @@ function createHandle(module: Ra2Module, saves: SaveSync | null): GameHandle {
  */
 export async function startGame(options: StartOptions): Promise<GameHandle> {
   const store = options.store ?? gameStore;
+  const game = sourceGame(options.files);
+  const scriptUrl = gameScript(game);
+  const moduleBase = scriptUrl.slice(0, scriptUrl.lastIndexOf("/") + 1);
   store.begin();
-  if (!(await isBuilt())) throw new GameNotBuilt();
+  if (!(await isBuilt(fetch, game))) throw new GameNotBuilt(game);
 
   return new Promise<GameHandle>((resolve, reject) => {
     const fail = (error: unknown) => {
@@ -304,7 +315,7 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
       print: (line: string) => store.line(line),
       printErr: (line: string) => store.line(line),
       onAbort: (what: unknown) => store.crashed(`The game aborted: ${String(what)}`),
-      locateFile: (path: string) => `/game/${path}`,
+      locateFile: (path: string) => `${moduleBase}${path}`,
       preRun: [] as (() => void)[],
     } as Partial<Ra2Module> as Ra2Module;
 
@@ -333,7 +344,7 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
         if (!fs) return fail(new Error("the game's file system is not up yet"));
         const video = files.video;
         const base = files.kind === "test-folder" ? "/test-game" : "/dev-game";
-        loadDevFiles(fs, store, video ?? null, fetch, base).then(
+        loadDevFiles(fs, store, video ?? null, fetch, base, game).then(
           () => module.removeRunDependency("game-files"),
           (error: unknown) => fail(error),
         );
@@ -349,8 +360,8 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
 
     window.Module = module;
     const script = document.createElement("script");
-    script.src = GAME_SCRIPT;
-    script.onerror = () => fail(new GameNotBuilt());
+    script.src = scriptUrl;
+    script.onerror = () => fail(new GameNotBuilt(game));
     document.head.append(script);
   });
 }

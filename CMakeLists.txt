@@ -113,18 +113,23 @@ if(EMSCRIPTEN)
     target_link_options(ra2 PRIVATE ${WEB_LINK_OPT})
   endif()
   set_target_properties(ra2 PROPERTIES SUFFIX ".js" LINK_DEPENDS "${CMAKE_SOURCE_DIR}/src/web/pre.js;${CMAKE_SOURCE_DIR}/src/web/extern-pre.js")
-  # Where the page (web/) loads the game from, once it is scaffolded
-  set(WEB_OUT ${CMAKE_SOURCE_DIR}/web/public/game CACHE PATH "where the page finds ra2.js and ra2.wasm")
+  # Keep the two classic Emscripten modules separate. The expansion retains
+  # its original URL; base RA2 lives below ra2/ in the same page build.
+  set(WEB_OUT ${CMAKE_SOURCE_DIR}/web/public/game CACHE PATH "root of the page's game modules")
+  set(_module_out ${WEB_OUT})
+  if(RA2_TARGET STREQUAL "game")
+    set(_module_out ${WEB_OUT}/ra2)
+  endif()
   add_custom_command(TARGET ra2 POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${WEB_OUT}
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:ra2> $<TARGET_FILE_DIR:ra2>/ra2.wasm $<TARGET_FILE_DIR:ra2>/ra2.data ${WEB_OUT})
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${_module_out}
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:ra2> $<TARGET_FILE_DIR:ra2>/ra2.wasm $<TARGET_FILE_DIR:ra2>/ra2.data ${_module_out})
   # build.json: which game this build runs, the exe it was lifted from, and an id for this build
   # (cmake/build_json.cmake). Written when cmake configures, and again after each link, which is when
   # there is a ra2.wasm to take the id from. A change to the lifted target header configures again.
   set(_target_h ${CMAKE_SOURCE_DIR}/${GEN_DIR}/recomp_target.h)
   set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${_target_h})
-  set(_build_json ${CMAKE_COMMAND} -DTARGET_H=${_target_h} -DOUT=${WEB_OUT}/build.json)
-  execute_process(COMMAND ${_build_json} -DWASM=${WEB_OUT}/ra2.wasm -P ${CMAKE_SOURCE_DIR}/cmake/build_json.cmake)
+  set(_build_json ${CMAKE_COMMAND} -DTARGET_H=${_target_h} -DOUT=${WEB_OUT}/build.json -DLOCK=${CMAKE_SOURCE_DIR}/.build-json.publish-lock)
+  # Advertise a module only after a successful link and copy.
   add_custom_command(TARGET ra2 POST_BUILD
     COMMAND ${_build_json} -DWASM=$<TARGET_FILE_DIR:ra2>/ra2.wasm -P ${CMAKE_SOURCE_DIR}/cmake/build_json.cmake)
   return()

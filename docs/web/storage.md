@@ -27,9 +27,13 @@ level:
 | Libraries | `Blowfish.dll` (the host reads the archive key from it: without it the game stops at start, so the import refuses a folder that lacks it) and `binkw32.dll` (a warning if missing) |
 | Archives | `*.mix` (but not `*.mix.bak`) |
 | Sound | `audio.bag`, `audio.idx`, `audiomd.bag`, `audiomd.idx` |
-| Data | `*.ini`, `*.csf`, `*.mmx`, `*.map`, `*.mpr`, `*.yrm` |
-| Movies | `movies*.mix`, `movmd*.mix`: optional, but the game stops at start if the file is missing, so a movie archive the player skips is written as an empty 12-byte archive instead. The Import screen shows their size and lets the player skip them (the default: they are the biggest files, and the menu’s own movies are in `ra2md.mix`, so the game is complete without them) |
+| Data | `*.ini`, `*.csf`, `*.fnt`, `*.mmx`, `*.map`, `*.mpr`, `*.yrm` |
+| Movies | `movies*.mix`, `movmd*.mix`: optional, but the game stops at start if a file is missing, so a skipped archive is replaced with an empty 12-byte archive. Without the real archives, video cutscenes show as black; static loading-screen images are separate game assets. The Import screen shows their size and lets the player skip them; the menu's own movies are in `ra2md.mix`. |
 | Saves | `Saved Games/*` if present, offered as "bring your saves" |
+
+A loose `game.fnt` placed at the top of the selected game folder is imported and
+read by the game before its MIX archive copy. Font overrides take effect on the
+next game start; re-import the folder after adding or replacing the font.
 
 Anything else is skipped. The list lives in `web/src/storage/install.ts` (`classify`);
 the dev server serves the same list, so a run from the local folder has what an import

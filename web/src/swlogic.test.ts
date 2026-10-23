@@ -12,11 +12,14 @@ describe("isGameBuildFile", () => {
   it("is the three files of a build, and nothing else of the game", () => {
     for (const name of ["ra2.js", "ra2.wasm", "ra2.data"])
       expect(isGameBuildFile(`/game/${name}`)).toBe(true);
+    for (const name of ["ra2.js", "ra2.wasm", "ra2.data"])
+      expect(isGameBuildFile(`/game/ra2/${name}`)).toBe(true);
     for (const name of [
       "/game/build.json",
       "/game/ra2.wasm.map",
       "/ra2.wasm",
       "/game/sub/ra2.js",
+      "/game/ra2/sub/ra2.js",
       "/assets/index.js",
     ])
       expect(isGameBuildFile(name), name).toBe(false);

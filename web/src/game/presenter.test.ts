@@ -51,6 +51,27 @@ afterEach(() => {
 });
 
 describe("Presenter", () => {
+  it("captures during gameplay, releases on pause, and captures again on resume", () => {
+    const { canvas, memory, word } = setup();
+    const capture = vi.fn();
+    const presenter = new Presenter(canvas, () => memory, SHARED, null, null, capture);
+    presenter.draw();
+    expect(capture).toHaveBeenLastCalledWith(false);
+    word(Shared.frameW, 200);
+    word(Shared.cursorKind, CursorKind.None);
+    presenter.draw();
+    expect(capture).toHaveBeenLastCalledWith(true);
+    word(Shared.cursorKind, CursorKind.Overlay);
+    presenter.draw();
+    expect(capture).toHaveBeenLastCalledWith(false);
+    word(Shared.cursorKind, CursorKind.None);
+    presenter.draw();
+    expect(capture).toHaveBeenLastCalledWith(true);
+    word(Shared.cursorKind, CursorKind.Image);
+    presenter.draw();
+    expect(capture).toHaveBeenLastCalledWith(false);
+  });
+
   it("draws nothing until the game publishes a picture", () => {
     const { presenter, drawn } = setup();
     presenter.draw();

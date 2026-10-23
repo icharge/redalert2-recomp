@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   argsFromQuery,
   GAME_SCRIPT,
+  gameScript,
   GameNotBuilt,
   gameArguments,
   isBuilt,
@@ -52,6 +53,14 @@ describe("isBuilt", () => {
     expect(
       await isBuilt((() => Promise.reject(new Error("offline"))) as unknown as typeof fetch),
     ).toBe(false);
+  });
+
+  it("checks Red Alert 2's separately built module", async () => {
+    const fetcher = vi.fn(() => answer(true, "text/javascript"));
+    expect(gameScript("ra2")).toBe("/game/ra2/ra2.js");
+    expect(await isBuilt(fetcher as unknown as typeof fetch, "ra2")).toBe(true);
+    expect(fetcher).toHaveBeenCalledWith("/game/ra2/ra2.js", { method: "HEAD" });
+    expect(new GameNotBuilt("ra2").message).toContain("RA2_TARGET=game");
   });
 });
 

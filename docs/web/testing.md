@@ -85,7 +85,8 @@ More steps and switches, from chasing the first play's issues ([issues.md](issue
 - Stage 6, in a real Chrome with a fresh profile: `node e2e/import.mjs` imports `../game` through the
   page's file input, checks the Library, plays from the copy in OPFS to the main menu, checks that a file
   the game wrote survives a reload, and removes the game (`--movies` brings the real movie archives; `--keep`
-  leaves the profile to look at). `node e2e/opfs.mjs --mb 300` streams a large file into the real OPFS and
+  leaves the profile to look at). With both browser modules built, `node e2e/import.mjs --both` also checks
+  that one folder imports and launches both games while shared files are stored once. `node e2e/opfs.mjs --mb 300` streams a large file into the real OPFS and
   checks the live JS heap stays flat. The other scripts add `?dev` so they go straight to Play with the dev
   server's folder.
 - `node e2e/offline.mjs` (after `pnpm build`, which makes `dist/` with the worker): serves `dist/` with no
@@ -109,9 +110,11 @@ mapped and bound, the entry point, the launcher's answer, the display mode, the
 primary surface, the first frame, the game's init, the main menu's dialog
 0xE2), stopping as soon as the menu opens. Its baseline is
 `conformance-web.json`; `RA2_TARGET=game` uses `build-web-game/` and
-`conformance-web-game.json`. The browser build plays no movies yet, so the
-intro milestone of the Windows list is the launcher's answer here. This needs
-a local game folder, so it runs on a developer's machine, not in CI.
+`conformance-web-game.json`. This check stops at the main menu before starting
+the game's intro movie, so the intro milestone of the Windows list is the
+launcher's answer here. Bink playback is covered separately by
+`e2e/movies.mjs`. This needs a local game folder, so it runs on a developer's
+machine, not in CI.
 
 **MEMFS, as in a browser.** `--memfs` copies the import allowlist
 ([storage.md](storage.md): `*.mix` but not `.bak`, the sound bags, the data
@@ -154,6 +157,10 @@ started and observed does:
 
 Playwright runs Chromium headless, with GPU or SwiftShader for WebGL2.
 `--jobs N` runs N browser contexts, as `playtest.py` runs N games today.
+Use `--headed` with `--web` to show Chromium for a local interactive run.
+The default target is Yuri's Revenge. To run the same suite on Red Alert 2,
+build its module with `RA2_TARGET=game` and use `RA2_TARGET=game` when invoking
+`tools/playtest.py --web`; the page then loads `/game/ra2/ra2.js`.
 
 A case fails in the browser and passes on Linux: then it's a browser bug
 (the host, `win32hle` under Emscripten, or the page), not a lift bug.
@@ -218,3 +225,10 @@ sync, so its page numbers (165 frames a second) are not a real window's.
 | Run | 800x600 | 1080p | 1080p, HD vehicles |
 |---|---|---|---|
 | skirmish, 2 AIs, 5 min, desktop Chromium | | | |
+
+The W9.3 comparison in headless Chromium at 1280x720 measured 62 game fps
+(16 ms/frame) with HD vehicles off and 47 fps (21 ms/frame) with them on.
+The host publish cost was 0.33 ms per frame off and 1.59 ms on. Page canvas
+draw time rose from 0.17 ms to 0.52 ms. This short idle-battle measurement
+was collected on 23 October 2026; the headless page rate is not a monitor's
+refresh rate.

@@ -98,6 +98,7 @@ describe("Import", () => {
   it("starts by asking for the folder, and says nothing is uploaded", async () => {
     await setup(folder());
     expect(screen.getByText("Bring your game")).toBeInTheDocument();
+    expect(screen.getByText(/Red Alert 2 or Yuri's Revenge/)).toBeInTheDocument();
     expect(screen.getByText(/nothing is uploaded/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Choose folder…" })).toBeInTheDocument();
   });

@@ -80,8 +80,9 @@ function Main() {
   }, [dev, test, refresh]);
 
   const video = videoFromQuery(window.location.search);
-  if (test) return <Play files={{ kind: "test-folder", video }} />;
-  if (dev) return <Play files={{ kind: "dev-folder", video }} />;
+  const game = query.get("target") === "game" ? "ra2" : "ra2md";
+  if (test) return <Play files={{ kind: "test-folder", game, video }} />;
+  if (dev) return <Play files={{ kind: "dev-folder", game, video }} />;
 
   if (boot.name === "loading") return <Centered>Starting…</Centered>;
   if (boot.name === "failed")
@@ -92,8 +93,9 @@ function Main() {
             <ExclamationTriangleIcon />
           </Callout.Icon>
           <Callout.Text>
-            The game isn&apos;t built. Run <Code>build-web.cmd</Code> (or{" "}
-            <Code>./build-web.sh</Code>) in the repository root, then reload. ({boot.message})
+            The game isn&apos;t built. Build Yuri&apos;s Revenge with <Code>build-web.cmd</Code> (or{" "}
+            <Code>./build-web.sh</Code>). For Red Alert 2, set <Code>RA2_TARGET=game</Code> first.
+            Then reload. ({boot.message})
           </Callout.Text>
         </Callout.Root>
       </Flex>

@@ -74,8 +74,8 @@ Tick a task off here in the same pull request that finishes it.
 | ~~W4.15~~ | The dialog box that is never drawn (after Save): draw it | pcrecomp | W4.10 | M | a dialog is not painted over by the older dialog under it; `save.mjs`: the confirmation shows and OK closes it ([issues.md](issues.md), 6) |
 | ~~W4.16~~ | A combo box with no room for its list: the opponent and resolution drop-downs | pcrecomp | W4.15 | S | the opponent list opens with its four entries; Options, Set Game Resolution lists the modes |
 | W4.17 (parked) | Drop-down lists draw their border | pcrecomp | W4.16 | M | the colour and resolution lists have the frame the Windows build shows (find what draws it first) |
-| W4.18 (parked) | A pressed and a hovered sidebar button show their frames | pcrecomp, here | W4.16 | M | a button held down in the lobby differs from the idle one in a screenshot (`drive.mjs down`, `up`) |
-| W4.19 (parked) | The lobby's right panel finishes (title tab, minimap) without a repaint | pcrecomp, here | W4.16 | M | `lobby-c` after 40 s idle equals the picture after a drop-down was used |
+| ~~W4.18~~ | Sidebar button states match the Windows game | pcrecomp, here | W4.16 | M | `e2e/lobby.mjs`: raw hover pixels equal idle (as in the lossless native reference); held changes only the selected button, dragging out/in clears/restores it, and release restores idle |
+| ~~W4.19~~ | The lobby's right panel finishes (title tab, minimap) without a repaint | pcrecomp, here | W4.16 | M | `work/web-lobby-idle-40/`: after 40 s idle, the right-panel/minimap/title-tab pixels are identical after opening and closing a drop-down |
 
 ## Stage 5: the main loop
 
@@ -118,29 +118,29 @@ Tick a task off here in the same pull request that finishes it.
 
 | ID | Task | Repo | Needs | Size | Done when |
 |---|---|---|---|---|---|
-| W9.1 | The F10 menu in the browser: opens, and its settings stick (`ra2.ini` under `/save`) | here | W6.6 | S | a scaling choice survives a reload |
-| W9.2 | Resolutions 720p to 1440p | here | W9.1 | S | each starts a skirmish |
-| W9.3 | HD vehicles; record the frame time | here | W9.1 | S | the number is in testing.md |
-| W9.4 | Modern controls and Queue Five | here | W4.9 | S | the `skirmish-build` orders work by mouse |
-| W9.5 | Fullscreen, `keyboard.lock()`, Pointer Lock for edge scrolling | here | W4.9 | M | edge scrolling works fullscreen and in a locked window |
-| W9.6 | Mods: a second folder import into `/game/<id>/mods` | here | W6.4 | M | a mod switches in game (F9) |
+| ~~W9.1~~ | The F10 menu in the browser: opens, and its settings stick (`ra2.ini` under `/save`) | here | W6.6 | S | `e2e/remaster.mjs`: scaling, resolution, HD and controls survive a reload from OPFS |
+| ~~W9.2~~ | Resolutions 720p to 1440p | here | W9.1 | S | each starts a skirmish |
+| ~~W9.3~~ | HD vehicles; record the frame time | here | W9.1 | S | `e2e/measure.mjs` compares the same live battle with HD off/on and records the frame time |
+| ~~W9.4~~ | Modern controls and Queue Five | here | W4.9 | S | the `skirmish-build` orders work by mouse |
+| ~~W9.5~~ | Fullscreen, `keyboard.lock()`, Pointer Lock for edge scrolling | here | W4.9 | edge scrolling works fullscreen and in a locked window |
+| ~~W9.6~~ | Mods: a second folder import into `/game/<id>/mods` | here | W6.4 | M | `e2e/remaster.mjs`: a data mod imports, F9 flushes saves and restarts with its overlay; mod saves have separate paths |
 
 ## Stage 10: the suite in a browser
 
 | ID | Task | Repo | Needs | Size | Done when |
 |---|---|---|---|---|---|
-| W10.1 | `?test=1` and `arg=` in the page; the console collected to a log | here | W4.8 | S | a case's arguments reach `script.c` |
-| W10.2 | `tools/playtest.py --web` with Playwright: start, log, screenshots, exit, `--jobs` | here | W10.1 | M | `menu-*` passes |
-| W10.3 | The rest of the cases | here | W10.2, W9.4 | M | `back-*`, `sp-*`, `skirmish-*` pass |
-| W10.4 | CI for the page: lint, typecheck, Vitest, build | here | W4.1 | S | runs on every push |
+| ~~W10.1~~ | `?test=1` and `arg=` in the page; the console collected to a log | here | W4.8 | S | `tools/playtest.py --web`: existing dialog scripts reach `script.c`, full output is kept in each case's `run.log` |
+| ~~W10.2~~ | `tools/playtest.py --web` with Playwright: start, log, screenshots, exit, `--jobs` | here | W10.1 | M | `menu-*` passes |
+| ~~W10.3~~ | The rest of the cases | here | W10.2, W9.4 | M | `back-*`, `sp-*`, `skirmish-*` pass |
+| ~~W10.4~~ | CI for the page: lint, typecheck, Vitest, build | here | W4.1 | S | `.github/workflows/web.yml` runs those checks on pushes and pull requests, without proprietary files |
 
 ## Stage 11: Red Alert 2
 
 | ID | Task | Repo | Needs | Size | Done when |
 |---|---|---|---|---|---|
-| W11.1 | `RA2_TARGET=game` in `build-web.sh` (`build-web-game/`), a second module the page can load | here | W3.4 | S | it builds |
-| W11.2 | Import and Library with both games, shared files stored once | here | W6.5, W11.1 | S | both games play from one import |
-| W11.3 | The suite on Red Alert 2 | here | W10.3, W11.2 | S | the same cases pass |
+| ~~W11.1~~ | `RA2_TARGET=game` in the web build (`build-web-game/`), a second module the page can load | here | W3.4 | S | the build publishes `/game/ra2/ra2.js` and `.wasm`, and adds RA2 to `build.json` |
+| W11.2 | Import and Library with both games, shared files stored once | here | W6.5, W11.1 | S | `e2e/import.mjs --both`: both play from one import and the shared `ra2.mix` is stored once |
+| W11.3 | The suite on Red Alert 2 | here | W10.3, W11.2 | S | `RA2_TARGET=game` with `tools/playtest.py --web`: the same cases pass |
 
 ## Stage 12: multiplayer (optional)
 

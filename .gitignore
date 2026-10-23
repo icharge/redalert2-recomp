@@ -1,4 +1,5 @@
 # Build output
+.build-json.publish-lock
 build/
 build-game/
 # Native Linux builds (build-linux.sh)

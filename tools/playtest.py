@@ -349,8 +349,8 @@ def farm(d, ini=None):
     return d
 
 
-def run(name, args, seconds, expect, every, original=False):
-    d = os.path.join(OUT, name + ('.original' if original else ''))
+def run(name, args, seconds, expect, every, original=False, web=None, web_headed=False):
+    d = os.path.join(OUT, name + ('.web' if web else '.original' if original else ''))
     if os.path.isdir(os.path.join(d, 'game')):
         shutil.rmtree(os.path.join(d, 'game'))      # a fresh folder: no saves left over
     os.makedirs(d, exist_ok=True)
@@ -362,11 +362,18 @@ def run(name, args, seconds, expect, every, original=False):
     cmd += os.environ.get('RA2_HOST_ARGS', '').replace('{case}', d).split()  # extra host flags; {case} is the case's folder
     if original:
         cmd.append('--original')
+    if web:
+        config = os.path.join(d, 'browser.json')
+        with open(config, 'w') as f:
+            json.dump({'game': game, 'output': d, 'seconds': seconds, 'every': every,
+                       'args': args + shlex.split(os.environ.get('RA2_HOST_ARGS', '')),
+                       'url': web, 'target': TARGET, 'headed': web_headed}, f)
+        cmd = ['node', os.path.join(ROOT, 'web', 'e2e', 'playtest.mjs'), config]
     lan = WINE and ('network' in name or 'lan' in name)
     with open(log, 'w', errors='replace') as f, (IPX if lan else contextlib.nullcontext()):
         try:
             code = subprocess.run(cmd, cwd=ROOT, stdout=f, stderr=subprocess.STDOUT,
-                                  timeout=seconds + 300).returncode
+                                  timeout=seconds + 360).returncode
         except subprocess.TimeoutExpired:
             code = 'timeout'
     text = open(log, errors='replace').read()
@@ -419,27 +426,41 @@ def run(name, args, seconds, expect, every, original=False):
 
 
 def main():
+    global OUT
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('cases', nargs='*', help='case names or globs (default: all)')
     ap.add_argument('--list', action='store_true')
     ap.add_argument('--jobs', type=int, default=3)
     ap.add_argument('--every', type=float, default=5, help='contact-sheet spacing, seconds')
     ap.add_argument('--original', action='store_true', help='run the shipping code instead (oracle.c)')
+    ap.add_argument('--web', action='store_true', help='run the same cases in Chromium against the built page')
+    ap.add_argument('--headed', action='store_true', help='show Chromium during --web runs')
+    ap.add_argument('--web-url', default='http://127.0.0.1:4173/', help='built page on pnpm preview')
+    ap.add_argument('--out', help='artifact directory (use separate directories for concurrent runs)')
     a = ap.parse_args()
+    if a.out:
+        OUT = os.path.abspath(a.out)
+    if a.web and a.original:
+        ap.error('--original runs native machine code and cannot be used with --web')
+    if a.headed and not a.web:
+        ap.error('--headed requires --web')
     if a.list:
         for n, (args, s, e) in CASES.items():
             print('%-20s %4ds  %s' % (n, s, ' '.join(args)))
         return 0
-    if not (os.path.exists(HOST) and os.path.isdir(os.path.join(ROOT, 'game'))):
+    if not ((a.web or os.path.exists(HOST)) and os.path.isdir(os.path.join(ROOT, 'game'))):
         print('playtest: skipped -- needs game/ (your copy) and build/ra2.exe (README)')
         return 0
     names = [n for n in CASES if not a.cases or any(fnmatch.fnmatch(n, p) for p in a.cases)]
+    if not names:
+        ap.error('no cases match the requested names')
     failed = 0
     os.makedirs(OUT, exist_ok=True)
-    summary = open(os.path.join(OUT, 'summary%s.txt' % ('.original' if a.original else '')), 'w')
+    summary = open(os.path.join(OUT, 'summary%s.txt' % ('.web' if a.web else '.original' if a.original else '')), 'w')
     with ThreadPoolExecutor(a.jobs) as ex:
-        for name, code, bad, seen in ex.map(lambda n: run(n, *CASES[n], a.every, a.original), names):
-            name += '.original' if a.original else ''
+        for name, code, bad, seen in ex.map(lambda n: run(n, *CASES[n], a.every, a.original,
+                                                       a.web_url if a.web else None, a.headed), names):
+            name += '.web' if a.web else '.original' if a.original else ''
             line = '%s %-20s exit %-7s %s%s' % ('FAIL' if bad else 'pass', name, code, '; '.join(seen) or '-',
                                                 ('  !! ' + ' | '.join(bad[:3])) if bad else '')
             print(line, flush=True)

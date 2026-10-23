@@ -26,6 +26,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import sys
 import time
 
@@ -82,6 +83,42 @@ HOOKS = {
 # oracle runs the shipping code unpatched, so it remains the reference.
 
 SIDEBAR_ROWS_MAX = 30
+
+
+def dropdown_frame_patches(code, cs):
+    """Copy the custom dropdown's two-pixel frame with its client image.
+
+    ComboDropWin paints into AlternateSurface, including a frame two pixels
+    outside its client rectangle. Its last copy to PrimarySurface covers only
+    the client. Windows later repaints the parent and copies the missing edges;
+    a host that paints just the invalid child leaves them offscreen (W4.17).
+    Expand both copy rectangles so this paint publishes everything it drew.
+
+    Find the final virtual Copy, the Primary/Alternate Unlock pair, and the
+    trailing ValidateRect. The same sequence occurs once in each shipping exe
+    (YR 0x0060E0A0, RA2 0x005EB880); the globals differ between the games.
+    """
+    pattern = re.compile(
+        rb'\xff\x50\x08\x8b\x0d(.{4})\x8b\x01\xff\x50\x60'
+        rb'\x8b\x0d(.{4})\x8b\x11\xff\x52\x60\x8b\x84\x24', re.S)
+    out = {}
+    for match in pattern.finditer(code):
+        at = match.start()
+        # lea edx,[esp+dst]; push edx immediately before Copy, followed by
+        # mov eax,[esp+hwnd]; push 0; push eax; call [ValidateRect].
+        if (code[at - 5:at - 2] != b'\x8d\x54\x24' or code[at - 1:at] != b'\x52'
+                or code[match.end() + 4:match.end() + 9] != b'\x6a\x00\x50\xff\x15'
+                or match[1] == match[2]):
+            continue
+        out[cs + at - 1] = (
+            '{ uint32_t dst = MEM32(esp), src = MEM32(esp + 8); '
+            'MEM32(dst) -= 2; MEM32(dst + 4) -= 2; '
+            'MEM32(dst + 8) += 4; MEM32(dst + 12) += 4; '
+            'if (src != dst) { MEM32(src) -= 2; MEM32(src + 4) -= 2; '
+            'MEM32(src + 8) += 4; MEM32(src + 12) += 4; } } '
+            '/* remaster: copy the drawn dropdown frame, run_lift.py dropdown_frame_patches */')
+    # Do not guess among ambiguous copies in a different or modified build.
+    return out if len(out) == 1 else {}
 
 
 def sidebar_rows_patches(code, cs, lo=0x006A5000, hi=0x006AD000, globals_=(0x00886F9C, 0x00B0B4F8)):
@@ -453,7 +490,7 @@ def targets():
         'gamemd': dict(exe=EXE, catalog=CATALOG, seeds=SEEDS, out=OUT, stats=STATS,
                        run_seeds=RUN_SEEDS, hooks=HOOKS, exe_name='gamemd.exe', ini_name='RA2MD.INI',
                        title="Yuri's Revenge", game_frame=0x00A8ED84, stamp=0x3BDF544E,
-                       patches=lambda code, cs: {**sidebar_rows_patches(code, cs), **HD_VOXEL_PATCHES,
+                       patches=lambda code, cs: {**sidebar_rows_patches(code, cs), **dropdown_frame_patches(code, cs), **HD_VOXEL_PATCHES,
                                                  **modern_controls_patches('gamemd'), **queue_five_patches('gamemd')}),
         'game': dict(exe=os.path.join(_HERE, 'game', 'game.exe'),
                      catalog=os.path.join(_HERE, 'work', 'game', 'functions.json'),
@@ -467,7 +504,7 @@ def targets():
                      # by 50 reads as Yuri's Revenge's does.
                      patches=lambda code, cs: {**sidebar_rows_patches(code, cs, 0x0067B000, 0x00683000,
                                                                      (0x0083962C, 0x00ABCD64)),
-                                               **HD_VOXEL_PATCHES_GAME,
+                                               **dropdown_frame_patches(code, cs), **HD_VOXEL_PATCHES_GAME,
                                                **modern_controls_patches('game'), **queue_five_patches('game')}),
     }
 

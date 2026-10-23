@@ -23,6 +23,8 @@ describe("classify", () => {
     expect(classify("audiomd.idx")).toEqual({ kind: "sound", needs: ["ra2md"] });
     expect(classify("rulesmd.ini")).toEqual({ kind: "data", needs: ["ra2md"] });
     expect(classify("rules.ini")).toEqual({ kind: "data", needs: ["ra2", "ra2md"] });
+    expect(classify("game.fnt")).toEqual({ kind: "data", needs: ["ra2", "ra2md"] });
+    expect(classify("GAME.FNT")).toEqual({ kind: "data", needs: ["ra2", "ra2md"] });
     expect(classify("GameMD.exe")).toEqual({ kind: "exe", needs: ["ra2md"] });
     expect(classify("Game.exe")).toEqual({ kind: "exe", needs: ["ra2"] });
     expect(classify("Blowfish.dll")).toEqual({ kind: "library", needs: ["ra2", "ra2md"] });
@@ -64,6 +66,16 @@ const folder = [
 ];
 
 describe("planImport", () => {
+  it("brings a loose game font into the game folder for archive override", () => {
+    const plan = planImport([...folder, { path: "GAME.FNT", size: 131100 }], yuri,
+      { movies: false, saves: false });
+    expect(plan.error).toBeNull();
+    expect(plan.copy).toContainEqual({ path: "GAME.FNT", size: 131100, kind: "data", needs: ["ra2", "ra2md"] });
+    expect(plan.skipped.some((file) => file.path === "GAME.FNT")).toBe(false);
+    expect(classify("fonts/game.fnt")).toBeNull();
+    expect(classify("game.fnt.bak")).toBeNull();
+  });
+
   it("copies what the game reads for the game this build runs", () => {
     const plan = planImport(folder, yuri, { movies: true, saves: true });
     expect(plan.error).toBeNull();
