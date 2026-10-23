@@ -11,7 +11,11 @@ if (!root) throw new Error("no #root in index.html");
 
 // The local end-to-end checks (e2e/) read the game's state through this: always on the dev server, and in a
 // build when the address has `?e2e`.
-if (import.meta.env.DEV || new URLSearchParams(window.location.search).has("e2e"))
+if (
+  import.meta.env.DEV ||
+  new URLSearchParams(window.location.search).has("e2e") ||
+  new URLSearchParams(window.location.search).get("test") === "1"
+)
   (window as unknown as { ra2Store: typeof gameStore }).ra2Store = gameStore;
 
 createRoot(root).render(<App />);

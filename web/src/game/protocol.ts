@@ -1,7 +1,21 @@
 // What the page and the game say to each other (docs/web/protocol.md). The C side is
 // src/web/web_api.h: change the two together, and RA2_WEB_PROTOCOL with them.
 
-export const RA2_WEB_PROTOCOL = 1;
+export const RA2_WEB_PROTOCOL = 3;
+
+export const SCALES = ["sharp", "smooth", "crt", "nearest", "integer"] as const;
+export type Scale = (typeof SCALES)[number];
+export interface HostSettings {
+  open: boolean;
+  scale: Scale;
+  bars: boolean;
+  hd: boolean;
+  modern: boolean;
+  width: number;
+  height: number;
+  mod: string;
+}
+export const Setting = { Scale: 0, Bars: 1, Hd: 2, Modern: 3, Resolution: 4, Menu: 5 } as const;
 
 // ---- game to page: events -----------------------------------------------------------
 // One line on stdout, "@ra2 " and JSON.
@@ -20,6 +34,8 @@ export interface Pacing {
 export type GameEvent =
   | { e: "boot"; protocol: number; title: string; exe: string; stamp: number }
   | { e: "menu" }
+  | ({ e: "settings" } & HostSettings)
+  | { e: "restart"; mod: string }
   | { e: "mode"; w: number; h: number }
   | { e: "fps"; fps: number; ms: number; pacing: Pacing | null }
   | { e: "exit"; code: number }
@@ -70,6 +86,31 @@ export function parseEventLine(line: string): GameEvent | null {
       return null;
     case "menu":
       return { e: "menu" };
+    case "restart":
+      return typeof value.mod === "string" ? { e: "restart", mod: value.mod } : null;
+    case "settings":
+      if (
+        typeof value.open !== "boolean" ||
+        typeof value.bars !== "boolean" ||
+        typeof value.hd !== "boolean" ||
+        typeof value.modern !== "boolean" ||
+        typeof value.width !== "number" ||
+        typeof value.height !== "number" ||
+        typeof value.mod !== "string" ||
+        !SCALES.includes(value.scale as Scale)
+      )
+        return null;
+      return {
+        e: "settings",
+        open: value.open,
+        scale: value.scale as Scale,
+        bars: value.bars,
+        hd: value.hd,
+        modern: value.modern,
+        width: value.width,
+        height: value.height,
+        mod: value.mod,
+      };
     case "mode":
       return typeof value.w === "number" && typeof value.h === "number"
         ? { e: "mode", w: value.w, h: value.h }
@@ -105,6 +146,13 @@ export const Shared = {
   viewW: 9,
   viewH: 10,
   viewDpr: 11,
+  gameW: 1037,
+  gameH: 1038,
+  warpSeq: 1039,
+  warpX: 1040,
+  warpY: 1041,
+  pointerX: 1042,
+  pointerY: 1043,
 } as const;
 
 /** Byte offset of the cursor's 32x32 RGBA pixels in the struct. */
@@ -118,6 +166,8 @@ export const CursorKind = {
   Image: 1,
   /** The system arrow. */
   Arrow: 2,
+  /** Cursor image rendered above the game's separate sidebar while paused. */
+  Overlay: 3,
 } as const;
 export type CursorKind = (typeof CursorKind)[keyof typeof CursorKind];
 
@@ -157,6 +207,8 @@ export interface Ra2Exports {
   ra2_audio_live(live: number): void;
   ra2_focus(focused: number): void;
   ra2_quit(): void;
+  /** queued to the game thread; settings are owned and saved by the host */
+  ra2_setting(key: number, value: number, extra: number): void;
   /** kind: PointerKind; x and y in game pixels; button as the DOM numbers it (0 left, 1 middle, 2 right) */
   ra2_input_pointer(kind: number, x: number, y: number, button: number): void;
   /** vk: a Windows virtual key; scan: the set-1 scan code */
@@ -174,6 +226,7 @@ export const EXPORT_SIGNATURES: {
   ra2_audio_live: { returns: null, args: ["number"] },
   ra2_focus: { returns: null, args: ["number"] },
   ra2_quit: { returns: null, args: [] },
+  ra2_setting: { returns: null, args: ["number", "number", "number"] },
   ra2_input_pointer: { returns: null, args: ["number", "number", "number", "number"] },
   ra2_input_key: { returns: null, args: ["number", "number", "number"] },
   ra2_crash_report: { returns: null, args: ["string"] },

@@ -4,6 +4,7 @@ import type { WasmMemory } from "./presenter";
 import type { GameRecord } from "../storage/manifest";
 import { opfsSaveStore, opfsTarget, readGameFile } from "../storage/opfs";
 import { restoreSaves, startSaveSync, type FsLike, type SaveSync } from "../storage/saves";
+import { loadMods } from "../storage/mods";
 
 /** Where the build leaves the game (web/public/game, build-web.sh). */
 export const GAME_SCRIPT = "/game/ra2.js";
@@ -55,6 +56,7 @@ export interface GameHandle {
 /** Where /game comes from. The import (stage 6) adds OPFS; for now the dev server's folder. */
 export type FileSource =
   | { kind: "dev-folder"; video?: VideoSize | null }
+  | { kind: "test-folder"; video?: VideoSize | null }
   /** a game the import put in OPFS (storage/importer.ts) */
   | { kind: "opfs"; record: GameRecord; video?: VideoSize | null }
   | { kind: "already-there" };
@@ -169,8 +171,9 @@ async function loadDevFiles(
   store: GameStore,
   video: VideoSize | null = null,
   fetcher: typeof fetch = fetch,
+  base = "/dev-game",
 ): Promise<void> {
-  const response = await fetcher("/dev-game/index.json");
+  const response = await fetcher(`${base}/index.json`);
   if (!response.ok)
     throw new Error("The dev server has no game folder to serve (set RA2_GAME_DIR).");
   const index = (await response.json()) as DevIndex;
@@ -189,7 +192,7 @@ async function loadDevFiles(
         file: file.name,
       });
     progress(0);
-    const data = await fetcher(`/dev-game/${encodeURIComponent(file.name)}`);
+    const data = await fetcher(`${base}/${encodeURIComponent(file.name)}`);
     if (!data.ok) throw new Error(`The dev server would not give ${file.name}.`);
     let last = 0;
     const bytes = await readBody(data, file.size, (received) => {
@@ -254,7 +257,8 @@ async function loadOpfsFiles(
     doneBytes += entry.size;
     doneFiles++;
   }
-  await restoreSaves(fs, opfsSaveStore(), record.id);
+  const mods = await loadMods(fs, record.id);
+  await restoreSaves(fs, opfsSaveStore(), record.id, (path) => !path.startsWith("mods/") || mods.includes(path.split("/")[1] ?? ""));
   store.loading("the game");
   return startSaveSync(fs, opfsTarget(), record.id);
 }
@@ -322,13 +326,14 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
         );
       });
     }
-    if (options.files.kind === "dev-folder") {
+    if (files.kind === "dev-folder" || files.kind === "test-folder") {
       module.preRun.push(() => {
         module.addRunDependency("game-files");
         const fs = module.FS;
         if (!fs) return fail(new Error("the game's file system is not up yet"));
-        const video = options.files.kind === "dev-folder" ? options.files.video : null;
-        loadDevFiles(fs, store, video ?? null).then(
+        const video = files.video;
+        const base = files.kind === "test-folder" ? "/test-game" : "/dev-game";
+        loadDevFiles(fs, store, video ?? null, fetch, base).then(
           () => module.removeRunDependency("game-files"),
           (error: unknown) => fail(error),
         );

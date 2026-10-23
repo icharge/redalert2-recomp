@@ -75,6 +75,31 @@ let stop: (() => void) | null = null;
 afterEach(() => stop?.());
 
 describe("startSaveSync", () => {
+  it("persists host settings separately from the game's RA2.INI", async () => {
+    const game = fakeFs({ "/game/RA2.INI": "[Video]" });
+    const target = memoryTarget();
+    const sync = startSaveSync(game.fs, target, "ra2");
+    stop = sync.stop;
+    game.put("/game/.host/ra2.ini", "[present]\ncontrols=modern");
+    await sync.flush();
+    expect([...target.files.keys()]).toEqual(["save/ra2/.host/ra2.ini"]);
+    expect(new TextDecoder().decode(game.fs.readFile("/game/RA2.INI"))).toBe("[Video]");
+  });
+  it("keeps each mod's saves and settings apart from the base game and other mods", async () => {
+    const game = fakeFs({ "/game/mods/Alpha/rulesmd.ini": "rules" });
+    const target = memoryTarget();
+    const sync = startSaveSync(game.fs, target, "ra2md");
+    stop = sync.stop;
+    game.put("/game/mods/Alpha/RA2MD.INI", "alpha settings");
+    game.put("/game/mods/Alpha/Saved Games/slot.sav", "alpha save");
+    game.put("/game/mods/Beta/Saved Games/slot.sav", "beta save");
+    game.put("/game/Saved Games/slot.sav", "base save");
+    await sync.flush();
+    expect(target.files.get("save/ra2md/mods/Alpha/Saved Games/slot.sav")).toBe("alpha save");
+    expect(target.files.get("save/ra2md/mods/Beta/Saved Games/slot.sav")).toBe("beta save");
+    expect(target.files.get("save/ra2md/Saved Games/slot.sav")).toBe("base save");
+    expect(target.files.has("save/ra2md/mods/Alpha/rulesmd.ini")).toBe(false);
+  });
   it("keeps a new or changed file, not the game's own, and not a log", async () => {
     const game = fakeFs({ "/game/ra2.mix": "archive", "/game/RA2MD.INI": "[Video]" });
     const target = memoryTarget();

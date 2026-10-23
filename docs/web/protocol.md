@@ -49,10 +49,11 @@ and the page reads it each animation frame.
 | 2 | `frame_ptr` | address of `frame_w * frame_h * 4` bytes of RGBA |
 | 3, 4 | `frame_w`, `frame_h` | the picture's size, which is the game's display mode |
 | 5 | `cursor_seq` | goes up whenever the cursor changes |
-| 6 | `cursor_kind` | 0 hide the system cursor (the game draws its own), 1 the image below, 2 the system arrow |
+| 6 | `cursor_kind` | 0 hide the system cursor (the game draws its own), 1 the image below, 2 the system arrow, 3 draw the image above the full game/sidebar |
 | 7, 8 | `cursor_hot_x`, `cursor_hot_y` | the image's hot spot |
 | 9, 10, 11 | `view_w`, `view_h`, `view_dpr` | what `ra2_resize` last said |
 | byte 52 | `cursor_rgba` | 32x32 RGBA |
+| 1042, 1043 | `pointer_x`, `pointer_y` | pointer position in game pixels, used by the pause cursor overlay |
 
 ## Page to game: exported functions
 

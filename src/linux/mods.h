@@ -7,3 +7,4 @@
 void mods_start(const char *game_dir, const char *requested, const char *remembered,
                 int argc, char **argv, void (*save)(void));
 const char *mods_active(void);   /* "" when none */
+int mods_handle_key(int vk, int down);  /* browser input uses virtual keys */

@@ -5,8 +5,9 @@
  */
 #pragma once
 #include <stdint.h>
+#include <stddef.h>
 
-#define RA2_WEB_PROTOCOL 1
+#define RA2_WEB_PROTOCOL 3
 
 #define RA2_CURSOR_PX 32
 
@@ -27,19 +28,38 @@ typedef struct ra2_shared {
     float    view_dpr;
     uint32_t reserved;
     uint8_t  cursor_rgba[RA2_CURSOR_PX * RA2_CURSOR_PX * 4];
+    uint32_t game_w, game_h;         /* input coordinates; frame may be 2x for HD vehicles */
+    uint32_t warp_seq;
+    int32_t warp_x, warp_y;          /* SetCursorPos: relative Pointer Lock must follow warps */
+    int32_t pointer_x, pointer_y;    /* game-pixel position for the pause cursor overlay */
 } ra2_shared_t;
 
 enum { RA2_CURSOR_NONE = 0,          /* the game draws its own: hide the system one */
        RA2_CURSOR_IMAGE = 1,         /* cursor_rgba, with its hot spot */
-       RA2_CURSOR_ARROW = 2 };       /* the system arrow */
+       RA2_CURSOR_ARROW = 2,         /* the system arrow */
+       RA2_CURSOR_OVERLAY = 3 };     /* cursor_rgba above the whole game/sidebar */
 
 _Static_assert(__builtin_offsetof(ra2_shared_t, cursor_rgba) == 52, "web/src/game/protocol.ts reads cursor_rgba at byte 52");
+_Static_assert(__builtin_offsetof(ra2_shared_t, pointer_x) == 4168, "web/src/game/protocol.ts reads pointer_x at word 1042");
 
 /* events: one line on stdout, "@ra2 " and JSON (presenter.c) */
 void web_event_boot(const char *title, const char *exe, uint32_t stamp);
 void web_event_menu(void);
 void web_event_error(const char *message);
 void web_event_exit(int code);
+void web_event_json(const char *json);
+void web_json_escape(char *out, size_t n, const char *text);
+
+enum { RA2_SETTING_SCALE, RA2_SETTING_BARS, RA2_SETTING_HD, RA2_SETTING_MODERN,
+       RA2_SETTING_RESOLUTION, RA2_SETTING_MENU };
+void web_settings_start(const char *override_scale);
+void web_settings_command(int key, int value, int extra);
+void web_settings_event(void);
+int web_settings_open(void);
+const char *web_settings_mod(void);
+void web_settings_save_mod(void);
+void web_modern_key(int down, uint32_t vk);
+void web_modern_pointer(uint32_t message, int x, int y);
 
 /* the game thread's side (presenter.c) */
 void web_presenter_start(int (*menus_use_windows_cursor)(void));

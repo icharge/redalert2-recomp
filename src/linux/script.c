@@ -26,6 +26,10 @@
 #include <pthread.h>
 #include "win32hle.h"
 
+#ifdef __EMSCRIPTEN__
+void web_presenter_dialog_created(uint32_t hwnd, uint32_t resource_id);
+#endif
+
 #define WM_COMMAND     0x0111u
 #define WM_HSCROLL     0x0114u
 #define WM_VSCROLL     0x0115u
@@ -114,6 +118,9 @@ static void dialog_created(uint32_t h, uint32_t id) {
     pthread_mutex_unlock(&g_lock);
     __sync_fetch_and_add(&g_dialogs_opened, 1);
     fprintf(stderr, "[dialog] open 0x%X\n", id);
+#ifdef __EMSCRIPTEN__
+    web_presenter_dialog_created(h, id);
+#endif
     if (id == 0xE2 && !__sync_lock_test_and_set(&g_menu_open, 1)) {
         g_t0 = now_ms();
 #ifdef __EMSCRIPTEN__

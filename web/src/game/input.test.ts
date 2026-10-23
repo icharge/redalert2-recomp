@@ -1,6 +1,8 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { attachInput, keyFor, toGamePixels } from "./input";
 import { PointerKind } from "./protocol";
+
+afterEach(() => { vi.restoreAllMocks(); Reflect.deleteProperty(document, "pointerLockElement"); });
 
 describe("keyFor", () => {
   it("gives the virtual key and scan code of letters, digits and function keys", () => {
@@ -63,6 +65,57 @@ describe("toGamePixels", () => {
 });
 
 describe("attachInput", () => {
+  it("uses game coordinates independently of the HD or scaled canvas, and follows cursor warps under Pointer Lock", () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 1600;
+    canvas.height = 1200;
+    canvas.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 1600, height: 1200 }) as DOMRect;
+    const game = { ra2_input_pointer: vi.fn(), ra2_input_key: vi.fn(), ra2_focus: vi.fn() };
+    let warp = { seq: 0, x: 0, y: 0 };
+    const detach = attachInput(canvas, game, {
+      picture: () => ({ width: 800, height: 600 }),
+      warp: () => warp,
+    });
+    canvas.dispatchEvent(new MouseEvent("mousemove", { clientX: 800, clientY: 600 }));
+    expect(game.ra2_input_pointer).toHaveBeenLastCalledWith(0, 400, 300, 0);
+    Object.defineProperty(document, "pointerLockElement", { configurable: true, value: canvas });
+    const relative = (x: number, y: number) => {
+      const event = new MouseEvent("mousemove");
+      Object.defineProperties(event, { movementX: { value: x }, movementY: { value: y } });
+      canvas.dispatchEvent(event);
+    };
+    relative(20, -40);
+    expect(game.ra2_input_pointer).toHaveBeenLastCalledWith(0, 410, 280, 0);
+    warp = { seq: 1, x: 700, y: 300 };
+    relative(400, 0);
+    expect(game.ra2_input_pointer).toHaveBeenLastCalledWith(0, 799, 300, 0);
+    relative(-20, 0);
+    expect(game.ra2_input_pointer).toHaveBeenLastCalledWith(0, 789, 300, 0);
+    detach();
+  });
+
+  it("releases held modifiers and mouse buttons on blur, and does not steal dialog input", () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 800;
+    canvas.height = 600;
+    canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: 800, height: 600 }) as DOMRect;
+    const game = { ra2_input_pointer: vi.fn(), ra2_input_key: vi.fn(), ra2_focus: vi.fn() };
+    let enabled = true;
+    const detach = attachInput(canvas, game, { enabled: () => enabled });
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "ShiftLeft" }));
+    canvas.dispatchEvent(new MouseEvent("mousedown", { clientX: 20, clientY: 30 }));
+    window.dispatchEvent(new Event("blur"));
+    expect(game.ra2_input_key).toHaveBeenLastCalledWith(0, 0x10, 42);
+    expect(game.ra2_input_pointer).toHaveBeenLastCalledWith(2, 20, 30, 0);
+    game.ra2_input_key.mockClear();
+    enabled = false;
+    const event = new KeyboardEvent("keydown", { code: "ArrowDown", cancelable: true });
+    window.dispatchEvent(event);
+    expect(game.ra2_input_key).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(false);
+    detach();
+  });
   function setup() {
     const canvas = document.createElement("canvas");
     canvas.width = 800;

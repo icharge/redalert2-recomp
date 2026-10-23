@@ -43,7 +43,14 @@ function scan(fs: FsLike): Map<string, Seen> {
         continue;
       }
       if (fs.isDir(stat.mode)) {
-        if (deep && name.toLowerCase() === "saved games") walk(path, `${prefix}${name}/`, false);
+        if (
+          deep &&
+          (name.toLowerCase() === "saved games" ||
+            name === ".host" ||
+            name.toLowerCase() === "mods" ||
+            prefix.startsWith("mods/"))
+        )
+          walk(path, `${prefix}${name}/`, name.toLowerCase() !== "saved games");
       } else if (!IGNORED.test(name)) {
         out.set(`${prefix}${name}`, { size: stat.size, mtime: stat.mtime.getTime() });
       }
@@ -68,8 +75,9 @@ export interface SaveStore {
 }
 
 /** Puts the saved files back over the game's own, before the game starts. */
-export async function restoreSaves(fs: FsLike, store: SaveStore, game: GameId): Promise<number> {
-  const files = await store.list(game);
+export async function restoreSaves(fs: FsLike, store: SaveStore, game: GameId,
+  accept: (path: string) => boolean = () => true): Promise<number> {
+  const files = (await store.list(game)).filter((file) => accept(file.path));
   for (const file of files) {
     const parts = file.path.split("/");
     for (let i = 1; i < parts.length; i++) {

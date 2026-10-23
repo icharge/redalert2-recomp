@@ -32,6 +32,9 @@
 #include "win32hle.h"
 #include "recomp_target.h"
 #include "mods.h"
+#ifdef __EMSCRIPTEN__
+#include "web_api.h"
+#endif
 
 #ifdef RA2_TARGET_GAME
 #define MODS_GAME "ra2"
@@ -83,6 +86,12 @@ static void show_title(void) {
 
 /* Restart with --mod name: the same command line without its own --mod. */
 static void restart_with(const char *name) {
+#ifdef __EMSCRIPTEN__
+    char escaped[256], line[320];
+    web_json_escape(escaped, sizeof escaped, name);
+    snprintf(line, sizeof line, "{\"e\":\"restart\",\"mod\":\"%s\"}", escaped);
+    web_event_json(line);       /* the page flushes OPFS before reloading */
+#else
     char *argv[256];
     int n = 0;
     for (int i = 0; i < g_argc && n < 252; i++) {
@@ -97,6 +106,12 @@ static void restart_with(const char *name) {
     if (g_start_dir[0] && chdir(g_start_dir) != 0) fprintf(stderr, "[mods] cannot go back to %s\n", g_start_dir);
     execv("/proc/self/exe", argv);
     fprintf(stderr, "[mods] could not restart: %s\n", strerror(errno));
+#endif
+}
+
+static int on_key(int scancode, int down);
+int mods_handle_key(int vk, int down) {
+    return vk == 0x78 ? on_key(SDL_SCANCODE_F9, down) : 0;
 }
 
 /* F9: the next mod (after the last, none), at the main menu only. */
@@ -120,17 +135,22 @@ static int on_key(int scancode, int down) {
 void mods_start(const char *game_dir, const char *requested, const char *remembered,
                 int argc, char **argv, void (*save)(void)) {
     g_argc = argc, g_argv = argv, g_save = save;
+#ifdef __EMSCRIPTEN__
+    snprintf(g_root, sizeof g_root, "%s/mods", game_dir);
+#else
     char exe[PATH_MAX];
     ssize_t len = readlink("/proc/self/exe", exe, sizeof exe - 1);
     exe[len > 0 ? len : 0] = 0;
     char *slash = strrchr(exe, '/');
     if (slash) *slash = 0;                     /* the build directory; mods/ is beside it */
     snprintf(g_root, sizeof g_root, "%s/../mods/" MODS_GAME, exe);
+#endif
     hle_screen_key_hook = on_key;
 
     const char *want = requested ? requested : remembered ? remembered : "";
     if (!strcasecmp(want, "none")) want = "";
     snprintf(g_active, sizeof g_active, "%s", want);
+    if (strchr(g_active, '/') || strchr(g_active, '\\') || g_active[0] == '.') g_active[0] = 0;
     if (g_active[0]) {
         char dir[PATH_MAX];
         struct stat st;

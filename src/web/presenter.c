@@ -24,6 +24,8 @@
 #include "host.h"
 #include "recomp_target.h"
 #include "web_api.h"
+#include "hdvox.h"
+#include "mods.h"
 
 #define WM_CLOSE        0x0010u
 #define WM_ACTIVATEAPP  0x001Cu
@@ -37,12 +39,12 @@
 
 /* ---- events ---------------------------------------------------------------- */
 
-static void event_line(const char *json) {
+void web_event_json(const char *json) {
     printf("@ra2 %s\n", json);
     fflush(stdout);
 }
 
-static void json_escape(char *out, size_t n, const char *s) {
+void web_json_escape(char *out, size_t n, const char *s) {
     size_t k = 0;
     for (; *s && k + 7 < n; s++) {
         unsigned char c = (unsigned char)*s;
@@ -55,22 +57,22 @@ static void json_escape(char *out, size_t n, const char *s) {
 
 void web_event_boot(const char *title, const char *exe, uint32_t stamp) {
     char t[160], e[160], line[512];
-    json_escape(t, sizeof t, title), json_escape(e, sizeof e, exe);
+    web_json_escape(t, sizeof t, title), web_json_escape(e, sizeof e, exe);
     snprintf(line, sizeof line, "{\"e\":\"boot\",\"protocol\":%d,\"title\":\"%s\",\"exe\":\"%s\",\"stamp\":%u}",
              RA2_WEB_PROTOCOL, t, e, stamp);
-    event_line(line);
+    web_event_json(line);
 }
-void web_event_menu(void) { event_line("{\"e\":\"menu\"}"); }
+void web_event_menu(void) { web_event_json("{\"e\":\"menu\"}"); }
 void web_event_error(const char *message) {
     char m[512], line[640];
-    json_escape(m, sizeof m, message);
+    web_json_escape(m, sizeof m, message);
     snprintf(line, sizeof line, "{\"e\":\"error\",\"message\":\"%s\"}", m);
-    event_line(line);
+    web_event_json(line);
 }
 void web_event_exit(int code) {
     char line[64];
     snprintf(line, sizeof line, "{\"e\":\"exit\",\"code\":%d}", code);
-    event_line(line);
+    web_event_json(line);
 }
 
 /* ---- the picture ------------------------------------------------------------- */
@@ -83,6 +85,8 @@ static unsigned g_pub_n, g_late, g_frame_seen;
 static uint32_t *g_buf[2];
 static size_t g_cap[2];
 static int g_front;
+static uint32_t g_pause_dialog;
+static void present_now(void);
 
 EMSCRIPTEN_KEEPALIVE ra2_shared_t *ra2_shared(void) { return &g_sh; }
 
@@ -90,6 +94,9 @@ EMSCRIPTEN_KEEPALIVE ra2_shared_t *ra2_shared(void) { return &g_sh; }
 static void publish(const uint8_t *px, int w, int h, int pitch, int bpp, const uint32_t *pal) {
     static uint32_t last_w, last_h;
     double began = emscripten_get_now();
+    int game_w = w, game_h = h;
+    int hd = bpp == 16 && ra2_vox_hd_on;
+    if (hd) { w *= 2; h *= 2; }
     size_t n = (size_t)w * (size_t)h;
     int back = g_front ^ 1;
     if (g_cap[back] < n) {
@@ -98,7 +105,13 @@ static void publish(const uint8_t *px, int w, int h, int pitch, int bpp, const u
         if (!g_buf[back]) return;
     }
     uint32_t *out = g_buf[back];
-    if (bpp == 16) {                                     /* RGB565 */
+    if (hd) {
+        hdvox_compose(px, pitch, game_w, game_h, out);    /* compositor returns XRGB */
+        for (size_t i = 0; i < n; i++) {
+            uint32_t v = out[i];
+            out[i] = 0xFF000000u | (v & 0xFF) << 16 | (v & 0xFF00) | (v >> 16 & 0xFF);
+        }
+    } else if (bpp == 16) {                              /* RGB565 */
         for (int y = 0; y < h; y++) {
             const uint16_t *s = (const uint16_t *)(px + (size_t)y * (size_t)pitch);
             uint32_t *d = out + (size_t)y * (size_t)w;
@@ -122,16 +135,27 @@ static void publish(const uint8_t *px, int w, int h, int pitch, int bpp, const u
         }
     }
     g_sh.frame_w = (uint32_t)w, g_sh.frame_h = (uint32_t)h;
+    g_sh.game_w = (uint32_t)game_w, g_sh.game_h = (uint32_t)game_h;
     g_sh.frame_ptr = (uint32_t)(uintptr_t)out;
     g_front = back;
     __atomic_add_fetch(&g_sh.frame_seq, 1, __ATOMIC_RELEASE);
     g_pub_ms += emscripten_get_now() - began, g_pub_n++;
-    if ((uint32_t)w != last_w || (uint32_t)h != last_h) {
+    if ((uint32_t)game_w != last_w || (uint32_t)game_h != last_h) {
         char line[64];
-        last_w = (uint32_t)w, last_h = (uint32_t)h;
-        snprintf(line, sizeof line, "{\"e\":\"mode\",\"w\":%d,\"h\":%d}", w, h);
-        event_line(line);
+        last_w = (uint32_t)game_w, last_h = (uint32_t)game_h;
+        snprintf(line, sizeof line, "{\"e\":\"mode\",\"w\":%d,\"h\":%d}", game_w, game_h);
+        web_event_json(line);
     }
+}
+
+/* Resource 0xB5 is the in-game pause menu. */
+void web_presenter_dialog_created(uint32_t hwnd, uint32_t resource_id) {
+    if (resource_id == 0xB5u) g_pause_dialog = hwnd;
+}
+
+static int pause_dialog_visible(void) {
+    return g_pause_dialog && hle_is_window(g_pause_dialog) &&
+           (hle_window_style(g_pause_dialog) & 0x10000000u);
 }
 
 /* The primary as it is now, if it changed (or a quarter second has gone) and the last frame is not
@@ -165,7 +189,8 @@ static int (*g_menus_cursor)(void);
 static void update_cursor(void) {
     static int was_kind = -1;
     static uint32_t was_handle;
-    int show = g_menus_cursor && g_menus_cursor();
+    int pause = pause_dialog_visible();
+    int show = pause || (g_menus_cursor && g_menus_cursor());
     uint32_t handle = hle_current_cursor();
     if (!show) {
         if (was_kind == RA2_CURSOR_NONE) return;
@@ -173,12 +198,30 @@ static void update_cursor(void) {
         __atomic_add_fetch(&g_sh.cursor_seq, 1, __ATOMIC_RELEASE);
         return;
     }
-    if (was_kind != RA2_CURSOR_NONE && was_kind != -1 && handle == was_handle) return;
     const hle_cursor_image_t *img = hle_cursor_image(handle);
-    was_handle = handle;
     if (!img) {
-        g_sh.cursor_kind = RA2_CURSOR_ARROW, was_kind = RA2_CURSOR_ARROW;
+        int kind = pause ? RA2_CURSOR_OVERLAY : RA2_CURSOR_ARROW;
+        if (was_kind == kind && handle == was_handle) return;
+        if (pause) {
+            /* Pause dialogs can clear the game's cursor handle. Keep drawing
+             * a visible pointer in the page overlay so it remains above the
+             * sidebar as well as the map. */
+            memset(g_sh.cursor_rgba, 0, sizeof g_sh.cursor_rgba);
+            for (int y = 0; y < 20; y++) {
+                int edge = y < 14 ? (y + 1) / 2 : 7 + (y - 14) / 2;
+                for (int x = 0; x <= edge && x < 12; x++) {
+                    int border = x == 0 || x == edge || (y >= 14 && x == edge);
+                    uint8_t *p = &g_sh.cursor_rgba[(y * RA2_CURSOR_PX + x) * 4];
+                    p[0] = p[1] = p[2] = border ? 0 : 255;
+                    p[3] = 255;
+                }
+            }
+            g_sh.cursor_hot_x = 0, g_sh.cursor_hot_y = 0;
+        }
+        g_sh.cursor_kind = (uint32_t)kind, was_kind = kind;
     } else {
+        int kind = pause ? RA2_CURSOR_OVERLAY : RA2_CURSOR_IMAGE;
+        if (was_kind == kind && handle == was_handle) return;
         for (int y = 0; y < RA2_CURSOR_PX; y++)
             for (int x = 0; x < RA2_CURSOR_PX; x++) {
                 int bit = 7 - (x & 7), at = y * 4 + (x >> 3);
@@ -188,14 +231,15 @@ static void update_cursor(void) {
                 p[0] = p[1] = p[2] = c, p[3] = and_ ? 0 : 255;
             }
         g_sh.cursor_hot_x = img->hot_x, g_sh.cursor_hot_y = img->hot_y;
-        g_sh.cursor_kind = RA2_CURSOR_IMAGE, was_kind = RA2_CURSOR_IMAGE;
+        g_sh.cursor_kind = (uint32_t)kind, was_kind = kind;
     }
+    was_handle = handle;
     __atomic_add_fetch(&g_sh.cursor_seq, 1, __ATOMIC_RELEASE);
 }
 
 /* ---- input: the page's side, then the game's ------------------------------- */
 
-enum { IN_MOVE, IN_DOWN, IN_UP, IN_KEYDOWN, IN_KEYUP, IN_QUIT, IN_FOCUS };
+enum { IN_MOVE, IN_DOWN, IN_UP, IN_KEYDOWN, IN_KEYUP, IN_QUIT, IN_FOCUS, IN_SETTING };
 typedef struct { uint32_t kind, a, b, c; } input_t;
 #define RING 512
 static input_t g_ring[RING];
@@ -212,6 +256,8 @@ static void push(uint32_t kind, uint32_t a, uint32_t b, uint32_t c) {
 /* kind: 0 move, 1 down, 2 up; x and y in game pixels; button as the DOM
  * numbers it (0 left, 1 middle, 2 right) */
 EMSCRIPTEN_KEEPALIVE void ra2_input_pointer(int kind, int x, int y, int button) {
+    __atomic_store_n(&g_sh.pointer_x, x, __ATOMIC_RELAXED);
+    __atomic_store_n(&g_sh.pointer_y, y, __ATOMIC_RELAXED);
     if (kind == 0) push(IN_MOVE, (uint32_t)x, (uint32_t)y, 0);
     else push(kind == 1 ? IN_DOWN : IN_UP, (uint32_t)x, (uint32_t)y, (uint32_t)button);
 }
@@ -219,6 +265,7 @@ EMSCRIPTEN_KEEPALIVE void ra2_input_pointer(int kind, int x, int y, int button) 
 EMSCRIPTEN_KEEPALIVE void ra2_input_key(int down, int vk, int scan) { push(down ? IN_KEYDOWN : IN_KEYUP, (uint32_t)vk, (uint32_t)scan, 0); }
 EMSCRIPTEN_KEEPALIVE void ra2_quit(void) { push(IN_QUIT, 0, 0, 0); }
 EMSCRIPTEN_KEEPALIVE void ra2_focus(int focused) { push(IN_FOCUS, (uint32_t)(focused != 0), 0, 0); }
+EMSCRIPTEN_KEEPALIVE void ra2_setting(int key, int value, int extra) { push(IN_SETTING, (uint32_t)key, (uint32_t)value, (uint32_t)extra); }
 EMSCRIPTEN_KEEPALIVE void ra2_set_volume(float v) { hle_dsound_set_master(v < 0 ? 0 : v > 1 ? 1 : v); }
 /* The sound ring (win32hle.h, hle_audio_ring_t): the page's audio worklet reads it while ra2_audio_live(1) holds. */
 EMSCRIPTEN_KEEPALIVE void *ra2_audio(void) { return hle_audio_ring(); }
@@ -233,16 +280,24 @@ static void drain_input(void) {
         input_t e = g_ring[t % RING];
         t++;
         switch (e.kind) {
-        case IN_MOVE: hle_input_mouse(WM_MOUSEMOVE, (int)e.a, (int)e.b); break;
+        case IN_MOVE:
+            web_modern_pointer(WM_MOUSEMOVE, (int)e.a, (int)e.b);
+            hle_input_mouse(WM_MOUSEMOVE, (int)e.a, (int)e.b); break;
         case IN_DOWN: case IN_UP: {
             int down = e.kind == IN_DOWN;
             uint32_t m = e.c == 2 ? (down ? WM_RBUTTONDOWN : WM_RBUTTONUP)
                        : e.c == 1 ? (down ? WM_MBUTTONDOWN : WM_MBUTTONUP)
                        : (down ? WM_LBUTTONDOWN : WM_LBUTTONUP);
+            web_modern_pointer(m, (int)e.a, (int)e.b);
             hle_input_mouse(m, (int)e.a, (int)e.b);
             break;
         }
-        case IN_KEYDOWN: case IN_KEYUP: hle_input_key(e.kind == IN_KEYDOWN, e.a, e.b); break;
+        case IN_KEYDOWN: case IN_KEYUP:
+            if (e.a == 0x79) { if (e.kind == IN_KEYDOWN) web_settings_command(RA2_SETTING_MENU, -1, 0); break; }
+            if (mods_handle_key((int)e.a, e.kind == IN_KEYDOWN)) break;
+            web_modern_key(e.kind == IN_KEYDOWN, e.a);
+            hle_input_key(e.kind == IN_KEYDOWN, e.a, e.b); break;
+        case IN_SETTING: web_settings_command((int)e.a, (int)e.b, (int)e.c); break;
         case IN_QUIT: {
             uint32_t h = hle_first_hwnd();
             if (h) hle_post_message(h, WM_CLOSE, 0, 0); else hle_exit(0);
@@ -260,16 +315,27 @@ static void drain_input(void) {
 
 /* ---- the game's thread ------------------------------------------------------- */
 
+static void warp_cursor(int x, int y) {
+    g_sh.warp_x = x; g_sh.warp_y = y;
+    __atomic_store_n(&g_sh.pointer_x, x, __ATOMIC_RELAXED);
+    __atomic_store_n(&g_sh.pointer_y, y, __ATOMIC_RELAXED);
+    __atomic_add_fetch(&g_sh.warp_seq, 1, __ATOMIC_RELEASE);
+}
+
 void web_presenter_start(int (*menus_use_windows_cursor)(void)) {
     g_menus_cursor = menus_use_windows_cursor;
     hle_screen_frame_hook = on_frame;
     hle_dd_unlock_hook = present_now;
+    hle_cursor_hook = warp_cursor;
 }
 
 void web_presenter_pump(void) {
     static uint32_t next_fps, last_frames;
     drain_input();
     update_cursor();
+    /* Dialog paints can finish without a primary Unlock. Sample the game's
+     * presented surface at its regular pump boundary as well. */
+    present_now();
     uint32_t now = hle_ticks_ms();
     uint32_t seen = MEM32(RA2_GAME_FRAME_VA);
     if (seen != g_frame_seen) {                          /* a game frame came: how long since the last */
@@ -289,7 +355,7 @@ void web_presenter_pump(void) {
             snprintf(line, sizeof line,
                      "{\"e\":\"fps\",\"fps\":%u,\"ms\":%u,\"worst\":%u,\"late\":%u,\"pub\":%u,\"pubms\":%.2f}", fps,
                      fps ? 1000u / fps : 0, (unsigned)(g_worst_gap + 0.5), g_late, g_pub_n, g_pub_n ? g_pub_ms / g_pub_n : 0.0);
-            event_line(line);
+            web_event_json(line);
             g_worst_gap = 0, g_late = 0, g_pub_ms = 0, g_pub_n = 0;
         }
         last_frames = frames;

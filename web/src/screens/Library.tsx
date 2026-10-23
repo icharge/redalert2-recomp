@@ -1,6 +1,6 @@
 import { AlertDialog, Button, Callout, Card, Flex, Heading, Link, Text } from "@radix-ui/themes";
 import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { formatBytes } from "../components/format";
 import { StorageMeter } from "../components/StorageMeter";
 import type { GameRecord } from "../storage/manifest";
@@ -18,6 +18,7 @@ export interface LibraryProps {
   /** takes saved games from a zip the player chose; says what happened */
   onImportSaves(game: GameRecord, zip: File): Promise<string>;
   estimate?: () => Promise<{ quota?: number; usage?: number }>;
+  modManager?(game: GameRecord): ReactNode;
 }
 
 export function Library({
@@ -28,6 +29,7 @@ export function Library({
   onDownloadSaves,
   onImportSaves,
   estimate,
+  modManager,
 }: LibraryProps) {
   const [removed, setRemoved] = useState(0);
   const [failure, setFailure] = useState<string | null>(null);
@@ -78,6 +80,7 @@ export function Library({
                   {new Date(game.importedAt).toLocaleDateString()}
                 </Text>
                 <Flex gap="3" mt="1">
+                  {modManager?.(game)}
                   <Link
                     href="#"
                     size="2"

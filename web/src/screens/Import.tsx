@@ -306,8 +306,8 @@ function Review({
               disabled={plan.movieBytes === 0}
               onCheckedChange={(checked) => onOptions({ ...options, movies: checked === true })}
             />
-            Include the movies ({formatBytes(plan.movieBytes)}). The game runs without them, and
-            this browser build cannot play them yet.
+            Include the movies ({formatBytes(plan.movieBytes)}). Without these archives, video
+            cutscenes show as black; static loading-screen images are separate game assets.
           </Flex>
         </Text>
         <Text as="label" size="2">

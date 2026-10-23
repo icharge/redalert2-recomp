@@ -2,6 +2,14 @@ import { CrossCircledIcon, ExclamationTriangleIcon } from "@radix-ui/react-icons
 import { Button, Callout, Code, Flex, Heading, ScrollArea } from "@radix-ui/themes";
 import { useEffect, useRef, useState } from "react";
 import { SoundControl } from "../components/SoundControl";
+import { SettingsDialog } from "../components/SettingsDialog";
+import { Setting } from "../game/protocol";
+import {
+  enterFullscreen,
+  leaveFullscreen,
+  lockPointer,
+  releaseBrowserControls,
+} from "../game/browser-controls";
 import { GameAudio } from "../game/audio";
 import { attachInput } from "../game/input";
 import {
@@ -19,25 +27,72 @@ import { LoadingScreen } from "./LoadingScreen";
 import styles from "./Play.module.css";
 
 // The game starts once per page load, whatever React remounts (StrictMode, a screen switch).
-let session: Promise<GameHandle> | null = null;
+declare global { interface Window { ra2Session?: Promise<GameHandle> } }
 function startOnce(files: FileSource): Promise<GameHandle> {
-  session ??= startGame({ files, args: argsFromQuery(window.location.search) });
-  return session;
+  window.ra2Session ??= startGame({ files, args: argsFromQuery(window.location.search) });
+  return window.ra2Session;
 }
 
 /** The canvas fills the window; the game draws into it through shared memory. React never touches it again. */
 export function Play({ files }: { files: FileSource }) {
+  const stage = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
+  const backdrop = useRef<HTMLCanvasElement>(null);
+  const cursor = useRef<HTMLImageElement>(null);
   const [startError, setStartError] = useState<Error | null>(null);
   const [presenter, setPresenter] = useState<Presenter | null>(null);
   const [audio, setAudio] = useState<GameAudio | null>(null);
   const [volume, setVolume] = useState(1);
+  const [fullscreen, setFullscreen] = useState(false);
+  const [pointerLocked, setPointerLocked] = useState(false);
+  const [browserError, setBrowserError] = useState<string | null>(null);
   const handle = useRef<GameHandle | null>(null);
+  const pendingPointer = useRef(false);
   const phase = useGameState((s) => s.phase);
   const copy = useGameState((s) => s.copy);
   const title = useGameState((s) => s.title);
   const error = useGameState((s) => s.error);
   const exitCode = useGameState((s) => s.exitCode);
+  const settings = useGameState((s) => s.settings);
+  const restart = useGameState((s) => s.restart);
+
+  useEffect(() => {
+    if (settings) presenter?.configure(settings.scale);
+  }, [presenter, settings]);
+  useEffect(() => {
+    if (!settings || settings.open || !canvas.current) return;
+    canvas.current.focus();
+    if (pendingPointer.current) {
+      pendingPointer.current = false;
+      void lockPointer(canvas.current).catch((e: unknown) => setBrowserError(String(e)));
+    }
+  }, [settings]);
+  useEffect(() => {
+    if (!restart) return;
+    const game = handle.current;
+    if (files.kind === "opfs") sessionStorage.setItem("ra2-resume-game", files.record.id);
+    void (game?.saves?.flush() ?? Promise.resolve()).then(
+      () => window.location.reload(),
+      (e: unknown) => setBrowserError(`Could not save before switching mods: ${String(e)}`),
+    );
+  }, [restart, files]);
+
+  const toggleFullscreen = () => {
+    void (document.fullscreenElement ? leaveFullscreen() : enterFullscreen(document.documentElement)).catch(
+      (e: unknown) => setBrowserError(e instanceof Error ? e.message : String(e)),
+    );
+  };
+  useEffect(() => {
+    const full = () => setFullscreen(!!document.fullscreenElement);
+    const pointer = () => setPointerLocked(document.pointerLockElement === canvas.current);
+    document.addEventListener("fullscreenchange", full);
+    document.addEventListener("pointerlockchange", pointer);
+    return () => {
+      document.removeEventListener("fullscreenchange", full);
+      document.removeEventListener("pointerlockchange", pointer);
+      releaseBrowserControls();
+    };
+  }, []);
 
   useEffect(() => {
     const element = canvas.current;
@@ -47,7 +102,7 @@ export function Play({ files }: { files: FileSource }) {
     startOnce(files).then(
       (game) => {
         if (cancelled) return;
-        const presenter = new Presenter(element, game.memory, game.shared);
+        const presenter = new Presenter(element, game.memory, game.shared, backdrop.current, cursor.current);
         presenter.start();
         setPresenter(presenter);
         handle.current = game;
@@ -61,7 +116,31 @@ export function Play({ files }: { files: FileSource }) {
           game.exports.ra2_set_volume(saved);
           setVolume(saved);
         });
-        const detach = attachInput(element, game.exports);
+        const detach = attachInput(element, game.exports, {
+          picture: () => presenter.gameSize(),
+          warp: () => presenter.cursorWarp(),
+          enabled: () => !gameStore.getSnapshot().settings?.open,
+          shortcut: (event) => {
+            if (event.code === "F11" || (event.code === "Enter" && event.altKey)) {
+              if (!event.repeat)
+                void (
+                  document.fullscreenElement
+                    ? leaveFullscreen()
+                  : enterFullscreen(document.documentElement)
+                ).catch((e: unknown) => setBrowserError(String(e)));
+              return true;
+            }
+            if (event.code === "F12" && !event.ctrlKey) {
+              if (!event.repeat) {
+                const modes = ["sharp", "smooth", "crt", "nearest", "integer"];
+                const at = modes.indexOf(gameStore.getSnapshot().settings?.scale ?? "sharp");
+                game.exports.ra2_setting(Setting.Scale, (at + 1) % modes.length, 0);
+              }
+              return true;
+            }
+            return false;
+          },
+        });
         const observer = new ResizeObserver(([entry]) => {
           if (!entry) return;
           const { width, height } = entry.contentRect;
@@ -98,8 +177,50 @@ export function Play({ files }: { files: FileSource }) {
     !startError && !crashed && (phase === "idle" || phase === "loading" || phase === "booting");
 
   return (
-    <div className={styles.stage}>
+    <div ref={stage} className={styles.stage}>
       <canvas ref={canvas} className={styles.canvas} tabIndex={0} aria-label="The game" />
+      <canvas
+        ref={backdrop}
+        className={styles.backdrop}
+        hidden={!settings?.bars}
+        aria-hidden="true"
+      />
+      <img ref={cursor} className={styles.cursor} alt="" aria-hidden="true" />
+      <Button
+        className={styles.menu}
+        size="1"
+        variant="soft"
+        onClick={() => handle.current?.exports.ra2_setting(Setting.Menu, 1, 0)}
+      >
+        Settings (F10)
+      </Button>
+      <SettingsDialog
+        settings={settings}
+        fullscreen={fullscreen}
+        pointerLocked={pointerLocked}
+        onFullscreen={toggleFullscreen}
+        onPointerLock={() => {
+          if (document.pointerLockElement) document.exitPointerLock();
+          else if (canvas.current) {
+            pendingPointer.current = true;
+            handle.current?.exports.ra2_setting(Setting.Menu, 0, 0);
+          }
+        }}
+        command={(key, value, extra = 0) => handle.current?.exports.ra2_setting(key, value, extra)}
+        onClose={() => {
+          handle.current?.exports.ra2_setting(Setting.Menu, 0, 0);
+          void handle.current?.saves?.flush();
+          canvas.current?.focus();
+        }}
+      />
+      {browserError && (
+        <Callout.Root className={styles.browserError} role="alert">
+          <Callout.Text>{browserError}</Callout.Text>
+          <Button size="1" onClick={() => setBrowserError(null)}>
+            Dismiss
+          </Button>
+        </Callout.Root>
+      )}
       <FrameStats presenter={presenter} />
       {audio && (
         <SoundControl

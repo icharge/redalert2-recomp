@@ -108,20 +108,54 @@ export function toGamePixels(
 export function attachInput(
   canvas: HTMLCanvasElement,
   game: Pick<Ra2Exports, "ra2_input_pointer" | "ra2_input_key" | "ra2_focus">,
+  options: {
+    picture?: () => Size;
+    enabled?: () => boolean;
+    shortcut?: (event: KeyboardEvent) => boolean;
+    warp?: () => { seq: number; x: number; y: number };
+  } = {},
 ): () => void {
-  const picture = (): Size => ({ width: canvas.width, height: canvas.height });
-  const point = (event: MouseEvent) =>
-    toGamePixels(event.clientX, event.clientY, canvas.getBoundingClientRect(), picture());
+  const picture = options.picture ?? (() => ({ width: canvas.width, height: canvas.height }));
+  let virtual = { x: picture().width / 2, y: picture().height / 2 };
+  let warpSeq = -1;
+  const held = new Map<string, KeyPair>();
+  const buttons = new Set<number>();
+  const point = (event: MouseEvent, moving = false) => {
+    const size = picture();
+    const box = canvas.getBoundingClientRect();
+    if (document.pointerLockElement === canvas) {
+      const warp = options.warp?.();
+      if (warp && warp.seq > 0 && warp.seq !== warpSeq) {
+        virtual = { x: warp.x, y: warp.y };
+        warpSeq = warp.seq;
+      }
+      const scale = Math.min(box.width / size.width, box.height / size.height) || 1;
+      if (moving) {
+        virtual.x += event.movementX / scale;
+        virtual.y += event.movementY / scale;
+      }
+      virtual.x = Math.max(0, Math.min(size.width - 1, virtual.x));
+      virtual.y = Math.max(0, Math.min(size.height - 1, virtual.y));
+      return { x: Math.floor(virtual.x), y: Math.floor(virtual.y) };
+    }
+    const p = toGamePixels(event.clientX, event.clientY, box, size);
+    if (p) virtual = p;
+    return p;
+  };
 
   const onMove = (event: MouseEvent) => {
-    const p = point(event);
+    if (options.enabled?.() === false) return;
+    const p = point(event, true);
     if (p) game.ra2_input_pointer(PointerKind.Move, p.x, p.y, 0);
   };
   const onButton = (kind: number) => (event: MouseEvent) => {
+    if (options.enabled?.() === false) return;
     const p = point(event);
     if (!p) return;
     event.preventDefault();
     if (kind === PointerKind.Down) canvas.focus();
+    if (kind === PointerKind.Down) buttons.add(event.button);
+    else buttons.delete(event.button);
     game.ra2_input_pointer(kind, p.x, p.y, event.button);
   };
   const onDown = onButton(PointerKind.Down);
@@ -129,6 +163,11 @@ export function attachInput(
   const onContextMenu = (event: Event) => event.preventDefault();
 
   const onKey = (down: boolean) => (event: KeyboardEvent) => {
+    if (options.enabled?.() === false) return;
+    if (down && options.shortcut?.(event)) {
+      event.preventDefault();
+      return;
+    }
     const key = keyFor(event.code);
     if (!key) return;
     // the browser keeps its own shortcuts (reload, dev tools, zoom, tabs): the game gets
@@ -141,12 +180,27 @@ export function attachInput(
       return;
     event.preventDefault();
     if (event.repeat && !down) return;
+    if (down) held.set(event.code, key);
+    else held.delete(event.code);
     game.ra2_input_key(down ? 1 : 0, key.vk, key.scan);
   };
   const onKeyDown = onKey(true);
   const onKeyUp = onKey(false);
   const onFocus = () => game.ra2_focus(1);
-  const onBlur = () => game.ra2_focus(0);
+  const release = () => {
+    for (const key of held.values()) game.ra2_input_key(0, key.vk, key.scan);
+    for (const button of buttons)
+      game.ra2_input_pointer(PointerKind.Up, Math.floor(virtual.x), Math.floor(virtual.y), button);
+    held.clear();
+    buttons.clear();
+  };
+  const onBlur = () => {
+    release();
+    game.ra2_focus(0);
+  };
+  const onLock = () => {
+    if (document.pointerLockElement !== canvas) release();
+  };
 
   canvas.addEventListener("mousemove", onMove);
   canvas.addEventListener("mousedown", onDown);
@@ -156,6 +210,8 @@ export function attachInput(
   window.addEventListener("keyup", onKeyUp);
   window.addEventListener("focus", onFocus);
   window.addEventListener("blur", onBlur);
+  canvas.addEventListener("blur", release);
+  document.addEventListener("pointerlockchange", onLock);
   return () => {
     canvas.removeEventListener("mousemove", onMove);
     canvas.removeEventListener("mousedown", onDown);
@@ -165,5 +221,8 @@ export function attachInput(
     window.removeEventListener("keyup", onKeyUp);
     window.removeEventListener("focus", onFocus);
     window.removeEventListener("blur", onBlur);
+    canvas.removeEventListener("blur", release);
+    document.removeEventListener("pointerlockchange", onLock);
+    release();
   };
 }

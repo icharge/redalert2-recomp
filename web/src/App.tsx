@@ -12,6 +12,7 @@ import { Manifest, type GameRecord } from "./storage/manifest";
 import { opfsSaveStore, opfsTarget, removeFiles } from "./storage/opfs";
 import { useUpdate } from "./update";
 import { exportSaves, importSaves } from "./storage/saves";
+import { ModLibrary } from "./components/ModLibrary";
 
 type Boot =
   | { name: "loading" }
@@ -37,7 +38,9 @@ export function App() {
 }
 
 function Main() {
-  const dev = import.meta.env.DEV && new URLSearchParams(window.location.search).has("dev");
+  const query = new URLSearchParams(window.location.search);
+  const test = query.get("test") === "1";
+  const dev = import.meta.env.DEV && query.has("dev");
   const [boot, setBoot] = useState<Boot>({ name: "loading" });
   const [view, setView] = useState<View | null>(null);
   const target = useMemo(() => opfsTarget(), []);
@@ -45,14 +48,23 @@ function Main() {
   const refresh = useCallback(async (manifest: Manifest) => manifest.listGames(), []);
 
   useEffect(() => {
-    if (dev) return;
+    if (dev || test) return;
     let live = true;
     Promise.all([loadBuildInfo(), Manifest.open()]).then(
       async ([build, manifest]) => {
         const games = await refresh(manifest);
         if (!live) return;
         setBoot({ name: "ready", build, manifest, games });
-        setView(games.some((game) => game.complete) ? "library" : "import");
+        const resume = sessionStorage.getItem("ra2-resume-game");
+        sessionStorage.removeItem("ra2-resume-game");
+        const remembered = games.find((game) => game.complete && game.id === resume);
+        setView(
+          remembered
+            ? { play: { kind: "opfs", record: remembered } }
+            : games.some((game) => game.complete)
+              ? "library"
+              : "import",
+        );
       },
       (error: unknown) => {
         if (live)
@@ -65,9 +77,10 @@ function Main() {
     return () => {
       live = false;
     };
-  }, [dev, refresh]);
+  }, [dev, test, refresh]);
 
   const video = videoFromQuery(window.location.search);
+  if (test) return <Play files={{ kind: "test-folder", video }} />;
   if (dev) return <Play files={{ kind: "dev-folder", video }} />;
 
   if (boot.name === "loading") return <Centered>Starting…</Centered>;
@@ -102,6 +115,7 @@ function Main() {
   return (
     <Library
       games={games}
+      modManager={(game) => <ModLibrary game={game.id} manifest={manifest} target={target} />}
       onPlay={(game) => setView({ play: { kind: "opfs", record: game, video } })}
       onImport={() => setView("import")}
       onDownloadSaves={async (game) => {

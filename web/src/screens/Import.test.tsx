@@ -106,6 +106,9 @@ describe("Import", () => {
     const { user, target, manifest, onDone } = await setup(folder());
     await user.click(screen.getByRole("button", { name: "Choose folder…" }));
     expect(await screen.findByText(/Found Yuri's Revenge in RA2/)).toBeInTheDocument();
+    expect(
+      screen.getByRole("checkbox", { name: /Include the movies.*video cutscenes show as black/ }),
+    ).toBeInTheDocument();
     // the movies are off by default, so only their empty stand-in is copied
     await user.click(screen.getByRole("button", { name: /^Import / }));
     await waitFor(() => expect(onDone).toHaveBeenCalled());

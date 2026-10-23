@@ -1,5 +1,11 @@
 import { useSyncExternalStore } from "react";
-import { RA2_WEB_PROTOCOL, parseEventLine, type GameEvent, type Pacing } from "./protocol";
+import {
+  RA2_WEB_PROTOCOL,
+  parseEventLine,
+  type GameEvent,
+  type Pacing,
+  type HostSettings,
+} from "./protocol";
 
 export type Phase = "idle" | "loading" | "booting" | "running" | "exited" | "crashed";
 
@@ -26,6 +32,8 @@ export interface GameState {
   /** something the player should see: a missing file, or why the game stopped */
   error: string | null;
   exitCode: number | null;
+  settings: HostSettings | null;
+  restart: { mod: string } | null;
 }
 
 const INITIAL: GameState = {
@@ -39,6 +47,8 @@ const INITIAL: GameState = {
   pacing: null,
   error: null,
   exitCode: null,
+  settings: null,
+  restart: null,
 };
 
 /** How many log lines are kept for the crash report. */
@@ -116,6 +126,12 @@ export class GameStore {
         return;
       case "menu":
         this.set({ phase: "running", loading: null });
+        return;
+      case "settings":
+        this.set({ settings: event });
+        return;
+      case "restart":
+        this.set({ restart: { mod: event.mod } });
         return;
       case "mode":
         this.set({ size: { w: event.w, h: event.h } });
