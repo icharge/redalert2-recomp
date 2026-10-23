@@ -139,7 +139,7 @@ Tick a task off here in the same pull request that finishes it.
 | ID | Task | Repo | Needs | Size | Done when |
 |---|---|---|---|---|---|
 | ~~W11.1~~ | `RA2_TARGET=game` in the web build (`build-web-game/`), a second module the page can load | here | W3.4 | S | the build publishes `/game/ra2/ra2.js` and `.wasm`, and adds RA2 to `build.json` |
-| W11.2 | Import and Library with both games, shared files stored once | here | W6.5, W11.1 | S | `e2e/import.mjs --both`: both play from one import and the shared `ra2.mix` is stored once |
+| ~~W11.2~~ | Import and Library with both games, shared files stored once | here | W6.5, W11.1 | S | `e2e/import.mjs --both`: both play from one import and the shared `ra2.mix` is stored once |
 | W11.3 | The suite on Red Alert 2 | here | W10.3, W11.2 | S | `RA2_TARGET=game` with `tools/playtest.py --web`: the same cases pass |
 
 ## Stage 12: multiplayer (optional)
