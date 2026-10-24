@@ -7,7 +7,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
-#define RA2_WEB_PROTOCOL 3
+#define RA2_WEB_PROTOCOL 6
 
 #define RA2_CURSOR_PX 32
 
@@ -49,6 +49,7 @@ void web_event_error(const char *message);
 void web_event_exit(int code);
 void web_event_json(const char *json);
 void web_json_escape(char *out, size_t n, const char *text);
+int ra2_exit_confirmation_reply(uint32_t request, int exit_game);
 
 enum { RA2_SETTING_SCALE, RA2_SETTING_BARS, RA2_SETTING_HD, RA2_SETTING_MODERN,
        RA2_SETTING_RESOLUTION, RA2_SETTING_MENU };

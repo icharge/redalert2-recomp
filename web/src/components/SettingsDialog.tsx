@@ -1,16 +1,6 @@
 import { Button, Dialog, Flex, Select, Switch, Text } from "@radix-ui/themes";
 import { SCALES, Setting, type HostSettings } from "../game/protocol";
 
-const resolutions = [
-  "800x600",
-  "1024x768",
-  "1280x720",
-  "1366x768",
-  "1600x900",
-  "1920x1080",
-  "2560x1440",
-];
-
 /** The host's F10 settings: commands go through its ring, acknowledgements
  * come back as settings events. No second copy of game settings in the page. */
 export function SettingsDialog({
@@ -50,7 +40,7 @@ export function SettingsDialog({
       >
         <Dialog.Title>Game settings</Dialog.Title>
         <Dialog.Description size="2" mb="4">
-          Changes are saved for the next time you play.
+          These settings apply while the game is running.
         </Dialog.Description>
         <Flex direction="column" gap="4">
           <Flex justify="between" align="center">
@@ -74,29 +64,6 @@ export function SettingsDialog({
                         : mode[0]?.toUpperCase() + mode.slice(1)}
                   </Select.Item>
                 ))}
-              </Select.Content>
-            </Select.Root>
-          </Flex>
-          <Flex justify="between" align="center">
-            <Text as="label" htmlFor="game-resolution">
-              Resolution (next game)
-            </Text>
-            <Select.Root
-              value={`${settings.width}x${settings.height}`}
-              onValueChange={(v) => {
-                const [w, h] = v.split("x").map(Number);
-                command(Setting.Resolution, w ?? 800, h ?? 600);
-              }}
-            >
-              <Select.Trigger id="game-resolution" aria-label="Resolution" />
-              <Select.Content>
-                {[...new Set([...resolutions, `${settings.width}x${settings.height}`])].map(
-                  (size) => (
-                    <Select.Item key={size} value={size}>
-                      {size.replace("x", " × ")}
-                    </Select.Item>
-                  ),
-                )}
               </Select.Content>
             </Select.Root>
           </Flex>

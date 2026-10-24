@@ -183,11 +183,22 @@ fault at all.
 
 ## Networking (later)
 
-`win32hle/wsock32.c` emulates IPX over UDP. Browsers have no UDP. The plan,
-if multiplayer is worth doing: replace the UDP socket with a WebRTC data
-channel (unreliable, unordered, which is what IPX was), with a small
-signalling server to pair two tabs. The game's lockstep protocol is
-unchanged.
+`win32hle/wsock32.c` emulates IPX over UDP on native hosts. Browsers have no
+UDP, so the web build bridges IPX datagrams to one unreliable, unordered
+WebRTC data channel. W12 pairs two browser clients by manually exchanging
+their SDP offer and answer; a broadcast reaches the one connected peer. The
+game's IPX lobby and lockstep protocol are unchanged. W12 does not use STUN,
+TURN, or a signaling service, and is limited to LAN ICE connectivity; see
+[D13](decisions.md#d13-browser-lan-play-one-peer-over-webrtc-manual-sdp-exchange).
+
+Internet multiplayer is a separate layer in [plan.md](plan.md), stage 13.
+[D12](decisions.md#d12-pvpgn-pro-for-the-wol-lobby-webrtc-for-match-traffic)
+selects a configurable PvPGN-PRO endpoint as the first WOL-compatible service
+target and a WSS gateway for the browser's lobby connection; end-to-end WOL
+compatibility and a full match still need verification. Game traffic remains
+IPX over WebRTC, with internet signaling/relay support handled separately
+from W12's manual LAN pairing. The original Westwood Online servers are not
+assumed to be available.
 
 ## What doesn't come over
 

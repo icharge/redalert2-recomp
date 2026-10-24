@@ -16,7 +16,7 @@ gets them too. Tasks: the W4.1x series in [tasks.md](tasks.md).
 | 5 | Holding the right button does not pan | New | the game pans on a right-drag only past the drag threshold, read with `GetSystemMetrics(SM_CXDRAG)`, which answered 0 | fixed: 4, as on Windows (pcrecomp `c9d924a`). Also true of the native host |
 | 6 | Saving a game seems to freeze it | New | not a freeze: the save is made (Delete Game appears), then a confirmation box (resource `0xCE`, an OK button) waits for a click, and the box was never visible: the game painted it, then the save list under it (a full-screen sibling dialog the game invalidates) repainted over it | fixed: a window under a newer visible sibling dialog gets no WM_PAINT until that one is gone (pcrecomp `4413f81`). Also true of the native host |
 | 7 | The opponent drop-down (Brutal Enemy) does nothing; Options, Set Game Resolution shows an empty list | New | a combo box made no taller than its field has no room for its list: `CB_GETDROPPEDCONTROLRECT` answered a list of height 0, so the game made a 0-high drop window. Windows still shows the items | fixed: such a list shows up to 8 items (pcrecomp `user32.c`). The resolution list is the same bug: it now lists 640x480 to 1280x1024 and on |
-| 8 | Drop-down lists have no border (the colour list, the resolution list); one edge of the side list only | New | not a system border (the drop window has no `WS_BORDER`, no extended style), and no GDI call on a DC without pixels is made while one is open; so the game draws its own frame, and it is lost or painted over here | **parked**, W4.17; see below |
+| 8 | Drop-down lists have no border (the colour list, the resolution list); one edge of the side list only | New | the game draws its own two-pixel frame outside the client rectangle, but the final copy to the primary surface included only the client | **fixed**, W4.17: `run_lift.py` expands the copy rectangles; see below |
 | 9 | Pressing a sidebar button shows no pressed ("clicked") frame; hovering shows no highlight | New | the game's own button class gets `WM_LBUTTONDOWN`, paints and locks the primary, and the picture is the same as before | **fixed**, W4.18: owner-draw state transitions notify the parent even when the guest subclass handles paint; `e2e/lobby.mjs` |
 | 10 | The lobby's right panel was not finished in an earlier browser build | New | the lobby's panels slide in (`seq-13` in `e2e/shots` is the middle of it); an earlier snapshot failed to repaint the title tab and minimap after the animation | **fixed**, W4.19; `work/web-lobby-idle-40/` shows the full panel after 40 s idle and an identical right-panel crop after opening and closing a drop-down |
 | 11 | Can the game change its resolution while running? | Question | the game takes its size from `RA2MD.INI` when a game or mission starts (menus stay 800x600): it cannot change mid-battle, but each new game can use a new size, and the page scales the picture ([hires.md](../hires.md), W9.1 and W9.2) | answered |
@@ -49,29 +49,21 @@ compare with. What was measured, so the next try need not repeat it:
   `Unlock` with the box of pixels that changed, and a log of `InvalidateRect`, `PAINT` and
   `ValidateRect`. `e2e/diff.mjs` counts what differs between two screenshots; `drive.mjs`
   has `down` and `up`.
-- **8, no border on drop-down lists.** The drop window is the game's own class
-  (`ComboDropWin`) registered with class style `0x3` and procedure `0x0060D540`; it is created
-  as a child with `WS_CHILD` and no border or extended style. Its procedure handles
-  `WM_PAINT` in the branch at `0x0060D846`; `WM_ERASEBKGND` returns 0 without drawing. The
-  paint branch builds and draws the custom list surface and calls `FUN_006208F0` twice with
-  a two-pixel edge thickness. Its `DAT_00887310` target is the game's AlternateSurface,
-  created by `FUN_00533FD0` and backed by an IDirectDrawSurface. The `+0x30` vtable slot
-  resolves to `FUN_007BA610` (line rasterizer); `+0x24` resolves to `FUN_007BAEB0` (pixel
-  write). Both use the surface's lock/unlock slots (`+0x5c`/`+0x60`); the lock implementation
-  `FUN_004BAD80` returns null unless `DAT_0089F978` or `DAT_00A8ED80` is set. The game parser
-  sets `DAT_0089F978` for its `-WIN` switch. Passing `-WIN` in the browser does set that byte,
-  but also changes the menu surface from 800x600 to 640x480 and still does not draw the full
-  list frame. The browser now sets only that lock gate at the pump boundary, preserving the
-  normal 800x600 menu. The rebuilt color-list capture still lacks the native frame around the
-  sides and bottom (`work/web-dropdown-lock-gate/color-open.png`; Windows reference:
-  `work/ui-reference/native-open-dropdown.png`). The gate is therefore not the full cause;
-  W4.17 remains open. A filtered replay of the top-row color list now confirms that all four
-  edges are issued at the native coordinates (x=421–468, y=78–288) and receive a valid
-  pixel pointer. The target is the 800x600 `AlternateSurface`, which HLE reports as an
-  offscreen surface (`primary=0`); no DirectDraw `Blt` or `BltFast` sourced from that surface
-  follows the frame paint in the replay (`work/web-lobby-alt-line-trace/`). This points to
-  the missing step being composition of the child paint into the presented primary surface,
-  rather than a missing edge draw. Do not add a generic window border.
+- **8, no border on drop-down lists (fixed, W4.17).** `ComboDropWin` draws its
+  custom two-pixel frame into the game's `AlternateSurface`, two pixels outside
+  the client rectangle. Its final copy to `PrimarySurface` copied only the
+  client rectangle. On this host, painting the invalid child does not also
+  repaint its parent, so the frame stayed offscreen. `run_lift.py`'s
+  `dropdown_frame_patches` recognizes the unique copy/unlock/validate epilogue
+  in each shipping executable and injects code immediately before the copy to
+  expand both source and destination rectangles by two pixels on every side.
+  It leaves same-surface and ambiguous/unrecognized copies untouched. The
+  matcher is covered by `tools/test_lift_patches.py` (five tests, including the
+  YR and RA2 global layouts). Browser captures show the color-list frame in
+  `work/web-dropdown-current/color-open.png` and the resolution-list frame in
+  `work/resolution-frame-first/resolution-open.png`; the native color-list
+  reference is `work/ui-reference/native-open-dropdown.png`. No generic window
+  border is added.
 - **9, hover and pressed frames (fixed).** The earlier references were extracted
   from a lossy H.264 recording: small changes across unrelated buttons were
   compression noise. A fresh FFV1/BGR0 recording of the original machine code

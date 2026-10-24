@@ -1,0 +1,42 @@
+.dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(1000px, calc(100vw - 32px));
+  height: min(82vh, 820px);
+  overflow: hidden;
+}
+
+.explorer,
+.reader {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.reader {
+  display: flex;
+  flex-direction: column;
+}
+
+.filename {
+  overflow-wrap: anywhere;
+}
+
+.text {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--gray-a6);
+  border-radius: var(--radius-2);
+  background: var(--gray-a2);
+  font-family: var(--code-font-family);
+  font-size: var(--font-size-1);
+  line-height: 1.5;
+  white-space: pre;
+}
+
+.readOnlyNote {
+  margin-top: var(--space-1);
+}

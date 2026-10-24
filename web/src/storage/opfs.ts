@@ -4,7 +4,6 @@
 // `CopyTarget`; `opfsTarget()` is the real one and a test can give it a Map. After each file the manifest
 // records it as done, so a reload or Cancel resumes from the next one.
 
-import type { GameId } from "./install";
 import type { PlannedFile } from "./manifest";
 import type { SaveStore } from "./saves";
 
@@ -20,7 +19,7 @@ export interface CopyTarget {
 /** A file to copy: the plan's entry, where it goes, and how to read it. */
 export interface CopyJob extends PlannedFile {
   /** the game's folder it is kept in */
-  home: GameId;
+  home: string;
   open(): ReadableStream<Uint8Array>;
 }
 
@@ -40,7 +39,7 @@ export class CopyCancelled extends Error {
   }
 }
 
-export const gamePath = (home: GameId, name: string) => `game/${home}/${name}`;
+export const gamePath = (home: string, name: string) => `game/${home}/${name}`;
 
 /** Passes a stream through, telling `onBytes` how many have gone by. */
 function counting(
@@ -129,7 +128,7 @@ export async function copyInstall(options: CopyOptions): Promise<void> {
 /** Deletes files from the target, ignoring ones that are not there. */
 export async function removeFiles(
   target: CopyTarget,
-  files: { home: GameId; name: string }[],
+  files: { home: string; name: string }[],
 ): Promise<void> {
   for (const file of files) await target.remove(gamePath(file.home, file.name));
 }
@@ -210,7 +209,7 @@ async function openFolder(
 
 /** One file of a game as it was imported, for the loader. Throws if it is not there. */
 export async function readGameFile(
-  home: GameId,
+  home: string,
   name: string,
   root: Promise<FileSystemDirectoryHandle> = navigator.storage.getDirectory(),
 ): Promise<Uint8Array> {

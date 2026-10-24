@@ -33,6 +33,7 @@ describe("parseEventLine", () => {
       pacing: { worstMs: 24, late: 2, published: 58, publishMs: 3.25 },
     });
     expect(parseEventLine('@ra2 {"e":"exit","code":0}')).toEqual({ e: "exit", code: 0 });
+    expect(parseEventLine('@ra2 {"e":"exitConfirm","request":123}')).toEqual({ e: "exitConfirm", request: 123 });
     expect(parseEventLine('@ra2 {"e":"error","message":"no gamemd.exe in /game"}')).toEqual({
       e: "error",
       message: "no gamemd.exe in /game",
@@ -50,6 +51,10 @@ describe("parseEventLine", () => {
     expect(parseEventLine("@ra2 42")).toBeNull();
     expect(parseEventLine('@ra2 {"e":"mode","w":"800"}')).toBeNull();
     expect(parseEventLine('@ra2 {"e":"nonsense"}')).toBeNull();
+    expect(parseEventLine('@ra2 {"e":"exitConfirm","request":0}')).toBeNull();
+    for (const request of [-1, 1.5, 0x100000000, "123", null])
+      expect(parseEventLine(`@ra2 ${JSON.stringify({ e: "exitConfirm", request })}`)).toBeNull();
+    expect(parseEventLine('@ra2 {"e":"exitConfirm","hwnd":123}')).toBeNull();
     expect(parseEventLine('@ra2 {"e":"boot","protocol":1}')).toBeNull();
   });
 });

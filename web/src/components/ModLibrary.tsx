@@ -1,6 +1,5 @@
 import { Button, Dialog, Flex, Text } from "@radix-ui/themes";
 import { useState } from "react";
-import type { GameId } from "../storage/install";
 import type { Manifest } from "../storage/manifest";
 import { fileListSource } from "../storage/importer";
 import { importMod, listMods, removeMod, type ModRecord } from "../storage/mods";
@@ -12,7 +11,7 @@ export function ModLibrary({
   manifest,
   target,
 }: {
-  game: GameId;
+  game: string;
   manifest: Manifest;
   target: CopyTarget;
 }) {

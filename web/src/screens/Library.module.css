@@ -6,6 +6,110 @@
   width: min(640px, 100%);
 }
 
+.gameCard {
+  position: relative;
+}
+
+.nameRow {
+  min-height: 28px;
+  padding-right: 32px;
+}
+
+.slotBadge {
+  flex: none;
+  padding: 3px 8px;
+  border: 1px solid var(--gray-6);
+  border-radius: 999px;
+  background: var(--gray-3);
+  line-height: 1.2;
+}
+
+.nameButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+  cursor: text;
+}
+
+.nameButton:focus-visible {
+  border-radius: 4px;
+  outline: 2px solid var(--accent-8);
+  outline-offset: 3px;
+}
+
+.editIcon {
+  color: var(--gray-9);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.nameButton:hover .editIcon,
+.nameButton:focus-visible .editIcon {
+  opacity: 1;
+}
+
+.nameForm {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: min(320px, 100%);
+}
+
+.actions {
+  flex-shrink: 0;
+}
+
+.removeTrigger {
+  position: absolute;
+  z-index: 2;
+  top: 10px;
+  right: 10px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+.gameCard:hover .removeTrigger,
+.gameCard:focus-within .removeTrigger,
+.gameCard:active .removeTrigger {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.removeButton {
+  color: var(--gray-11);
+}
+
+.removeButton:hover {
+  color: var(--red-11);
+}
+
 .hidden {
   display: none;
+}
+
+@media (hover: none) {
+  .removeTrigger {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .editIcon {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .removeTrigger {
+    transition: none;
+  }
+
+  .editIcon {
+    transition: none;
+  }
 }

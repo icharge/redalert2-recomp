@@ -1,7 +1,7 @@
 // What the page and the game say to each other (docs/web/protocol.md). The C side is
 // src/web/web_api.h: change the two together, and RA2_WEB_PROTOCOL with them.
 
-export const RA2_WEB_PROTOCOL = 3;
+export const RA2_WEB_PROTOCOL = 6;
 
 export const SCALES = ["sharp", "smooth", "crt", "nearest", "integer"] as const;
 export type Scale = (typeof SCALES)[number];
@@ -39,6 +39,7 @@ export type GameEvent =
   | { e: "mode"; w: number; h: number }
   | { e: "fps"; fps: number; ms: number; pacing: Pacing | null }
   | { e: "exit"; code: number }
+  | { e: "exitConfirm"; request: number }
   | { e: "error"; message: string };
 
 const PREFIX = "@ra2 ";
@@ -121,6 +122,10 @@ export function parseEventLine(line: string): GameEvent | null {
         : null;
     case "exit":
       return typeof value.code === "number" ? { e: "exit", code: value.code } : null;
+    case "exitConfirm":
+      return Number.isInteger(value.request) && Number(value.request) > 0 && Number(value.request) <= 0xffffffff
+        ? { e: "exitConfirm", request: Number(value.request) }
+        : null;
     case "error":
       return typeof value.message === "string" ? { e: "error", message: value.message } : null;
     default:
@@ -199,6 +204,12 @@ export const PointerKind = { Move: 0, Down: 1, Up: 2 } as const;
 /** The functions the page calls on the loaded module, wrapped by `cwrap`. */
 export interface Ra2Exports {
   ra2_shared(): number;
+  /** shared scratch packet buffer for the page's WebRTC/IPX bridge */
+  ra2_net_buffer(): number;
+  /** pop one packet (source socket, destination socket, payload); 0 means empty */
+  ra2_net_pop(capacity: number): number;
+  /** push bytes already in ra2_net_buffer into the game's IPX receive queue */
+  ra2_net_push(length: number): number;
   ra2_resize(width: number, height: number, dpr: number): void;
   ra2_set_volume(volume: number): void;
   /** the address of the sound ring (hle_audio_ring_t) */
@@ -209,6 +220,8 @@ export interface Ra2Exports {
   ra2_quit(): void;
   /** queued to the game thread; settings are owned and saved by the host */
   ra2_setting(key: number, value: number, extra: number): void;
+  /** reply to the intercepted Exit confirmation without creating a native dialog */
+  ra2_exit_confirmation_reply(request: number, exitGame: number): number;
   /** kind: PointerKind; x and y in game pixels; button as the DOM numbers it (0 left, 1 middle, 2 right) */
   ra2_input_pointer(kind: number, x: number, y: number, button: number): void;
   /** vk: a Windows virtual key; scan: the set-1 scan code */
@@ -220,6 +233,9 @@ export const EXPORT_SIGNATURES: {
   [K in keyof Ra2Exports]: { returns: "number" | null; args: ("number" | "string")[] };
 } = {
   ra2_shared: { returns: "number", args: [] },
+  ra2_net_buffer: { returns: "number", args: [] },
+  ra2_net_pop: { returns: "number", args: ["number"] },
+  ra2_net_push: { returns: "number", args: ["number"] },
   ra2_resize: { returns: null, args: ["number", "number", "number"] },
   ra2_set_volume: { returns: null, args: ["number"] },
   ra2_audio: { returns: "number", args: [] },
@@ -227,6 +243,7 @@ export const EXPORT_SIGNATURES: {
   ra2_focus: { returns: null, args: ["number"] },
   ra2_quit: { returns: null, args: [] },
   ra2_setting: { returns: null, args: ["number", "number", "number"] },
+  ra2_exit_confirmation_reply: { returns: "number", args: ["number", "number"] },
   ra2_input_pointer: { returns: null, args: ["number", "number", "number", "number"] },
   ra2_input_key: { returns: null, args: ["number", "number", "number"] },
   ra2_crash_report: { returns: null, args: ["string"] },

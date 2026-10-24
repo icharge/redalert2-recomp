@@ -14,11 +14,24 @@ export interface FileEntry {
   /** the games that read it */
   needs: GameId[];
   /** the game's folder it is kept in: /game/<home>/<name> */
-  home: GameId;
+  home: string;
+}
+
+export interface InstallationRecord {
+  slot: number;
+  name: string;
+  /** User-facing name, when changed from the detected game title. */
+  displayName?: string;
+  importedAt: number;
+  /** Persisted before copying, so an interruption between editions is resumable. */
+  editions?: GameId[];
 }
 
 export interface GameRecord {
   id: GameId;
+  slot: number;
+  /** Save, mod, and game-specific preference namespace; legacy imports keep their old paths. */
+  storage: string;
   title: string;
   exeStamp: number;
   importedAt: number;
@@ -45,7 +58,8 @@ export interface ResumePoint {
 }
 
 const DB_NAME = "ra2-web";
-const GAMES = "games";
+const GAMES = "installation-games";
+const INSTALLATIONS = "installations";
 const SETTINGS = "settings";
 
 function request<T>(req: IDBRequest<T>): Promise<T> {
@@ -67,27 +81,80 @@ export class Manifest {
   private constructor(private readonly db: IDBDatabase) {}
 
   static async open(factory: IDBFactory = indexedDB): Promise<Manifest> {
-    const opening = factory.open(DB_NAME, 1);
-    opening.onupgradeneeded = () => {
+    const opening = factory.open(DB_NAME, 2);
+    opening.onupgradeneeded = (event) => {
       const db = opening.result;
-      db.createObjectStore(GAMES, { keyPath: "id" });
-      db.createObjectStore(SETTINGS);
+      const editions = db.createObjectStore(GAMES, { keyPath: ["slot", "id"] });
+      const installations = db.createObjectStore(INSTALLATIONS, {
+        keyPath: "slot",
+        autoIncrement: true,
+      });
+      if (event.oldVersion === 0) db.createObjectStore(SETTINGS);
+      else {
+        const legacy = opening.transaction!.objectStore("games").getAll();
+        legacy.onsuccess = () => {
+          const games = legacy.result as Omit<GameRecord, "slot" | "storage">[];
+          if (!games.length) return;
+          installations.put({
+            slot: 1,
+            name: "Imported installation",
+            importedAt: Math.min(...games.map((game) => game.importedAt)),
+            editions: games.map((game) => game.id),
+          });
+          for (const game of games) editions.put({ ...game, slot: 1, storage: game.id });
+        };
+      }
     };
-    return new Manifest(await request(opening));
+    const db = await request(opening);
+    db.onversionchange = () => db.close();
+    return new Manifest(db);
   }
 
   close(): void {
     this.db.close();
   }
 
-  async getGame(id: GameId): Promise<GameRecord | undefined> {
-    const tx = this.db.transaction(GAMES, "readonly");
-    return (await request(tx.objectStore(GAMES).get(id))) as GameRecord | undefined;
+  async createInstallation(name: string, editions: GameId[] = []): Promise<InstallationRecord> {
+    const tx = this.db.transaction(INSTALLATIONS, "readwrite");
+    const entry = { name, importedAt: Date.now(), editions };
+    const slot = Number(await request(tx.objectStore(INSTALLATIONS).add(entry)));
+    await finished(tx);
+    return { ...entry, slot };
   }
 
-  async listGames(): Promise<GameRecord[]> {
+  async getInstallation(slot: number): Promise<InstallationRecord | undefined> {
+    const tx = this.db.transaction(INSTALLATIONS, "readonly");
+    return (await request(tx.objectStore(INSTALLATIONS).get(slot))) as
+      InstallationRecord | undefined;
+  }
+
+  async renameInstallation(slot: number, displayName: string): Promise<void> {
+    const tx = this.db.transaction(INSTALLATIONS, "readwrite");
+    const store = tx.objectStore(INSTALLATIONS);
+    const installation = (await request(store.get(slot))) as InstallationRecord | undefined;
+    if (!installation) {
+      tx.abort();
+      throw new Error("That installation does not exist.");
+    }
+    installation.displayName = displayName;
+    store.put(installation);
+    await finished(tx);
+  }
+
+  async listInstallations(): Promise<InstallationRecord[]> {
+    const tx = this.db.transaction(INSTALLATIONS, "readonly");
+    return (await request(tx.objectStore(INSTALLATIONS).getAll())) as InstallationRecord[];
+  }
+
+  async getGame(id: GameId, slot = 1): Promise<GameRecord | undefined> {
     const tx = this.db.transaction(GAMES, "readonly");
-    return (await request(tx.objectStore(GAMES).getAll())) as GameRecord[];
+    return (await request(tx.objectStore(GAMES).get([slot, id]))) as GameRecord | undefined;
+  }
+
+  async listGames(slot?: number): Promise<GameRecord[]> {
+    const tx = this.db.transaction(GAMES, "readonly");
+    const games = (await request(tx.objectStore(GAMES).getAll())) as GameRecord[];
+    return slot === undefined ? games : games.filter((game) => game.slot === slot);
   }
 
   /**
@@ -100,11 +167,26 @@ export class Manifest {
     title: string,
     exeStamp: number,
     planned: PlannedFile[],
+    installationSlot?: number,
   ): Promise<{ record: GameRecord; resume: ResumePoint }> {
-    const tx = this.db.transaction(GAMES, "readwrite");
+    const slot = installationSlot ?? 1;
+    if (!(await this.getInstallation(slot))) {
+      if (installationSlot !== undefined) throw new Error("That installation does not exist.");
+      const created = await this.createInstallation("Imported installation");
+      if (created.slot !== slot) throw new Error("Choose an installation to import into.");
+    }
+    const tx = this.db.transaction([GAMES, INSTALLATIONS], "readwrite");
     const store = tx.objectStore(GAMES);
-    const before = (await request(store.get(id))) as GameRecord | undefined;
-    const others = ((await request(store.getAll())) as GameRecord[]).filter((g) => g.id !== id);
+    const installation = await request(tx.objectStore(INSTALLATIONS).get(slot)) as InstallationRecord;
+    if (!installation) { tx.abort(); throw new Error("That installation does not exist."); }
+    if (!installation.editions?.includes(id)) {
+      installation.editions = [...(installation.editions ?? []), id];
+      tx.objectStore(INSTALLATIONS).put(installation);
+    }
+    const before = (await request(store.get([slot, id]))) as GameRecord | undefined;
+    const others = ((await request(store.getAll())) as GameRecord[]).filter(
+      (g) => g.slot === slot && g.id !== id,
+    );
     const resume: ResumePoint = { done: [], todo: [] };
     const files: Record<string, FileEntry> = {};
     for (const file of planned) {
@@ -138,13 +220,15 @@ export class Manifest {
           lastModified: file.lastModified,
           done: false,
           needs: file.needs,
-          home: had?.home ?? id,
+          home: had?.home ?? `slot-${slot}`,
         };
         resume.todo.push(file);
       }
     }
     const record: GameRecord = {
       id,
+      slot,
+      storage: before?.storage ?? `slot-${slot}-${id}`,
       title,
       exeStamp,
       importedAt: before?.importedAt ?? Date.now(),
@@ -158,10 +242,10 @@ export class Manifest {
   }
 
   /** One file is in OPFS, whole. */
-  async markFileDone(id: GameId, name: string): Promise<void> {
+  async markFileDone(id: GameId, name: string, slot = 1): Promise<void> {
     const tx = this.db.transaction(GAMES, "readwrite");
     const store = tx.objectStore(GAMES);
-    const record = (await request(store.get(id))) as GameRecord | undefined;
+    const record = (await request(store.get([slot, id]))) as GameRecord | undefined;
     const entry = record?.files[name];
     if (!record || !entry) {
       tx.abort();
@@ -177,19 +261,50 @@ export class Manifest {
    * Forgets a game. Returns the files to delete from OPFS: those only this game reads. A file another
    * game still reads stays, wherever it is kept.
    */
-  async removeGame(id: GameId): Promise<{ home: GameId; name: string }[]> {
-    const tx = this.db.transaction(GAMES, "readwrite");
+  async removeGame(id: GameId, slot = 1): Promise<{ home: string; name: string }[]> {
+    return this.removeRecords(slot, id);
+  }
+
+  async removeInstallation(slot: number): Promise<{ home: string; name: string }[]> {
+    return this.removeRecords(slot);
+  }
+
+  private async removeRecords(
+    slot: number,
+    id?: GameId,
+  ): Promise<{ home: string; name: string }[]> {
+    const tx = this.db.transaction([GAMES, INSTALLATIONS, SETTINGS], "readwrite");
     const store = tx.objectStore(GAMES);
-    const record = (await request(store.get(id))) as GameRecord | undefined;
-    if (!record) return [];
-    const others = ((await request(store.getAll())) as GameRecord[]).filter((g) => g.id !== id);
-    const stillNeeded = new Set(others.flatMap((g) => Object.keys(g.files)));
-    const doomed = Object.entries(record.files)
-      .filter(([name]) => !stillNeeded.has(name))
-      .map(([name, entry]) => ({ home: entry.home, name }));
-    store.delete(id);
+    const all = (await request(store.getAll())) as GameRecord[];
+    const selected = (game: GameRecord) =>
+      game.slot === slot && (id === undefined || game.id === id);
+    const removed = all.filter(selected);
+    const stillNeeded = new Set(
+      all
+        .filter((game) => !selected(game))
+        .flatMap((game) =>
+          Object.entries(game.files).map(([name, entry]) => `${entry.home}/${name}`),
+        ),
+    );
+    const doomed = new Map<string, { home: string; name: string }>();
+    for (const game of removed) {
+      for (const [name, entry] of Object.entries(game.files)) {
+        const path = `${entry.home}/${name}`;
+        if (!stillNeeded.has(path)) doomed.set(path, { home: entry.home, name });
+      }
+      const mods = (await request(tx.objectStore(SETTINGS).get(`mods:${game.storage}`))) as
+        { name: string; files: { name: string }[] }[] | undefined;
+      for (const mod of mods ?? [])
+        for (const file of mod.files) {
+          const name = `mods/${mod.name}/${file.name}`;
+          doomed.set(`${game.storage}/${name}`, { home: game.storage, name });
+        }
+      tx.objectStore(SETTINGS).delete(`mods:${game.storage}`);
+      store.delete([slot, game.id]);
+    }
+    if (id === undefined) tx.objectStore(INSTALLATIONS).delete(slot);
     await finished(tx);
-    return doomed;
+    return [...doomed.values()];
   }
 
   async getSetting<T>(name: string): Promise<T | undefined> {

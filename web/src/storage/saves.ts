@@ -6,7 +6,6 @@
 // Only files that are new, or changed since the game started, are kept: the game's own files are
 // already in OPFS from the import.
 
-import type { GameId } from "./install";
 import type { CopyTarget } from "./opfs";
 
 /** The parts of Emscripten's FS this uses. */
@@ -71,11 +70,11 @@ function bytesStream(data: Uint8Array): ReadableStream<Uint8Array> {
 
 /** What is in OPFS under `save/<game>/`, as a source of (path, bytes). */
 export interface SaveStore {
-  list(game: GameId): Promise<{ path: string; read(): Promise<Uint8Array> }[]>;
+  list(game: string): Promise<{ path: string; read(): Promise<Uint8Array> }[]>;
 }
 
 /** Puts the saved files back over the game's own, before the game starts. */
-export async function restoreSaves(fs: FsLike, store: SaveStore, game: GameId,
+export async function restoreSaves(fs: FsLike, store: SaveStore, game: string,
   accept: (path: string) => boolean = () => true): Promise<number> {
   const files = (await store.list(game)).filter((file) => accept(file.path));
   for (const file of files) {
@@ -106,7 +105,7 @@ export interface SaveSync {
 export function startSaveSync(
   fs: FsLike,
   target: CopyTarget,
-  game: GameId,
+  game: string,
   everyMs = 2000,
 ): SaveSync {
   const kept = scan(fs);
@@ -157,7 +156,7 @@ export function startSaveSync(
 const SAVES_FOLDER = "Saved Games/";
 
 /** The saved games of a game, zipped as `Saved Games/<name>`, or null if there are none yet. */
-export async function exportSaves(store: SaveStore, game: GameId): Promise<Uint8Array | null> {
+export async function exportSaves(store: SaveStore, game: string): Promise<Uint8Array | null> {
   const files = (await store.list(game)).filter((file) => file.path.startsWith(SAVES_FOLDER));
   if (files.length === 0) return null;
   const { writeZip } = await import("./zip");
@@ -173,7 +172,7 @@ export async function exportSaves(store: SaveStore, game: GameId): Promise<Uint8
 export async function importSaves(
   zip: Uint8Array,
   target: CopyTarget,
-  game: GameId,
+  game: string,
 ): Promise<number> {
   const { readZip } = await import("./zip");
   const files = await readZip(zip);

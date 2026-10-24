@@ -96,6 +96,7 @@ function bytesStream(data: Uint8Array): ReadableStream<Uint8Array> {
 }
 
 export interface Prepared {
+  name: string;
   plan: ImportPlan;
   /** each game's exe against the lifted build: ok, or what is wrong */
   exes: Partial<Record<GameId, Check>>;
@@ -120,7 +121,13 @@ export async function prepareImport(
     const exe = list.find((file) => file.path.toLowerCase() === game?.exe.toLowerCase());
     if (game && exe) exes[id] = checkExe(await exe.head(4096), game.stamp, game.exe);
   }
-  return { plan, exes, space: checkSpace(estimate, plan.bytes, plan.movieBytes), files };
+  return {
+    name: source.name,
+    plan,
+    exes,
+    space: checkSpace(estimate, plan.bytes, plan.movieBytes),
+    files,
+  };
 }
 
 /** Why this folder cannot be imported, or null if it can. */
@@ -139,6 +146,8 @@ export interface RunOptions {
   target: CopyTarget;
   onProgress?(progress: CopyProgress): void;
   signal?: AbortSignal;
+  /** Explicitly resume an incomplete installation; otherwise create a new slot. */
+  slot?: number;
 }
 
 /**
@@ -146,8 +155,27 @@ export interface RunOptions {
  * the first, and the second finds it done. An import that was cancelled or reloaded takes up where it
  * stopped: the manifest knows which files are in OPFS whole and unchanged.
  */
-export async function runImport(options: RunOptions): Promise<void> {
+export async function runImport(options: RunOptions): Promise<number> {
   const { prepared, build, manifest, target, signal } = options;
+  const problem = blocker(prepared);
+  if (problem) throw new Error(problem);
+  const installation =
+    options.slot === undefined
+      ? await manifest.createInstallation(prepared.name, prepared.plan.games)
+      : await manifest.getInstallation(options.slot);
+  if (!installation) throw new Error("That installation does not exist.");
+  const slot = installation.slot;
+  const existing = await manifest.listGames(slot);
+  const expected = installation.editions ?? existing.map((game) => game.id);
+  if (existing.length && expected.every((id) => existing.some((game) => game.id === id && game.complete)))
+    throw new Error("That installation is already complete. Import it into a new slot instead.");
+  if (
+    expected.some((id) => !prepared.plan.games.includes(id)) || existing.some(
+      (game) =>
+        !prepared.plan.games.includes(game.id) || build.games[game.id]?.stamp !== game.exeStamp,
+    )
+  )
+    throw new Error("Choose the original folder to resume this installation.");
   let doneBytes = 0;
   let doneFiles = 0;
   const totalBytes = prepared.plan.copy.reduce((sum, file) => sum + file.size, 0);
@@ -165,7 +193,7 @@ export async function runImport(options: RunOptions): Promise<void> {
         needs: file.needs,
       }));
     const exeStamp = game.stamp;
-    const { record, resume } = await manifest.beginImport(id, game.title, exeStamp, planned);
+    const { record, resume } = await manifest.beginImport(id, game.title, exeStamp, planned, slot);
     // what an earlier run already finished counts toward the bar, once
     for (const name of resume.done) {
       if (counted.has(name)) continue;
@@ -191,7 +219,7 @@ export async function runImport(options: RunOptions): Promise<void> {
       signal,
       alreadyBytes: before.bytes,
       alreadyFiles: before.files,
-      markDone: (name) => manifest.markFileDone(id, name),
+      markDone: (name) => manifest.markFileDone(id, name, slot),
       onProgress: (progress) =>
         options.onProgress?.({
           ...progress,
@@ -202,6 +230,7 @@ export async function runImport(options: RunOptions): Promise<void> {
     doneBytes += jobs.reduce((sum, job) => sum + job.size, 0);
     doneFiles += jobs.length;
   }
+  return slot;
 }
 
 // ---- a dropped folder ---------------------------------------------------------------------------

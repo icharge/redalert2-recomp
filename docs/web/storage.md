@@ -66,42 +66,52 @@ file is streamed (`file.stream().pipeTo(writable)`), never read whole, so a
 it with its size and `lastModified`. A reload or Cancel resumes from the
 manifest. A file whose size doesn't match is copied again.
 
-## The layout in OPFS
+## Installations and storage namespaces
+
+Each import creates a persistent numeric installation slot, even when the
+same edition or folder was imported before. A folder containing both games
+creates one slot with two launch choices. The installation records its
+planned editions before copying, so a reload between editions remains
+resumable. Use the slot's **Resume import** action for an incomplete copy;
+**Import a folder** always creates another slot. Slot IDs are never reused.
+
+New installations use separate namespaces:
 
 ```
-/game/
-  ra2md/            Yuri's Revenge: its own files, and the shared ones
-  ra2/              Red Alert 2
-/save/
-  ra2md/            the game's writes: Saved Games, RA2MD.INI, DEBUG.LOG
-  ra2/
+game/slot-1/                         imported files shared by editions in slot 1
+game/slot-1-ra2/mods/                slot 1's RA2 mod data
+game/slot-1-ra2md/mods/              slot 1's Yuri mod data
+save/slot-1-ra2/                     slot 1's RA2 saves and settings
+save/slot-1-ra2md/                   slot 1's Yuri saves and settings
+game/slot-2/                         another installation's own files
 ```
 
-The game sees one folder as `C:\` ([architecture.md](architecture.md)).
-At start the page copies `/game/<id>` into the game's in-memory file system and puts `/save/<id>` over it;
-what the game then writes is copied back to `/save/<id>` (decisions.md, D11).
-Removing a game deletes `/game/<id>` and keeps `/save/<id>` unless the
-player asks. On Linux, the mods layer (`src/linux/mods.c`) does the same job
-of laying one folder over another, so it's reused where it fits.
+Common files are copied once within an installation. New installations do
+not share files based on names, sizes, or timestamps. Saves, mod lists,
+mod overlays, and Thai-font preferences use each edition record's storage
+namespace. The guest still sees its fixed `/game` filesystem.
 
-The shared files are stored once, under `ra2md`, and `ra2` reads them from
-there. The manifest records which game needs which file, so removing one game
-keeps the files the other still needs.
-
-## The manifest and the page's settings
-
-IndexedDB, database `ra2-web`:
+IndexedDB database `ra2-web`, schema version 2:
 
 | Store | Key | Value |
 |---|---|---|
-| `games` | `ra2md`, `ra2` | `{ title, exeStamp, importedAt, bytes, files: { name: { size, lastModified, done } } }` |
-| `settings` | setting name | its value ([frontend.md](frontend.md), Settings) |
+| `installations` | auto-incremented numeric slot | name, import time, planned editions |
+| `installation-games` | `[slot, edition]` | edition metadata, file references, save/mod namespace |
+| `settings` | setting name | application settings and namespaced mod lists |
 
-The game's own settings stay in its own files (`RA2MD.INI`, `ra2.ini` for
-the host's presenter settings), under `/save`, as on the other platforms.
+The schema upgrade groups existing v1 RA2/Yuri records into one installation.
+Their explicit legacy file references (`game/ra2`, `game/ra2md`) and save/mod
+namespaces are preserved. No large OPFS files are moved during the atomic
+metadata upgrade. Even a new slot 1 uses `slot-1` namespaces, so an old
+removed installation's retained saves cannot become a new import's saves.
+
+Removing an installation deletes both edition records and their imported
+files/mods. Exact storage references protect any legacy shared files still
+in use. Saved games and settings are retained in their original namespace,
+which is never assigned to a later slot.
 
 ## Exporting saves
 
-The Library card offers "download saves": `/save/<id>/Saved Games` zipped in
+The Library card offers "download saves": `save/<edition-storage>/Saved Games` zipped in
 the page and handed to the player, so a save can move to the desktop build
 or another browser. Importing saves comes from the same allowlist entry.

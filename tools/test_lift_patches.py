@@ -4,7 +4,12 @@ import sys
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from run_lift import dropdown_frame_patches
+from run_lift import (
+    apply_patches,
+    dropdown_frame_patches,
+    thai_font_call_replacements,
+    web_exit_confirmation_patches,
+)
 
 
 def paint_epilogue(primary, alternate):
@@ -35,6 +40,59 @@ class DropdownPatchTests(unittest.TestCase):
 
     def test_a_copy_between_the_same_surface_is_untouched(self):
         self.assertFalse(dropdown_frame_patches(paint_epilogue(0x887308, 0x887308), 0x400000))
+
+
+class WebExitConfirmationPatchTests(unittest.TestCase):
+    @staticmethod
+    def call(helper, base=0x400000):
+        return (bytes.fromhex('5353555756e8')
+                + (helper - (base + 10)).to_bytes(4, 'little', signed=True)
+                + bytes.fromhex('85c07510'))
+
+    def test_each_target_bypasses_only_the_exit_call_and_keeps_the_native_fallback(self):
+        for target, helper in [('gamemd', 0x5D3490), ('game', 0x5B46B0)]:
+            patches = web_exit_confirmation_patches(self.call(helper), 0x400000, target)
+            self.assertEqual(list(patches), [0x400005])
+            original = '    RECOMP_CALL(sub_%08X); /* 0x00400005: call */\n' % helper
+            result = apply_patches(original, patches)
+            self.assertIn('#ifdef __EMSCRIPTEN__', result)
+            self.assertIn('ra2_web_exit_confirmation()', result)
+            self.assertIn('esp += 20', result)
+            self.assertIn('#else\n    RECOMP_CALL(sub_%08X);' % helper, result)
+
+    def test_unrelated_confirmation_call_is_untouched(self):
+        self.assertFalse(web_exit_confirmation_patches(self.call(0x500000), 0x400000, 'gamemd'))
+
+    def test_different_argument_setup_is_untouched(self):
+        code = bytearray(self.call(0x5D3490))
+        code[0] = 0x50
+        self.assertFalse(web_exit_confirmation_patches(bytes(code), 0x400000, 'gamemd'))
+
+    def test_a_different_result_check_is_untouched(self):
+        code = self.call(0x5D3490)[:-4] + bytes(4)
+        self.assertFalse(web_exit_confirmation_patches(code, 0x400000, 'gamemd'))
+
+    def test_ambiguous_matching_calls_are_untouched(self):
+        a = self.call(0x5D3490)
+        b = self.call(0x5D3490, 0x400000 + len(a))
+        self.assertFalse(web_exit_confirmation_patches(a + b, 0x400000, 'gamemd'))
+
+
+class ThaiFontCallTests(unittest.TestCase):
+    def test_each_target_routes_only_its_font_calls(self):
+        yar = 'RECOMP_CALL(sub_00434120); RECOMP_CALL(sub_00434CD0); RECOMP_CALL(sub_00434500);'
+        ra2 = 'RECOMP_CALL(sub_004318E0); RECOMP_CALL(sub_00432490); RECOMP_CALL(sub_00431CC0);'
+        self.assertEqual(
+            thai_font_call_replacements(yar, 'gamemd'),
+            'RECOMP_THAI_CALL(0x00434120u, sub_00434120); '
+            'RECOMP_THAI_CALL(0x00434CD0u, sub_00434CD0); '
+            'RECOMP_THAI_CALL(0x00434500u, sub_00434500);',
+        )
+        self.assertEqual(thai_font_call_replacements(ra2, 'game'),
+            'RECOMP_THAI_CALL(0x004318E0u, sub_004318E0); '
+            'RECOMP_THAI_CALL(0x00432490u, sub_00432490); '
+            'RECOMP_THAI_CALL(0x00431CC0u, sub_00431CC0);')
+        self.assertEqual(thai_font_call_replacements(yar, 'game'), yar)
 
 
 if __name__ == '__main__':

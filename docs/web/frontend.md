@@ -14,6 +14,7 @@ browser needs from the player. The game draws and plays on its own thread
 | Components | Radix Themes for layout, type and colour. Radix Primitives where Themes has no component |
 | Icons | Radix Icons |
 | Styling | Radix Themes tokens. CSS Modules for our own components. No Tailwind, no CSS-in-JS |
+| Routing | React Router 7, BrowserRouter with the deployment basename |
 | State | React state and context. One external store for the game's events, read with `useSyncExternalStore` |
 | Routing | none: four screens, chosen by state |
 | Build | Vite, with `vite-plugin-pwa` for the service worker |
@@ -45,6 +46,7 @@ web/
       SettingsDialog.tsx    browser-side settings (below)
       StorageMeter.tsx
       SoundControl.tsx      the "click to start sound" bar, and the volume
+      LanPanel.tsx          one-peer LAN setup through a manual WebRTC offer/answer
       ImportProgress.tsx
       CrashReport.tsx
       BrowserCheck.tsx      what this browser lacks, and what that means
@@ -55,6 +57,7 @@ web/
       presenter.ts          draws the game's shared picture and cursor on the canvas
       input.ts              the mouse and keys, as calls on the game's exports; the key table
       audio.ts              the AudioContext and the worklet over the sound ring; resumes on the first gesture
+      lan.ts                WebRTC peer signaling and the page-to-IPX datagram bridge
       volume.ts             the volume, kept in the manifest's settings
     storage/
       opfs.ts               copying into OPFS, reading back, removing
@@ -71,8 +74,24 @@ the game isn't built.
 
 ## Screens
 
-The app shows one screen at a time. It picks from the import manifest and
-the game's state, so a reload lands where the player was.
+The app uses clean routes under its deployment base: `/` is the installation
+launcher, `/import` imports a folder, and `/game/:slot` launches an installation.
+Each slot has its own available edition buttons; `?edition=ra2` or
+`?edition=ra2md` selects one explicitly. Yuri's Revenge is the default when
+both are available. Invalid or unfinished slots explain the problem and
+link back to the launcher or to Resume import. Game routes survive refreshes.
+
+The launcher groups editions by imported folder and supports multiple copies
+of the same game. Returning from a cancelled or failed import refreshes its
+metadata so the incomplete slot is immediately resumable.
+
+Normal Exit stops browser input, presentation, audio, and LAN callbacks,
+flushes pending saves/settings, then replaces the document with the base
+launcher URL. Document teardown ends workers and makes WASM memory reclaimable.
+Failed persistence keeps the page with a retry action. Crashes retain their
+report and an explicit Back to launcher action. Browser Back or switching
+a loaded game's route also uses document navigation; the classic runtime
+is never reused for another slot. Mod/font restarts reload the same game URL.
 
 1. **Browser check** (only if needed). This browser lacks something the
    game needs: `SharedArrayBuffer` (the page isn't cross-origin isolated),
@@ -83,9 +102,10 @@ the game's state, so a reload lands where the player was.
    the build the lift came from, and how much space it needs against the
    quota. Then the copy, with a Radix Progress bar, the current file, and
    Cancel. It's resumable: a reload continues from the manifest.
-3. **Library.** One card per imported game (Red Alert 2, Yuri's Revenge) with
-   Play, storage used, and Remove (a Radix AlertDialog confirms). "Import
-   another folder" goes back to Import.
+3. **Library.** One card per installation, with separate RA2/Yuri launch
+   choices, file browsing, edition settings and saves, and installation
+   removal (a Radix AlertDialog confirms). "Import a folder" creates another
+   slot. Unfinished slots offer Resume import.
 4. **Play.** The canvas fills the window. A thin bar says "click to start
    sound" until the first gesture. Esc is the game's key, so the page's own
    menu is a small button in a corner that fades out after a few seconds,

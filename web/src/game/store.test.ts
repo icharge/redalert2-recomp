@@ -51,6 +51,22 @@ describe("GameStore", () => {
     expect(store.getSnapshot()).toMatchObject({ phase: "exited", exitCode: 3 });
   });
 
+  it("keeps the game open while a page confirmation is pending and clears only the matching reply", () => {
+    const store = new GameStore();
+    store.begin();
+    store.line(boot());
+    store.line('@ra2 {"e":"menu"}');
+    store.line('@ra2 {"e":"exitConfirm","request":123}');
+    expect(store.getSnapshot()).toMatchObject({
+      phase: "running",
+      exitConfirmation: { request: 123 },
+    });
+    store.resolveExitConfirmation(456);
+    expect(store.getSnapshot().exitConfirmation).toEqual({ request: 123 });
+    store.resolveExitConfirmation(123);
+    expect(store.getSnapshot().exitConfirmation).toBeNull();
+  });
+
   it("can crash from any phase, and an exit afterwards does not hide it", () => {
     for (const setup of [
       (s: GameStore) => s.begin(),
@@ -70,6 +86,21 @@ describe("GameStore", () => {
       expect(store.getSnapshot()).toMatchObject({ phase: "crashed", error: "wasm trap" });
       store.line('@ra2 {"e":"exit","code":3}');
       expect(store.getSnapshot().phase).toBe("crashed");
+    }
+  });
+
+  it("dismisses a pending confirmation if the game exits or crashes", () => {
+    for (const finish of [
+      (s: GameStore) => s.line('@ra2 {"e":"exit","code":0}'),
+      (s: GameStore) => s.crashed("wasm trap"),
+    ]) {
+      const store = new GameStore();
+      store.begin();
+      store.line(boot());
+      store.line('@ra2 {"e":"menu"}');
+      store.line('@ra2 {"e":"exitConfirm","request":123}');
+      finish(store);
+      expect(store.getSnapshot().exitConfirmation).toBeNull();
     }
   });
 

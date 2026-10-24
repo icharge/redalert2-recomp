@@ -7,6 +7,8 @@ import { Library } from "./Library";
 
 const game = (over: Partial<GameRecord> = {}): GameRecord => ({
   id: "ra2md",
+  slot: 1,
+  storage: "ra2md",
   title: "Yuri's Revenge",
   exeStamp: 1,
   importedAt: Date.UTC(2026, 9, 18),
@@ -44,6 +46,22 @@ describe("Library", () => {
     expect(props.onPlay).toHaveBeenCalledWith(expect.objectContaining({ id: "ra2md" }));
   });
 
+  it("groups editions in one installation and keeps a second copy in its own slot", () => {
+    show([game(), game({ id: "ra2", title: "Red Alert 2", storage: "ra2" }), game({ slot: 2, storage: "slot-2-ra2md" })], {
+      installations: [{ slot: 1, name: "Original", importedAt: 1 }, { slot: 2, name: "Modded", importedAt: 2 }],
+    });
+    expect(document.querySelectorAll("[data-slot-id]")).toHaveLength(2);
+    expect(document.querySelector('[data-slot-id="1"]')?.querySelectorAll("[data-game-id]")).toHaveLength(2);
+    expect(document.querySelector('[data-slot-id="2"]')?.querySelectorAll("[data-game-id]")).toHaveLength(1);
+  });
+
+  it("offers resume when an edition has not been registered yet", () => {
+    show([game({ id: "ra2", title: "Red Alert 2" })], {
+      installations: [{ slot: 1, name: "Both games", importedAt: 1, editions: ["ra2", "ra2md"] }],
+    });
+    expect(screen.getByRole("button", { name: "Resume import" })).toBeInTheDocument();
+  });
+
   it("shows how much of the browser's storage is used", async () => {
     show([game()]);
     expect(await screen.findByText(/the browser allows this site/)).toBeInTheDocument();
@@ -55,9 +73,16 @@ describe("Library", () => {
     expect(screen.getByText(/did not finish/)).toBeInTheDocument();
   });
 
+  it("opens a read-only browser for the selected game's imported files", async () => {
+    const { user } = show([game()]);
+    await user.click(screen.getByRole("button", { name: "Browse files for Yuri's Revenge" }));
+    expect(await screen.findByRole("dialog")).toHaveTextContent("Yuri's Revenge — imported files");
+    expect(screen.getByText(/cannot be changed or downloaded/)).toBeInTheDocument();
+  });
+
   it("asks before removing, and removes when told to", async () => {
     const { props, user } = show([game()]);
-    await user.click(screen.getByRole("button", { name: "Remove…" }));
+    await user.click(screen.getByRole("button", { name: "Remove Yuri's Revenge" }));
     expect(await screen.findByText("Remove Yuri's Revenge?")).toBeInTheDocument();
     expect(props.onRemove).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: "Remove" }));
@@ -66,7 +91,7 @@ describe("Library", () => {
 
   it("keeps the game when the player says keep it", async () => {
     const { props, user } = show([game()]);
-    await user.click(screen.getByRole("button", { name: "Remove…" }));
+    await user.click(screen.getByRole("button", { name: "Remove Yuri's Revenge" }));
     await user.click(await screen.findByRole("button", { name: "Keep it" }));
     expect(props.onRemove).not.toHaveBeenCalled();
   });
@@ -88,7 +113,7 @@ describe("Library", () => {
         throw new Error("storage said no");
       },
     });
-    await user.click(screen.getByRole("button", { name: "Remove…" }));
+    await user.click(screen.getByRole("button", { name: "Remove Yuri's Revenge" }));
     await user.click(await screen.findByRole("button", { name: "Remove" }));
     expect(await screen.findByText("storage said no")).toBeInTheDocument();
   });

@@ -24,6 +24,9 @@ describe("arguments", () => {
   it("starts the game from /game, with whatever arg= says", () => {
     expect(gameArguments()).toEqual(["--run", "--game", "/game"]);
     expect(gameArguments(["--hd-voxels"])).toEqual(["--run", "--game", "/game", "--hd-voxels"]);
+    expect(gameArguments([], { enabled: true, fontId: "Tahoma-Th-1f" })).toEqual([
+      "--run", "--game", "/game", "--thai-font-fix", "--thai-font-id", "Tahoma-Th-1f",
+    ]);
   });
 
   it("takes arg= values from the URL query, in order", () => {
@@ -36,6 +39,14 @@ describe("arguments", () => {
 });
 
 describe("isBuilt", () => {
+  it("loads both runtimes under the configured context path", async () => {
+    vi.stubEnv("BASE_URL", "/emu/");
+    const fetcher = vi.fn(() => answer(true, "text/javascript"));
+    expect(await isBuilt(fetcher as unknown as typeof fetch, "ra2md")).toBe(true);
+    expect(fetcher).toHaveBeenLastCalledWith("/emu/game/ra2.js", { method: "HEAD" });
+    expect(gameScript("ra2")).toBe("/emu/game/ra2/ra2.js");
+    vi.unstubAllEnvs();
+  });
   it("is true when ra2.js comes back as JavaScript", async () => {
     const fetcher = vi.fn(() => answer(true, "text/javascript"));
     expect(await isBuilt(fetcher as unknown as typeof fetch)).toBe(true);
@@ -101,6 +112,14 @@ describe("readBody", () => {
 });
 
 describe("startGame", () => {
+  it("rejects an aborted startup so leaving the page cannot wait forever", async () => {
+    vi.stubGlobal("fetch", () => answer(true, "text/javascript"));
+    const outcome = startGame({ files: { kind: "already-there" }, store: new GameStore() }).then(
+      () => "resolved", (error: Error) => error.message);
+    await vi.waitFor(() => expect(window.Module?.onAbort).toBeTypeOf("function"));
+    window.Module!.onAbort!("bad wasm");
+    expect(await Promise.race([outcome, new Promise((resolve) => setTimeout(() => resolve("still pending"), 100))])).toContain("bad wasm");
+  });
   it("says the game isn't built when there is no ra2.js", async () => {
     vi.stubGlobal("fetch", () => answer(true, "text/html"));
     const store = new GameStore();

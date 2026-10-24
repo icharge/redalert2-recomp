@@ -28,13 +28,36 @@
 #include "recomp_target.h"
 #include "launcher.h"
 #include "web_api.h"
+#include "thai_font.h"
 extern const uint32_t ra2_entry_va;   /* recomp_dispatch.c */
+extern int hle_ws_webrtc_pop(uint8_t *packet, uint32_t capacity);
+extern int hle_ws_webrtc_push(const uint8_t *packet, uint32_t length);
 
 #define RA2_IMAGE_BASE 0x00400000u
+
+/* A shared-memory mailbox between the page's RTCPeerConnection and
+ * win32hle's IPX socket shim. The game thread never touches this scratch
+ * buffer; the page writes it before ra2_net_push and reads it after pop. */
+#define RA2_NET_PACKET_MAX 580u              /* two socket numbers + 576-byte IPX datagram */
+static uint8_t g_ra2_net_packet[RA2_NET_PACKET_MAX];
+EMSCRIPTEN_KEEPALIVE uint32_t ra2_net_buffer(void) {
+    return (uint32_t)(uintptr_t)g_ra2_net_packet;
+}
+EMSCRIPTEN_KEEPALIVE int ra2_net_pop(int capacity) {
+    if (capacity < 0) return -1;
+    if ((uint32_t)capacity > sizeof g_ra2_net_packet) capacity = sizeof g_ra2_net_packet;
+    return hle_ws_webrtc_pop(g_ra2_net_packet, (uint32_t)capacity);
+}
+EMSCRIPTEN_KEEPALIVE int ra2_net_push(int length) {
+    if (length < 0 || (uint32_t)length > sizeof g_ra2_net_packet) return -1;
+    return hle_ws_webrtc_push(g_ra2_net_packet, (uint32_t)length);
+}
 
 static int g_debuglog, g_headless, g_fullscreen = -1;   /* -1: as ra2.ini says */
 static const char *g_scale;
 static const char *g_mod;              /* --mod NAME */
+static int g_thai_font_fix;
+static const char *g_thai_font_id;
 
 /* ---- what the lift calls into ---------------------------------------------
  * run_lift.py PATCHES and HOOKS. */
@@ -88,6 +111,40 @@ static const win32hle_shim g_ra2_shims[] = {
     { "MessageBoxA", ra2_MessageBoxA },
     { 0, 0 }
 };
+
+/* run_lift.py intercepts only Init.CPP's Exit confirmation call, before the
+ * native dialog helper runs. The game thread waits for a browser reply while
+ * releasing the guest machine lock; the browser uses this atomic mailbox and
+ * never touches guest windows or registers. The original helper returns 0 for
+ * OK and 1 for Cancel, so the caller keeps its normal exit/cancel branches. */
+static uint32_t g_exit_confirm_serial;
+static uint32_t g_exit_confirm_request, g_exit_confirm_answer;
+
+uint32_t ra2_web_exit_confirmation(void) {
+    uint32_t request = ++g_exit_confirm_serial;
+    if (!request) request = ++g_exit_confirm_serial;
+    __atomic_store_n(&g_exit_confirm_answer, 0, __ATOMIC_RELAXED);
+    __atomic_store_n(&g_exit_confirm_request, request, __ATOMIC_RELEASE);
+    char event[96];
+    snprintf(event, sizeof event, "{\"e\":\"exitConfirm\",\"request\":%u}", request);
+    web_event_json(event);
+
+    hle_block_begin();
+    uint32_t answer;
+    while (!(answer = __atomic_load_n(&g_exit_confirm_answer, __ATOMIC_ACQUIRE)))
+        usleep(10000);
+    hle_block_end();
+    return answer == 2 ? 0u : 1u;
+}
+
+EMSCRIPTEN_KEEPALIVE int ra2_exit_confirmation_reply(uint32_t request, int exit_game) {
+    if (!request || (exit_game != 0 && exit_game != 1)) return 0;
+    uint32_t expected = request;
+    if (!__atomic_compare_exchange_n(&g_exit_confirm_request, &expected, 0, 0,
+                                     __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) return 0;
+    __atomic_store_n(&g_exit_confirm_answer, exit_game ? 2u : 1u, __ATOMIC_RELEASE);
+    return 1;
+}
 
 /* WinMain checks that Blowfish.dll, the Westwood cipher's COM server, can be
  * created, and the MIX archives' headers are decrypted through it: its object
@@ -243,6 +300,62 @@ static int fail(const char *fmt, ...) {
     web_event_error(msg);
     return 1;
 }
+
+/* The browser loader stages the explicitly selected font at game.fnt and
+ * excludes imported and mod copies when the fix is enabled. Check that the
+ * file the guest will actually open is a complete Thai-capable FNT. */
+static int thai_font_check(void) {
+    FILE *f = fopen("game.fnt", "rb");
+    if (!f) return fail("selected Thai font is missing at game.fnt");
+    uint8_t header[28];
+    if (fread(header, 1, sizeof header, f) != sizeof header || memcmp(header, "fonT", 4)) {
+        fclose(f);
+        return fail("selected Thai font has an invalid FNT header");
+    }
+    uint32_t height = (uint32_t)header[12] | (uint32_t)header[13] << 8 |
+                      (uint32_t)header[14] << 16 | (uint32_t)header[15] << 24;
+    uint32_t count = (uint32_t)header[20] | (uint32_t)header[21] << 8 |
+                     (uint32_t)header[22] << 16 | (uint32_t)header[23] << 24;
+    uint32_t stride = (uint32_t)header[24] | (uint32_t)header[25] << 8 |
+                      (uint32_t)header[26] << 16 | (uint32_t)header[27] << 24;
+    if (height != 16 || !count || stride < 49) {
+        fclose(f);
+        return fail("selected Thai font has unsupported FNT dimensions");
+    }
+    if (fseek(f, 0, SEEK_END) != 0) {
+        fclose(f);
+        return fail("cannot inspect selected Thai font");
+    }
+    long length = ftell(f);
+    uint64_t expected = 28u + 0x20000u + (uint64_t)count * stride;
+    if (length < 0 || (uint64_t)length != expected) {
+        fclose(f);
+        return fail("selected Thai font has a truncated glyph table");
+    }
+    static const unsigned first[] = { 0xA1, 0xDF, 0xE0 };
+    static const unsigned last[] = { 0xDA, 0xDF, 0xFB };
+    for (unsigned range = 0; range < 3; ++range) {
+        for (unsigned code = first[range]; code <= last[range]; ++code) {
+            if (fseek(f, 28 + (long)code * 2, SEEK_SET) != 0) {
+                fclose(f);
+                return fail("cannot read selected Thai font's CP874 map");
+            }
+            uint8_t map[2];
+            if (fread(map, 1, sizeof map, f) != sizeof map) {
+                fclose(f);
+                return fail("selected Thai font has an incomplete CP874 map");
+            }
+            uint32_t glyph = (uint32_t)map[0] | (uint32_t)map[1] << 8;
+            if (!glyph || glyph > count) {
+                fclose(f);
+                return fail("selected Thai font is missing CP874 glyph 0x%02X", code);
+            }
+        }
+    }
+    fclose(f);
+    fprintf(stderr, "[thaifont] using selected font %s at game.fnt\n", g_thai_font_id);
+    return 0;
+}
 static void on_exit_event(int code) { web_event_exit(code); }
 
 int main(int argc, char **argv) {
@@ -280,6 +393,8 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--headless")) g_headless = 1;
         else if (!strcmp(argv[i], "--fullscreen")) g_fullscreen = 1;
         else if (!strcmp(argv[i], "--scale") && i + 1 < argc) g_scale = argv[++i];
+        else if (!strcmp(argv[i], "--thai-font-fix")) g_thai_font_fix = 1;
+        else if (!strcmp(argv[i], "--thai-font-id") && i + 1 < argc) g_thai_font_id = argv[++i];
         else if (!strcmp(argv[i], "--debuglog")) g_debuglog = 1;
         else if (!strcmp(argv[i], "--mute")) hle_dsound_set_master(0.0f);
         else if (!strcmp(argv[i], "--game") && i + 1 < argc) game = argv[++i];
@@ -306,7 +421,7 @@ int main(int argc, char **argv) {
             g_dump_dir = dir;                /* the run chdirs into the game folder */
         }
         else {
-            printf("usage: ra2 [--run] [--headless | --fullscreen] [--scale sharp|smooth|crt|nearest|integer] [--game DIR] [--mod NAME|none] [--debuglog] [--mute] [--trace] [--heartbeat S] [--memfs] [--trap N] [--dump-frames DIR] [--hd-voxels] [--hd-voxels-dump DIR]\n"
+            printf("usage: ra2 [--run] [--headless | --fullscreen] [--scale sharp|smooth|crt|nearest|integer] [--game DIR] [--mod NAME|none] [--thai-font-fix --thai-font-id ID] [--debuglog] [--mute] [--trace] [--heartbeat S] [--memfs] [--trap N] [--dump-frames DIR] [--hd-voxels] [--hd-voxels-dump DIR]\n"
                    "           [--press DLG:CTRL@s] [--select DLG:CTRL=N@s] [--waitlog TEXT@s] [--move|--click x,y@s]\n"
                    "           [--key [c][s][a]+vk@s] [--wait VA@s] [--drag x1,y1,x2,y2@s]\n");
             return !strcmp(argv[i], "--help") || !strcmp(argv[i], "-h") ? 0 : 1;
@@ -345,6 +460,10 @@ int main(int argc, char **argv) {
         return 0;
     }
     if (chdir(game_full) != 0) return fail("cannot enter %s", game_full);
+    if (g_thai_font_fix && (!g_thai_font_id || !g_thai_font_id[0]))
+        return fail("the Thai font fix is enabled without a selected font");
+    if (g_thai_font_fix && thai_font_check() != 0) return 1;
+    thai_font_set_enabled(g_thai_font_fix);
     web_settings_start(g_scale);
     hle_screen_cursor_hook = menus_use_windows_cursor;
     if (hle_screen_open(RA2_TITLE, g_fullscreen > 0, 1) != 0) return 1;

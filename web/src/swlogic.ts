@@ -2,8 +2,11 @@
 // (docs/web/deploy.md, "The service worker").
 
 /** The files of one build of the game: they must all come from the same build, or the page and the game disagree. */
-export function isGameBuildFile(pathname: string): boolean {
-  return /^\/game\/(ra2\/)?ra2\.(js|wasm|data)$/.test(pathname);
+export function isGameBuildFile(pathname: string, base = "/"): boolean {
+  return (
+    pathname.startsWith(base) &&
+    /^game\/(ra2\/)?ra2\.(js|wasm|data)$/.test(pathname.slice(base.length))
+  );
 }
 
 export const BUILD_JSON = "/game/build.json";
@@ -15,13 +18,16 @@ export function buildIdOf(value: unknown): string | null {
   return typeof id === "string" && /^[0-9a-f]{8,64}$/.test(id) ? id : null;
 }
 
-const GAME_CACHE = "ra2-game-";
+const gameCachePrefix = (base: string) =>
+  base === "/" ? "ra2-game-" : `ra2-scope-${encodeURIComponent(base)}-game-`;
 
-export const gameCacheName = (id: string) => `${GAME_CACHE}${id}`;
+export const gameCacheName = (id: string, base = "/") => `${gameCachePrefix(base)}${id}`;
 
 /** The caches of other builds of the game, to delete once this one is in use. */
-export function staleGameCaches(names: string[], id: string): string[] {
-  return names.filter((name) => name.startsWith(GAME_CACHE) && name !== gameCacheName(id));
+export function staleGameCaches(names: string[], id: string, base = "/"): string[] {
+  return names.filter(
+    (name) => name.startsWith(gameCachePrefix(base)) && name !== gameCacheName(id, base),
+  );
 }
 
 /**

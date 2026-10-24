@@ -18,7 +18,8 @@ stages 1 to 3. [tasks.md](tasks.md) breaks each stage into tasks.
 | 9 | **Remaster features** | resolution picker, HD vehicles, modern controls, mods; frame time with HD vehicles on is recorded | architecture |
 | 10 | **The suite in a browser** | `tools/playtest.py --web` passes the `menu-*`, `back-*`, `sp-*` and `skirmish-*` cases | testing |
 | 11 | **Red Alert 2** | `RA2_TARGET=game` builds and passes the same cases | toolchain |
-| 12 | **Multiplayer** (optional) | two tabs play a LAN-style match over WebRTC | architecture |
+| 12 | **LAN multiplayer** (optional) | two browser clients play a LAN-style match; IPX datagrams use WebRTC data channels | architecture |
+| 13 | **Internet multiplayer** (optional) | players can find and join an online match through a WOLAPI-compatible service, then play over the supported network transport | architecture |
 
 ## Stage 1: toolchain
 
@@ -76,11 +77,14 @@ is 5 minutes of skirmish, because the earlier sound-thread bug
 (bringup.md, "loops that never let the sound thread run") only showed up
 over time.
 
-## Stages 8 to 12
+## Stages 8 to 13
 
 Movies, then the remaster features, which are game-side and should carry
-over. Then the suite in a browser, Red Alert 2, and multiplayer if it is
-worth it.
+over. Then the suite in a browser and Red Alert 2. Optional multiplayer is
+split into two stages: stage 12 carries LAN-style IPX traffic over WebRTC;
+stage 13 adds internet lobby/session support through WOLAPI. Stage 13 first
+has to establish which WOLAPI-compatible service and browser-facing protocol
+are usable; it must not assume the original Westwood Online servers are live.
 
 ## Risks
 

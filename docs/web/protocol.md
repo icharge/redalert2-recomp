@@ -64,6 +64,9 @@ hook (`hle_set_pump_hook`).
 | Function | Arguments | What it does |
 |---|---|---|
 | `ra2_shared` | none → address | where `ra2_shared_t` is |
+| `ra2_net_buffer` | none → address | scratch buffer for the page's WebRTC/IPX datagram bridge |
+| `ra2_net_pop` | `int capacity` → `int` | copies one outbound IPX datagram (source socket, destination socket, then payload) to the scratch buffer; 0 means empty |
+| `ra2_net_push` | `int length` → `int` | queues one inbound prefixed datagram from the scratch buffer for the game's IPX socket |
 | `ra2_input_pointer` | `int kind, int x, int y, int button` | kind 0 move, 1 down, 2 up; `x`, `y` in the picture's pixels; button as the DOM numbers it (0 left, 1 middle, 2 right) |
 | `ra2_input_key` | `int down, int vk, int scan` | a Windows virtual key and set-1 scan code |
 | `ra2_resize` | `int w, int h, float dpr` | the canvas's CSS size; stored for the game's use (stage 9: a resolution to match the window) |
@@ -72,10 +75,20 @@ hook (`hle_set_pump_hook`).
 | `ra2_audio_live` | `int live` | 1 while the page's audio context runs and the worklet reads the ring (the ring is emptied first); 0 and the game's mixer drops what it mixes |
 | `ra2_focus` | `int focused` | the window gained or lost focus: `WM_ACTIVATEAPP` to the game's window |
 | `ra2_quit` | none | posts `WM_CLOSE` to the game's window |
+| `ra2_exit_confirmation_reply` | `uint32 request, int exit_game` → `int` | replies to the intercepted Exit confirmation; 0 means Stay, 1 means Exit; returns 1 if the pending request matched |
 | `ra2_crash_report` | `const char *why` | prints the lifted function, the registers, the indirect-call ring and the guest stack to stderr. Safe after the game thread has died, because it only reads memory |
 
 There is no `ra2_script`: a test's scripted events (`--press`, `--click`, ...)
 go in at startup as `arg=` values, which `src/linux/script.c` already handles.
+
+For W12, the page treats the first four bytes in that scratch buffer as the
+source and destination IPX sockets in network byte order and the remaining
+bytes as one IPX datagram (maximum 576 bytes). The destination lets the HLE
+deliver each packet only to the matching bound IPX socket. A WebRTC data-channel
+message preserves this packet boundary. The HLE's bounded queues connect the
+page thread to the game thread; the one-peer LAN channel is unreliable and
+unordered. `ra2_net_push` returns 0 when queued and -1 for a malformed or full
+receive queue.
 
 ## Game to page: events
 
@@ -91,9 +104,35 @@ in test logs.
 | `mode` | `w`, `h` | the picture's size changed (the game set a display mode) |
 | `fps` | `fps`, `ms`, and `worst`, `late`, `pub`, `pubms` | once a second: the game's own frames per second, the longest gap between two game frames (ms), how many came more than 25 ms after the one before, how many pictures were published and the mean ms to make one. The page shows them only if the overlay is on |
 | `exit` | `code` | the game's entry returned |
+| `exitConfirm` | `request` | the main menu's Exit confirmation call was intercepted before native dialog creation; reply using `ra2_exit_confirmation_reply` |
 | `error` | `message` | something the player should see that isn't a crash (a missing file) |
 
 Example: `@ra2 {"e":"mode","w":1280,"h":720}`.
+
+## Exit confirmation proof of concept
+
+Protocol 6 replaces the original main menu's Exit confirmation. The
+`web_exit_confirmation_patches` matcher in `run_lift.py` finds its unique
+five-argument confirmation call (YR `0x0052DE1C`, RA2 `0x00513A65`). In
+Emscripten, it calls `ra2_web_exit_confirmation` instead of the game's
+reusable dialog helper. Native hosts retain the original call.
+
+The web host emits `exitConfirm` with a unique nonzero request ID, then
+waits on an atomic reply mailbox while releasing the guest machine lock.
+React opens its modal and blocks game input and pointer capture. No
+resource `0x120` dialog or native controls are created or painted.
+
+`ra2_exit_confirmation_reply(request, 0)` chooses Stay, and value 1 chooses
+Exit. A zero, stale or unmatched request, an invalid choice, or a second
+reply returns 0; a matching reply returns 1. The waiting hook returns the
+game helper's original result (0 for OK/Exit, 1 for Cancel/Stay), and the
+lift discards the original 20 argument bytes. The game's caller performs
+its normal exit or main-menu branch. Escape in the browser is Stay, and
+focus returns to the canvas afterwards. Exit or crash clears the prompt.
+
+This is a focused game-to-web-to-game hook, not yet a general replacement
+for native dialogs or the Online lobby. Protocol 5's HWND-based overlay is
+superseded: the request ID is not a window handle.
 
 ## Versions
 

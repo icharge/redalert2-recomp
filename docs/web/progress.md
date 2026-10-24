@@ -1,8 +1,7 @@
 # Browser implementation and verification, 23 October 2026
 
-The active scope is W9.1–W9.6, W10, and the parked W4.17–W4.18. This is a
-working verification ledger; an implementation without its runtime check is
-still open. `tasks.md` records completed acceptance checks.
+This is a working verification ledger; an implementation without its runtime
+check is still open. `tasks.md` records completed acceptance checks.
 
 - F10 is an accessible browser view of settings owned by the C host. Commands
   cross the input queue; settings events acknowledge the host's saved state.
@@ -71,35 +70,94 @@ Verified locally:
   `e2e/lobby.mjs` passes raw-pixel idle/hover/held, captured drag-out/in and
   release checks (`work/lobby-button-acceptance/`).
 
-Still requiring evidence or fixes:
-
-- W4.17–W4.18 remain open. `ComboDropWin` is created as a child without a border;
-  its custom procedure handles `WM_PAINT` at `0x0060D846`, while `WM_ERASEBKGND`
-  returns 0 without drawing. The paint branch calls `FUN_006208F0` twice with a
-  two-pixel edge thickness. Its `DAT_00887310` target is the game's AlternateSurface
-  created by `FUN_00533FD0`; the `+0x30` vtable slot is `FUN_007BA610` (line rasterizer),
-  and `+0x24` is `FUN_007BAEB0` (pixel write). Both use the surface's lock/unlock slots
-  (`+0x5c`/`+0x60`). The game's lock helper `FUN_004BAD80` returns null unless
-  `DAT_0089F978` or `DAT_00A8ED80` is set. Passing the retail `-WIN` switch sets the first
-  flag but changes the menu surface to 640x480 and still leaves the dropdown frame incomplete.
-  The browser now sets that lock gate at the pump boundary, preserving the 800x600 menu; the
-  gate probe and rebuilt capture confirm this path, but the color list still lacks the native
-  side and bottom frame (`work/web-dropdown-lock-gate/`, compared with
-  `work/ui-reference/native-open-dropdown.png`). W4.17 remains open because the drawn
-  offscreen frame is not visible in the browser capture. A filtered replay of the matching
-  top-row color list shows the game draws all four edges at the native coordinates
-  (x=421–468, y=78–288) into its
-  800x600 `AlternateSurface`; the lock returns a valid pixel pointer, but HLE identifies that
-  surface as offscreen (`primary=0`). No DirectDraw `Blt` or `BltFast` from that surface follows
-  the child paint in the replay (`work/web-lobby-alt-line-trace/`). The remaining likely gap is
-  composing the child-painted offscreen frame into the displayed primary surface. The native
-  captures used for the earlier button comparison were lossy; W4.18 is now
-  verified and fixed as recorded above.
-  W4.19 passes on the current build: the right-panel/minimap/title-tab
-  crop after 40 seconds idle is pixel-identical after opening and closing a dropdown.
-  Screenshots are under `work/web-lobby-idle-40/`; Windows references remain under
-  `work/ui-reference/`.
+W4.17 is fixed. The dropdown paints its two-pixel frame into `AlternateSurface`,
+but its final copy previously covered only the client rectangle. The lift now
+expands the source and destination copy rectangles by two pixels on each side;
+the targeted pattern is unique in both shipping executables. The five
+`tools/test_lift_patches.py` tests pass. Browser captures show the color and
+resolution list frames in `work/web-dropdown-current/color-open.png` and
+`work/resolution-frame-first/resolution-open.png`, respectively; the native
+color-list reference is `work/ui-reference/native-open-dropdown.png`. Details
+are in [issues.md](issues.md), 8. W4.18 is verified and fixed as recorded
+above. W4.19 passes on the current build: the right-panel/minimap/title-tab
+crop after 40 seconds idle is pixel-identical after opening and closing a
+dropdown (`work/web-lobby-idle-40/`; Windows references in `work/ui-reference/`).
 
 Do not use a development page for a long check while editing its sources:
 hot reload can invalidate the run. Integration runs use immutable page/WASM
 snapshots in `work/`, served by `vite preview --outDir ...`.
+
+## 24 October 2026: Exit confirmation bridge POC
+
+The original main menu's Exit Game action opens only a React confirmation.
+The first POC overlaid the native dialog; protocol 6 supersedes that with
+`web_exit_confirmation_patches` in `run_lift.py`. It replaces Init.CPP's
+unique confirmation call on Emscripten before native dialog creation. The
+web host waits on an atomic mailbox while releasing the guest machine
+lock, then returns the original helper's OK/Cancel result directly to the
+game's caller. Native hosts retain the original call. Escape is Cancel;
+game input and pointer capture are suspended while the web prompt is open,
+and focus returns to the canvas when it closes.
+
+Both game modules were rebuilt. `web/e2e/exit-confirm.mjs` passes against
+Yuri's Revenge and Red Alert 2 with real browser clicks on the production
+page: invalid and stale replies are rejected, reopened prompts have unique
+request IDs, Stay and Escape allow the prompt to reopen, and Exit produces
+the game's exit event with code 0. Neither run creates native dialog
+`0x120`. The test accounts for menus centered inside larger configured
+surfaces. Reports, logs, and screenshots are in `work/exit-confirm-hook-yr/`
+and `work/exit-confirm-hook-ra2/`.
+
+Validation: 169 unit tests and 10 lift-patch tests pass, TypeScript checking
+and the production page build pass, focused ESLint checks pass, and
+`git diff --check` passes.
+The full `pnpm lint` still reports the pre-existing undefined
+`BrowserControls` reference at `web/e2e/auto-pointer.mjs:24`.
+
+## 24 October 2026: Browser LAN multiplayer
+
+W12.2 and W12.3 pass the two-client browser acceptance check. `web/e2e/lan.mjs`
+exchanges a manual WebRTC offer and answer, verifies lobby IPX traffic, and
+starts the same LAN match on both clients without hosted signaling. The test
+waits for positive game frame rates and checks sampled canvas pixels before
+saving the match screenshots, so reaching the start event alone cannot pass.
+The verified run rendered 4,012 lit samples on the host and 4,066 on the guest
+at 2580x1080. Screenshots and full logs are in
+`work/web-lan-match-frames/`; see [testing.md](testing.md#lan-transport-two-real-browsers)
+for the command.
+
+
+## 24 October 2026: installation routes and exit cleanup
+
+React Router 7 now serves the launcher at `/`, import at `/import`, and
+installation launches at `/game/:slot`. One imported folder is one stable,
+nonreused numeric slot with RA2/Yuri edition choices. `?edition=ra2` and
+`?edition=ra2md` select explicitly; Yuri is the default for folders with
+both. Vite's deployment base supports `/emu/` for routes, WASM and browser
+assets, and service-worker navigation/caches.
+
+Schema v2 preserves existing edition records and legacy OPFS references in
+one installation. Every new import has fresh slot namespaces, including a
+new slot 1 after legacy removal. Common files share storage only within an
+installation. Saves, mods and preferences are isolated by slot and edition.
+Planned editions are recorded before copying; cancellation, failure and a
+reload between editions remain resumable from the launcher.
+
+Normal Exit persists pending writes and replaces the game document with the
+launcher. Input/presentation/audio/LAN callbacks stop without calling dead
+WASM exports. Browser Back also unloads the runtime. Failed persistence
+keeps a retry action; startup abort rejects the session instead of hanging
+the return action. No generated game content is added to source control.
+
+Verification: 193 web unit tests, TypeScript, root and `/emu/` production
+builds, and focused ESLint pass. A real-browser test imported the same 1 GB
+folder twice, launched both editions, refreshed a direct `/emu/game/1`
+URL, restored saves, confirmed slot isolation, verified browser Back closes
+workers and drops runtime globals, and removed installations independently
+while retaining saves. Offline prefixed navigation verifies cached build
+metadata. Exit tests confirm clean exit code 0, no native confirmation,
+no post-exit exports, zero game workers, and launcher arrival. Artifacts
+are under `work/exit-launcher-*` and `work/installation-routing/browser`.
+
+The full lint command still has the pre-existing undefined `BrowserControls`
+in `web/e2e/auto-pointer.mjs:24`; the changed files pass lint.

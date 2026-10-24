@@ -203,7 +203,7 @@ export function checkSpace(
 
 /** The build's list of games: web/public/game/build.json. */
 export async function loadBuildInfo(fetcher: typeof fetch = fetch): Promise<BuildInfo> {
-  const response = await fetcher("/game/build.json");
+  const response = await fetcher(`${import.meta.env.BASE_URL}game/build.json`);
   if (!response.ok) throw new Error("The game is not built (no build.json).");
   const value = (await response.json()) as BuildInfo;
   if (typeof value !== "object" || value === null || typeof value.games !== "object")

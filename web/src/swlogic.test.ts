@@ -9,6 +9,14 @@ import {
 } from "./swlogic";
 
 describe("isGameBuildFile", () => {
+  it("matches only build assets inside its own deployment base", () => {
+    expect(isGameBuildFile("/emu/game/ra2.wasm", "/emu/")).toBe(true);
+    expect(isGameBuildFile("/emu/game/ra2/ra2.js", "/emu/")).toBe(true);
+    expect(isGameBuildFile("/game/ra2.wasm", "/emu/")).toBe(false);
+    expect(isGameBuildFile("/emulator/game/ra2.wasm", "/emu/")).toBe(false);
+    expect(isGameBuildFile("/emu/game/1", "/emu/")).toBe(false);
+    expect(staleGameCaches(["ra2-game-old00000", "ra2-scope-%2Femu%2F-game-old00000"], "abc12345", "/emu/")).toEqual(["ra2-scope-%2Femu%2F-game-old00000"]);
+  });
   it("is the three files of a build, and nothing else of the game", () => {
     for (const name of ["ra2.js", "ra2.wasm", "ra2.data"])
       expect(isGameBuildFile(`/game/${name}`)).toBe(true);

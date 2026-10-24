@@ -32,6 +32,7 @@ export interface GameState {
   /** something the player should see: a missing file, or why the game stopped */
   error: string | null;
   exitCode: number | null;
+  exitConfirmation: { request: number } | null;
   settings: HostSettings | null;
   restart: { mod: string } | null;
 }
@@ -47,6 +48,7 @@ const INITIAL: GameState = {
   pacing: null,
   error: null,
   exitCode: null,
+  exitConfirmation: null,
   settings: null,
   restart: null,
 };
@@ -141,7 +143,11 @@ export class GameStore {
         return;
       case "exit":
         // a crash already says why; an exit after it is the runtime shutting down
-        if (this.state.phase !== "crashed") this.set({ phase: "exited", exitCode: event.code });
+        if (this.state.phase !== "crashed")
+          this.set({ phase: "exited", exitCode: event.code, exitConfirmation: null });
+        return;
+      case "exitConfirm":
+        this.set({ exitConfirmation: { request: event.request } });
         return;
       case "error":
         this.set({ error: event.message });
@@ -149,9 +155,13 @@ export class GameStore {
     }
   }
 
+  resolveExitConfirmation(request: number): void {
+    if (this.state.exitConfirmation?.request === request) this.set({ exitConfirmation: null });
+  }
+
   /** The game's thread died (a trap), or the runtime aborted. */
   crashed(what: string): void {
-    this.set({ phase: "crashed", error: what });
+    this.set({ phase: "crashed", error: what, exitConfirmation: null });
   }
 }
 

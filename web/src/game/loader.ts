@@ -1,4 +1,5 @@
 import { EXPORT_SIGNATURES, type Ra2Exports } from "./protocol";
+import { appPath } from "../paths";
 import { type GameStore, gameStore } from "./store";
 import type { WasmMemory } from "./presenter";
 import type { GameRecord } from "../storage/manifest";
@@ -6,10 +7,12 @@ import { opfsSaveStore, opfsTarget, readGameFile } from "../storage/opfs";
 import { restoreSaves, startSaveSync, type FsLike, type SaveSync } from "../storage/saves";
 import { loadMods } from "../storage/mods";
 import type { GameId } from "../storage/install";
+import { liveGameFileSource, type ReadOnlyFileSource } from "../storage/file-browser";
+import { readThaiFont, shouldLoadImportedGameFile, type ThaiFontPreference } from "../storage/thai-fonts";
 
 /** Yuri's Revenge module; Red Alert 2 is nested below /game/ra2. */
-export const GAME_SCRIPT = "/game/ra2.js";
-export const gameScript = (game: GameId) => game === "ra2" ? "/game/ra2/ra2.js" : GAME_SCRIPT;
+export const GAME_SCRIPT = appPath("game/ra2.js");
+export const gameScript = (game: GameId) => appPath(game === "ra2" ? "game/ra2/ra2.js" : "game/ra2.js");
 const gameIni = (game: GameId) => game === "ra2" ? "ra2.ini" : "ra2md.ini";
 
 /** No module for this game is present (docs/web/toolchain.md). */
@@ -52,6 +55,8 @@ export interface GameHandle {
   memory: () => WasmMemory;
   /** the address of the game's shared picture and cursor (ra2_shared_t) */
   shared: number;
+  /** a read-only view rooted at the live /game virtual filesystem */
+  files: ReadOnlyFileSource;
   /** keeps the game's writes (saves, settings) in OPFS; null when the files are not from the import */
   saves: SaveSync | null;
 }
@@ -63,6 +68,10 @@ export type FileSource =
   /** a game the import put in OPFS (storage/importer.ts) */
   | { kind: "opfs"; record: GameRecord; video?: VideoSize | null }
   | { kind: "already-there"; game?: GameId };
+
+export function sourceStorage(files: FileSource): string {
+  return files.kind === "opfs" ? files.record.storage : sourceGame(files);
+}
 
 export function sourceGame(files: FileSource): GameId {
   return files.kind === "opfs" ? files.record.id : files.game ?? "ra2md";
@@ -112,6 +121,8 @@ export function withVideoSize(ini: string, size: VideoSize): string {
 
 export interface StartOptions {
   files: FileSource;
+  /** When enabled, an app-managed Thai font replaces imported and mod game.fnt files before startup. */
+  thaiFontFix?: ThaiFontPreference;
   /** extra game arguments, after --run and --game */
   args?: string[];
   store?: GameStore;
@@ -122,8 +133,9 @@ export function argsFromQuery(search: string): string[] {
   return new URLSearchParams(search).getAll("arg");
 }
 
-export function gameArguments(extra: string[] = []): string[] {
-  return ["--run", "--game", "/game", ...extra];
+export function gameArguments(extra: string[] = [], thaiFontFix: ThaiFontPreference = { enabled: false, fontId: "" }): string[] {
+  return ["--run", "--game", "/game", ...extra,
+    ...(thaiFontFix.enabled ? ["--thai-font-fix", "--thai-font-id", thaiFontFix.fontId] : [])];
 }
 
 /** Whether this game's module is there. The dev server answers a missing file with the page, so check its content type. */
@@ -180,6 +192,7 @@ async function loadDevFiles(
   fetcher: typeof fetch = fetch,
   base = "/dev-game",
   game: GameId = "ra2md",
+  thaiFontFix: ThaiFontPreference = { enabled: false, fontId: "" },
 ): Promise<void> {
   const response = await fetcher(`${base}/index.json`);
   if (!response.ok)
@@ -187,16 +200,17 @@ async function loadDevFiles(
   const index = (await response.json()) as DevIndex;
   if (index.files.length === 0) throw new Error("The dev server's game folder has no game files.");
   fs.mkdir("/game");
-  const totalBytes = index.files.reduce((sum, file) => sum + file.size, 0);
+  const files = index.files.filter((file) => shouldLoadImportedGameFile(file.name, thaiFontFix.enabled));
+  const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
   let doneBytes = 0;
   let doneFiles = 0;
-  for (const file of index.files) {
+  for (const file of files) {
     const progress = (inFile: number) =>
       store.copying({
         doneBytes: doneBytes + inFile,
         totalBytes,
         doneFiles,
-        totalFiles: index.files.length,
+        totalFiles: files.length,
         file: file.name,
       });
     progress(0);
@@ -220,7 +234,16 @@ async function loadDevFiles(
     doneBytes += bytes.length;
     doneFiles++;
   }
+  await stageThaiFont(fs, thaiFontFix);
   store.loading("the game");
+}
+
+/** Stage the explicit choice at the game's canonical path after imported files and mods load. */
+async function stageThaiFont(fs: EmscriptenFs, preference: ThaiFontPreference): Promise<void> {
+  if (!preference.enabled) return;
+  if (!preference.fontId) throw new Error("Choose a Thai font before enabling the Thai font fix.");
+  const bytes = await readThaiFont(preference.fontId);
+  fs.writeFile("/game/game.fnt", bytes);
 }
 
 /**
@@ -232,9 +255,10 @@ async function loadOpfsFiles(
   store: GameStore,
   record: GameRecord,
   video: VideoSize | null,
+  thaiFontFix: ThaiFontPreference,
 ): Promise<SaveSync> {
   fs.mkdir("/game");
-  const names = Object.keys(record.files);
+  const names = Object.keys(record.files).filter((name) => shouldLoadImportedGameFile(name, thaiFontFix.enabled));
   const totalBytes = names.reduce((sum, name) => sum + (record.files[name]?.size ?? 0), 0);
   let doneBytes = 0;
   let doneFiles = 0;
@@ -265,13 +289,15 @@ async function loadOpfsFiles(
     doneBytes += entry.size;
     doneFiles++;
   }
-  const mods = await loadMods(fs, record.id);
-  await restoreSaves(fs, opfsSaveStore(), record.id, (path) => !path.startsWith("mods/") || mods.includes(path.split("/")[1] ?? ""));
+  const mods = await loadMods(fs, record.storage, { excludeGameFont: thaiFontFix.enabled });
+  await restoreSaves(fs, opfsSaveStore(), record.storage, (path) => !path.startsWith("mods/") || mods.includes(path.split("/")[1] ?? ""));
+  await stageThaiFont(fs, thaiFontFix);
   store.loading("the game");
-  return startSaveSync(fs, opfsTarget(), record.id);
+  return startSaveSync(fs, opfsTarget(), record.storage);
 }
 
-function createHandle(module: Ra2Module, saves: SaveSync | null): GameHandle {
+function createHandle(module: Ra2Module, saves: SaveSync | null, game: GameId): GameHandle {
+  if (!module.FS) throw new Error("the game's file system is not available yet");
   const exports = {} as Record<string, unknown>;
   for (const [name, { returns, args }] of Object.entries(EXPORT_SIGNATURES)) {
     exports[name] = module.cwrap(name, returns, args);
@@ -284,6 +310,7 @@ function createHandle(module: Ra2Module, saves: SaveSync | null): GameHandle {
       return { HEAPU8: module.HEAPU8, HEAP32: module.HEAP32 };
     },
     shared: ra2.ra2_shared(),
+    files: liveGameFileSource(module.FS, game === "ra2" ? "Red Alert 2" : "Yuri's Revenge"),
     saves,
   };
 }
@@ -298,6 +325,7 @@ function createHandle(module: Ra2Module, saves: SaveSync | null): GameHandle {
 export async function startGame(options: StartOptions): Promise<GameHandle> {
   const store = options.store ?? gameStore;
   const game = sourceGame(options.files);
+  const thaiFontFix = options.thaiFontFix ?? { enabled: false, fontId: "" };
   const scriptUrl = gameScript(game);
   const moduleBase = scriptUrl.slice(0, scriptUrl.lastIndexOf("/") + 1);
   store.begin();
@@ -311,16 +339,21 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
     };
 
     const module = {
-      arguments: gameArguments(options.args),
+      arguments: gameArguments(options.args, thaiFontFix),
       print: (line: string) => store.line(line),
       printErr: (line: string) => store.line(line),
-      onAbort: (what: unknown) => store.crashed(`The game aborted: ${String(what)}`),
+      onAbort: (what: unknown) => {
+        if (store.getSnapshot().phase !== "exited") fail(new Error(`The game aborted: ${String(what)}`));
+      },
       locateFile: (path: string) => `${moduleBase}${path}`,
       preRun: [] as (() => void)[],
     } as Partial<Ra2Module> as Ra2Module;
 
     let saves: SaveSync | null = null;
-    module.onRuntimeInitialized = () => resolve(createHandle(module, saves));
+    module.onRuntimeInitialized = () => {
+      try { resolve(createHandle(module, saves, game)); }
+      catch (error) { fail(error); }
+    };
 
     const files = options.files;
     if (files.kind === "opfs") {
@@ -328,7 +361,7 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
         module.addRunDependency("game-files");
         const fs = module.FS;
         if (!fs) return fail(new Error("the game's file system is not up yet"));
-        loadOpfsFiles(fs, store, files.record, files.video ?? null).then(
+        loadOpfsFiles(fs, store, files.record, files.video ?? null, thaiFontFix).then(
           (sync) => {
             saves = sync;
             module.removeRunDependency("game-files");
@@ -343,8 +376,8 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
         const fs = module.FS;
         if (!fs) return fail(new Error("the game's file system is not up yet"));
         const video = files.video;
-        const base = files.kind === "test-folder" ? "/test-game" : "/dev-game";
-        loadDevFiles(fs, store, video ?? null, fetch, base, game).then(
+        const base = appPath(files.kind === "test-folder" ? "test-game" : "dev-game");
+        loadDevFiles(fs, store, video ?? null, fetch, base, game, thaiFontFix).then(
           () => module.removeRunDependency("game-files"),
           (error: unknown) => fail(error),
         );
@@ -355,7 +388,7 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
     window.addEventListener("error", (event) => {
       const phase = store.getSnapshot().phase;
       if (phase !== "exited" && phase !== "crashed")
-        store.crashed(event.message || "the game stopped");
+        fail(new Error(event.message || "the game stopped"));
     });
 
     window.Module = module;

@@ -59,6 +59,64 @@ second. Screenshots go to `web/e2e/shots/`. `CHROME_PATH` names the browser. The
 page exposes its store as `window.ra2Store` in development only, for these
 scripts. This is the base `tools/playtest.py --web` grows from (stage 10).
 
+## Exit confirmation: game to web and back
+
+Regenerate the lifts after changing the call patch (`python run_lift.py --all`
+and `python run_lift.py --target game --all`), then build both modules
+(`cmake --build build-web` and `cmake --build build-web-game`). With Vite
+running, from `web/`:
+
+```powershell
+$env:CHROME_PATH = 'C:\path\to\chrome.exe'
+node e2e/exit-confirm.mjs --game ../game --shots ../work/exit-confirm
+node e2e/exit-confirm.mjs --url 'http://127.0.0.1:5173/?target=game' --game ../game --shots ../work/exit-confirm-ra2
+```
+
+The test clicks the real main menu's Exit Game button, checks the web dialog
+and its request ID, rejects invalid/stale replies, chooses Stay, reopens and
+cancels with Escape, then reopens and chooses Exit. Reopening confirms that
+Cancel reached the game; the last step requires the game's normal exit
+event with code 0. Each reopened prompt must have a new request ID, and the
+full log must contain no native Exit dialog creation (`[dialog] open 0x120`)
+or calls into an exited runtime. Final Exit must navigate back to the
+launcher, discard the module/session globals, and close all game workers.
+The game files are streamed locally through the existing
+test fixture; the source installation is not modified. Screenshots, a JSON
+report, and the complete game log go to `--shots`.
+
+## Installation routing and context paths
+
+`node e2e/import.mjs --url http://127.0.0.1:4177/emu/?e2e=1 --game ../game --both`
+imports the same folder twice, checks both editions in one slot and separate
+data in another, opens and refreshes a direct game URL, verifies save
+restoration/isolation, then removes the installations independently.
+Use a production build and preview configured with `--base=/emu/`.
+
+`node e2e/router-offline.mjs --url http://127.0.0.1:4177/emu/` verifies that
+build metadata is actually cached, then exercises an offline deep route and
+its base-relative launcher link. The initial installation requires network
+access and the server's clean-route HTML fallback.
+
+Unit tests cover v1 metadata migration (including retained legacy data after
+removal), repeated editions, nonreused IDs, interruption between editions,
+explicit resume, namespaced preferences, cancelled-import launcher refresh,
+startup abort rejection, and persistence failure/retry before navigation.
+
+## LAN transport: two real browsers
+
+With the Vite dev server running, `node e2e/lan-peer.mjs` opens two Chrome
+instances, exchanges the WebRTC offer and answer directly, and checks binary
+datagrams in both directions. This covers the browser's host-candidate
+connectivity and `LanPeer`; the game/HLE IPX path is exercised separately by
+`e2e/lan.mjs` with a local game folder.
+
+For the full game path, run
+`node e2e/lan.mjs --url http://127.0.0.1:5178/ --game ../game --shots ../work/web-lan-match`
+with the Vite server on port 5178. The test exchanges SDP manually, joins and
+starts a LAN lobby match, then waits for active game frame reports and checks
+that both clients render non-black match frames. It saves each client's
+offer/lobby/match screenshots and full log under `--shots`.
+
 More steps and switches, from chasing the first play's issues ([issues.md](issues.md)):
 
 - `down X,Y` presses the left button and keeps it down, `up` lets go; `node e2e/diff.mjs A.png B.png` counts the pixels that differ (`RECT=x0,y0,x1,y1` to look at one area).

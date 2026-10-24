@@ -129,13 +129,13 @@ describe("runImport", () => {
     });
     expect([...target.files.keys()].sort()).toEqual(
       [
-        "game/ra2md/Blowfish.dll",
-        "game/ra2md/Saved Games/one.sav",
-        "game/ra2md/binkw32.dll",
-        "game/ra2md/gamemd.exe",
-        "game/ra2md/movmd01.mix",
-        "game/ra2md/ra2.mix",
-        "game/ra2md/ra2md.mix",
+        "game/slot-1/Blowfish.dll",
+        "game/slot-1/Saved Games/one.sav",
+        "game/slot-1/binkw32.dll",
+        "game/slot-1/gamemd.exe",
+        "game/slot-1/movmd01.mix",
+        "game/slot-1/ra2.mix",
+        "game/slot-1/ra2md.mix",
       ].sort(),
     );
     const record = await manifest.getGame("ra2md");
@@ -143,7 +143,7 @@ describe("runImport", () => {
     expect(record?.exeStamp).toBe(STAMP);
     // the movie archive is a 12-byte empty one in its place
     expect(seen.at(-1)).toBe(20 + 10 + 10 + 40 + 30 + 3 + 12);
-    expect(target.files.get("game/ra2md/movmd01.mix")).toBe(12);
+    expect(target.files.get("game/slot-1/movmd01.mix")).toBe(12);
   });
 
   it("imports both games and keeps their shared files in OPFS only once", async () => {
@@ -172,10 +172,10 @@ describe("runImport", () => {
     const yuri = await manifest.getGame("ra2md");
     expect(ra2?.complete).toBe(true);
     expect(yuri?.complete).toBe(true);
-    expect(ra2?.files["ra2.mix"]?.home).toBe("ra2");
-    expect(yuri?.files["ra2.mix"]?.home).toBe("ra2");
+    expect(ra2?.files["ra2.mix"]?.home).toBe("slot-1");
+    expect(yuri?.files["ra2.mix"]?.home).toBe("slot-1");
     expect([...target.files.keys()].filter((path) => path.endsWith("/ra2.mix"))).toEqual([
-      "game/ra2/ra2.mix",
+      "game/slot-1/ra2.mix",
     ]);
     expect(target.files.has("game/ra2md/ra2.mix")).toBe(false);
   });
@@ -211,8 +211,29 @@ describe("runImport", () => {
         await target.write(path, stream);
       },
     };
-    await run(again, manifest, watching);
+    await run(again, manifest, watching, { slot: 1 });
     expect(writes).toHaveLength(prepared.plan.copy.length - 3);
     expect((await manifest.getGame("ra2md"))?.complete).toBe(true);
+  });
+
+  it("creates a new installation for a second completed import of the same folder", async () => {
+    const manifest = await Manifest.open(new IDBFactory());
+    const target = memoryTarget();
+    const prepared = await prepareImport(source(folder()), build, all, roomy);
+    expect(await run(prepared, manifest, target)).toBe(1);
+    expect(await run(prepared, manifest, target)).toBe(2);
+    expect(await manifest.listGames()).toHaveLength(2);
+    expect(target.files.has("game/slot-1/ra2.mix")).toBe(true);
+    expect(target.files.has("game/slot-2/ra2.mix")).toBe(true);
+    await expect(run(prepared, manifest, target, { slot: 1 })).rejects.toThrow(/complete/);
+  });
+
+  it("resumes after a reload between finishing the first edition and starting the second", async () => {
+    const manifest = await Manifest.open(new IDBFactory());
+    const installation = await manifest.createInstallation("Both games", ["ra2", "ra2md"]);
+    await manifest.beginImport("ra2", "Red Alert 2", RA2_STAMP, [], installation.slot);
+    const prepared = await prepareImport(source([...folder(), file("game.exe", 21, peHead(RA2_STAMP))]), bothBuild, all, roomy);
+    await expect(runImport({ prepared, build: bothBuild, manifest, target: memoryTarget(), slot: installation.slot })).resolves.toBe(installation.slot);
+    expect((await manifest.listGames(installation.slot)).every((game) => game.complete)).toBe(true);
   });
 });

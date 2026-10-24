@@ -1,23 +1,23 @@
-import type { GameId } from "./install";
 import type { FolderSource } from "./importer";
 import { Manifest } from "./manifest";
 import { readGameFile, type CopyTarget } from "./opfs";
 import type { FsLike } from "./saves";
+import { shouldLoadImportedGameFile } from "./thai-fonts";
 
 export interface ModRecord {
   name: string;
   files: { name: string; size: number }[];
   bytes: number;
 }
-const key = (game: GameId) => `mods:${game}`;
-export const listMods = async (manifest: Manifest, game: GameId): Promise<ModRecord[]> =>
+const key = (game: string) => `mods:${game}`;
+export const listMods = async (manifest: Manifest, game: string): Promise<ModRecord[]> =>
   (await manifest.getSetting<ModRecord[]>(key(game))) ?? [];
 
 /** Flat data mods use the same overlay as native builds. Reject executable patches
  * rather than importing a mod whose required runtime cannot run in the browser. */
 export async function importMod(
   source: FolderSource,
-  game: GameId,
+  game: string,
   manifest: Manifest,
   target: CopyTarget,
   progress?: (done: number, total: number) => void,
@@ -71,7 +71,7 @@ export async function importMod(
 export async function removeMod(
   manifest: Manifest,
   target: CopyTarget,
-  game: GameId,
+  game: string,
   mod: ModRecord,
 ): Promise<void> {
   await manifest.setSetting(
@@ -82,7 +82,11 @@ export async function removeMod(
 }
 
 /** Mod assets share the import's game folder in OPFS; the runtime sees /game/mods. */
-export async function loadMods(fs: FsLike, game: GameId): Promise<string[]> {
+export async function loadMods(
+  fs: FsLike,
+  game: string,
+  options: { excludeGameFont?: boolean } = {},
+): Promise<string[]> {
   const manifest = await Manifest.open();
   try {
     const mods = await listMods(manifest, game);
@@ -90,11 +94,13 @@ export async function loadMods(fs: FsLike, game: GameId): Promise<string[]> {
     fs.mkdir("/game/mods");
     for (const mod of mods) {
       fs.mkdir(`/game/mods/${mod.name}`);
-      for (const file of mod.files)
+      for (const file of mod.files) {
+        if (!shouldLoadImportedGameFile(file.name, options.excludeGameFont ?? false)) continue;
         fs.writeFile(
           `/game/mods/${mod.name}/${file.name}`,
           await readGameFile(game, `mods/${mod.name}/${file.name}`),
         );
+      }
     }
     return mods.map((mod) => mod.name);
   } finally {

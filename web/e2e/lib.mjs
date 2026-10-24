@@ -29,7 +29,7 @@ export async function startPage(opts) {
   });
   const context = await browser.newContext({ viewport: { width: 1280, height: 960 }, serviceWorkers: "block" });
   if (opts.testGame) {
-    const server = await serveGame(path.resolve(opts.testGame), new URL(opts.url).origin);
+    const server = await serveGame(path.resolve(opts.testGame), new URL(opts.url).origin, opts.gameFileOverrides);
     await server.route(context);
     browser.on("disconnected", () => { void server.close(); });
   }

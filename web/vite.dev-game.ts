@@ -16,7 +16,7 @@ export function devGame(): Plugin {
     apply: "serve",
     configureServer(server) {
       const dir = path.resolve(process.env.RA2_GAME_DIR ?? path.join(__dirname, "..", "game"));
-      server.middlewares.use("/dev-game", (req, res, next) => {
+      server.middlewares.use(`${server.config.base}dev-game`, (req, res, next) => {
         if (req.method !== "GET" && req.method !== "HEAD") return next();
         const name = decodeURIComponent((req.url ?? "/").split("?")[0] ?? "/").replace(/^\/+/, "");
         res.setHeader("Cache-Control", "no-store");

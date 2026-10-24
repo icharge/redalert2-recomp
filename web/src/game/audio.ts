@@ -48,6 +48,7 @@ export class GameAudio {
   private context: AudioContext | null = null;
   private stopGesture: (() => void) | null = null;
   private head: Int32Array | null = null;
+  private closed = false;
 
   constructor(
     private readonly exports: AudioExports,
@@ -114,6 +115,7 @@ export class GameAudio {
       const context = this.env.createContext(AUDIO_RATE);
       this.context = context;
       await context.audioWorklet.addModule(this.env.workletUrl);
+      if (this.closed) return;
       const node = new AudioWorkletNode(context, WORKLET_NAME, {
         numberOfInputs: 0,
         numberOfOutputs: 1,
@@ -140,15 +142,19 @@ export class GameAudio {
     this.follow();
   }
 
-  close(): void {
+  close(notifyRuntime = true): void {
+    if (this.closed) return;
+    this.closed = true;
     this.disarm();
-    this.exports.ra2_audio_live(0);
+    if (notifyRuntime) this.exports.ra2_audio_live(0);
     this.context?.removeEventListener("statechange", this.follow);
     void this.context?.close().catch(() => {});
     this.context = null;
+    this.head = null;
   }
 
   private follow = (): void => {
+    if (this.closed) return;
     const state = this.context?.state;
     if (state === "running") {
       this.exports.ra2_audio_live(1);

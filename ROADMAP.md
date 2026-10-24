@@ -79,8 +79,11 @@ not on patches to a binary:
 
 ## Deferred
 
-- Online play (Westwood Online / CnCNet): the servers are gone; LAN over IPXEmu
-  stays as shipped.
+- Native online play (Westwood Online / CnCNet): the original servers are gone;
+  LAN over IPXEmu stays as shipped. Browser internet multiplayer via a
+  WOLAPI-compatible service is a separate optional plan in
+  [docs/web/plan.md](docs/web/plan.md), stage 13; the compatible service and
+  transport still need to be established there.
 
 ## Out of scope
 

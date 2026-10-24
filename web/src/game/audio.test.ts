@@ -59,6 +59,15 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("GameAudio", () => {
+  it("can close after runtime shutdown without calling dead exports", async () => {
+    const { audio, context, exports } = setup();
+    await audio.start();
+    exports.ra2_audio_live.mockClear();
+    audio.close(false);
+    expect(context.close).toHaveBeenCalled();
+    expect(exports.ra2_audio_live).not.toHaveBeenCalled();
+    expect(audio.stats()).toBeNull();
+  });
   it("makes a context at the game's rate and a worklet over the game's ring", async () => {
     const { audio, env, heap } = setup();
     await audio.start();

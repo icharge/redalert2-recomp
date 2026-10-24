@@ -73,7 +73,7 @@ Tick a task off here in the same pull request that finishes it.
 | ~~W4.14~~ | Dropdowns draw correctly | pcrecomp | W4.10 | S | a closed list repaints what it covered; the minimap shows |
 | ~~W4.15~~ | The dialog box that is never drawn (after Save): draw it | pcrecomp | W4.10 | M | a dialog is not painted over by the older dialog under it; `save.mjs`: the confirmation shows and OK closes it ([issues.md](issues.md), 6) |
 | ~~W4.16~~ | A combo box with no room for its list: the opponent and resolution drop-downs | pcrecomp | W4.15 | S | the opponent list opens with its four entries; Options, Set Game Resolution lists the modes |
-| W4.17 (parked) | Drop-down lists draw their border | pcrecomp | W4.16 | M | the colour and resolution lists have the frame the Windows build shows (find what draws it first) |
+| ~~W4.17~~ | Drop-down lists draw their border | here | W4.16 | M | the colour and resolution lists show the two-pixel frame; see [issues.md](issues.md), 8, and the captures in `work/web-dropdown-current/` and `work/resolution-frame-first/` |
 | ~~W4.18~~ | Sidebar button states match the Windows game | pcrecomp, here | W4.16 | M | `e2e/lobby.mjs`: raw hover pixels equal idle (as in the lossless native reference); held changes only the selected button, dragging out/in clears/restores it, and release restores idle |
 | ~~W4.19~~ | The lobby's right panel finishes (title tab, minimap) without a repaint | pcrecomp, here | W4.16 | M | `work/web-lobby-idle-40/`: after 40 s idle, the right-panel/minimap/title-tab pixels are identical after opening and closing a drop-down |
 
@@ -141,14 +141,23 @@ Tick a task off here in the same pull request that finishes it.
 | ~~W11.1~~ | `RA2_TARGET=game` in the web build (`build-web-game/`), a second module the page can load | here | W3.4 | S | the build publishes `/game/ra2/ra2.js` and `.wasm`, and adds RA2 to `build.json` |
 | ~~W11.2~~ | Import and Library with both games, shared files stored once | here | W6.5, W11.1 | S | `e2e/import.mjs --both`: both play from one import and the shared `ra2.mix` is stored once |
 | W11.3 | The suite on Red Alert 2 | here | W10.3, W11.2 | S | `RA2_TARGET=game` with `tools/playtest.py --web`: the same cases pass |
+| ~~W11.4~~ | Browse game files with [js-fileexplorer](https://github.com/cubiclesoft/js-fileexplorer), backed by the import or live VFS | here | W11.1, W11.2 | M | `e2e/import.mjs --both`: Library browses imported OPFS and Play browses live `/game`; text opens read-only and no write/export tools are available |
 
-## Stage 12: multiplayer (optional)
+## Stage 12: LAN multiplayer (optional)
 
 | ID | Task | Repo | Needs | Size | Done when |
 |---|---|---|---|---|---|
-| W12.1 | Decide whether it's worth it, and how two tabs find each other | | W11.3 | S | the decision is in decisions.md |
-| W12.2 | `wsock32.c`: IPX over a WebRTC data channel | pcrecomp | W12.1 | L | two tabs see each other in the LAN lobby |
-| W12.3 | Signalling: a small server, or a code pasted between players | here | W12.1 | M | a match starts |
+| ~~W12.1~~ | Decide scope for browser LAN play and peer discovery | here | | S | [D13](decisions.md#d13-browser-lan-play-one-peer-over-webrtc-manual-sdp-exchange): one peer, manual offer/answer exchange, WebRTC data channels carry IPX |
+| ~~W12.2~~ | `wsock32.c`: carry IPX datagrams over a WebRTC data channel | pcrecomp | W12.1 | L | connected peers exchange IPX datagrams over WebRTC, routed by source/destination socket |
+| ~~W12.3~~ | Manual SDP offer/answer exchange in the Play screen | here | W12.2 | M | two browser clients connect and start a LAN lobby match without a hosted signaling service; both clients render the started match |
+
+## Stage 13: internet multiplayer through WOLAPI (optional)
+
+| ID | Task | Repo | Needs | Size | Done when |
+|---|---|---|---|---|---|
+| W13.1 | Identify the WOLAPI client surface, compatible service, and browser/network constraints | here | W12.1 | M | `decisions.md` records the target service, required lobby/session operations, and how game traffic reaches peers; original WOL servers are not assumed available |
+| W13.2 | Implement the browser-facing WOLAPI lobby/session integration (or a required gateway) | here | W13.1 | L | a browser client connects to the chosen compatible service and can find/join a game |
+| W13.3 | Start an internet game from a WOLAPI session and bridge its game traffic | here, pcrecomp | W13.1, W13.2 | L | clients on separate networks start and complete a match using the online lobby and the transport selected in W13.1; reuse W12's WebRTC IPX path only if it fits |
 
 ## Open, before the page ships to a public host
 

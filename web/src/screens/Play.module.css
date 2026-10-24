@@ -14,7 +14,7 @@
   pointer-events: none;
 }
 
-.menu {
+.topMenu {
   position: absolute;
   top: var(--space-2);
   left: var(--space-2);
@@ -22,8 +22,8 @@
   opacity: 0.25;
 }
 
-.menu:hover,
-.menu:focus-visible {
+.topMenu:hover,
+.topMenu:focus-within {
   opacity: 1;
 }
 

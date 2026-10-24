@@ -157,3 +157,91 @@ the game needs a file layer feature the in-memory one lacks.
 takes an empty archive in its place: the import writes a 12-byte empty one for each movie archive the
 player leaves out. And it needs `Blowfish.dll` in its folder (the host reads the archive key from it),
 so the import copies it and refuses a folder without one.
+
+## D12. Preserve the in-game WOL menu with a browser-side compatibility layer
+
+**Decided.** Keep the WOL service endpoint configurable. A self-hosted
+[PvPGN-PRO](https://github.com/pvpgn/pvpgn-server) instance is a supported server-side option and the
+first compatibility target for W13. It advertises Westwood Online support and lists RA2 1.006 and
+Yuri's Revenge 1.001 among its supported clients. The same gateway may be configured for another
+WOL-compatible service, such as XWIS, if it is reachable and passes compatibility testing. The
+workspace's sibling `ra2web/server` is another candidate: it already exposes a WOL-style lobby over
+WebSocket, but its wire/auth flow is tailored to RA2Web and needs an adapter/compatibility check before
+this project can use it. Do not depend on the original Westwood servers or hard-code a public service
+as a runtime dependency.
+
+Preserve the original in-game Online menu. Implement the `IChat`/WOLAPI COM surface that the game
+actually calls as a compatibility object in the web host/Win32 emulation, then bridge its asynchronous
+requests and callbacks to browser WebSocket code. Do not require or load a recovered Windows
+`WOLAPI.DLL` in the browser, and do not implement unused API methods without evidence the game calls
+them. Connect directly by WSS to a browser-ready service such as `ra2web/server`, or use a
+same-origin/configured **WSS gateway** for a legacy TCP service such as PvPGN-PRO. The gateway must
+only connect to the configured service, not act as an arbitrary TCP proxy. Keep WOL lobby/session
+signaling separate from gameplay packets. Carry this game's IPX datagrams between peers using WebRTC
+data channels. W12's one-to-one LAN setup remains manual offer/answer as recorded in D13; W13 adds
+lobby-correlated signaling and may use STUN/TURN for internet connectivity. Do not use the peer IP
+addresses announced by WOL as browser UDP destinations.
+
+**Do not conflate the DLLs.** The current host's registration-free COM support is for `Blowfish.dll`,
+the game's WOL cipher, not `WOLAPI.dll` ([bring-up note](../bringup.md#2-the-string-manager-box-is-really-a-com-check),
+[`host.c`](../../src/runtime/host.c)). Keep the player-supplied `Blowfish.dll` requirement; it is
+separate from implementing the browser lobby client.
+
+**Required WOL surface.** The reverse-engineered [`IChat` interface](https://github.com/hifi-unmaintained/wolapi/blob/master/inc/IChat.h)
+exposes server discovery/connection, channel and user lists, channel create/join/leave, chat, game
+options, and game start/end calls. The [implementation](https://github.com/hifi-unmaintained/wolapi/blob/master/src/IChat.c)
+shows the corresponding IRC-like TCP commands. The minimum browser flow is: select a game/server and
+authenticate/version-check; list and join a lobby; list, create, or join a game channel; exchange room
+roster, topic, and game options; start the session and consume its start event; then leave/logout.
+Retain enough room identity to correlate peers and exchange WebRTC offer/answer and ICE candidates.
+The original WOL game-server protocol describes `STARTG` as the coordination step and says the match
+is played between clients, not carried by the lobby server ([protocol notes](https://medium.com/sean3z/xwis-wol-game-server-protocol-b2a3457bd06));
+the packet formats there are for Tiberian Sun, so treat them as guidance, not an RA2 wire specification.
+The sibling `ra2web/server` authenticates with an HTTP-issued session token and has a `/gserv` endpoint,
+but its RA2Web `GservConnection` (`ra2web/src/network/GservConnection.ts`) relays turn-action frames;
+that endpoint is not a drop-in transport for this project's IPX datagrams.
+
+**Why.** PvPGN-PRO is an open-source, self-hostable WOL server option that explicitly targets the
+legacy clients this project needs ([supported clients](https://github.com/pvpgn/pvpgn-server#supported-clients));
+using it for the initial compatibility target gives W13.2 a service whose configuration and
+availability we control, while keeping the gateway independent of that specific server. The existing
+reverse-engineered WOLAPI project describes itself as a partial implementation for Red Alert 3.03, so
+use its interfaces and implementation as evidence for the API shape, not as a drop-in RA2/YR client.
+Browsers cannot open arbitrary TCP or UDP sockets: [Emscripten's networking guide](https://emscripten.org/docs/porting/networking.html)
+documents WebSockets and states that direct UDP is unavailable and it has no C/C++ WebRTC API. A
+WebSocket gateway is therefore needed for the legacy TCP lobby; WebRTC data channels provide the
+separate UDP-like peer path ([RFC 8831](https://www.rfc-editor.org/rfc/rfc8831)).
+
+**Costs and verification still needed.** The gateway and WebRTC bridge are additional services/code;
+WebRTC may need TURN when direct ICE connectivity fails, and multi-player IPX broadcast must be fanned
+out to every peer. Public material confirms service/client compatibility but does not prove a browser
+client can complete an RA2/YR match. Before W13.2 is considered complete, verify login/version checks,
+lobby listing, room create/join, roster/options, and start events against the selected PvPGN-PRO build;
+then verify packet delivery and a full match across separate networks, including a TURN-relayed case.
+The exact RA2/YR command fields, authentication requirements, and peer mapping remain integration-test
+questions.
+
+## D13. Browser LAN play: one peer over WebRTC, manual SDP exchange
+
+**Decided.** Stage 12 is one-to-one browser LAN play. IPX datagrams use an
+unreliable, unordered WebRTC data channel. Players pair by copying an offer
+and answer between the two browser clients; no signaling server, STUN/TURN
+service, WOLAPI, or original Westwood Online service is required for this
+stage. The game continues to use its IPX lobby and lockstep protocol.
+
+**Why.** Browsers cannot open UDP sockets. WebRTC carries the datagrams
+without changing the game's protocol, and manual SDP exchange avoids adding
+an always-on service just to pair two LAN peers. Restricting the first cut to
+two peers keeps IPX broadcast behavior well-defined: a broadcast reaches the
+one connected peer.
+
+**Costs.** Players must exchange potentially long SDP text, and connectivity
+depends on the browser's ICE host-candidate support and LAN policy. This is
+not a guarantee of connectivity across NAT or the public internet; there is
+no relay fallback in W12. Offer/answer text should only be shared with the
+intended peer.
+
+**Would change if.** LAN testing shows manual exchange is too cumbersome or
+host-candidate connectivity is insufficient. Then add a separately operated
+signaling service or ICE configuration without changing the IPX data-channel
+contract. Internet lobby/session support remains Stage 13.

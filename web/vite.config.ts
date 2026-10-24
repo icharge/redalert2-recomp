@@ -12,6 +12,7 @@ const isolation = {
 };
 
 export default defineConfig({
+  base: process.env.RA2_BASE ?? "/",
   plugins: [
     react(),
     devGame(),
@@ -26,7 +27,7 @@ export default defineConfig({
       registerType: "prompt",
       devOptions: { enabled: false },
       injectManifest: {
-        globPatterns: ["**/*.{js,css,html,svg,png,webmanifest}"],
+        globPatterns: ["**/*.{js,css,html,svg,png,webmanifest,woff,fnt}"],
         globIgnores: ["game/**"],
         maximumFileSizeToCacheInBytes: 3_000_000,
         rollupFormat: "iife",

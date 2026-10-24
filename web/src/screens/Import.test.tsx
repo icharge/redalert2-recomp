@@ -113,9 +113,9 @@ describe("Import", () => {
     // the movies are off by default, so only their empty stand-in is copied
     await user.click(screen.getByRole("button", { name: /^Import / }));
     await waitFor(() => expect(onDone).toHaveBeenCalled());
-    expect(target.files.get("game/ra2md/movmd01.mix")).toBe(12);
-    expect(target.files.get("game/ra2md/ra2.mix")).toBe(4000);
-    expect(target.files.has("game/ra2md/readme.txt")).toBe(false);
+    expect(target.files.get("game/slot-1/movmd01.mix")).toBe(12);
+    expect(target.files.get("game/slot-1/ra2.mix")).toBe(4000);
+    expect(target.files.has("game/slot-1/readme.txt")).toBe(false);
     expect((await manifest.getGame("ra2md"))?.complete).toBe(true);
   });
 
@@ -126,7 +126,7 @@ describe("Import", () => {
     await user.click(screen.getByRole("checkbox", { name: /Include the movies/ }));
     await user.click(await screen.findByRole("button", { name: /^Import / }));
     await waitFor(() => expect(onDone).toHaveBeenCalled());
-    expect(target.files.get("game/ra2md/movmd01.mix")).toBe(5000);
+    expect(target.files.get("game/slot-1/movmd01.mix")).toBe(5000);
   });
 
   it("refuses another build of the game", async () => {

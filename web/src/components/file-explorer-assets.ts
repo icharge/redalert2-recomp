@@ -1,0 +1,86 @@
+import { appPath } from "../paths";
+
+export interface ExplorerEntry {
+  id: string;
+  name: string;
+  type: "folder" | "file";
+  hash: string;
+  attrs: { canmodify: false };
+  size?: number;
+  tooltip?: string;
+}
+
+export interface ExplorerFolder {
+  GetPathIDs(): string[];
+  SetEntries(entries: ExplorerEntry[]): void;
+}
+
+export interface ExplorerOptions {
+  initpath: [string, string, { canmodify: false }][];
+  tools: {
+    new_folder: false;
+    new_file: false;
+    upload: false;
+    download: false;
+    copy: false;
+    paste: false;
+    cut: false;
+    delete: false;
+    item_checkboxes: false;
+  };
+  onrefresh(folder: ExplorerFolder, required: boolean): void;
+  onopenfile(folder: ExplorerFolder, entry: ExplorerEntry): void;
+}
+
+export interface ExplorerInstance {
+  Destroy(): void;
+  IsDestroyed(): boolean;
+  IsMappedFolder(folder: ExplorerFolder): boolean;
+}
+
+export interface ExplorerConstructor {
+  new (parent: HTMLElement, options: ExplorerOptions): ExplorerInstance;
+}
+
+declare global {
+  interface Window {
+    FileExplorer?: ExplorerConstructor;
+  }
+}
+
+let loaded: Promise<ExplorerConstructor> | undefined;
+
+function stylesheet(): Promise<void> {
+  const existing = document.querySelector<HTMLLinkElement>("link[data-js-fileexplorer]");
+  if (existing?.sheet) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const link = existing ?? document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = appPath("vendor/js-fileexplorer/file-explorer.css");
+    link.dataset.jsFileexplorer = "true";
+    link.onload = () => resolve();
+    link.onerror = () => reject(new Error("Could not load the file browser styles."));
+    if (!existing) document.head.append(link);
+  });
+}
+
+function script(): Promise<ExplorerConstructor> {
+  if (window.FileExplorer) return Promise.resolve(window.FileExplorer);
+  return new Promise((resolve, reject) => {
+    const element = document.createElement("script");
+    element.src = appPath("vendor/js-fileexplorer/file-explorer.js");
+    element.async = true;
+    element.onload = () => {
+      if (window.FileExplorer) resolve(window.FileExplorer);
+      else reject(new Error("The file browser loaded without its FileExplorer API."));
+    };
+    element.onerror = () => reject(new Error("Could not load the file browser."));
+    document.head.append(element);
+  });
+}
+
+/** Loads the pinned, locally vendored js-fileexplorer assets on first use. */
+export function loadFileExplorer(): Promise<ExplorerConstructor> {
+  loaded ??= Promise.all([stylesheet(), script()]).then(([, constructor]) => constructor);
+  return loaded;
+}

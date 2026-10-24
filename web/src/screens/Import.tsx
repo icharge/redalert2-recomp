@@ -78,7 +78,7 @@ type Stage =
 
 const FIRST: ImportOptions = { movies: false, saves: true };
 
-export function Import({ deps, onDone }: { deps: ImportDeps; onDone: () => void }) {
+export function Import({ deps, onDone, slot }: { deps: ImportDeps; onDone: () => void; slot?: number }) {
   const [stage, setStage] = useState<Stage>({ name: "choose" });
   const abort = useRef<AbortController | null>(null);
   const [over, setOver] = useState(false);
@@ -116,6 +116,7 @@ export function Import({ deps, onDone }: { deps: ImportDeps; onDone: () => void 
         manifest: deps.manifest,
         target: deps.target,
         signal: controller.signal,
+        ...(slot === undefined ? {} : { slot }),
         onProgress: (progress) => setStage({ name: "copying", progress, persistent }),
       });
       onDone();
@@ -123,7 +124,7 @@ export function Import({ deps, onDone }: { deps: ImportDeps; onDone: () => void 
       if (error instanceof CopyCancelled)
         setStage({
           name: "choose",
-          message: "Cancelled. What was copied is kept; choose the folder again to carry on.",
+          message: "Cancelled. What was copied is kept. Use Resume import in the launcher to carry on.",
         });
       else setStage({ name: "failed", message: errorText(error) });
     }
