@@ -1,7 +1,7 @@
 import { Theme } from "@radix-ui/themes";
-import { render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GameRecord } from "../storage/manifest";
 import { Library } from "./Library";
 
@@ -47,12 +47,83 @@ describe("Library", () => {
   });
 
   it("groups editions in one installation and keeps a second copy in its own slot", () => {
-    show([game(), game({ id: "ra2", title: "Red Alert 2", storage: "ra2" }), game({ slot: 2, storage: "slot-2-ra2md" })], {
-      installations: [{ slot: 1, name: "Original", importedAt: 1 }, { slot: 2, name: "Modded", importedAt: 2 }],
-    });
+    show(
+      [
+        game(),
+        game({ id: "ra2", title: "Red Alert 2", storage: "ra2" }),
+        game({ slot: 2, storage: "slot-2-ra2md" }),
+      ],
+      {
+        installations: [
+          { slot: 1, name: "Original", importedAt: 1 },
+          { slot: 2, name: "Modded", importedAt: 2 },
+        ],
+      },
+    );
     expect(document.querySelectorAll("[data-slot-id]")).toHaveLength(2);
-    expect(document.querySelector('[data-slot-id="1"]')?.querySelectorAll("[data-game-id]")).toHaveLength(2);
-    expect(document.querySelector('[data-slot-id="2"]')?.querySelectorAll("[data-game-id]")).toHaveLength(1);
+    // one game's details at a time: a picker for the editions, and none where there is one edition
+    expect(
+      document.querySelector('[data-slot-id="1"]')?.querySelectorAll("[data-game-id]"),
+    ).toHaveLength(1);
+    expect(
+      document.querySelector('[data-slot-id="1"]')?.querySelectorAll('[role="radio"]'),
+    ).toHaveLength(2);
+    expect(
+      document.querySelector('[data-slot-id="2"]')?.querySelectorAll("[data-game-id]"),
+    ).toHaveLength(1);
+    expect(
+      document.querySelector('[data-slot-id="2"]')?.querySelectorAll('[role="radio"]'),
+    ).toHaveLength(0);
+  });
+
+  describe("with both editions in one installation", () => {
+    const both = () => [game(), game({ id: "ra2", title: "Red Alert 2", storage: "slot-1-ra2" })];
+    afterEach(() => localStorage.clear());
+
+    it("lets the player choose which edition to start, and plays that one", async () => {
+      const { props, user } = show(both());
+      expect(screen.getByRole("radio", { name: "Yuri's Revenge" })).toBeChecked();
+      await user.click(screen.getByRole("radio", { name: "Red Alert 2" }));
+      expect(document.querySelector("[data-game-id]")?.getAttribute("data-game-id")).toBe("ra2");
+      await user.click(screen.getByRole("button", { name: "Play" }));
+      expect(props.onPlay).toHaveBeenCalledWith(expect.objectContaining({ id: "ra2" }));
+    });
+
+    it("keeps the saves, settings and mods of the edition that is chosen", async () => {
+      const { props, user } = show(both(), { modManager: (g) => <span>mods of {g.id}</span> });
+      expect(screen.getByText("mods of ra2md")).toBeInTheDocument();
+      await user.click(screen.getByRole("radio", { name: "Red Alert 2" }));
+      expect(screen.getByText("mods of ra2")).toBeInTheDocument();
+      await user.click(screen.getByText("Download saves"));
+      expect(props.onDownloadSaves).toHaveBeenCalledWith(expect.objectContaining({ id: "ra2" }));
+    });
+
+    it("remembers the choice the next time", async () => {
+      const first = show(both());
+      await first.user.click(screen.getByRole("radio", { name: "Red Alert 2" }));
+      cleanup();
+      show(both());
+      expect(screen.getByRole("radio", { name: "Red Alert 2" })).toBeChecked();
+    });
+
+    it("browses the files of the whole installation, not one edition", async () => {
+      const browseSource = vi.fn(() => ({
+        label: "Both — files",
+        rootLabel: "Both (files)",
+        list: async () => [],
+        readText: async () => "",
+      }));
+      const { user } = show(both(), {
+        browseSource,
+        installations: [{ slot: 1, name: "Both", importedAt: 1 }],
+      });
+      await user.click(screen.getByRole("button", { name: "Browse files for Both" }));
+      expect(browseSource).toHaveBeenCalledWith(expect.objectContaining({ slot: 1 }), [
+        expect.objectContaining({ id: "ra2md" }),
+        expect.objectContaining({ id: "ra2" }),
+      ]);
+      expect(await screen.findByRole("dialog")).toHaveTextContent("Both — files");
+    });
   });
 
   it("offers resume when an edition has not been registered yet", () => {

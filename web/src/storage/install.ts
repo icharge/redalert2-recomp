@@ -31,7 +31,7 @@ const BOTH: GameId[] = ["ra2", "ra2md"];
 /** DLLs the host reads from the game's folder: Blowfish.dll holds the archive key, binkw32.dll names the movie decoder. */
 const LIBRARIES = ["blowfish.dll", "binkw32.dll"];
 
-/** Where `Saved Games/...` starts, as a path with `/`. */
+/** Where an older layout's `Saved Games/...` starts, as a path with `/`. */
 const SAVES = "saved games/";
 
 function normalise(path: string): string {
@@ -48,6 +48,8 @@ export function classify(path: string): Classified | null {
   const name = normalise(path);
   if (name.startsWith(SAVES) && name.length > SAVES.length) return { kind: "save", needs: BOTH };
   if (name.includes("/")) return null;
+  // the game writes `SAVE0001.sav` beside its exe (SAVE%04lX.%3s), not in a folder
+  if (name.endsWith(".sav")) return { kind: "save", needs: BOTH };
   if (name === "gamemd.exe") return { kind: "exe", needs: ["ra2md"] };
   if (name === "game.exe") return { kind: "exe", needs: ["ra2"] };
   if (LIBRARIES.includes(name)) return { kind: "library", needs: BOTH };

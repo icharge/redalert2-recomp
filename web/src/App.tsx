@@ -9,9 +9,10 @@ import { Library } from "./screens/Library";
 import { Play } from "./screens/Play";
 import { loadBuildInfo, type BuildInfo } from "./storage/install";
 import { Manifest, type GameRecord, type InstallationRecord } from "./storage/manifest";
-import { opfsSaveStore, opfsTarget, removeFiles } from "./storage/opfs";
+import { opfsSaveStore, opfsTarget, readGameFile, removeFiles } from "./storage/opfs";
 import { useUpdate } from "./update";
-import { exportSaves, importSaves } from "./storage/saves";
+import { exportSaves, importSaves, isSavePath } from "./storage/saves";
+import { managedInstallationSource } from "./storage/file-manager";
 import { ModLibrary } from "./components/ModLibrary";
 import {
   BrowserRouter,
@@ -156,8 +157,20 @@ function Main() {
         await manifest.renameInstallation(installation.slot, displayName);
         await reload();
       }}
+      browseSource={(installation, editions) =>
+        managedInstallationSource(
+          installation.displayName ?? installation.name,
+          installation.slot,
+          editions,
+          { manifest, target, saves: opfsSaveStore(), build, onChange: () => void reload() },
+        )
+      }
       onDownloadSaves={async (game) => {
-        const zip = await exportSaves(opfsSaveStore(), game.storage);
+        // saves that came with the import are in the game's folder, not in what the game has written since
+        const imported = Object.entries(game.files)
+          .filter(([name, file]) => file.done && isSavePath(name))
+          .map(([name, file]) => ({ path: name, read: () => readGameFile(file.home, name) }));
+        const zip = await exportSaves(opfsSaveStore(), game.storage, imported);
         if (!zip) return "There are no saved games yet.";
         const url = URL.createObjectURL(new Blob([zip as BlobPart], { type: "application/zip" }));
         const link = document.createElement("a");

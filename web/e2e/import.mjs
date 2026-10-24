@@ -84,8 +84,10 @@ check(
   await page.locator('[data-slot-id="1"] [data-game-id="ra2md"]').isVisible(),
   "the Library lists Yuri's Revenge",
 );
-const hasRa2 = (await page.locator('[data-slot-id="1"] [data-game-id="ra2"]').count()) > 0;
-if (argv.includes("--both")) check(hasRa2, "the Library lists both games from one import");
+// two games in one installation: a picker chooses which one the card shows and starts
+const editionPicker = page.locator('[data-slot-id="1"]').getByRole("radio", { name: "Red Alert 2" });
+const hasRa2 = (await editionPicker.count()) > 0;
+if (argv.includes("--both")) check(hasRa2, "the Library offers both games from one import");
 const opfsGameFiles = async () =>
   page.evaluate(async () => {
     const root = await navigator.storage.getDirectory();
@@ -120,7 +122,7 @@ check(
   "each installation has its own copy of shared game data",
 );
 
-async function browseText(card, name, what) {
+async function browseText(card, name, what, managed = false) {
   await card.getByRole("button", { name: /Browse files/ }).click();
   await page.getByTestId("read-only-file-explorer").waitFor();
   try {
@@ -129,9 +131,11 @@ async function browseText(card, name, what) {
     console.error("file browser:", await page.getByRole("dialog").innerText());
     throw error;
   }
+  // the Library's imported files can be changed (delete here, upload in the dialog's own bar); nothing can be exported
   check(
-    (await page.locator(".fe_fileexplorer_folder_tools button").count()) === 0,
-    `${what} browser has no write or export tools`,
+    (await page.locator(".fe_fileexplorer_folder_tools button").count()) === (managed ? 1 : 0) &&
+      (await page.getByRole("button", { name: "Upload files…" }).count()) === (managed ? 1 : 0),
+    managed ? `${what} browser can only upload and delete` : `${what} browser has no write or export tools`,
   );
   await page.getByText(name, { exact: true }).first().dblclick();
   const reader = page.getByRole("region", { name: `Text file ${name}` });
@@ -145,6 +149,7 @@ await browseText(
   page.locator('[data-slot-id="1"] [data-game-id="ra2md"]'),
   "RA2MD.INI",
   "imported OPFS",
+  true,
 );
 
 // ---- play from OPFS -----------------------------------------------------------------------------
@@ -156,15 +161,9 @@ await running(page);
 check(true, "the game starts from the copy in OPFS and reaches its main menu");
 await browseText(page.locator("body"), "RA2MD.INI", "live /game VFS");
 
-// something the game writes: a saved game, put in the game's folder as the game would
+// something the game writes: a saved game, beside the exe as the game names it (SAVE%04lX.sav)
 await page.evaluate(() => {
-  const fs = window.Module.FS;
-  try {
-    fs.mkdir("/game/Saved Games");
-  } catch {
-    // there already
-  }
-  fs.writeFile("/game/Saved Games/e2e.sav", new TextEncoder().encode("a save from the e2e check"));
+  window.Module.FS.writeFile("/game/SAVE0001.sav", new TextEncoder().encode("a save from the e2e check"));
 });
 await page.waitForTimeout(7000); // the page copies it to OPFS within a few seconds
 await context.close();
@@ -183,7 +182,7 @@ const zipPath = await zipFile.path();
 const zipBytes = readFileSync(zipPath);
 check(
   zipFile.suggestedFilename() === "slot-1-ra2md-saves.zip" &&
-    zipBytes.includes(Buffer.from("Saved Games/e2e.sav")),
+    zipBytes.includes(Buffer.from("SAVE0001.sav")),
   "Download saves gives a zip with the saved game in it",
 );
 await page
@@ -200,7 +199,7 @@ await running(page);
 check(true, "a direct game URL and refresh work under the deployment base");
 const saved = await page.evaluate(() => {
   try {
-    return new TextDecoder().decode(window.Module.FS.readFile("/game/Saved Games/e2e.sav"));
+    return new TextDecoder().decode(window.Module.FS.readFile("/game/SAVE0001.sav"));
   } catch {
     return null;
   }
@@ -214,6 +213,7 @@ if (hasRa2) {
   page = context.pages()[0] ?? (await context.newPage());
   await page.goto(address);
   await page.getByText("Your games").waitFor({ timeout: 30_000 });
+  await page.locator('[data-slot-id="1"]').getByRole("radio", { name: "Red Alert 2" }).click();
   await page
     .locator('[data-slot-id="1"] [data-game-id="ra2"]')
     .getByRole("button", { name: "Play" })
@@ -231,7 +231,7 @@ await page.locator('[data-slot-id="2"] [data-game-id="ra2md"]').getByRole("butto
 await running(page);
 const otherSave = await page.evaluate(() => {
   try {
-    return new TextDecoder().decode(window.Module.FS.readFile("/game/Saved Games/e2e.sav"));
+    return new TextDecoder().decode(window.Module.FS.readFile("/game/SAVE0001.sav"));
   } catch {
     return null;
   }

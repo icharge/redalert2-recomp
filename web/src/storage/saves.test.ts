@@ -3,6 +3,7 @@ import type { CopyTarget } from "./opfs";
 import {
   exportSaves,
   importSaves,
+  isSavePath,
   restoreSaves,
   startSaveSync,
   type FsLike,
@@ -165,19 +166,49 @@ describe("exportSaves and importSaves", () => {
     },
   });
 
-  it("zips the saved games, not the settings, and takes them back in", async () => {
+  it("zips the saved games, not the settings, and takes them back in beside the exe", async () => {
     const zip = await exportSaves(
-      store({ "Saved Games/one.sav": "one", "Saved Games/two.sav": "two", "RA2MD.INI": "[Video]" }),
+      store({
+        "SAVE0001.sav": "one",
+        "Saved Games/two.sav": "two",
+        "RA2MD.INI": "[Video]",
+        "mods/Alpha/x.sav": "a mod's",
+      }),
       "ra2md",
     );
     expect(zip).not.toBeNull();
+    const { readZip } = await import("./zip");
+    expect((await readZip(zip!)).map((file) => file.path).sort()).toEqual([
+      "SAVE0001.sav",
+      "Saved Games/two.sav",
+    ]);
     const target = memoryTarget();
     expect(await importSaves(zip!, target, "ra2md")).toBe(2);
     expect([...target.files.keys()].sort()).toEqual([
-      "save/ra2md/Saved Games/one.sav",
-      "save/ra2md/Saved Games/two.sav",
+      "save/ra2md/SAVE0001.sav",
+      "save/ra2md/two.sav",
     ]);
-    expect(target.files.get("save/ra2md/Saved Games/two.sav")).toBe("two");
+    expect(target.files.get("save/ra2md/two.sav")).toBe("two");
+  });
+
+  it("adds the saves that came with the import, and a newer save of the same name wins", async () => {
+    const read = (text: string) => async () => new TextEncoder().encode(text);
+    const zip = await exportSaves(store({ "SAVE0001.sav": "newer" }), "ra2md", [
+      { path: "save0001.SAV", read: read("older") },
+      { path: "SAVE0002.sav", read: read("imported") },
+      { path: "rules.ini", read: read("not a save") },
+    ]);
+    const { readZip } = await import("./zip");
+    const files = await readZip(zip!);
+    expect(files.map((file) => file.path).sort()).toEqual(["SAVE0001.sav", "SAVE0002.sav"]);
+    expect(new TextDecoder().decode(files.find((f) => f.path === "SAVE0001.sav")!.data)).toBe("newer");
+  });
+
+  it("knows a saved game by its name", () => {
+    expect(isSavePath("SAVE0001.SAV")).toBe(true);
+    expect(isSavePath("Saved Games/x.sav")).toBe(true);
+    expect(isSavePath("RA2MD.INI")).toBe(false);
+    expect(isSavePath("mods/Alpha/x.sav")).toBe(false);
   });
 
   it("has nothing to export before the first save, and takes a flat zip of saves", async () => {
@@ -189,6 +220,6 @@ describe("exportSaves and importSaves", () => {
     ]);
     const target = memoryTarget();
     expect(await importSaves(flat, target, "ra2md")).toBe(1);
-    expect([...target.files.keys()]).toEqual(["save/ra2md/Saved Games/a.sav"]);
+    expect([...target.files.keys()]).toEqual(["save/ra2md/a.sav"]);
   });
 });

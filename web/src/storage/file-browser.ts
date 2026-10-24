@@ -1,4 +1,4 @@
-import type { GameRecord } from "./manifest";
+import type { FileEntry, GameRecord } from "./manifest";
 import { readGameFile } from "./opfs";
 import type { FsLike } from "./saves";
 
@@ -7,14 +7,37 @@ export interface BrowseEntry {
   type: "folder" | "file";
   size?: number;
   modified?: number;
+  /** cannot be deleted, even when the source can be managed */
+  locked?: boolean;
 }
 
-/** Deliberately read-only: the explorer has no API for changing or exporting game files. */
+/** Read-only unless it has `manage`: the explorer has no API for exporting game files. */
 export interface ReadOnlyFileSource {
   label: string;
   rootLabel: string;
   list(path: string): Promise<BrowseEntry[]>;
   readText(path: string): Promise<string>;
+  /** adding, replacing and deleting files; only the Library's imported files have it */
+  manage?: FileManagement;
+}
+
+export interface UploadReport {
+  added: string[];
+  replaced: string[];
+  /** files that were not taken, with the reason */
+  problems: string[];
+  /** other things that happened and the player should know */
+  notes: string[];
+}
+
+export interface FileManagement {
+  /** the names in the folder that an upload of files with these names would replace */
+  clashes(folder: string, names: string[]): Promise<string[]>;
+  upload(folder: string, files: File[]): Promise<UploadReport>;
+  /** what to tell the player before deleting these paths, or null for nothing beyond the confirmation */
+  removeWarning(paths: string[]): string | null;
+  /** deletes files, and folders with everything in them; says what else happened */
+  remove(paths: string[]): Promise<string[]>;
 }
 
 const MAX_TEXT_BYTES = 1024 * 1024;
@@ -44,7 +67,7 @@ const TEXT_EXTENSIONS = new Set([
   ".yml",
 ]);
 
-function safeParts(path: string): string[] {
+export function safeParts(path: string): string[] {
   if (path === "") return [];
   const parts = path.split("/");
   if (
@@ -57,7 +80,7 @@ function safeParts(path: string): string[] {
   return parts;
 }
 
-function readAsText(path: string, bytes: Uint8Array): string {
+export function readAsText(path: string, bytes: Uint8Array): string {
   assertTextFile(path, bytes.byteLength);
   let text: string;
   try {
@@ -69,7 +92,7 @@ function readAsText(path: string, bytes: Uint8Array): string {
   return text;
 }
 
-function assertTextFile(path: string, size: number): void {
+export function assertTextFile(path: string, size: number): void {
   const extension = /\.[^./]+$/.exec(path)?.[0].toLowerCase();
   if (!extension || !TEXT_EXTENSIONS.has(extension))
     throw new Error("Only text files can be opened here.");
@@ -77,46 +100,65 @@ function assertTextFile(path: string, size: number): void {
     throw new Error("That text file is larger than the 1 MiB viewer limit.");
 }
 
-function makeImportedFileSource(record: GameRecord): ReadOnlyFileSource {
-  const files = Object.entries(record.files).filter(([name, entry]) => {
+/** The files directly in a folder, and the folders below it, from a flat list of slash-separated paths. */
+export function listChildren(
+  files: { name: string; size?: number; modified?: number }[],
+  path: string,
+): BrowseEntry[] {
+  const parts = safeParts(path);
+  const prefix = parts.length ? `${parts.join("/")}/` : "";
+  const folders = new Set<string>();
+  const entries = new Map<string, BrowseEntry>();
+  for (const file of files) {
+    if (!file.name.startsWith(prefix)) continue;
+    const rest = file.name.slice(prefix.length).split("/");
+    const child = rest[0];
+    if (!child) continue;
+    if (rest.length > 1) folders.add(child);
+    else
+      entries.set(child, {
+        name: child,
+        type: "file",
+        ...(file.size === undefined ? {} : { size: file.size }),
+        ...(file.modified === undefined ? {} : { modified: file.modified }),
+      });
+  }
+  for (const name of folders) entries.set(name, { name, type: "folder" });
+  return [...entries.values()];
+}
+
+/** The files of a game's import record that are copied whole, as the browser shows them. */
+export function completedFiles(record: GameRecord): [string, FileEntry][] {
+  return Object.entries(record.files).filter(([name, entry]) => {
     try {
       return entry.done && safeParts(name).length > 0;
     } catch {
       return false;
     }
   });
+}
 
+/** `getRecord` is asked on every call, so a source can follow a record that changes. */
+export function importedFileSourceOf(getRecord: () => GameRecord): ReadOnlyFileSource {
   const findFile = (path: string) => {
     safeParts(path);
-    const found = files.find(([name]) => name === path);
+    const found = completedFiles(getRecord()).find(([name]) => name === path);
     if (!found) throw new Error("That file is not in this game's completed import.");
     return found;
   };
 
   return {
-    label: `${record.title} — imported files`,
-    rootLabel: `${record.title} (imported files)`,
+    label: `${getRecord().title} — imported files`,
+    rootLabel: `${getRecord().title} (imported files)`,
     async list(path) {
-      const parts = safeParts(path);
-      const prefix = parts.length ? `${parts.join("/")}/` : "";
-      const folders = new Set<string>();
-      const entries = new Map<string, BrowseEntry>();
-      for (const [name, file] of files) {
-        if (!name.startsWith(prefix)) continue;
-        const rest = name.slice(prefix.length).split("/");
-        const child = rest[0];
-        if (!child) continue;
-        if (rest.length > 1) folders.add(child);
-        else
-          entries.set(child, {
-            name: child,
-            type: "file",
-            size: file.size,
-            modified: file.lastModified,
-          });
-      }
-      for (const name of folders) entries.set(name, { name, type: "folder" });
-      return [...entries.values()];
+      return listChildren(
+        completedFiles(getRecord()).map(([name, file]) => ({
+          name,
+          size: file.size,
+          modified: file.lastModified,
+        })),
+        path,
+      );
     },
     async readText(path) {
       const [name, file] = findFile(path);
@@ -128,7 +170,7 @@ function makeImportedFileSource(record: GameRecord): ReadOnlyFileSource {
 
 /** Browses only files listed as complete in this game's OPFS import record. */
 export const importedFileSource = (record: GameRecord): ReadOnlyFileSource =>
-  makeImportedFileSource(record);
+  importedFileSourceOf(() => record);
 
 /** A safe, read-only view rooted at Emscripten's /game directory. */
 export function liveGameFileSource(fs: FsLike, title: string): ReadOnlyFileSource {

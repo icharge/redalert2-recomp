@@ -142,6 +142,7 @@ Tick a task off here in the same pull request that finishes it.
 | ~~W11.2~~ | Import and Library with both games, shared files stored once | here | W6.5, W11.1 | S | `e2e/import.mjs --both`: both play from one import and the shared `ra2.mix` is stored once |
 | W11.3 | The suite on Red Alert 2 | here | W10.3, W11.2 | S | `RA2_TARGET=game` with `tools/playtest.py --web`: the same cases pass |
 | ~~W11.4~~ | Browse game files with [js-fileexplorer](https://github.com/cubiclesoft/js-fileexplorer), backed by the import or live VFS | here | W11.1, W11.2 | M | `e2e/import.mjs --both`: Library browses imported OPFS and Play browses live `/game`; text opens read-only and no write/export tools are available |
+| ~~W11.5~~ | Manage an installation's imported files: upload, replace, delete, add a game by its exe; an edition picker on the card; saves as `.sav` beside the exe | here | W11.4 | M | `file-manager.test.ts` and `FileExplorer.test.tsx`; `e2e/import.mjs` finds one Delete tool and an Upload button in the Library browser and none in Play's; Download saves has `SAVE0001.sav` ([storage.md](storage.md#managing-files)) |
 
 ## Stage 12: LAN multiplayer (optional)
 

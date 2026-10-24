@@ -5,7 +5,7 @@
 // records it as done, so a reload or Cancel resumes from the next one.
 
 import type { PlannedFile } from "./manifest";
-import type { SaveStore } from "./saves";
+import type { SavedFile, SaveStore } from "./saves";
 
 /** Where files go: paths like `game/ra2md/ra2.mix`. */
 export interface CopyTarget {
@@ -226,7 +226,7 @@ export function opfsSaveStore(
 ): SaveStore {
   return {
     async list(game) {
-      const out: { path: string; read(): Promise<Uint8Array> }[] = [];
+      const out: SavedFile[] = [];
       const walk = async (dir: FileSystemDirectoryHandle, prefix: string) => {
         const entries = (dir as unknown as { values(): AsyncIterable<FileSystemHandle> }).values();
         for await (const entry of entries) {
@@ -234,8 +234,11 @@ export function opfsSaveStore(
             await walk(entry as FileSystemDirectoryHandle, `${prefix}${entry.name}/`);
           } else {
             const handle = entry as FileSystemFileHandle;
+            const file = await handle.getFile();
             out.push({
               path: prefix + entry.name,
+              size: file.size,
+              modified: file.lastModified,
               read: async () => new Uint8Array(await (await handle.getFile()).arrayBuffer()),
             });
           }

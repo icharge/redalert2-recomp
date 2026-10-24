@@ -37,6 +37,15 @@
   white-space: pre;
 }
 
+.hidden {
+  display: none;
+}
+
+.message {
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
 .readOnlyNote {
   margin-top: var(--space-1);
 }

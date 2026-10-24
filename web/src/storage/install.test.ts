@@ -31,6 +31,8 @@ describe("classify", () => {
     expect(classify("movmd01.mix")?.kind).toBe("movie");
     expect(classify("MOVIES01.MIX")?.kind).toBe("movie");
     expect(classify("Saved Games\\a.sav")?.kind).toBe("save");
+    // what the game writes beside its exe: SAVE%04lX.sav
+    expect(classify("SAVE0001.SAV")).toEqual({ kind: "save", needs: ["ra2", "ra2md"] });
   });
 
   it("leaves out what it should", () => {

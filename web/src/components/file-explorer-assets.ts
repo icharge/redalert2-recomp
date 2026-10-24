@@ -5,7 +5,8 @@ export interface ExplorerEntry {
   name: string;
   type: "folder" | "file";
   hash: string;
-  attrs: { canmodify: false };
+  /** `canmodify` is about what is inside a folder; `locked` is about the entry itself */
+  attrs: { canmodify: boolean; locked?: boolean };
   size?: number;
   tooltip?: string;
 }
@@ -16,7 +17,8 @@ export interface ExplorerFolder {
 }
 
 export interface ExplorerOptions {
-  initpath: [string, string, { canmodify: false }][];
+  initpath: [string, string, { canmodify: boolean }][];
+  /** Only `delete` is ever switched on, and only for a source that can be managed; there is no upload or download. */
   tools: {
     new_folder: false;
     new_file: false;
@@ -25,17 +27,26 @@ export interface ExplorerOptions {
     copy: false;
     paste: false;
     cut: false;
-    delete: false;
+    delete: boolean;
     item_checkboxes: false;
   };
   onrefresh(folder: ExplorerFolder, required: boolean): void;
   onopenfile(folder: ExplorerFolder, entry: ExplorerEntry): void;
+  /** Present only for a source that can be managed. Call `done(true)`, or `done(reason)` to say why not. */
+  ondelete?(
+    done: (result: true | string) => void,
+    folder: ExplorerFolder,
+    ids: string[],
+    entries: ExplorerEntry[],
+  ): void;
 }
 
 export interface ExplorerInstance {
   Destroy(): void;
   IsDestroyed(): boolean;
   IsMappedFolder(folder: ExplorerFolder): boolean;
+  GetCurrentFolder?(): ExplorerFolder | false;
+  RefreshFolders?(forceCurrent?: boolean): void;
 }
 
 export interface ExplorerConstructor {

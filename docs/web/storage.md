@@ -29,7 +29,7 @@ level:
 | Sound | `audio.bag`, `audio.idx`, `audiomd.bag`, `audiomd.idx` |
 | Data | `*.ini`, `*.csf`, `*.fnt`, `*.mmx`, `*.map`, `*.mpr`, `*.yrm` |
 | Movies | `movies*.mix`, `movmd*.mix`: optional, but the game stops at start if a file is missing, so a skipped archive is replaced with an empty 12-byte archive. Without the real archives, video cutscenes show as black; static loading-screen images are separate game assets. The Import screen shows their size and lets the player skip them; the menu's own movies are in `ra2md.mix`. |
-| Saves | `Saved Games/*` if present, offered as "bring your saves" |
+| Saves | `*.sav` at the top level (the game writes `SAVE0001.sav` beside its exe), and `Saved Games/*` of an older layout, if present: offered as "bring your saves" |
 
 A loose `game.fnt` placed at the top of the selected game folder is imported and
 read by the game before its MIX archive copy. Font overrides take effect on the
@@ -110,8 +110,48 @@ files/mods. Exact storage references protect any legacy shared files still
 in use. Saved games and settings are retained in their original namespace,
 which is never assigned to a later slot.
 
-## Exporting saves
+## Saves
 
-The Library card offers "download saves": `save/<edition-storage>/Saved Games` zipped in
-the page and handed to the player, so a save can move to the desktop build
-or another browser. Importing saves comes from the same allowlist entry.
+The game writes its saved games beside its exe (`SAVE%04lX.%3s`, so `SAVE0001.sav`), not in a
+folder. `saves.ts` copies what the game writes into `save/<edition-storage>/` in OPFS and lays it
+back over the imported files at every start. A save that came with the import is a plain
+imported file in the slot instead.
+
+The Library card offers "download saves": every `.sav` in `save/<edition-storage>/` (and any in an
+older `Saved Games/` folder there), plus the saves that came with the import, zipped under the names
+the game keeps them by, so a save can move to the desktop build or another browser. "Import saves"
+takes the `.sav` files of such a zip, or a zip of just the files, and puts them in
+`save/<edition-storage>/` where the game looks for them.
+
+## Managing files
+
+A Library card is an installation: both games of an import live in it, their shared files in one place
+(`game/slot-N/`). When it has two games a picker on the card chooses which one the card shows and
+starts (the choice is remembered per installation); Settings, Mods and the saves links follow it.
+
+"Browse files" is one browser for the whole installation: every game's imported files in one list
+(a shared file once), and a `Saves` folder with what the games themselves wrote (saved games,
+`RA2MD.INI`; not mods or the host's own files), split into a folder per game when there are two.
+Mods are separate (`game/<storage>/mods/`, "Mods…") and are not in this browser. The player can:
+
+- **Upload files** into the folder that is open. A file with the name of one already there
+  (without regard to case) asks first, then replaces it, keeping the spelling the record has.
+  Imported files must be ones the import would take (`classify`, top level only): files the game does
+  not read, and `.sav` files outside `Saves`, are refused with the reason. A file goes to every game
+  that reads it and is stored once. `Saves/<game>` takes `.sav` files only.
+- **Add a game** by uploading its exe (`game.exe`, `gamemd.exe`) to an installation that lacks it. The
+  exe must be the build the game was lifted from. The new game shares every file already there that it
+  reads, and the page says what else it needs (Yuri's Revenge reads files with `md` in their names).
+  An exe of a game the installation has is checked against that game's own record.
+- **Delete** files, or a folder with everything in it, after a confirmation that says what it
+  means (the game cannot start without its exe, `Blowfish.dll` and archives). A file leaves every
+  game's record and leaves OPFS once no game lists it. The `Saves` folders themselves stay.
+
+An imported file is written to `game/<home>/<name>` and each game's record that lists it gets its new
+size and time. A file the game wrote since is laid over the imported one at every start, so changing
+an imported file also removes that name from that game's `Saves`, or the change would be hidden.
+"Resume import" does not bring a deleted file back (a record with every file done is complete): upload
+it again.
+
+Nothing can be downloaded or exported from the browser, and the Play screen's live `/game` browser
+stays read-only: that file system is in memory and its changes would not last.

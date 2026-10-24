@@ -14,7 +14,7 @@ import {
 import { GameAudio } from "../game/audio";
 import { attachInput } from "../game/input";
 import { LanPanel } from "../components/LanPanel";
-import { ReadOnlyFileExplorer } from "../components/ReadOnlyFileExplorer";
+import { FileExplorer } from "../components/FileExplorer";
 import {
   argsFromQuery,
   GameNotBuilt,
@@ -290,7 +290,7 @@ export function Play({ files }: { files: FileSource }) {
         )}
       </Flex>
       {browseFiles && liveFiles && (
-        <ReadOnlyFileExplorer source={liveFiles} onClose={() => setBrowseFiles(false)} />
+        <FileExplorer source={liveFiles} onClose={() => setBrowseFiles(false)} />
       )}
       {presenter && handle.current && <LanPanel game={handle.current} />}
       <Dialog.Root

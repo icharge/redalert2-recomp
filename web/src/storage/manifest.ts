@@ -258,6 +258,106 @@ export class Manifest {
   }
 
   /**
+   * Adds files to editions of an installation, or replaces what they list under that name: the player
+   * put them there from the Library. A file two editions share is listed by both, with the same `home`.
+   */
+  async putFiles(
+    slot: number,
+    puts: { id: GameId; name: string; entry: FileEntry }[],
+  ): Promise<void> {
+    const tx = this.db.transaction(GAMES, "readwrite");
+    const store = tx.objectStore(GAMES);
+    for (const id of new Set(puts.map((put) => put.id))) {
+      const record = (await request(store.get([slot, id]))) as GameRecord | undefined;
+      if (!record) {
+        tx.abort();
+        throw new Error(`${id} is not part of this installation`);
+      }
+      for (const put of puts) if (put.id === id) record.files[put.name] = put.entry;
+      record.bytes = Object.values(record.files).reduce((sum, file) => sum + file.size, 0);
+      record.complete = Object.values(record.files).every((file) => file.done);
+      store.put(record);
+    }
+    await finished(tx);
+  }
+
+  /**
+   * Adds an edition to an installation that lacks it, with the files it reads: the player uploaded its exe
+   * from the Library. Files the installation already keeps are listed by the new edition as they are, in
+   * the same `home`, so both editions share them.
+   */
+  async addEdition(
+    slot: number,
+    id: GameId,
+    title: string,
+    exeStamp: number,
+    files: Record<string, FileEntry>,
+  ): Promise<GameRecord> {
+    const tx = this.db.transaction([GAMES, INSTALLATIONS], "readwrite");
+    const installation = (await request(tx.objectStore(INSTALLATIONS).get(slot))) as
+      InstallationRecord | undefined;
+    if (!installation) {
+      tx.abort();
+      throw new Error("That installation does not exist.");
+    }
+    if (await request(tx.objectStore(GAMES).get([slot, id]))) {
+      tx.abort();
+      throw new Error("That game is already in this installation.");
+    }
+    const record: GameRecord = {
+      id,
+      slot,
+      storage: `slot-${slot}-${id}`,
+      title,
+      exeStamp,
+      importedAt: Date.now(),
+      bytes: Object.values(files).reduce((sum, file) => sum + file.size, 0),
+      complete: Object.values(files).every((file) => file.done),
+      files,
+    };
+    tx.objectStore(GAMES).put(record);
+    if (!installation.editions?.includes(id)) {
+      installation.editions = [...(installation.editions ?? []), id];
+      tx.objectStore(INSTALLATIONS).put(installation);
+    }
+    await finished(tx);
+    return record;
+  }
+
+  /**
+   * Takes files out of one edition's record. Returns those no edition reads any more, to delete from OPFS:
+   * a file the other edition (or another installation, in an older layout) still lists stays where it is.
+   */
+  async deleteFiles(
+    slot: number,
+    id: GameId,
+    names: string[],
+  ): Promise<{ home: string; name: string }[]> {
+    const tx = this.db.transaction(GAMES, "readwrite");
+    const store = tx.objectStore(GAMES);
+    const all = (await request(store.getAll())) as GameRecord[];
+    const record = all.find((game) => game.slot === slot && game.id === id);
+    if (!record) {
+      tx.abort();
+      throw new Error("That game does not exist.");
+    }
+    const removed = names.flatMap((name) => {
+      const entry = record.files[name];
+      return entry ? [{ home: entry.home, name }] : [];
+    });
+    for (const { name } of removed) delete record.files[name];
+    record.bytes = Object.values(record.files).reduce((sum, file) => sum + file.size, 0);
+    store.put(record);
+    const stillNeeded = new Set(
+      all.flatMap((game) =>
+        Object.entries(game.files).map(([name, entry]) => `${entry.home}/${name}`),
+      ),
+    );
+    await finished(tx);
+    return removed.filter(({ home, name }) => !stillNeeded.has(`${home}/${name}`));
+  }
+
+  /**
    * Forgets a game. Returns the files to delete from OPFS: those only this game reads. A file another
    * game still reads stays, wherever it is kept.
    */

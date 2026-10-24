@@ -70,7 +70,14 @@ function bytesStream(data: Uint8Array): ReadableStream<Uint8Array> {
 
 /** What is in OPFS under `save/<game>/`, as a source of (path, bytes). */
 export interface SaveStore {
-  list(game: string): Promise<{ path: string; read(): Promise<Uint8Array> }[]>;
+  list(game: string): Promise<SavedFile[]>;
+}
+
+export interface SavedFile {
+  path: string;
+  size?: number;
+  modified?: number;
+  read(): Promise<Uint8Array>;
 }
 
 /** Puts the saved files back over the game's own, before the game starts. */
@@ -153,11 +160,29 @@ export function startSaveSync(
 
 // ---- carrying saves between this browser and a desktop install --------------------------------------
 
+/** Older pages kept saves in a `Saved Games/` folder; the game itself writes `SAVE0001.sav` beside its exe. */
 const SAVES_FOLDER = "Saved Games/";
 
-/** The saved games of a game, zipped as `Saved Games/<name>`, or null if there are none yet. */
-export async function exportSaves(store: SaveStore, game: string): Promise<Uint8Array | null> {
-  const files = (await store.list(game)).filter((file) => file.path.startsWith(SAVES_FOLDER));
+/** A saved game: a `.sav` file at the game's top level, or anything in the older `Saved Games/` folder. */
+export const isSavePath = (path: string): boolean =>
+  /^[^/]+\.sav$/i.test(path) || path.startsWith(SAVES_FOLDER);
+
+/**
+ * The saved games of a game, zipped under the names the game keeps them by, or null if there are none yet.
+ * `imported` adds saves that came with the import (the game's folder, not what it has saved since); a save
+ * of the same name that the game has written since wins.
+ */
+export async function exportSaves(
+  store: SaveStore,
+  game: string,
+  imported: SavedFile[] = [],
+): Promise<Uint8Array | null> {
+  const written = (await store.list(game)).filter((file) => isSavePath(file.path));
+  const known = new Set(written.map((file) => file.path.toLowerCase()));
+  const files = [
+    ...written,
+    ...imported.filter((file) => isSavePath(file.path) && !known.has(file.path.toLowerCase())),
+  ];
   if (files.length === 0) return null;
   const { writeZip } = await import("./zip");
   return writeZip(
@@ -166,8 +191,9 @@ export async function exportSaves(store: SaveStore, game: string): Promise<Uint8
 }
 
 /**
- * Takes the saved games out of a zip into OPFS, to be put back the next time the game starts. A zip made by
- * this page has `Saved Games/<name>`; a zip of just the files is taken too. Returns how many there were.
+ * Takes the saved games out of a zip into OPFS, to be put back the next time the game starts. Only `.sav`
+ * files count, and each goes where the game looks for it, beside its exe: a zip made by an older page has
+ * `Saved Games/<name>`, a zip of just the files is taken too. Returns how many there were.
  */
 export async function importSaves(
   zip: Uint8Array,
@@ -181,8 +207,8 @@ export async function importSaves(
     const name = file.path.startsWith(SAVES_FOLDER)
       ? file.path.slice(SAVES_FOLDER.length)
       : file.path;
-    if (name.includes("/") || !/\.(sav|sva|ini|txt)$/i.test(name)) continue;
-    await target.write(`save/${game}/${SAVES_FOLDER}${name}`, bytesStream(file.data));
+    if (name.includes("/") || !/\.sav$/i.test(name)) continue;
+    await target.write(`save/${game}/${name}`, bytesStream(file.data));
     count++;
   }
   return count;

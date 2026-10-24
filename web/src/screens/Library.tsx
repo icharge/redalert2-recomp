@@ -7,6 +7,7 @@ import {
   Heading,
   IconButton,
   Link,
+  SegmentedControl,
   TextField,
   Text,
 } from "@radix-ui/themes";
@@ -20,12 +21,12 @@ import {
   Cross2Icon,
   TrashIcon,
 } from "@radix-ui/react-icons";
-import { useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { formatBytes } from "../components/format";
 import { LauncherGameSettings } from "../components/LauncherGameSettings";
-import { ReadOnlyFileExplorer } from "../components/ReadOnlyFileExplorer";
+import { FileExplorer } from "../components/FileExplorer";
 import { StorageMeter } from "../components/StorageMeter";
-import { importedFileSource } from "../storage/file-browser";
+import { importedFileSource, type ReadOnlyFileSource } from "../storage/file-browser";
 import type { GameRecord, InstallationRecord } from "../storage/manifest";
 import styles from "./Library.module.css";
 
@@ -43,8 +44,18 @@ export interface LibraryProps {
   onDownloadSaves(game: GameRecord): Promise<string>;
   /** takes saved games from a zip the player chose; says what happened */
   onImportSaves(game: GameRecord, zip: File): Promise<string>;
+  /** what "Browse files" shows for an installation: a source that can change the files, or by default a read-only view */
+  browseSource?(installation: InstallationRecord, games: GameRecord[]): ReadOnlyFileSource;
   estimate?: () => Promise<{ quota?: number; usage?: number }>;
   modManager?(game: GameRecord): ReactNode;
+}
+
+function rememberedEdition(slot: number): string | null {
+  try {
+    return localStorage.getItem(`ra2-edition:${slot}`);
+  } catch {
+    return null;
+  }
 }
 
 export function Library({
@@ -57,21 +68,56 @@ export function Library({
   onRemove,
   onDownloadSaves,
   onImportSaves,
+  browseSource,
   estimate,
   modManager,
 }: LibraryProps) {
   const [removed, setRemoved] = useState(0);
   const [failure, setFailure] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [browsing, setBrowsing] = useState<GameRecord | null>(null);
+  const [browsing, setBrowsing] = useState<number | null>(null);
+  const [picked, setPicked] = useState<Record<number, string>>({});
   const [settingsGame, setSettingsGame] = useState<GameRecord | null>(null);
   const [editingSlot, setEditingSlot] = useState<number | null>(null);
   const [nameDraft, setNameDraft] = useState("");
   const [localNames, setLocalNames] = useState<Record<number, string>>({});
-  const importedSource = useMemo(
-    () => (browsing ? importedFileSource(browsing) : null),
-    [browsing],
-  );
+  // The source keeps its own copy of the record and the widget is built once per source, so it must not
+  // follow `browseSource`, which is a new function on every render.
+  const makeSource = useRef(browseSource);
+  makeSource.current = browseSource;
+  const latest = useRef({ games, installations });
+  latest.current = { games, installations };
+  const importedSource = useMemo(() => {
+    if (browsing === null) return null;
+    const slotGames = latest.current.games.filter((game) => game.slot === browsing);
+    const installation = latest.current.installations?.find((entry) => entry.slot === browsing) ?? {
+      slot: browsing,
+      name: slotGames[0]?.title ?? "Installation",
+      importedAt: 0,
+    };
+    const first = slotGames[0];
+    return (
+      makeSource.current?.(installation, slotGames) ?? (first ? importedFileSource(first) : null)
+    );
+  }, [browsing]);
+
+  /** the edition the player chose for this installation, the one they chose last time, else Yuri's Revenge */
+  function selectedEdition(slot: number, choices: GameRecord[]): GameRecord | undefined {
+    const remembered = picked[slot] ?? rememberedEdition(slot);
+    return (
+      choices.find((game) => game.id === remembered) ??
+      choices.find((game) => game.id === "ra2md") ??
+      choices[0]
+    );
+  }
+  function pickEdition(slot: number, id: string) {
+    setPicked((now) => ({ ...now, [slot]: id }));
+    try {
+      localStorage.setItem(`ra2-edition:${slot}`, id);
+    } catch {
+      // the choice then lasts until the page closes
+    }
+  }
 
   async function say(work: Promise<string>) {
     try {
@@ -121,7 +167,8 @@ export function Library({
           const displayName =
             localNames[installation.slot] ??
             installation.displayName ??
-            choices[0]?.title ??
+            // with two games the card is the installation, not whichever game was listed first
+            (choices.length > 1 ? installation.name : choices[0]?.title) ??
             installation.name;
           const saveName = async (event?: FormEvent<HTMLFormElement>) => {
             event?.preventDefault();
@@ -139,6 +186,7 @@ export function Library({
               setFailure(error instanceof Error ? error.message : String(error));
             }
           };
+          const selected = selectedEdition(installation.slot, choices);
           return (
             <Card
               key={installation.slot}
@@ -201,86 +249,109 @@ export function Library({
                     </button>
                   )}
                 </Flex>
-                {choices.map((game) => (
-                  <div key={game.id} data-game-id={game.id}>
-                    <Flex justify="between" align="center" gap="4" wrap="wrap">
-                      <Flex direction="column" gap="1">
-                        {(choices.length > 1 || displayName !== game.title) && (
-                          <Heading size="4">{game.title}</Heading>
-                        )}
-                        <Text size="2" color="gray">
-                          {formatBytes(game.bytes)} · {Object.keys(game.files).length} files ·
-                          imported {new Date(game.importedAt).toLocaleDateString()}
-                        </Text>
-                        <Flex gap="3" mt="1">
-                          {modManager?.(game)}
-                          <Link
-                            href="#"
-                            size="2"
-                            onClick={(event) => {
-                              event.preventDefault();
-                              void say(onDownloadSaves(game));
-                            }}
-                          >
-                            Download saves
-                          </Link>
-                          <Link
-                            href="#"
-                            size="2"
-                            onClick={(event) => {
-                              event.preventDefault();
-                              document.getElementById(`saves-${game.slot}-${game.id}`)?.click();
-                            }}
-                          >
-                            Import saves…
-                          </Link>
-                          <input
-                            id={`saves-${game.slot}-${game.id}`}
-                            type="file"
-                            accept=".zip,application/zip"
-                            className={styles.hidden}
-                            aria-label={`Saves for ${game.title}`}
-                            onChange={(event) => {
-                              const file = event.target.files?.[0];
-                              event.target.value = "";
-                              if (file) void say(onImportSaves(game, file));
-                            }}
-                          />
-                        </Flex>
-                        {!game.complete && (
-                          <Text size="2" color="amber">
-                            The import did not finish. Resume this installation to carry on.
-                          </Text>
-                        )}
-                      </Flex>
-                      <Flex className={styles.actions} gap="2" align="center">
-                        <IconButton
-                          variant="soft"
-                          color="gray"
-                          aria-label={`Browse files for ${game.title}`}
-                          title="Browse files"
-                          onClick={() => setBrowsing(game)}
-                        >
-                          <FileTextIcon />
-                        </IconButton>
-                        <IconButton
-                          variant="soft"
-                          color="gray"
-                          aria-label={`Settings for ${game.title}`}
-                          title="Game settings"
-                          onClick={() => setSettingsGame(game)}
-                        >
-                          <GearIcon />
-                        </IconButton>
-                        <Button disabled={!game.complete} onClick={() => onPlay(game)}>
-                          <PlayIcon />
-                          Play
-                        </Button>
-                      </Flex>
-                    </Flex>
-                  </div>
-                ))}
-                {(!choices.length || choices.some((game) => !game.complete) || installation.editions?.some((id) => !choices.some((game) => game.id === id && game.complete))) && (
+                {choices.length > 1 && (
+                  <SegmentedControl.Root
+                    aria-label="Edition"
+                    value={selected?.id ?? ""}
+                    onValueChange={(id) => pickEdition(installation.slot, id)}
+                  >
+                    {choices.map((game) => (
+                      <SegmentedControl.Item key={game.id} value={game.id}>
+                        {game.title}
+                      </SegmentedControl.Item>
+                    ))}
+                  </SegmentedControl.Root>
+                )}
+                {[selected].flatMap((game) =>
+                  game
+                    ? [
+                        <div key={game.id} data-game-id={game.id}>
+                          <Flex justify="between" align="center" gap="4" wrap="wrap">
+                            <Flex direction="column" gap="1">
+                              {(choices.length > 1 || displayName !== game.title) && (
+                                <Heading size="4">{game.title}</Heading>
+                              )}
+                              <Text size="2" color="gray">
+                                {formatBytes(game.bytes)} · {Object.keys(game.files).length} files ·
+                                imported {new Date(game.importedAt).toLocaleDateString()}
+                              </Text>
+                              <Flex gap="3" mt="1">
+                                {modManager?.(game)}
+                                <Link
+                                  href="#"
+                                  size="2"
+                                  onClick={(event) => {
+                                    event.preventDefault();
+                                    void say(onDownloadSaves(game));
+                                  }}
+                                >
+                                  Download saves
+                                </Link>
+                                <Link
+                                  href="#"
+                                  size="2"
+                                  onClick={(event) => {
+                                    event.preventDefault();
+                                    document
+                                      .getElementById(`saves-${game.slot}-${game.id}`)
+                                      ?.click();
+                                  }}
+                                >
+                                  Import saves…
+                                </Link>
+                                <input
+                                  id={`saves-${game.slot}-${game.id}`}
+                                  type="file"
+                                  accept=".zip,application/zip"
+                                  className={styles.hidden}
+                                  aria-label={`Saves for ${game.title}`}
+                                  onChange={(event) => {
+                                    const file = event.target.files?.[0];
+                                    event.target.value = "";
+                                    if (file) void say(onImportSaves(game, file));
+                                  }}
+                                />
+                              </Flex>
+                              {!game.complete && (
+                                <Text size="2" color="amber">
+                                  The import did not finish. Resume this installation to carry on.
+                                </Text>
+                              )}
+                            </Flex>
+                            <Flex className={styles.actions} gap="2" align="center">
+                              <IconButton
+                                variant="soft"
+                                color="gray"
+                                aria-label={`Browse files for ${displayName}`}
+                                title="Browse the files of every game in this installation"
+                                onClick={() => setBrowsing(installation.slot)}
+                              >
+                                <FileTextIcon />
+                              </IconButton>
+                              <IconButton
+                                variant="soft"
+                                color="gray"
+                                aria-label={`Settings for ${game.title}`}
+                                title="Game settings"
+                                onClick={() => setSettingsGame(game)}
+                              >
+                                <GearIcon />
+                              </IconButton>
+                              <Button disabled={!game.complete} onClick={() => onPlay(game)}>
+                                <PlayIcon />
+                                Play
+                              </Button>
+                            </Flex>
+                          </Flex>
+                        </div>,
+                      ]
+                    : [],
+                )}
+                {(!choices.length ||
+                  choices.some((game) => !game.complete) ||
+                  installation.editions?.some(
+                    (id) => !choices.some((game) => game.id === id && game.complete),
+                  )) && (
                   <Button variant="soft" onClick={() => onResume?.(installation.slot)}>
                     Resume import
                   </Button>
@@ -333,9 +404,7 @@ export function Library({
       {settingsGame && (
         <LauncherGameSettings game={settingsGame} onClose={() => setSettingsGame(null)} />
       )}
-      {importedSource && (
-        <ReadOnlyFileExplorer source={importedSource} onClose={() => setBrowsing(null)} />
-      )}
+      {importedSource && <FileExplorer source={importedSource} onClose={() => setBrowsing(null)} />}
     </Flex>
   );
 }
