@@ -1,0 +1,295 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Custom Game · RA2Web POC</title>
+<style>
+  :root { color-scheme: dark; font: 15px/1.45 system-ui, sans-serif; background: #111820; color: #e7edf2; }
+  body { max-width: 1050px; margin: 2rem auto; padding: 0 1rem; }
+  h1, h2, p { margin-top: 0; }
+  .subtitle, .muted { color: #a9b7c3; }
+  .panel { border: 1px solid #394959; background: #1a2530; border-radius: 8px; padding: 1rem; margin: 1rem 0; }
+  .grid { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(300px, 1fr); gap: 1rem; }
+  label { display: block; margin: .7rem 0; color: #c7d2dc; }
+  input, select { box-sizing: border-box; width: 100%; padding: .55rem; margin-top: .25rem; color: inherit; background: #101820; border: 1px solid #526474; border-radius: 4px; }
+  button { padding: .55rem .9rem; margin: .2rem .25rem .2rem 0; cursor: pointer; color: #f3f7fa; background: #315875; border: 1px solid #6084a0; border-radius: 4px; }
+  button:disabled { opacity: .45; cursor: default; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+  .game { padding: .65rem; margin: .45rem 0; border: 1px solid #394959; border-radius: 5px; background: #121b23; }
+  .game strong { display: block; }
+  #rooms:empty::after { content: 'No open games. Create one to test the custom game flow.'; color: #a9b7c3; }
+  pre { min-height: 7rem; max-height: 18rem; padding: .8rem; overflow: auto; background: #101820; color: #cbe8d3; white-space: pre-wrap; font: 12px/1.4 ui-monospace, monospace; }
+  [hidden] { display: none !important; }
+  @media (max-width: 700px) { .grid { grid-template-columns: 1fr; } }
+</style>
+<h1>Custom Game</h1>
+<p class="subtitle">Browser POC for the game's WOL custom-game flow: sign in, browse open rooms, create or join a room, and inspect the roster. It uses RA2Web's WOL line protocol; it does not start the native game or test gameplay relay.</p>
+<form id="form">
+  <div class="grid">
+    <div class="panel">
+      <h2>Connect</h2>
+      <label>RA2Web server <input name="server" value="http://127.0.0.1:19090" required></label>
+      <label>Username <input name="username" value="browserpoc" minlength="2" maxlength="15" required></label>
+      <label>Password <input name="password" type="password" minlength="8" required></label>
+      <button id="connect">Connect to WOL</button>
+      <button id="disconnect" type="button" disabled>Disconnect</button>
+      <p id="status" class="muted" aria-live="polite">Disconnected</p>
+    </div>
+    <div class="panel" id="createPanel" hidden>
+      <h2>Create a custom game</h2>
+      <label>Game name <input id="gameName" maxlength="32" value="Browser custom game"></label>
+      <label>Player slots <select id="slots"><option>2</option><option selected>4</option><option>6</option><option>8</option></select></label>
+      <button id="create" type="button">Create game</button>
+      <p class="muted">This POC creates an open Yuri's Revenge room (channel type 45).</p>
+    </div>
+  </div>
+  <div class="grid">
+    <section class="panel" id="browserPanel" hidden>
+      <div class="row"><h2>Open games</h2><button id="refresh" type="button">Refresh list</button></div>
+      <div id="rooms" aria-live="polite"></div>
+    </section>
+    <section class="panel" id="roomPanel" hidden>
+      <div class="row"><h2 id="roomTitle">Game room</h2><button id="leave" type="button">Leave room</button></div>
+      <p id="roomMeta" class="muted"></p>
+      <h3>Players</h3><div id="roster"></div>
+      <button id="start" type="button" hidden>Start handoff (POC)</button>
+      <p class="muted">Start only checks that RA2Web returns its gserv handoff; the actual game packet path is not connected.</p>
+    </section>
+  </div>
+</form>
+<details class="panel"><summary>Protocol log</summary><pre id="log" aria-live="polite">Ready.</pre></details>
+<script type="module">
+const form = document.querySelector("#form");
+const output = document.querySelector("#log");
+const status = document.querySelector("#status");
+const roomsElement = document.querySelector("#rooms");
+const rosterElement = document.querySelector("#roster");
+const log = (message) => { output.textContent += `\n${message}`; output.scrollTop = output.scrollHeight; };
+const setStatus = (message) => { status.textContent = message; };
+let client;
+let username = "";
+let currentRoom = "";
+let isHost = false;
+let listRows = [];
+let listRefreshing = false;
+
+function makeLineClient(ws) {
+  const pending = [];
+  const buffered = [];
+  let onLine = () => {};
+  ws.addEventListener("message", ({ data }) => {
+    for (const line of String(data).split(/\r?\n/).filter(Boolean)) {
+      const [command, ...args] = line.split(" ");
+      if (command?.toLowerCase() === "ping") {
+        ws.send(`PONG ${args[0] ?? ""}\r\n`);
+        continue;
+      }
+      log(`← ${line}`);
+      onLine(line);
+      const waiter = pending.findIndex(({ match }) => match(line));
+      if (waiter >= 0) pending.splice(waiter, 1)[0].resolve(line);
+      else buffered.push(line);
+    }
+  });
+  return {
+    send(line) { log(`→ ${line}`); ws.send(`${line}\r\n`); },
+    onLine(callback) { onLine = callback; },
+    close() { ws.close(); },
+    wait(match, label) {
+      const found = buffered.findIndex(match);
+      if (found >= 0) return Promise.resolve(buffered.splice(found, 1)[0]);
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          const i = pending.findIndex((entry) => entry.resolve === resolve);
+          if (i >= 0) pending.splice(i, 1);
+          reject(new Error(`Timed out waiting for ${label}`));
+        }, 10000);
+        pending.push({ match, resolve: (line) => { clearTimeout(timer); resolve(line); } });
+      });
+    },
+  };
+}
+
+async function accountToken(base, username, password) {
+  const body = JSON.stringify({ user: username, pass: password, locale: "en-US" });
+  let response = await fetch(`${base}/register`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body,
+  });
+  let result = await response.json();
+  if (!result.sessionToken) {
+    response = await fetch(`${base}/login`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body,
+    });
+    result = await response.json();
+  }
+  if (!response.ok || !result.sessionToken) throw new Error(result.error ?? "Register/login failed");
+  return result.sessionToken;
+}
+
+function parseListRow(line) {
+  const fields = line.split(" ");
+  if (fields[1] !== "322" || !fields[3]?.startsWith("#")) return null;
+  return { channel: fields[3], players: Number(fields[4]) || 0, channelType: Number(fields[6]) || 0, topic: fields[10] ?? "" };
+}
+
+function renderRooms() {
+  roomsElement.replaceChildren();
+  for (const room of listRows) {
+    if (room.channel === currentRoom) continue;
+    const card = document.createElement("div");
+    card.className = "game";
+    const title = document.createElement("strong");
+    title.textContent = room.channel.slice(1).replaceAll("_", " ");
+    const meta = document.createElement("span");
+    meta.className = "muted";
+    meta.textContent = `${room.players} player${room.players === 1 ? "" : "s"} · type ${room.channelType}`;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = "Join";
+    button.addEventListener("click", () => joinRoom(room.channel, false));
+    card.append(title, meta, button);
+    roomsElement.append(card);
+  }
+}
+
+function refreshGames() {
+  listRows = [];
+  listRefreshing = true;
+  renderRooms();
+  client.send("list 45 45");
+  setStatus("Refreshing custom games…");
+}
+
+function handleServerLine(line) {
+  if (line.includes(" 322 ")) {
+    const room = parseListRow(line);
+    if (room && !listRows.some((item) => item.channel === room.channel)) listRows.push(room);
+    renderRooms();
+  }
+  if (line.includes(" 323 ") && listRefreshing) {
+    listRefreshing = false;
+    setStatus(currentRoom ? `In ${currentRoom}` : `Connected · ${listRows.length} open game${listRows.length === 1 ? "" : "s"}`);
+  }
+  if (currentRoom && line.includes(` ${currentRoom}`) && line.includes(" 353 ")) {
+    const names = line.split(" :").at(-1)?.trim().split(/\s+/).filter(Boolean) ?? [];
+    rosterElement.replaceChildren(...names.map((name) => {
+      const item = document.createElement("div");
+      const nick = name.split(",")[0];
+      item.textContent = nick.replace(/^[@+]/, "") + (nick.startsWith("@") ? " · host" : "");
+      return item;
+    }));
+  }
+  if (currentRoom && line.includes(` ${currentRoom}`) && line.includes(" JOIN ")) {
+    const nick = line.slice(1).split("!")[0];
+    if (nick && ![...rosterElement.children].some((item) => item.textContent?.includes(nick))) {
+      const item = document.createElement("div"); item.textContent = nick + (nick === username && isHost ? " · host" : ""); rosterElement.append(item);
+    }
+  }
+  if (currentRoom && line.includes(" STARTG ") && line.includes(currentRoom)) setStatus(`RA2Web returned STARTG for ${currentRoom}. See protocol log.`);
+}
+
+async function joinRoom(channel, creating) {
+  if (!client || currentRoom) return;
+  currentRoom = channel;
+  isHost = creating;
+  rosterElement.replaceChildren();
+  document.querySelector("#roomTitle").textContent = channel.slice(1).replaceAll("_", " ");
+  document.querySelector("#roomMeta").textContent = creating ? "You created this room." : "Joined custom game room.";
+  document.querySelector("#roomPanel").hidden = false;
+  document.querySelector("#start").hidden = !creating;
+  if (creating) {
+    client.send(`joingame ${channel} 1 ${document.querySelector("#slots").value} 45 0 0 0 0`);
+  } else {
+    client.send(`joingame ${channel} 0`);
+  }
+  await client.wait((line) => line.includes("JOINGAME ") && line.endsWith(`:${channel}`), "room join");
+  await client.wait((line) => line.includes(" 353 ") && line.includes(channel), "room roster");
+  client.send(`NAMES ${channel}`);
+  if (creating) {
+    client.send(`gameopt ${channel} :A1`);
+  }
+  setStatus(`In ${channel} · roster received`);
+}
+
+form.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const button = document.querySelector("#connect");
+  button.disabled = true;
+  output.textContent = "Starting…";
+  let ws;
+  try {
+    const data = new FormData(form);
+    const base = String(data.get("server")).replace(/\/$/, "");
+    username = String(data.get("username"));
+    const password = String(data.get("password"));
+    const token = await accountToken(base, username, password);
+    log("HTTP register/login returned a session token");
+
+    const socketUrl = new URL(base);
+    socketUrl.protocol = socketUrl.protocol === "https:" ? "wss:" : "ws:";
+    ws = new WebSocket(socketUrl);
+    await new Promise((resolve, reject) => {
+      ws.addEventListener("open", resolve, { once: true });
+      ws.addEventListener("error", () => reject(new Error("WebSocket connection failed")), { once: true });
+    });
+    client = makeLineClient(ws);
+    client.onLine(handleServerLine);
+    client.send("cvers 0.83.4 16640");
+    await client.wait((line) => line.includes(" 700 "), "WOL version acceptance");
+    client.send("setlocale 2");
+    await client.wait((line) => line.includes(" 310 "), "locale acceptance");
+    client.send(`session ${token}`);
+    await client.wait((line) => line.includes(" 376 "), "authenticated MOTD end");
+
+    const lobby = "#Lob_45_0";
+    client.send(`join ${lobby} zotclot9`);
+    await client.wait((line) => line.endsWith(` ${lobby}`) && line.includes(" JOIN "), "lobby join");
+    await client.wait((line) => line.includes(" 353 ") && line.includes(lobby), "lobby roster");
+    await client.wait((line) => line.includes(" 366 ") && line.includes(lobby), "lobby roster end");
+    log("Joined lobby and received its roster");
+    document.querySelector("#createPanel").hidden = false;
+    document.querySelector("#browserPanel").hidden = false;
+    document.querySelector("#connect").disabled = true;
+    document.querySelector("#disconnect").disabled = false;
+    setStatus("Connected · lobby #Lob_45_0");
+    refreshGames();
+  }
+  catch (error) {
+    log(`POC FAILED: ${error instanceof Error ? error.message : String(error)}`);
+    setStatus("Connection failed · see protocol log");
+    if (ws && ws.readyState < WebSocket.CLOSING) ws.close();
+  }
+  finally {
+    if (!client) button.disabled = false;
+  }
+});
+
+document.querySelector("#create").addEventListener("click", async () => {
+  if (!client || currentRoom) return;
+  const raw = document.querySelector("#gameName").value.trim() || `${username}'s game`;
+  const slug = raw.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-|-$/g, "").slice(0, 24) || "custom-game";
+  await joinRoom(`#${username}-${slug}`, true);
+});
+document.querySelector("#refresh").addEventListener("click", refreshGames);
+document.querySelector("#leave").addEventListener("click", () => {
+  if (!client || !currentRoom) return;
+  client.send(`part ${currentRoom}`);
+  currentRoom = ""; isHost = false;
+  document.querySelector("#roomPanel").hidden = true;
+  refreshGames();
+});
+document.querySelector("#start").addEventListener("click", async () => {
+  if (!client || !currentRoom || !isHost) return;
+  client.send(`startg ${currentRoom} ${username}`);
+  const handoff = await client.wait((line) => line.includes(" STARTG ") && line.includes(currentRoom), "STARTG handoff");
+  log(`POC PASSED: ${handoff}`);
+});
+document.querySelector("#disconnect").addEventListener("click", () => {
+  client?.close(); client = undefined; currentRoom = ""; isHost = false; listRows = [];
+  document.querySelector("#createPanel").hidden = true;
+  document.querySelector("#browserPanel").hidden = true;
+  document.querySelector("#roomPanel").hidden = true;
+  document.querySelector("#connect").disabled = false;
+  document.querySelector("#disconnect").disabled = true;
+  setStatus("Disconnected");
+});
+</script>

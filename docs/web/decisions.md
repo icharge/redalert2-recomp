@@ -160,27 +160,36 @@ so the import copies it and refuses a folder without one.
 
 ## D12. Preserve the in-game WOL menu with a browser-side compatibility layer
 
-**Decided.** Keep the WOL service endpoint configurable. A self-hosted
-[PvPGN-PRO](https://github.com/pvpgn/pvpgn-server) instance is a supported server-side option and the
-first compatibility target for W13. It advertises Westwood Online support and lists RA2 1.006 and
-Yuri's Revenge 1.001 among its supported clients. The same gateway may be configured for another
-WOL-compatible service, such as XWIS, if it is reachable and passes compatibility testing. The
-workspace's sibling `ra2web/server` is another candidate: it already exposes a WOL-style lobby over
-WebSocket, but its wire/auth flow is tailored to RA2Web and needs an adapter/compatibility check before
-this project can use it. Do not depend on the original Westwood servers or hard-code a public service
-as a runtime dependency.
+**Decided.** Prefer the workspace's sibling `ra2web/server` as the first W13 service to integrate.
+It already exposes a WOL-style lobby over WebSocket, has smoke clients for login, channels, game
+options, and `STARTG`, and provides browser-oriented session and ladder HTTP APIs. Reuse its lobby,
+authentication, and ranking capabilities through an adapter for this project's WOLAPI compatibility
+object. Its existing `gserv` carries RA2Web turn-action frames; compatibility with the original
+RA2/YR WOL gameplay traffic has not been established, so do not assume it can carry those packets.
+
+Keep the service endpoint configurable and self-hostable. PvPGN-PRO remains a useful legacy protocol
+and ladder reference: its supported-client list names RA2 1.006 and Yuri's Revenge 1.001, and its WOL
+handler implements the relevant commands. Treat it as a possible alternate backend only after
+compatibility testing. PvPGN-PRO's own config calls WOL support experimental, and its comments conflict
+about WOLv1/WOLv2 port defaults, so confirm listener behavior against the selected build. Another
+WOL-compatible service, such as XWIS, may be used if it passes the same checks. Do not depend on the
+original Westwood servers or hard-code a public service as a runtime dependency.
 
 Preserve the original in-game Online menu. Implement the `IChat`/WOLAPI COM surface that the game
 actually calls as a compatibility object in the web host/Win32 emulation, then bridge its asynchronous
 requests and callbacks to browser WebSocket code. Do not require or load a recovered Windows
 `WOLAPI.DLL` in the browser, and do not implement unused API methods without evidence the game calls
-them. Connect directly by WSS to a browser-ready service such as `ra2web/server`, or use a
-same-origin/configured **WSS gateway** for a legacy TCP service such as PvPGN-PRO. The gateway must
-only connect to the configured service, not act as an arbitrary TCP proxy. Keep WOL lobby/session
-signaling separate from gameplay packets. Carry this game's IPX datagrams between peers using WebRTC
-data channels. W12's one-to-one LAN setup remains manual offer/answer as recorded in D13; W13 adds
-lobby-correlated signaling and may use STUN/TURN for internet connectivity. Do not use the peer IP
-addresses announced by WOL as browser UDP destinations.
+them. Connect by WSS to `ra2web/server`; use a same-origin/configured **WSS gateway** only if a legacy
+TCP backend such as PvPGN-PRO is added. Any gateway must connect only to the configured service, not
+act as an arbitrary TCP proxy. Keep WOL lobby/session signaling separate from gameplay packets. The
+RA2 manual describes WOL as an Internet matching service, and historical troubleshooting material
+describes peers communicating directly after the start handoff and lists UDP ports 1234-1237
+([manual](https://gamepedia.cursecdn.com/cnc_gamepedia_en/b/b5/Red_Alert_2_-_English.pdf),
+[network notes](https://planetcnc.gamespy.com/Viewef03.html?id=16&view=Guides.Detail)). This is the
+Internet path, not the LAN IPX path. W12's IPX-over-WebRTC setup applies to LAN play only. Before
+choosing W13's browser transport, trace the title-specific Internet socket/packet path in RA2 1.006
+and YR 1.001; then determine whether to carry those game packets over WebRTC or use a protocol-aware
+relay. Browsers cannot send raw UDP, and WOL-advertised peer IPs are not browser UDP destinations.
 
 **Do not conflate the DLLs.** The current host's registration-free COM support is for `Blowfish.dll`,
 the game's WOL cipher, not `WOLAPI.dll` ([bring-up note](../bringup.md#2-the-string-manager-box-is-really-a-com-check),
@@ -188,38 +197,59 @@ the game's WOL cipher, not `WOLAPI.dll` ([bring-up note](../bringup.md#2-the-str
 separate from implementing the browser lobby client.
 
 **Required WOL surface.** The reverse-engineered [`IChat` interface](https://github.com/hifi-unmaintained/wolapi/blob/master/inc/IChat.h)
-exposes server discovery/connection, channel and user lists, channel create/join/leave, chat, game
-options, and game start/end calls. The [implementation](https://github.com/hifi-unmaintained/wolapi/blob/master/src/IChat.c)
-shows the corresponding IRC-like TCP commands. The minimum browser flow is: select a game/server and
-authenticate/version-check; list and join a lobby; list, create, or join a game channel; exchange room
-roster, topic, and game options; start the session and consume its start event; then leave/logout.
-Retain enough room identity to correlate peers and exchange WebRTC offer/answer and ICE candidates.
-The original WOL game-server protocol describes `STARTG` as the coordination step and says the match
-is played between clients, not carried by the lobby server ([protocol notes](https://medium.com/sean3z/xwis-wol-game-server-protocol-b2a3457bd06));
-the packet formats there are for Tiberian Sun, so treat them as guidance, not an RA2 wire specification.
-The sibling `ra2web/server` authenticates with an HTTP-issued session token and has a `/gserv` endpoint,
-but its RA2Web `GservConnection` (`ra2web/src/network/GservConnection.ts`) relays turn-action frames;
-that endpoint is not a drop-in transport for this project's IPX datagrams.
+describes server discovery/connection, channel and user lists, channel create/join/leave, chat, game
+options, and game start/end calls. Its accompanying implementation is for Red Alert 3.03, so use it
+for API shape only; first trace the actual COM calls made by RA2 1.006 and YR 1.001 before fixing the
+browser compatibility object's method set. PvPGN-PRO's own
+[`handle_wol.cpp`](https://github.com/pvpgn/pvpgn-server/blob/master/src/bnetd/handle_wol.cpp)
+confirms the relevant IRC-like commands and their server handling: `CVERS`, `VERCHK`, `APGAR`,
+`SERIAL`, `LIST`, `NAMES`, `JOIN`, `JOINGAME`, `TOPIC`, `GAMEOPT`, `STARTG`, and `QUIT`. The minimum
+browser flow is to select a game/server, authenticate and version-check, list and join a lobby, list,
+create or join a game channel, exchange roster/topic/options, start the session and consume its start
+event, then leave/logout. Retain room identity for matching the players after `STARTG`. PvPGN's handler
+and the sibling `ra2web/server` both show `STARTG` as a lobby handoff; the latter's smoke clients
+exercise create/join/options/start over WebSocket. The `gserv` handoff is specific to RA2Web's
+turn-action frames; it is not evidence that the service accepts the original game's WOL Internet
+packets.
 
-**Why.** PvPGN-PRO is an open-source, self-hostable WOL server option that explicitly targets the
-legacy clients this project needs ([supported clients](https://github.com/pvpgn/pvpgn-server#supported-clients));
-using it for the initial compatibility target gives W13.2 a service whose configuration and
-availability we control, while keeping the gateway independent of that specific server. The existing
+**Ladder research.** PvPGN's RA2/YR WOL path uses a separate `ladder_update_wol` calculation for two
+players: the expected-score formula uses a 400-point scale; winner gain is up to 64 points based on
+the rating gap, while loser loss is capped at one tenth of the loser's current points and at the
+complement of the winner's gain. Two mutual disconnect reports do not score. PvPGN first evaluates
+the results submitted by all clients and chooses the most common reported outcome, then checks result
+consistency before updating. This is useful evidence for legacy WOL scoring and report handling, not a
+requirement to copy that formula. RA2Web already has its own season-based Elo ladder; its result
+endpoint authenticates the session, matches the reported roster to the server-held game roster,
+requires a ranked tournament game that finished without an out-of-sync result, applies a minimum
+duration, and records each game idempotently. It still consumes a client-produced GameRes packet, so
+W13 must assess what result evidence the browser server can trust before enabling ranked matches.
+
+**Why.** RA2Web is already the project's browser-oriented online server, with WOL-style lobby and
+ladder endpoints, making it a more direct integration target than introducing a legacy TCP service
+and gateway. PvPGN-PRO remains useful research because it documents support for the legacy clients and
+includes an established WOL ladder calculation ([ladder code](https://github.com/pvpgn/pvpgn-server/blob/master/src/bnetd/ladder.cpp),
+[result handling](https://github.com/pvpgn/pvpgn-server/blob/master/src/bnetd/game.cpp)). The existing
 reverse-engineered WOLAPI project describes itself as a partial implementation for Red Alert 3.03, so
 use its interfaces and implementation as evidence for the API shape, not as a drop-in RA2/YR client.
 Browsers cannot open arbitrary TCP or UDP sockets: [Emscripten's networking guide](https://emscripten.org/docs/porting/networking.html)
-documents WebSockets and states that direct UDP is unavailable and it has no C/C++ WebRTC API. A
-WebSocket gateway is therefore needed for the legacy TCP lobby; WebRTC data channels provide the
-separate UDP-like peer path ([RFC 8831](https://www.rfc-editor.org/rfc/rfc8831)).
+documents WebSockets and states that direct UDP is unavailable and it has no C/C++ WebRTC API. The
+RA2Web lobby can serve the browser directly through WSS. If a legacy TCP backend such as PvPGN is
+added, use a configured WSS gateway with bounded message sizes and protocol-aware handling; do not
+expose an arbitrary TCP proxy. WebRTC data channels provide a UDP-like path
+([RFC 8831](https://www.rfc-editor.org/rfc/rfc8831)), but the payload and native Internet socket
+behavior must be established from RA2/YR before selecting this design. Do not infer the online payload
+from W12's LAN IPX datagrams or send WOL-advertised peer IPs to browser UDP sockets.
 
-**Costs and verification still needed.** The gateway and WebRTC bridge are additional services/code;
-WebRTC may need TURN when direct ICE connectivity fails, and multi-player IPX broadcast must be fanned
-out to every peer. Public material confirms service/client compatibility but does not prove a browser
-client can complete an RA2/YR match. Before W13.2 is considered complete, verify login/version checks,
-lobby listing, room create/join, roster/options, and start events against the selected PvPGN-PRO build;
-then verify packet delivery and a full match across separate networks, including a TURN-relayed case.
-The exact RA2/YR command fields, authentication requirements, and peer mapping remain integration-test
-questions.
+**Costs and verification still needed.** W13 requires an adapter between the game's actual COM calls
+and RA2Web's WebSocket/HTTP services. WebRTC may need TURN when direct ICE connectivity fails, and
+multi-player delivery must be fanned out to every peer. Before W13.2 is considered complete, trace the
+title-specific COM calls and verify login/version checks, lobby listing, room create/join,
+roster/options, and start events against RA2Web. W13.3 must trace the native Internet packet path, then
+verify its browser-compatible delivery and a full match across separate networks, including a relayed
+case if WebRTC is selected. For ranked play, validate the GameRes report trust
+boundary and compare RA2Web's current scoring rules with the lessons from PvPGN's two-player WOL
+ladder. Exact RA2/YR command fields, auth requirements, and peer-to-data-channel mapping remain
+integration-test questions.
 
 ## D13. Browser LAN play: one peer over WebRTC, manual SDP exchange
 

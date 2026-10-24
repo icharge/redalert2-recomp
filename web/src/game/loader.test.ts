@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   argsFromQuery,
+  createWolDataKey,
   GAME_SCRIPT,
   gameScript,
   GameNotBuilt,
@@ -35,6 +36,16 @@ describe("arguments", () => {
       "--debuglog",
     ]);
     expect(argsFromQuery("")).toEqual([]);
+  });
+});
+
+describe("WOL identity", () => {
+  it("creates a fresh 128-digit key for each browser game runtime", () => {
+    const host = createWolDataKey();
+    const guest = createWolDataKey();
+    expect(host).toHaveLength(128);
+    expect([...host].every((byte) => byte >= 0x30 && byte <= 0x39)).toBe(true);
+    expect(guest).not.toEqual(host);
   });
 });
 

@@ -192,12 +192,15 @@ TURN, or a signaling service, and is limited to LAN ICE connectivity; see
 [D13](decisions.md#d13-browser-lan-play-one-peer-over-webrtc-manual-sdp-exchange).
 
 Internet multiplayer is a separate layer in [plan.md](plan.md), stage 13.
-[D12](decisions.md#d12-pvpgn-pro-for-the-wol-lobby-webrtc-for-match-traffic)
-selects a configurable PvPGN-PRO endpoint as the first WOL-compatible service
-target and a WSS gateway for the browser's lobby connection; end-to-end WOL
-compatibility and a full match still need verification. Game traffic remains
-IPX over WebRTC, with internet signaling/relay support handled separately
-from W12's manual LAN pairing. The original Westwood Online servers are not
+[D12](decisions.md#d12-preserve-the-in-game-wol-menu-with-a-browser-side-compatibility-layer)
+selects the sibling RA2Web server as the first browser-oriented WOL-style
+service target. The game still needs a WOLAPI adapter, and its existing gserv
+turn-action relay is not known to carry the original game's WOL Internet
+packets. WOL online play is distinct from the LAN IPX path: historical RA2
+material describes WOL as matchmaking followed by direct host/player
+communication over UDP. Trace the title-specific Internet socket and packet
+path before choosing a browser transport. PvPGN-PRO is a reference for legacy
+WOL behavior and ladder scoring. The original Westwood Online servers are not
 assumed to be available.
 
 ## What doesn't come over

@@ -29,6 +29,7 @@
 #include "launcher.h"
 #include "web_api.h"
 #include "thai_font.h"
+#include "wolapi.h"
 extern const uint32_t ra2_entry_va;   /* recomp_dispatch.c */
 extern int hle_ws_webrtc_pop(uint8_t *packet, uint32_t capacity);
 extern int hle_ws_webrtc_push(const uint8_t *packet, uint32_t length);
@@ -443,6 +444,7 @@ int main(int argc, char **argv) {
     win32hle_register(g_ra2_shims);    /* first: the game's own answers win */
     recomp_host_init();
     hle_com_register_class(CLSID_Blowfish, ra2_blowfish_create);
+    ra2_wolapi_register();
     printf(RA2_TITLE " recomp host (browser)\n  lifted functions in dispatch: %u\n", recomp_dispatch_count);
 
     pe_image img;

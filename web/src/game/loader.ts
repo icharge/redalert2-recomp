@@ -9,6 +9,7 @@ import { loadMods } from "../storage/mods";
 import type { GameId } from "../storage/install";
 import { liveGameFileSource, type ReadOnlyFileSource } from "../storage/file-browser";
 import { readThaiFont, shouldLoadImportedGameFile, type ThaiFontPreference } from "../storage/thai-fonts";
+import { withBrowserWolPort, wolLineBytes, WolClient } from "./wol";
 
 /** Yuri's Revenge module; Red Alert 2 is nested below /game/ra2. */
 export const GAME_SCRIPT = appPath("game/ra2.js");
@@ -41,6 +42,10 @@ interface Ra2Module extends Partial<WasmMemory> {
   addRunDependency(id: string): void;
   removeRunDependency(id: string): void;
   FS?: EmscriptenFs;
+  ra2WolStart?(username: string, password: string): void;
+  ra2WolSend?(line: string): void;
+  ra2WolStop?(): void;
+  ra2WolReceiveLine?(line: string): void;
 }
 
 declare global {
@@ -75,6 +80,32 @@ export function sourceStorage(files: FileSource): string {
 
 export function sourceGame(files: FileSource): GameId {
   return files.kind === "opfs" ? files.record.id : files.game ?? "ra2md";
+}
+
+/** A per-runtime WOL identity. The original key format is 128 ASCII decimal digits. */
+export function createWolDataKey(): Uint8Array {
+  const digits = new Uint8Array(128);
+  const entropy = new Uint8Array(256);
+  let written = 0;
+  while (written < digits.length) {
+    crypto.getRandomValues(entropy);
+    for (const byte of entropy) {
+      // Discard the six values that would bias modulo-10 digit selection.
+      if (byte >= 250) continue;
+      digits[written++] = 0x30 + (byte % 10);
+      if (written === digits.length) break;
+    }
+  }
+  return digits;
+}
+
+function stageWolDataKey(fs: EmscriptenFs, game: GameId): void {
+  fs.writeFile("/game/woldata.key", createWolDataKey());
+  const name = fs.readdir("/game").find(name => name.toLowerCase() === gameIni(game)) ?? gameIni(game);
+  const path = `/game/${name}`;
+  let ini = new Uint8Array();
+  try { ini = fs.readFile(path) as Uint8Array<ArrayBuffer>; } catch { /* use the native defaults */ }
+  fs.writeFile(path, withBrowserWolPort(ini));
 }
 
 /** A battle's picture size. The game takes it from RA2MD.INI when a game starts. */
@@ -234,6 +265,7 @@ async function loadDevFiles(
     doneBytes += bytes.length;
     doneFiles++;
   }
+  stageWolDataKey(fs, game);
   await stageThaiFont(fs, thaiFontFix);
   store.loading("the game");
 }
@@ -291,6 +323,7 @@ async function loadOpfsFiles(
   }
   const mods = await loadMods(fs, record.storage, { excludeGameFont: thaiFontFix.enabled });
   await restoreSaves(fs, opfsSaveStore(), record.storage, (path) => !path.startsWith("mods/") || mods.includes(path.split("/")[1] ?? ""));
+  stageWolDataKey(fs, record.id);
   await stageThaiFont(fs, thaiFontFix);
   store.loading("the game");
   return startSaveSync(fs, opfsTarget(), record.storage);
@@ -350,8 +383,36 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
     } as Partial<Ra2Module> as Ra2Module;
 
     let saves: SaveSync | null = null;
+    let wolClient: WolClient | null = null;
+    // The bridge currently targets the local RA2Web server used by the WOL POC.
+    // Keep game credentials away from caller-supplied hosts.
+    const wolServer = "http://127.0.0.1:19090";
+    module.ra2WolStart = (username, password) => {
+      wolClient?.close();
+      const client = new WolClient(wolServer, username, password);
+      wolClient = client;
+      client.onLine((line) => module.ra2WolReceiveLine?.(line));
+      void client.connect({ joinLobby: false }).then(
+        () => module.ra2WolReceiveLine?.("@wolapi connected"),
+        (error: unknown) => module.ra2WolReceiveLine?.(`@wolapi error ${error instanceof Error ? error.message : String(error)}`),
+      );
+    };
+    module.ra2WolSend = (line) => {
+      try { wolClient?.sendRaw(line); }
+      catch (error) {
+        module.ra2WolReceiveLine?.(`@wolapi error ${error instanceof Error ? error.message : String(error)}`);
+      }
+    };
+    module.ra2WolStop = () => {
+      wolClient?.close();
+      wolClient = null;
+    };
     module.onRuntimeInitialized = () => {
-      try { resolve(createHandle(module, saves, game)); }
+      try {
+        const receiveWol = module.cwrap("ra2_wolapi_receive_line", null, ["array"]);
+        module.ra2WolReceiveLine = (line) => { receiveWol(wolLineBytes(line)); };
+        resolve(createHandle(module, saves, game));
+      }
       catch (error) { fail(error); }
     };
 

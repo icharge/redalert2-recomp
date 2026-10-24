@@ -161,3 +161,98 @@ are under `work/exit-launcher-*` and `work/installation-routing/browser`.
 
 The full lint command still has the pre-existing undefined `BrowserControls`
 in `web/e2e/auto-pointer.mjs:24`; the changed files pass lint.
+
+## 24 October 2026: RA2Web WOL lobby POC
+
+The existing `ra2web/server/scripts/wol-smoke-client.ts` passes against a local
+RA2Web server on port 19090 with account storage in memory and file logging
+disabled. It registers an account, negotiates the WOL client version and
+session, joins `#Lob_45_0`, receives the lobby roster, creates and lists a game,
+and receives a `STARTG` gserv handoff. The host then leaves and the server
+closes the game cleanly. The temporary server was stopped after the run.
+
+This establishes the RA2Web WOL-style protocol and room-to-gserv handoff as a
+working target. `web/e2e/wol-poc.html` passes in the browser using native
+`fetch` and `WebSocket`: it registers/logs in, negotiates version and locale,
+joins `#Lob_45_0`, creates a room, and receives the `STARTG` gserv URL and game
+ID. The run used `http://localhost:5173` and the local memory-only server.
+Neither POC exercises the game's WOLAPI COM calls, a second player, nor a
+connection to gserv or a live match. W13.2/W13.3 remain open. A first pass over
+the shipped Yuri's Revenge `GameMD.exe` (SHA-256
+`7b8a068535d6af06845edf95ae829b113d00c02909330e16f197426cd7db94b6`) found
+that the game has a distinct `GAME_INTERNET` mode. Entering it initializes the
+multiplayer network class and reads `MultiPlayer\PortBase` (default 1250,
+advanced by 7 when an existing setting is present). The shared initialization
+path is labeled `IPXManagerClass::Init`, constructs two socket/channel objects,
+and imports `sendto`/`recvfrom` from WSOCK32. This establishes that the Internet
+mode enters the game's own network manager and that UDP socket primitives are
+present; it does not yet prove which socket calls carry live match frames or
+whether the manager encapsulates IPX-shaped packets. Historical RA2 online-play
+notes describe WOL as matchmaking followed by peer UDP, separate from the LAN
+IPX path. Next trace the Internet-mode call sites through the manager's send
+and receive routines, then compare an observed match packet to the RA2Web
+gserv frame format before choosing a browser relay transport.
+
+The in-game startup failure is earlier than that transport work. The game calls
+`CoCreateInstance` for three WOLAPI classes in `FUN_00785370`; the browser host
+currently registers only the Blowfish class (`src/web/main.c`). If the first
+Chat class is unavailable, initialization reports the shared-internet-library
+error and exits before it sends any HTTP or WebSocket request. The Chat object
+then uses a connection-point subscription for event callbacks and methods at
+vtable byte offsets `0x10`, `0x18`, `0x24`, `0x3c`, `0x48`, `0x50`, `0x60`,
+`0x68`, `0x7c`, `0x8c`, `0x90`, `0x94`, `0xa8`, `0xb0`–`0xc0`, and
+`0xd0`–`0xf4`. The second object has its own callback interface and is used for
+channel/game events. These offsets were observed in the shipped `GameMD.exe`
+call sites; method names and argument semantics still need to be mapped before
+implementing the COM adapter. The next bridge milestone is to satisfy the
+startup interfaces and event subscriptions, then map login, channel listing,
+game create/join, options, and start callbacks onto RA2Web commands. The
+browser HTML POC remains only a server-protocol probe until the game itself can
+reach those calls.
+
+## 24 October 2026: WOLAPI bridge checkpoint
+
+Read-only extraction of the embedded type library in the supplied
+`E:\Games\Westwood\RA2\Wolapi\Wolapi.dll` established the x86 COM method order,
+stdcall argument counts, connection-point identities, event signatures, and
+Server/Channel/User layouts. The auxiliary classes are INetUtil and IDownload;
+each has a no-argument PumpMessages method that must remain in its vtable.
+The browser now registers all three compatibility classes through win32hle.
+
+The original Yuri's Revenge Online → Custom Match screen was exercised in
+headless Chrome against the local RA2Web server on port 19090. It accepts input
+in the original nickname/password controls, authenticates through HTTP and
+WebSocket, receives its user locale, joins `#Lob_41_0`, and displays the local
+player in the native roster. This is beyond the separate HTML protocol probe.
+The Create Game flow also leaves the lobby, creates a type-41 room on RA2Web,
+receives its roster/gserv announcement, and opens the original setup screen.
+The game sends GAMEOPT updates from that screen. Their byte encoding and
+round-trip interpretation still need validation with a second native client.
+Screenshots and redacted wire captures are under `build-web/wol-menu-shots`.
+The game logs an INETMIB1.DLL lookup warning, but that lookup is nonfatal in
+this flow; the missing locale callback was the actual post-login blocker.
+
+RA2Web's string locale codes are mapped to the DLL's numeric Locale enum.
+The bridge supplies a native directory entry for the configured global lobby
+because RA2Web creates that channel on JOIN and lists only game rooms. Native
+channel names omit `#`; wire commands include it. User records mark the local
+player with bit 0x8000, and comma-separated roster metadata is not treated as
+additional players. The active channel has separate storage from room lists.
+Runtime-only PortNumberOverride staging skips the retired UDP mangler probe.
+
+Both game WASM targets build. The COM self-test checks method stack cleanup,
+discovery, login credentials, locale callbacks, lobby directory/join/leave,
+and room-create acknowledgements. TypeScript checking and the 23 WOL/loader
+tests pass. An HLE editable-combobox fix in sibling pcrecomp is required for
+the native nickname control; this dependency change has not been committed.
+W13.2 remains open: multi-client room listing/join/options and the native start
+handoff still require validation. W13.3 gameplay transport is not established.
+
+## 24 October 2026: distinct LAN identities in HLE
+
+The browser loader now stages a fresh cryptographically random `woldata.key`
+for each game runtime. It is 128 ASCII digits, remains in the in-memory game
+folder, and is not imported or persisted, so two tabs on one browser profile
+still get separate LAN identities. `e2e/lan.mjs` checks the keys differ and
+then verifies both clients enter and render the same LAN match. The automated
+browser test passed, and a manual retest confirmed the fix.

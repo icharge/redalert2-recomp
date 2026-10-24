@@ -149,15 +149,15 @@ Tick a task off here in the same pull request that finishes it.
 |---|---|---|---|---|---|
 | ~~W12.1~~ | Decide scope for browser LAN play and peer discovery | here | | S | [D13](decisions.md#d13-browser-lan-play-one-peer-over-webrtc-manual-sdp-exchange): one peer, manual offer/answer exchange, WebRTC data channels carry IPX |
 | ~~W12.2~~ | `wsock32.c`: carry IPX datagrams over a WebRTC data channel | pcrecomp | W12.1 | L | connected peers exchange IPX datagrams over WebRTC, routed by source/destination socket |
-| ~~W12.3~~ | Manual SDP offer/answer exchange in the Play screen | here | W12.2 | M | two browser clients connect and start a LAN lobby match without a hosted signaling service; both clients render the started match |
+| ~~W12.3~~ | Manual SDP offer/answer exchange in the Play screen, with a generated WOL identity per HLE runtime | here | W12.2 | M | `e2e/lan.mjs` confirms two distinct 128-digit keys, then both clients connect and render the same LAN match without a hosted signaling service |
 
 ## Stage 13: internet multiplayer through WOLAPI (optional)
 
 | ID | Task | Repo | Needs | Size | Done when |
 |---|---|---|---|---|---|
-| W13.1 | Identify the WOLAPI client surface, compatible service, and browser/network constraints | here | W12.1 | M | `decisions.md` records the target service, required lobby/session operations, and how game traffic reaches peers; original WOL servers are not assumed available |
-| W13.2 | Implement the browser-facing WOLAPI lobby/session integration (or a required gateway) | here | W13.1 | L | a browser client connects to the chosen compatible service and can find/join a game |
-| W13.3 | Start an internet game from a WOLAPI session and bridge its game traffic | here, pcrecomp | W13.1, W13.2 | L | clients on separate networks start and complete a match using the online lobby and the transport selected in W13.1; reuse W12's WebRTC IPX path only if it fits |
+| ~~W13.1~~ | Identify the WOLAPI client surface, compatible service, and browser/network constraints | here | W12.1 | M | `decisions.md` records the target service, required lobby/session operations, and how game traffic reaches peers; original WOL servers are not assumed available |
+| W13.2 | Adapt the WOLAPI client surface to the RA2Web lobby/session service | here | W13.1 | L | a browser client authenticates to RA2Web, lists/joins lobbies and game rooms, exchanges options, and receives the start handoff |
+| W13.3 | Trace and bridge the native WOL Internet gameplay packet path | here, pcrecomp | W13.1, W13.2 | L | RA2/YR online socket and packet flow is traced past `STARTG`, then clients on separate networks complete a match through a browser-compatible transport; include a relayed case if WebRTC is selected |
 
 ## Open, before the page ships to a public host
 
