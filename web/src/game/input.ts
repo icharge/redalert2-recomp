@@ -113,6 +113,7 @@ export function attachInput(
     enabled?: () => boolean;
     shortcut?: (event: KeyboardEvent) => boolean;
     warp?: () => { seq: number; x: number; y: number };
+    textInput?: HTMLTextAreaElement;
   } = {},
 ): () => void {
   const picture = options.picture ?? (() => ({ width: canvas.width, height: canvas.height }));
@@ -198,6 +199,12 @@ export function attachInput(
     release();
     game.ra2_focus(0);
   };
+  // Focus leaving the game area for the page's own controls: the game pauses, as when the window blurs
+  // (the text box for typing is the game's own input, so going there is not leaving it)
+  const onCanvasBlur = (event: FocusEvent) => {
+    release();
+    if (event.relatedTarget !== options.textInput) game.ra2_focus(0);
+  };
   const onLock = () => {
     if (document.pointerLockElement !== canvas) release();
   };
@@ -210,7 +217,7 @@ export function attachInput(
   window.addEventListener("keyup", onKeyUp);
   window.addEventListener("focus", onFocus);
   window.addEventListener("blur", onBlur);
-  canvas.addEventListener("blur", release);
+  canvas.addEventListener("blur", onCanvasBlur);
   document.addEventListener("pointerlockchange", onLock);
   return () => {
     canvas.removeEventListener("mousemove", onMove);
@@ -221,7 +228,7 @@ export function attachInput(
     window.removeEventListener("keyup", onKeyUp);
     window.removeEventListener("focus", onFocus);
     window.removeEventListener("blur", onBlur);
-    canvas.removeEventListener("blur", release);
+    canvas.removeEventListener("blur", onCanvasBlur);
     document.removeEventListener("pointerlockchange", onLock);
     release();
   };

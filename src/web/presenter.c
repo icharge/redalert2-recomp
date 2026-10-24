@@ -159,6 +159,25 @@ static int pause_dialog_visible(void) {
            (hle_window_style(g_pause_dialog) & 0x10000000u);
 }
 
+/* A match is being played: the game's frame count moved in the last second (it stands still in menus,
+ * lobbies and movies), the game draws its own cursor and its pause menu is not already up. */
+static int match_running(void) {
+    return g_frame_at && emscripten_get_now() - g_frame_at < 1000.0 &&
+           g_sh.cursor_kind == RA2_CURSOR_NONE && !pause_dialog_visible();
+}
+
+/* Open the game's menu, as Escape does, if a match is running: the page lost the player's attention
+ * (focus left the window or the game area, Settings opened). Asked again within a moment (the
+ * menu takes a frame to show) it does nothing, or the second Escape would close it. */
+void web_presenter_pause(void) {
+    static double asked;
+    double now = emscripten_get_now();
+    if (now - asked < 1500.0 || !match_running()) return;
+    asked = now;
+    hle_input_key(1, 0x1b, 1);
+    hle_input_key(0, 0x1b, 1);
+}
+
 /* What the game's own Focus_Restore ends with: GScreenClass::Flag_To_Redraw(2), a complete redraw
  * of the screen (the game's screen object, its redraw state, the counter its draw loop watches).
  * Done here by hand, as the lifted function is thiscall; the addresses are of each binary. */
@@ -334,6 +353,7 @@ static void drain_input(void) {
              * showing window paints in full and a new picture goes out at once. */
             if (h) hle_post_message(h, WM_ACTIVATEAPP, 1, 0);
             if (e.a) redraw_whole_screen(), hle_invalidate_all(), g_republish = 1;
+            else web_presenter_pause();                      /* leaving a match: it is paused when they come back */
             break;
         }
         }

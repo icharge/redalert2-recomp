@@ -134,7 +134,11 @@ void web_settings_command(int key, int value, int extra) {
         fprintf(stderr, "[present] game resolution %dx%d (next game)\n", value, extra);
         break;
     }
-    case RA2_SETTING_MENU: menu_open = value < 0 ? !menu_open : value != 0; web_settings_event(); return;
+    case RA2_SETTING_MENU:
+        menu_open = value < 0 ? !menu_open : value != 0;
+        if (menu_open) web_presenter_pause();            /* the game does not run behind the Settings view */
+        web_settings_event();
+        return;
     default: return;
     }
     save();

@@ -116,6 +116,18 @@ describe("attachInput", () => {
     expect(event.defaultPrevented).toBe(false);
     detach();
   });
+  it("tells the game it lost focus when the canvas loses it to the page, but not to the text box", () => {
+    const canvas = document.createElement("canvas");
+    canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: 800, height: 600 }) as DOMRect;
+    const text = document.createElement("textarea");
+    const game = { ra2_input_pointer: vi.fn(), ra2_input_key: vi.fn(), ra2_focus: vi.fn() };
+    const detach = attachInput(canvas, game, { textInput: text });
+    canvas.dispatchEvent(new FocusEvent("blur", { relatedTarget: text }));
+    expect(game.ra2_focus).not.toHaveBeenCalled();
+    canvas.dispatchEvent(new FocusEvent("blur", { relatedTarget: document.body }));
+    expect(game.ra2_focus).toHaveBeenCalledWith(0);
+    detach();
+  });
   function setup() {
     const canvas = document.createElement("canvas");
     canvas.width = 800;

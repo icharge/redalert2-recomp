@@ -57,6 +57,7 @@ void web_settings_start(const char *override_scale);
 void web_settings_command(int key, int value, int extra);
 void web_settings_event(void);
 int web_settings_open(void);
+void web_presenter_pause(void);
 const char *web_settings_mod(void);
 void web_settings_save_mod(void);
 void web_modern_key(int down, uint32_t vk);
