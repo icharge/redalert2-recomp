@@ -64,7 +64,7 @@ describe("App", () => {
     const installation = await m.createInstallation("Interrupted import");
     await m.beginImport("ra2md", "Yuri's Revenge", 1, [{ name: "ra2.mix", size: 1, lastModified: 1, needs: ["ra2md"] }], installation.slot);
     await userEvent.setup().click(screen.getByRole("link", { name: "Back to launcher" }));
-    expect(await screen.findByText("Interrupted import")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Yuri's Revenge" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Resume import" })).toBeInTheDocument();
     m.close();
   });
