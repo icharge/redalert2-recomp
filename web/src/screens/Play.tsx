@@ -207,6 +207,11 @@ export function Play({ files }: { files: FileSource }) {
         const onHidden = () => {
           if (document.visibilityState === "hidden")
             void game.saves?.flush().catch((e: unknown) => setBrowserError(String(e)));
+          else if (runtimeLive()) {
+            // back from the background: the game paints its whole screen again
+            presenter.redraw();
+            if (document.hasFocus()) game.exports.ra2_focus(1);
+          }
         };
         document.addEventListener("visibilitychange", onHidden);
         let stopped = false;

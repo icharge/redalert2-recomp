@@ -86,6 +86,7 @@ static uint32_t *g_buf[2];
 static size_t g_cap[2];
 static int g_front;
 static uint32_t g_pause_dialog;
+static int g_republish;                                  /* set by the game's thread when the page returns */
 static void present_now(void);
 
 EMSCRIPTEN_KEEPALIVE ra2_shared_t *ra2_shared(void) { return &g_sh; }
@@ -158,6 +159,25 @@ static int pause_dialog_visible(void) {
            (hle_window_style(g_pause_dialog) & 0x10000000u);
 }
 
+/* What the game's own Focus_Restore ends with: GScreenClass::Flag_To_Redraw(2), a complete redraw
+ * of the screen (the game's screen object, its redraw state, the counter its draw loop watches).
+ * Done here by hand, as the lifted function is thiscall; the addresses are of each binary. */
+#if defined(RA2_TARGET_GAME)
+#define SCREEN_OBJECT_PTR 0x0083996Cu                    /* a pointer to the object with the dirty byte at +0xD7D */
+#define SCREEN_CLASS      0x008324E0u
+#define SCREEN_COUNTER    0x1154u
+#else
+#define SCREEN_OBJECT_PTR 0x00887324u
+#define SCREEN_CLASS      0x0087F7E8u
+#define SCREEN_COUNTER    0x1158u
+#endif
+static void redraw_whole_screen(void) {
+    uint32_t object = MEM32(SCREEN_OBJECT_PTR);
+    if (object) MEM8(object + 0xD7Du) = 1;
+    MEM32(SCREEN_CLASS + 0xCu) = 2;                      /* redraw everything */
+    MEM8(SCREEN_CLASS + SCREEN_COUNTER) = (uint8_t)(MEM8(SCREEN_CLASS + SCREEN_COUNTER) + 1);
+}
+
 /* The primary as it is now, if it changed (or a quarter second has gone) and the last frame is not
  * newer than 15 ms: from the pump, and from the primary's Unlock. On the game's thread. */
 static void present_now(void) {
@@ -169,6 +189,7 @@ static void present_now(void) {
     unsigned seq;
     if (!hle_dd_frame(&px, &w, &h, &pitch, &bpp, &pal, &seq)) return;
     uint32_t now = hle_ticks_ms();
+    if (g_republish) g_republish = 0, shown_seq = ~0u, last = now - 15;   /* the page came back: a new picture now */
     if (now - last < 15 || (seq == shown_seq && now - last < 250)) return;
     shown_seq = seq, last = now;
     publish(px, w, h, pitch, bpp, pal);
@@ -305,7 +326,14 @@ static void drain_input(void) {
         }
         case IN_FOCUS: {
             uint32_t h = hle_first_hwnd();
-            if (h) hle_post_message(h, WM_ACTIVATEAPP, e.a, 0);
+            /* The game is always the active application, as in the native build (host.c, bringup.md 7).
+             * Told it lost the focus it idles its main loop and pauses its movie, and its Focus_Restore
+             * repaints only part of a screen: no surface here is ever lost, so there is nothing to
+             * restore, and the page keeps showing a frozen or half-drawn picture. The page's own
+             * blur still lets go of keys, buttons and the pointer (input.ts). Coming back, every
+             * showing window paints in full and a new picture goes out at once. */
+            if (h) hle_post_message(h, WM_ACTIVATEAPP, 1, 0);
+            if (e.a) redraw_whole_screen(), hle_invalidate_all(), g_republish = 1;
             break;
         }
         }

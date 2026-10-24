@@ -51,6 +51,20 @@ afterEach(() => {
 });
 
 describe("Presenter", () => {
+  it("puts the current picture on the canvas again after redraw(), though no new one came", () => {
+    const { drawn, word, presenter } = setup();
+    word(Shared.frameW, 2);
+    word(Shared.frameH, 2);
+    word(Shared.framePtr, FRAME);
+    word(Shared.frameSeq, 1);
+    presenter.draw();
+    presenter.draw();
+    expect(drawn).toHaveLength(1);
+    presenter.redraw();
+    presenter.draw();
+    expect(drawn).toHaveLength(2);
+  });
+
   it("captures during gameplay, releases on pause, and captures again on resume", () => {
     const { canvas, memory, word } = setup();
     const capture = vi.fn();

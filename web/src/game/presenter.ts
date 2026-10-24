@@ -74,6 +74,11 @@ export class Presenter {
     this.frameSeq = -1;
   }
 
+  /** The next animation frame puts the game's current picture on the canvas again. */
+  redraw(): void {
+    this.frameSeq = -1;
+  }
+
   start(): void {
     const tick = () => {
       const began = performance.now();
