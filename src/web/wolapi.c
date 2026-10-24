@@ -64,6 +64,7 @@ static wol_user g_locale_user;
 static uint32_t g_channel_count, g_user_count, g_channel_type = 45;
 static uint32_t g_pending_server_list;
 static uint32_t g_pending_channel_list;
+static uint32_t g_pending_logout;
 static uint32_t g_creating_channel;
 static char g_login[64], g_password[64], g_nick[32], g_current_channel[48];
 static struct { char nick[10], password[10]; } g_saved_nicks[11];
@@ -493,6 +494,20 @@ static void pump_lines(void) {
         uint32_t values[] = { S_OK, (uint32_t)(uintptr_t)&g_lobby };
         event_call(5, 2, values);
     }
+    if (g_pending_logout) {
+        g_pending_logout = 0;
+        wol_user *user = user_for_name(g_nick);
+        uint32_t values[] = { S_OK, (uint32_t)(uintptr_t)user };
+        event_call(17, 2, values); /* IChatEvent::OnLogout */
+        /* The game's log-off routine (wonline.cpp, TXT_WOL_LOGGING_OUT) sets a flag and
+         * waits on an event that only OnNetStatus signals while that flag is set. */
+        uint32_t status[] = { 0x0004012fu };
+        event_call(16, 1, status); /* IChatEvent::OnNetStatus */
+        g_current_channel[0] = '\0';
+        g_user_count = 0;
+        g_channel_count = 0;
+        g_motd_ready = 0;
+    }
     uint32_t read = __atomic_load_n(&g_line_read, __ATOMIC_RELAXED);
     for (;;) {
         uint32_t write = __atomic_load_n(&g_line_write, __ATOMIC_ACQUIRE);
@@ -663,7 +678,10 @@ static void m_chat_request_public_message(void) {
     RET(S_OK, 2);
 }
 static void m_chat_request_private_message(void) { RET(S_OK, 3); }
-static void m_chat_request_logout(void) { browser_stop(); RET(S_OK, 1); }
+/* The "Logging off" dialog waits for IChatEvent::OnLogout; report it from the pump. */
+static void m_chat_request_logout(void) {
+    browser_stop(); g_pending_logout = 1; RET(S_OK, 1);
+}
 static void m_chat_request_private_game_options(void) {
     const wol_user *user = (const wol_user *)(uintptr_t)A32(1);
     if (!user || !ASTR(2)) RET(E_POINTER, 3);

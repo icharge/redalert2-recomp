@@ -212,6 +212,19 @@ int main(void) {
     assert(test_event_count == events_before_motd + 1);
     assert(test_event_method[events_before_motd] == 0x10006);
     assert(strcmp(test_event_text[events_before_motd], "Welcome\nHave fun") == 0);
+    /* RequestLogout completes through OnLogout(status, user); the "Logging off" dialog waits for it. */
+    uint32_t events_before_logout = test_event_count;
+    EM_ASM({ Module.ra2WolStop = () => { Module.testWolStopped = true; }; });
+    assert(invoke(g_chat.chat, 13, 0, NULL) == S_OK);
+    assert(test_event_count == events_before_logout);
+    assert(invoke(g_chat.chat, 3, 0, NULL) == S_OK);
+    assert(EM_ASM_INT({ return Module.testWolStopped === true; }));
+    /* OnLogout, then the OnNetStatus that signals the game's "Logging off" wait event. */
+    assert(test_event_count == events_before_logout + 2);
+    assert(test_event_method[events_before_logout] == 0x10014);
+    assert(test_event_args[events_before_logout][1] == S_OK);
+    assert(strcmp(((wol_user *)(uintptr_t)test_event_args[events_before_logout][2])->name, "testuser") == 0);
+    assert(test_event_method[events_before_logout + 1] == 0x10013);
     puts("WOLAPI COM startup ABI: PASS");
     return 0;
 }
