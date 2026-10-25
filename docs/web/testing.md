@@ -432,10 +432,11 @@ holds the pure summary and comparison (`node --test e2e/perf-report.test.mjs` in
 - **The busy moment and the soak are blocked.** The design's busy case is a skirmish with many units, loaded from
   a save made by `e2e/make-busy-save.mjs`: an eight-player Team Alliance match (the human with three allied AIs
   against four) at game speed 5, saved through the game's own Save Game menu after about four minutes of play.
-  The battle ran with the human alive, but no save was made in two attempts. Attempt one opened the in-game menu
-  at 800x600 and the save clicks missed. Attempt two clicked the 800x600 positions while the menu was at 1280x720
-  (a mistake of the script's, not of the game): the positions that worked earlier at 1280x720 are Save Game
-  (1194, 289), the first slot (560, 200), Save (1194, 239), then the box's OK. The screenshots are in the
-  scratchpad's `busy-shots5` and `busy-shots6` folders. Until a save is made, `perf.mjs` rejects `--moments busy`
-  and `--soak-minutes` (`loadBusySave` stops with an error). Resolution is a launcher setting for the next launch,
+  No save has been made. The picture size was the blocker in one attempt: a launch's `?video=` alone did not set
+  the size a battle reports (it lagged by launches); the game's resolution setting (`ra2_setting` key 4, at the menu)
+  does, and `perf-nav.mjs`'s `setResolution` now sets it before each launch, and every case checks the reported size.
+  In the next attempt the battle reported 1280x720 and the match ran at 58 to 62 fps, but the human (a fresh profile's
+  "[New Player]") was eliminated at 2:14 of game time, before the save. Screenshots: the scratchpad's `busy-shots8`
+  folder (`busy-03-4min.png` is the Skirmish Score screen). Until a save is made, `perf.mjs` rejects `--moments busy`
+  and `--soak-minutes`, and `loadBusySave` stops with an error. Resolution is a launcher setting for the next launch,
   not a switch in a running game, so a soak would use the presenter's scale-mode switches instead.

@@ -29,7 +29,15 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { options, startPage } from "./lib.mjs";
 import { compare, summarize } from "./perf-report.mjs";
-import { at, gameUrl, loadBusySave, openGame, setGameSpeedFive, settle } from "./perf-nav.mjs";
+import {
+  at,
+  gameUrl,
+  loadBusySave,
+  openGame,
+  setGameSpeedFive,
+  setResolution,
+  settle,
+} from "./perf-nav.mjs";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const argv = process.argv.slice(2);
@@ -305,10 +313,17 @@ async function setHd(t, on) {
   await t.page.waitForTimeout(2000);
 }
 
+/** WxH as { w, h }. */
+function parseSize(text) {
+  const [w, h] = text.split("x").map(Number);
+  return { w, h };
+}
+
 /** The game at a picture size, in a new skirmish (the same path as measure.mjs), at the battle. */
 async function openEarly(video) {
   const t = await openGame(base, { video });
   await settle(t, 5000);
+  await setResolution(t, parseSize(video));
   await t.clickGame(...at.singlePlayer);
   await t.page.waitForTimeout(4000);
   await t.clickGame(...at.skirmish);
@@ -323,6 +338,7 @@ async function openEarly(video) {
 /** The busy save at a picture size: the game's own Load Saved Game, then the battle. */
 async function openBusy(video) {
   const t = await openGame(base, { video });
+  await setResolution(t, parseSize(video));
   await loadBusySave(t, savePath);
   return t;
 }
@@ -348,7 +364,16 @@ async function runMoment(moment, size, hdList) {
     await withGame(
       () => (moment === "busy" ? openBusy(size) : openEarly(size)),
       async (t) => {
+        // the picture the game reports must be the one asked for: a case at another size is not a measurement
         const reported = (await t.state())?.size ?? null;
+        if (
+          !reported ||
+          reported.w !== Number(size.split("x")[0]) ||
+          reported.h !== Number(size.split("x")[1])
+        )
+          throw new Error(
+            `${size}: the game reports ${reported ? `${reported.w}x${reported.h}` : "no size"}, not ${size}`,
+          );
         for (const hd of hdList) {
           await setHd(t, hd === "on");
           const key = `${size}/hd-${hd}/${moment}`;

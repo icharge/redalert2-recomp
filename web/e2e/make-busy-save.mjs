@@ -19,7 +19,7 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { options } from "./lib.mjs";
-import { openGame, setUpBusySkirmish, startBattle } from "./perf-nav.mjs";
+import { openGame, setResolution, setUpBusySkirmish, startBattle } from "./perf-nav.mjs";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const argv = process.argv.slice(2);
@@ -39,9 +39,15 @@ const started = Date.now();
 const log = (line) => console.log(`${((Date.now() - started) / 1000).toFixed(0)}s  ${line}`);
 
 const t = await openGame(base, { video: "1280x720" });
+await setResolution(t, { w: 1280, h: 720 });
 await setUpBusySkirmish(t, { log });
 await startBattle(t);
 log("battle started");
+const battleSize = (await t.state())?.size;
+if (battleSize?.w !== 1280 || battleSize?.h !== 720)
+  await t.fail(
+    `the battle reports ${battleSize?.w}x${battleSize?.h}, not 1280x720 (the picture size is one launch late)`,
+  );
 
 // the match: every 30 s the game's frame rate; a picture at the start and every minute
 const end = Date.now() + minutes * 60_000;
@@ -65,17 +71,22 @@ while (Date.now() < end) {
 await t.page.keyboard.press("Escape");
 await t.page.waitForTimeout(2500);
 await t.shot("save-0-menu");
-await t.clickGame(712, 289); // Save Game
+// the in-game menu is laid out for the picture's own size: 1280x720 here (the positions below were read
+// from its screenshots); any other size stops the script rather than clicking the wrong place
+const menuSize = (await t.state())?.size;
+if (menuSize?.w !== 1280 || menuSize?.h !== 720)
+  await t.fail(`the in-game menu is at ${menuSize?.w}x${menuSize?.h}, not 1280x720`);
+await t.clickGame(1194, 289); // Save Game
 await t.page.waitForTimeout(2500);
 await t.shot("save-1-list");
-await t.clickGame(350, 167); // the first slot (estimated for 800x600)
+await t.clickGame(560, 200); // the first slot
 await t.page.waitForTimeout(1500);
 await t.shot("save-2-slot");
-await t.clickGame(712, 239); // Save (estimated for 800x600)
+await t.clickGame(1194, 239); // Save
 await t.page.waitForTimeout(2000);
 await t.shot("save-3-after-save");
 // the box that follows the save: its OK button (800x600: a 451x328 box at the centre)
-await t.clickGame(546, 433);
+await t.clickGame(Math.round((1280 - 451) / 2 + 310 + 62), Math.round((720 - 328) / 2 + 285 + 12)); // the box's OK
 await t.page.waitForTimeout(1500);
 await t.shot("save-4-after-ok");
 

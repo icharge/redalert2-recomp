@@ -136,3 +136,16 @@ export async function loadBusySave(t, savePath) {
     `the busy save cannot be loaded yet: no save was made (${savePath}); see the task report`,
   );
 }
+
+/**
+ * The picture size the game uses for its next battle: the game's own resolution setting (ra2_setting key 4),
+ * which also writes RA2MD.INI. A launch's ?video= alone does not change the size a battle reports (it lagged
+ * by one launch on a persistent profile), so every launch sets it at the menu, before any skirmish.
+ */
+export async function setResolution(t, size) {
+  await t.page.evaluate(
+    ([w, h]) => window.Module.cwrap("ra2_setting", null, ["number", "number", "number"])(4, w, h),
+    [size.w, size.h],
+  );
+  await t.page.waitForTimeout(1500);
+}
