@@ -153,6 +153,14 @@ class Script:
         self.t += 2
         return self
 
+    def select_mcv(self, after=0):
+        """Select the starting MCV. The native host's start position is random, so a band
+        over the whole view; the browser's is fixed, where the band does not select and a
+        click on the MCV (236, 213 at 640x480) does."""
+        if '--web' in sys.argv:
+            return self.click(236, 213, after=after)
+        return self.drag(8, 8, 470, 440, after=after)
+
     def key(self, vk, after=0):
         self.t += after
         self.args += ['--key', '%s@%g' % (vk, self.t)]
@@ -257,8 +265,7 @@ def place(script):
 case('skirmish-build', place(place(
     SP().press(SINGLE, 'Skirmish', SKIRMISH).press(SKIRMISH, 'StartGame')
     .waitlog(INGAME).move(236, 240, after=2).key('0x48', after=10)
-    # a band over the whole view, not a click: the start position (and so the MCV) is random
-    .drag(8, 8, 470, 440, after=2).key('0x44', after=1).waitlog('Adding event DEPLOY')
+    .select_mcv(after=2).key('0x44', after=1).waitlog('Adding event DEPLOY')
     .move(523, 251, after=8).click(523, 251, after=1)                   # power plant
     .move(523, 251, after=28).click(523, 251, after=1))                  # ready: pick it up
     .move(523, 300, after=4).click(523, 300, after=1)                   # barracks

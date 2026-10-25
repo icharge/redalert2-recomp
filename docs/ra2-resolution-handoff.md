@@ -34,8 +34,22 @@ and the browser `--web` cases (5 of 5 on a private 1 GB / 4 GB-cap build, run wi
 `playtest.py --web --web-url http://localhost:<port>/`; `skirmish-start`, `res-1280x720`,
 `res-1920x1080`, `options-pick-size`, `res-pause-menu-1280x720`). The published build's
 768 MB cap still cannot run that suite (zero-copy work). The online clamp ran in real
-two-player lobbies (unflagged, 0x200, 0x400; below) and `skirmish-build` now passes (below).
+two-player lobbies (unflagged, 0x200, 0x400; below) and `skirmish-build` passes natively and in the browser (below).
 Nothing is left open except what is under "Remaining verification".
+
+## Final checks on the build with the join-check fix (2026-10-25, 15:0x)
+
+Published `web/public/game/ra2` rebuilt 15:04 and a private 1 GB / 4 GB-cap build of the same
+sources (15:08, served by `vite preview --outDir` on its own port):
+
+- Published build, dev server: `web/e2e/resolution-load-saved.mjs` passes (800x600 ->
+  1280x720 on load, the Escape menu aligned: `work/runtime-resolution-load/shots-final3/`).
+- Private wide build, `playtest.py --web`: `skirmish-start`, `res-1280x720`,
+  `res-1920x1080`, `options-pick-size`, `res-pause-menu-1280x720` and `skirmish-build` all
+  pass (6 of 6; modes 800x600 -> chosen size -> 800x600, no 0xD9 dialog).
+- The published build still cannot run that `--web` suite: its 768 MB cap is below what the
+  page's test mode (copy every game file into memory) needs. That belongs to the zero-copy
+  work, not to this one; the suite needs the wide build above or a test mode that mounts.
 
 ## Online clamp in a real two-player lobby (run 2026-10-25)
 
@@ -73,7 +87,9 @@ It failed on the recomp build because the case clicked where Yuri's MCV starts; 
 start position is random, so the deploy never happened and no cameo was built. The case now
 drags a band over the view before pressing D, and asks for two builds and two placements, not
 a surviving player (Red Alert 2's Brutal AI beats an idle player in the run). It passed three
-times on the recomp build (`produce x3, place x11`; `produce x2, place x17`). `--original`
+times on the recomp build (`produce x3, place x11`; `produce x2, place x17`) and in the
+browser (`select_mcv`: a click there, because its start position is fixed and a band does not
+select; a band natively). `--original`
 still fails it (the shipping build starts at 640x480 with no 800x600 shell and never builds),
 which is not a regression of this work.
 
