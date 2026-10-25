@@ -100,11 +100,34 @@ Do not patch generated `src/recomp/gen*/` files. The existing callback is the fi
 
 **Interfaces:** Produces a verified mapping for each edition: LAN enter, first published LAN frame, native Back/Cancel command, host/join transition, main-menu return. These are implementation prerequisites, not guessed virtual addresses.
 
-- [ ] Trace Network (`0xE2:1400`) through `0xBB`, host `0xBC`, join `0xBD`, and return to the main menu in both editions. Record exact cancel control/message and its source handler.
-- [ ] Confirm when the existing creation callback fires relative to visibility and frame publication. Establish an observable frame sequence boundary before prompting; an arbitrary timer is insufficient.
-- [ ] Verify host/join/loading transitions can be distinguished from leaving LAN entirely. Destruction or hiding of `0xBB` alone must not end a connected session.
+- [x] Trace Network (`0xE2:1400`) through `0xBB`, host `0xBC`, join `0xBD`, and return to the main menu in both editions. Record exact cancel control/message and its source handler.
+- [x] Confirm when the existing creation callback fires relative to visibility and frame publication. Establish an observable frame sequence boundary before prompting; an arbitrary timer is insufficient.
+- [x] Verify host/join/loading transitions can be distinguished from leaving LAN entirely. Destruction or hiding of `0xBB` alone must not end a connected session.
 - [ ] Capture the original LAN screen and the successful native cancel trace. If the callback cannot support a required boundary, document the smallest verified additional hook before implementing it.
-- [ ] Commit the evidence and final hook mapping separately: `docs: trace LAN session interception boundaries`.
+- [x] Commit the evidence and final hook mapping separately: `docs: trace LAN session interception boundaries`.
+
+### W12.4 trace results (2026-10-26, source tracing; runtime captures deferred to W12.8)
+
+`src/recomp/gen` is Yuri's Revenge (gamemd.exe) and `src/recomp/gen_game` is Red Alert 2 (game.exe) (`CMakeLists.txt` `GEN_DIR`). Both editions use the same resource and control IDs.
+
+| Step | Both editions | Evidence |
+|---|---|---|
+| LAN enter | Main menu `0xE2` closes, then `[dialog] open 0xBB`. The opener passes `edx = 0xBB` to the dialog-stack opener (YR `sub_005DC350`, `gen/recomp_0030.c`; RA2 `sub_005BD070`, `gen_game/recomp_0028.c`). The LAN screens are modeless `CreateDialogIndirectParamA` dialogs. | `back-network.web/run.log` (`press 0xE2:1400`, `open 0xBB`) |
+| Creation callback | `dialog_created` (`src/linux/script.c`) runs on the game thread after `create_dialog` returns: after `WM_INITDIALOG` and before any `WM_PAINT`. No callback runs on destroy or hide. | pcrecomp `win32hle/user32.c` `create_dialog` |
+| First LAN frame | `publish()` (`src/web/presenter.c`) bumps `frame_seq` from `present_now()`. The game-thread pump (`frame_pump` in `main.c`), the primary-surface Unlock and the screen-frame hook all call it. Publishes are throttled and can repeat an unchanged picture, so "first publish after creation" can still show the main menu. | `presenter.c` `present_now` |
+| Native Back/Cancel | `0xBB` control `1472` (`GUI:MainMenu`, a button). Post `WM_COMMAND(wParam = 1472, lParam = button HWND)` to the `0xBB` window on the game thread. This is the message the native button sends, and the playtest script's fallback. No coordinate clicks. | `tools/playtest.py` `back-network`; `script.c` press fallback; `work/dialogs.json`, `work/game/dialogs.json` |
+| Host / join | New `0xBB:1740` opens `0xBC`. Join `0xBB:1741` opens `0xBD`, then Accept `0xBD:1439`. `0xBB` stays alive behind both. | `lan-host.log` / `lan-guest.log` (`open 0xBC`/`0xBD`, no `closed 0xBB`) |
+| Loading | `0xBB` and `0xBC`/`0xBD` close only when the match loads. | `About to load a 2 player game.` then `closed 0xBB` |
+| Main-menu return | Back is followed by a new `[dialog] open 0xE2`. `0xBB` is never reported closed, so it stays alive (hidden) until the process exits. | `back-network.web/run.log` |
+
+Hook mapping used by W12.5:
+
+1. **Enter.** Arm a session on the `0xBB` creation callback. A second Network entry may re-show the surviving `0xBB` window rather than create it again (unverified). So also arm when that known `0xBB` window receives `WM_PAINT` after a main-menu return.
+2. **Paint boundary.** Chain `hle_proc_hook`, which `script.c` already owns, so it also counts `WM_PAINT` delivered to the armed `0xBB` window. Emit `lanSession` from `publish()` on the first publish after that paint. This needs no pcrecomp change and no timer.
+3. **Cancel.** The pump applies the reply on the game thread by posting `WM_COMMAND 1472` to `0xBB`.
+4. **End.** A `0xE2` creation after a LAN entry is the return to the main menu: emit `lanSessionEnd`. Closing `0xBB`, `0xBC` or `0xBD` (setup or load) never ends the session. Runtime exit and crash are handled by the page.
+
+W12.8 must confirm at runtime: the LAN picture is visible at `lanSession`; Back produces `open 0xE2`; whether a second Network entry recreates `0xBB`; whether Escape/`WM_CLOSE` on `0xBB` reaches `1472`; and that the session survives the load-time closes. Two items stay unverified: the `0xE2` creator and how the LAN dialog procedure handles Escape.
 
 ## Task W12.5: Add the game/browser session handshake
 
