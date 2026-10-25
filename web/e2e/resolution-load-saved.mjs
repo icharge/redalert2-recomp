@@ -72,7 +72,7 @@ try {
     return page.getByRole("dialog");
   };
 
-  let dialog = await settings();
+  await settings();
   await page.getByRole("combobox", { name: "Red Alert 2 resolution" }).click();
   await page.getByRole("option", { name: `${target.w} × ${target.h}` }).click();
   await page.getByRole("button", { name: "Done" }).click();

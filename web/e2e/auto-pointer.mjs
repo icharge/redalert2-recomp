@@ -24,7 +24,7 @@ try {
   );
   await page.addScriptTag({ content: code });
   await page.evaluate(() => {
-    window.capture = BrowserControls.autoLockPointer(document.querySelector("canvas"));
+    window.capture = window.BrowserControls.autoLockPointer(document.querySelector("canvas"));
     window.capture.update(true);
   });
   const automaticCapture = await page.evaluate(() => !!document.pointerLockElement);
