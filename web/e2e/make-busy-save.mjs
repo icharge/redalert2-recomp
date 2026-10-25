@@ -3,9 +3,11 @@
 // Brutal AIs against four, game speed at its maximum, let run for --minutes, then saved through the
 // game's own Save Game menu, the save copied out of the game's file system.
 //
-// STATUS: not yet reliable. The human's side was eliminated at 1:39 (Free For All) and at 8:08 (Team
-// Alliance) of game time, the game then froze on its Skirmish Score screen, and the save step hung there.
-// A 5-minute run also ended before its save (about 5 minutes wall clock). See docs/web/testing.md.
+// STATUS: BLOCKED. Two attempts failed: the human's side was eliminated at 1:39 (Free For All) and at
+// 8:08 (Team Alliance) of game time, and the game then froze on its Skirmish Score screen, where the save
+// step hung. The MCV deploy (selected by a click on the middle pad, then D) was not logged as a DEPLOY order
+// in the game log (--debuglog), so the human is not defended, and the script stops there. See
+// docs/web/testing.md.
 //
 //   node e2e/make-busy-save.mjs [--minutes 10] [--out work/perf/busy.sav]
 //                               [--profile work/perf/profile] [--shots DIR] [--headed]
@@ -32,7 +34,8 @@ const shots = path.resolve(flag("--shots", "e2e/shots/busy-save"));
 mkdirSync(shots, { recursive: true });
 mkdirSync(path.dirname(out), { recursive: true });
 
-const base = { ...options(argv), profile, shots };
+// --debuglog makes the game log its orders ("Adding event DEPLOY"), which the MCV deploy is checked against
+const base = { ...options(argv), profile, shots, pageArgs: ["--debuglog"] };
 const video = "1280x720";
 const t = await openGame(base, { video });
 const log = (line) => console.log(`${((Date.now() - started) / 1000).toFixed(0)}s  ${line}`);
@@ -40,6 +43,24 @@ const started = Date.now();
 await setUpBusySkirmish(t, { log });
 await startBattle(t);
 log("battle started");
+// the base is centred with H; the MCV is the large vehicle on the middle pad (game pixels, 1280x720).
+// It is selected by a click and deployed with D; the game logs the order, which is checked.
+await t.moveGame(640, 360);
+await t.page.waitForTimeout(800);
+await t.page.keyboard.press("h");
+await t.page.waitForTimeout(1500);
+const orders = t.all.length;
+await t.clickGame(555, 330);
+await t.page.waitForTimeout(1000);
+await t.page.keyboard.press("d");
+let deployed = false;
+for (let waited = 0; waited < 20_000 && !deployed; waited += 250) {
+  deployed = t.all.slice(orders).some((line) => line.includes("Adding event DEPLOY"));
+  if (!deployed) await t.page.waitForTimeout(250);
+}
+log(deployed ? "the MCV deploy was logged" : "the MCV deploy was not logged");
+await t.shot("after-deploy");
+if (!deployed) await t.fail("the MCV did not deploy: no DEPLOY order in the game log");
 
 // the match: every 30 s a line of the game's frame rate; every 2 minutes a picture
 const end = Date.now() + minutes * 60_000;

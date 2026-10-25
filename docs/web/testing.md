@@ -429,11 +429,11 @@ holds the pure summary and comparison (`node --test e2e/perf-report.test.mjs` in
   `samples/`. `--baseline <run.json>` prints each measure against that run with its pass-bar verdict.
 - **CPU** is the Chrome processes' CPU time read by the OS once a second (a PowerShell loop filtered by the
   profile's path), as a percentage of one core, so a figure above 100 means more than one core busy.
-- **Not measured yet: the busy moment and the soak.** The design's busy case is a skirmish with many units,
-  loaded from a save made by `e2e/make-busy-save.mjs`. That script sets up an eight-player Team Alliance match
-  (the human with three allied AIs against four AIs) at Game Speed 6, and plays it. The save was not produced: a
-  match ends when the human's side loses, after 1:39 (Free For All) and 8:08 (Team Alliance) of game time, and the
-  game then freezes on its Skirmish Score screen, where the script's save step hangs. The load path
-  (Single Player, Load Saved Game) is also not yet written into `perf.mjs`, so `--moments busy` and `--soak-minutes`
-  are not in it. Resolution is a launcher setting for the next launch, not a switch in a running game, so the
-  soak's planned resolution switches would have been the presenter's scale-mode switches instead.
+- **The busy moment and the soak are blocked.** The design's busy case is a skirmish with many units,
+  loaded from a save made by `e2e/make-busy-save.mjs`, which sets up an eight-player Team Alliance match (the
+  human with three allied AIs against four) at Game Speed 6. No save was made. A match ends when the human's side
+  loses (1:39 in Free For All, 8:08 in Team Alliance, both with the human idle), and the game then freezes on its
+  Skirmish Score screen, where the save step hangs. The attempt to keep the human alive by deploying the MCV
+  (select it on the middle pad, then D, with `--debuglog`) was not logged as a DEPLOY order. Until that works,
+  `perf.mjs` rejects `--moments busy`, `--save` and `--soak-minutes`. Resolution is a launcher setting for the
+  next launch, not a switch in a running game, so a soak would use the presenter's scale-mode switches instead.

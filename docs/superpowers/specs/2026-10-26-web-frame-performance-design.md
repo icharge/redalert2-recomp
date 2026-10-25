@@ -41,27 +41,29 @@ there is nothing to do and less memory for the picture.
   `docs/web/progress.md`): 62 game fps and 16 ms with HD off, 47 fps and 21 ms
   with HD on; publish cost 0.33 ms off, 1.59 ms on. Nothing was measured at
   1080p, 1440p or 4K, in a busy match, or for CPU and memory.
-- **Baseline, 26 October 2026** (`perf.mjs`, the release build `ef2b94fc673f9950`, Yuri's
-  Revenge build `53959836c46852af`, headed Chrome on the developer's Windows machine, one
-  60 s sample a case: 30 s untouched, then 30 s of panning; `work/perf/baseline/run.json`).
-  The "early" skirmish is the default one: one Brutal AI. Not measured yet: the busy
-  matrix and the 10-minute soak (`docs/web/testing.md`, "The frame benchmark"). Medians of
-  the 60 samples; late frames are the sum; memory is the wasm heap at its peak.
+- **Baseline, 26 October 2026** (`perf.mjs`, the release build `ef2b94fc673f9950`, Yuri's Revenge build
+  `53959836c46852af`, build type Release, headed Chrome on the developer's Windows machine, one 60 s sample a case:
+  30 s untouched, then 30 s of panning; `work/perf/baseline/run.json`). The "early" skirmish is the default one:
+  one Brutal AI. **Not measured:** the busy matrix and the 10-minute soak. The busy save is blocked (see
+  `docs/web/testing.md`, "The frame benchmark"). Medians of the samples; late frames are the sum; memory is
+  the wasm heap at its peak.
+  Caution: an earlier run of the same cases (same build, before the presenter-counter and OS-CPU fixes) gave
+  62 fps for 720p HD off where this one gives 85, and the 1% lows and worst gaps swing widely. The machine was
+  shared with other sessions' Chrome and dev servers while these ran, so re-run before comparing small changes.
 
   | Case | fps | 1% low fps | worst gap ms | late | publish ms | draw ms | CPU % | wasm MiB |
   |---|---|---|---|---|---|---|---|---|
-  | 1280x720, HD off, early | 62 | 53 | 58 | 21 | 0.37 | 0.22 | 265 | 256 |
-  | 1280x720, HD on, early | 39 | 24 | 105 | 1078 | 1.91 | 0.50 | 256 | 307 |
-  | 1920x1080, HD off, early | 62 | 55 | 104 | 36 | 0.38 | 0.24 | 262 | 369 |
-  | 1920x1080, HD on, early | 42 | 31 | 69 | 671 | 2.03 | 0.68 | 256 | 369 |
-  | 2560x1440, HD off, early | 62 | 55 | 40 | 25 | 1.47 | 0.75 | 275 | 531 |
-  | 2560x1440, HD on, early | 19 | 14 | 98 | 1173 | 7.56 | 1.34 | 270 | 531 |
-  | main menu, idle (30 s) | - | - | - | - | 1.01 | 0.47 | 261 | 256 |
+  | 1280x720, HD off, early | 85 | 14 | 253 | 319 | 0.41 | 0.22 | 245 | 531 |
+  | 1280x720, HD on, early | 41 | 27 | 117 | 835 | 1.76 | 0.59 | 259 | 531 |
+  | 1920x1080, HD off, early | 62 | 56 | 73 | 38 | 0.44 | 0.24 | 249 | 481 |
+  | 1920x1080, HD on, early | 29 | 19 | 96 | 1563 | 2.38 | 0.49 | 235 | 481 |
+  | 2560x1440, HD off, early | 58 | 35 | 64 | 293 | 1.03 | 0.49 | 242 | 724 |
+  | 2560x1440, HD on, early | 26 | 14 | 130 | 1444 | 4.73 | 1.24 | 264 | 724 |
+  | main menu, idle (30 s) | - | - | - | - | 0.91 | 0.44 | 259 | 454 |
 
-  The CPU column is the Chrome processes' CPU time over the sample, as a percentage of one
-  core, so 265 means about 2.7 cores busy. The menu is idle yet uses about 2.6 cores; the
-  spin described below is the likely cause, not yet confirmed by the probes in section 3.
-  With HD vehicles on, the game falls to 19 to 42 fps; the target is 60.
+  The CPU column is the Chrome processes' CPU time over the sample, as a percentage of one core, so 245 means
+  about 2.5 cores busy. The menu is idle yet uses about 2.6 cores; the spin described below is the likely cause,
+  not yet confirmed by the probes in section 3. With HD vehicles on, the game falls to 26 to 41 fps; the target is 60.
 
 - **CPU spin, on purpose.** pcrecomp's web `wait_ms` spins out any `Sleep` under
   20 ms and the last 16 ms of a longer one (`kernel32.c`, around line 299),

@@ -126,3 +126,74 @@ function empty() {
     jsHeapGrowthBytes: null,
   };
 }
+
+test("a 4K case has no pass verdict on any measure", () => {
+  const base = {
+    date: "x",
+    build: "base",
+    cases: { "3840x2160/hd-on/busy": { ...empty(), fpsMedian: 60, cpuPctMedian: 300 } },
+  };
+  const run = {
+    date: "y",
+    build: "now",
+    cases: {
+      "3840x2160/hd-on/busy": {
+        ...empty(),
+        fpsMedian: 90,
+        fps1Low: 80,
+        worstGapMs: 10,
+        drawMsMedian: 1,
+        cpuPctMedian: 100,
+      },
+    },
+  };
+  for (const r of compare(run, base)) assert.equal(r.pass, null, r.measure);
+});
+
+test("in a match, lower CPU with fps down by more than 1 fails the CPU bar", () => {
+  const base = {
+    date: "x",
+    build: "base",
+    cases: { "1920x1080/hd-off/early": { ...empty(), fpsMedian: 60, cpuPctMedian: 250 } },
+  };
+  const run = {
+    date: "y",
+    build: "now",
+    cases: { "1920x1080/hd-off/early": { ...empty(), fpsMedian: 58, cpuPctMedian: 200 } },
+  };
+  assert.equal(row(compare(run, base), "cpuPctMedian").pass, false);
+});
+
+test("in a match, lower CPU at the same fps passes the CPU bar", () => {
+  const base = {
+    date: "x",
+    build: "base",
+    cases: { "1920x1080/hd-off/early": { ...empty(), fpsMedian: 60, cpuPctMedian: 250 } },
+  };
+  const run = {
+    date: "y",
+    build: "now",
+    cases: { "1920x1080/hd-off/early": { ...empty(), fpsMedian: 60, cpuPctMedian: 200 } },
+  };
+  assert.equal(row(compare(run, base), "cpuPctMedian").pass, true);
+});
+
+test("in a match, a fps drop of exactly 1 still passes; more CPU fails", () => {
+  const base = {
+    date: "x",
+    build: "base",
+    cases: { "1920x1080/hd-off/early": { ...empty(), fpsMedian: 60, cpuPctMedian: 250 } },
+  };
+  const ok = {
+    date: "y",
+    build: "now",
+    cases: { "1920x1080/hd-off/early": { ...empty(), fpsMedian: 59, cpuPctMedian: 240 } },
+  };
+  assert.equal(row(compare(ok, base), "cpuPctMedian").pass, true);
+  const more = {
+    date: "y",
+    build: "now",
+    cases: { "1920x1080/hd-off/early": { ...empty(), fpsMedian: 60, cpuPctMedian: 260 } },
+  };
+  assert.equal(row(compare(more, base), "cpuPctMedian").pass, false);
+});

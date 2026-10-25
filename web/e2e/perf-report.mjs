@@ -94,13 +94,19 @@ export const MEASURES = [
 const TARGET_SIZES = new Set(["1280x720", "1920x1080", "2560x1440"]);
 
 /**
- * The pass bar for one measure of one case, or null when the bar does not cover it (or there is
- * no baseline to hold it against). `now` is the case's value in this run, `base` the baseline's.
+ * The pass bar for one measure of one case, or null when the bar does not cover it (or there is no
+ * baseline to hold it against). `now` and `base` are the case's value in this run and the baseline's;
+ * `nowCase` and `baseCase` are the whole case summaries, for the rules that compare two measures.
+ *
+ * drawMsMedian is the page's upload and draw per animation frame (Presenter.draw); publishMsMedian is
+ * the game thread's publish. The Main-thread bar applies to the first.
  */
-function bar(key, measure, now, base) {
+function bar(key, measure, now, base, nowCase, baseCase) {
   const isMenu = key === "menu/idle";
   const isSoak = key.startsWith("soak/");
   const [size, hd, moment] = (isSoak ? key.slice("soak/".length) : key).split("/");
+  // 4K is recorded, with no target and no verdict
+  if (size === "3840x2160") return null;
   const target = TARGET_SIZES.has(size) && !isSoak;
   const busyHd = target && hd === "hd-on" && moment === "busy";
   switch (measure) {
@@ -112,11 +118,16 @@ function bar(key, measure, now, base) {
       return target ? now <= 33 : null;
     case "drawMsMedian":
       return target ? now <= 4 : null;
-    case "cpuPctMedian":
+    case "cpuPctMedian": {
       if (base === null) return null;
-      // idle in the menu: at least 40% below the baseline; in a match: no higher than the baseline
+      // idle in the menu: at least 40% below the baseline
       if (isMenu) return now <= base * 0.6 + 1e-9;
-      return isSoak ? null : now <= base;
+      // in a match: no higher than the baseline, and the frame rate not down by more than 1 fps
+      if (isSoak) return null;
+      const fpsNow = nowCase?.fpsMedian ?? null;
+      const fpsBase = baseCase?.fpsMedian ?? null;
+      return now <= base && fpsNow !== null && fpsBase !== null && fpsNow >= fpsBase - 1;
+    }
     case "wasmGrowthAfter60s":
       return isSoak ? now <= 0 : null;
     default:
@@ -144,7 +155,7 @@ export function compare(run, baseline) {
         nowValue !== null && baseValue !== null && baseValue !== 0
           ? (nowValue - baseValue) / baseValue
           : null;
-      const verdict = nowValue !== null ? bar(key, measure, nowValue, baseValue) : null;
+      const verdict = nowValue !== null ? bar(key, measure, nowValue, baseValue, now, base) : null;
       rows.push({
         case: key,
         measure,
