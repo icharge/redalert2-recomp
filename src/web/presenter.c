@@ -28,6 +28,7 @@
 #include "mods.h"
 
 #define WM_CLOSE        0x0010u
+#define WM_CHAR         0x0102u
 #define WM_ACTIVATEAPP  0x001Cu
 #define WM_MOUSEMOVE    0x0200u
 #define WM_LBUTTONDOWN  0x0201u
@@ -280,7 +281,7 @@ static void update_cursor(void) {
 
 /* ---- input: the page's side, then the game's ------------------------------- */
 
-enum { IN_MOVE, IN_DOWN, IN_UP, IN_KEYDOWN, IN_KEYUP, IN_QUIT, IN_FOCUS, IN_SETTING };
+enum { IN_MOVE, IN_DOWN, IN_UP, IN_KEYDOWN, IN_KEYUP, IN_CHAR, IN_QUIT, IN_FOCUS, IN_SETTING };
 typedef struct { uint32_t kind, a, b, c; } input_t;
 #define RING 512
 static input_t g_ring[RING];
@@ -304,6 +305,40 @@ EMSCRIPTEN_KEEPALIVE void ra2_input_pointer(int kind, int x, int y, int button) 
 }
 /* vk is a Windows virtual key and scan the set-1 scan code, as the page's key table gives them */
 EMSCRIPTEN_KEEPALIVE void ra2_input_key(int down, int vk, int scan) { push(down ? IN_KEYDOWN : IN_KEYUP, (uint32_t)vk, (uint32_t)scan, 0); }
+/* Browser text input arrives as UTF-8; the game's ANSI edit controls and Thai
+ * FNT use Windows-874 bytes. Unsupported characters become '?' rather than
+ * being misdecoded as UTF-8 bytes. */
+static uint8_t cp874_character(uint32_t codepoint) {
+    if (codepoint == '\b') return 8;
+    if (codepoint == '\r' || codepoint == '\n') return 13;
+    if (codepoint >= 0x20 && codepoint <= 0x7e) return (uint8_t)codepoint;
+    if (codepoint == 0x00a0) return 0xa0;
+    if (codepoint == 0x20ac) return 0x80;
+    if (codepoint >= 0x0e01 && codepoint <= 0x0e3a) return (uint8_t)(codepoint - 0x0d60);
+    if (codepoint == 0x0e3f) return 0xdf;
+    if (codepoint >= 0x0e40 && codepoint <= 0x0e5b) return (uint8_t)(codepoint - 0x0d60);
+    return '?';
+}
+
+EMSCRIPTEN_KEEPALIVE void ra2_input_text(const char *text) {
+    const uint8_t *p = (const uint8_t *)text;
+    if (!p) return;
+    while (*p) {
+        uint32_t codepoint;
+        size_t length;
+        if (*p < 0x80) codepoint = *p, length = 1;
+        else if (*p >= 0xc2 && *p <= 0xdf && p[1])
+            codepoint = ((uint32_t)(p[0] & 0x1f) << 6) | (p[1] & 0x3f), length = 2;
+        else if (*p >= 0xe0 && *p <= 0xef && p[1] && p[2])
+            codepoint = ((uint32_t)(p[0] & 0x0f) << 12) | ((uint32_t)(p[1] & 0x3f) << 6) | (p[2] & 0x3f), length = 3;
+        else if (*p >= 0xf0 && *p <= 0xf4 && p[1] && p[2] && p[3])
+            codepoint = ((uint32_t)(p[0] & 0x07) << 18) | ((uint32_t)(p[1] & 0x3f) << 12) |
+                        ((uint32_t)(p[2] & 0x3f) << 6) | (p[3] & 0x3f), length = 4;
+        else codepoint = '?', length = 1;
+        p += length;
+        push(IN_CHAR, cp874_character(codepoint), 0, 0);
+    }
+}
 EMSCRIPTEN_KEEPALIVE void ra2_quit(void) { push(IN_QUIT, 0, 0, 0); }
 EMSCRIPTEN_KEEPALIVE void ra2_focus(int focused) { push(IN_FOCUS, (uint32_t)(focused != 0), 0, 0); }
 EMSCRIPTEN_KEEPALIVE void ra2_setting(int key, int value, int extra) { push(IN_SETTING, (uint32_t)key, (uint32_t)value, (uint32_t)extra); }
@@ -338,6 +373,11 @@ static void drain_input(void) {
             if (mods_handle_key((int)e.a, e.kind == IN_KEYDOWN)) break;
             web_modern_key(e.kind == IN_KEYDOWN, e.a);
             hle_input_key(e.kind == IN_KEYDOWN, e.a, e.b); break;
+        case IN_CHAR: {
+            uint32_t target = hle_focus_window();
+            if (target) hle_post_message(target, WM_CHAR, e.a, 0);
+            break;
+        }
         case IN_SETTING: web_settings_command((int)e.a, (int)e.b, (int)e.c); break;
         case IN_QUIT: {
             uint32_t h = hle_first_hwnd();

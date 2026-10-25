@@ -45,6 +45,20 @@
   background: transparent;
 }
 
+.textInput {
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+  resize: none;
+}
+
 .cursor {
   position: absolute;
   z-index: 4;

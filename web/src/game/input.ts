@@ -114,6 +114,7 @@ export function attachInput(
     shortcut?: (event: KeyboardEvent) => boolean;
     warp?: () => { seq: number; x: number; y: number };
     textInput?: HTMLTextAreaElement;
+    sendText?: (text: string) => void;
   } = {},
 ): () => void {
   const picture = options.picture ?? (() => ({ width: canvas.width, height: canvas.height }));
@@ -121,6 +122,8 @@ export function attachInput(
   let warpSeq = -1;
   const held = new Map<string, KeyPair>();
   const buttons = new Set<number>();
+  let composing = false;
+  let compositionText = "";
   const point = (event: MouseEvent, moving = false) => {
     const size = picture();
     const box = canvas.getBoundingClientRect();
@@ -154,7 +157,7 @@ export function attachInput(
     const p = point(event);
     if (!p) return;
     event.preventDefault();
-    if (kind === PointerKind.Down) canvas.focus();
+    if (kind === PointerKind.Down && document.activeElement !== options.textInput) canvas.focus();
     if (kind === PointerKind.Down) buttons.add(event.button);
     else buttons.delete(event.button);
     game.ra2_input_pointer(kind, p.x, p.y, event.button);
@@ -165,20 +168,50 @@ export function attachInput(
 
   const onKey = (down: boolean) => (event: KeyboardEvent) => {
     if (options.enabled?.() === false) return;
+    // The game listens at window level, so let ordinary web controls handle their
+    // own keys. In particular, preventing Ctrl+V here blocks paste in the LAN dialog.
+    const target = event.target;
+    const editingControl =
+      target instanceof HTMLElement &&
+      target !== options.textInput &&
+      (target.isContentEditable ||
+        target.closest('input, textarea, select, [contenteditable="true"], [role="textbox"]'));
+    if (editingControl) {
+      // A key may have gone down in the game just before focus moved into a field.
+      // Release it without suppressing the field's own keyup behavior.
+      if (!down) {
+        const key = held.get(event.code);
+        if (key) {
+          held.delete(event.code);
+          game.ra2_input_key(0, key.vk, key.scan);
+        }
+      }
+      return;
+    }
     if (down && options.shortcut?.(event)) {
       event.preventDefault();
       return;
     }
-    const key = keyFor(event.code);
-    if (!key) return;
-    // the browser keeps its own shortcuts (reload, dev tools, zoom, tabs): the game gets
-    // the rest, which includes F1 to F12 and Tab
+    const textFocused = !!options.textInput && document.activeElement === options.textInput;
+    // Keep browser-owned shortcuts even while the hidden text sink has focus.
     if (
       event.ctrlKey &&
       !event.altKey &&
       /^(KeyR|KeyW|KeyT|KeyN|KeyL|F5|F12|Minus|Equal)$/.test(event.code)
     )
       return;
+    // Let the browser's IME and virtual keyboard edit the focused text sink.
+    // Physical controls remain key events; printable text comes from input.
+    if (
+      textFocused &&
+      (event.isComposing || composing || event.key === "Process" || event.key === "Dead")
+    )
+      return;
+    if (textFocused && event.key.length === 1) return;
+    const key = keyFor(event.code);
+    if (!key) return;
+    // the browser keeps its own shortcuts (reload, dev tools, zoom, tabs): the game gets
+    // the rest, which includes F1 to F12 and Tab
     event.preventDefault();
     if (event.repeat && !down) return;
     if (down) held.set(event.code, key);
@@ -187,6 +220,48 @@ export function attachInput(
   };
   const onKeyDown = onKey(true);
   const onKeyUp = onKey(false);
+  const onCompositionStart = () => {
+    composing = true;
+    compositionText = "";
+  };
+  const onCompositionEnd = (event: CompositionEvent) => {
+    composing = false;
+    const committed = event.data || options.textInput?.value || compositionText;
+    if (committed) {
+      options.sendText?.(committed);
+      compositionText = committed;
+      // Some engines dispatch the final input event after compositionend.
+      // Clear it after the event sequence so the same text is only sent once.
+      window.setTimeout(() => {
+        if (compositionText === committed) compositionText = "";
+      }, 0);
+    }
+    if (options.textInput) options.textInput.value = "";
+  };
+  const onTextInput = (event: Event) => {
+    if (
+      !options.textInput ||
+      document.activeElement !== options.textInput ||
+      options.enabled?.() === false
+    )
+      return;
+    const input = event as InputEvent;
+    const value = options.textInput.value;
+    if (composing || input.isComposing) {
+      compositionText = value;
+      return;
+    }
+    if (compositionText && (input.data === compositionText || value === compositionText)) {
+      compositionText = "";
+      options.textInput.value = "";
+      return;
+    }
+    if (input.inputType === "deleteContentBackward") options.sendText?.("\b");
+    else if (input.inputType === "insertLineBreak" || input.inputType === "insertParagraph")
+      options.sendText?.("\r");
+    else if (value) options.sendText?.(value);
+    options.textInput.value = "";
+  };
   const onFocus = () => game.ra2_focus(1);
   const release = () => {
     for (const key of held.values()) game.ra2_input_key(0, key.vk, key.scan);
@@ -215,6 +290,9 @@ export function attachInput(
   canvas.addEventListener("contextmenu", onContextMenu);
   window.addEventListener("keydown", onKeyDown);
   window.addEventListener("keyup", onKeyUp);
+  options.textInput?.addEventListener("compositionstart", onCompositionStart);
+  options.textInput?.addEventListener("compositionend", onCompositionEnd);
+  options.textInput?.addEventListener("input", onTextInput);
   window.addEventListener("focus", onFocus);
   window.addEventListener("blur", onBlur);
   canvas.addEventListener("blur", onCanvasBlur);
@@ -226,6 +304,9 @@ export function attachInput(
     canvas.removeEventListener("contextmenu", onContextMenu);
     window.removeEventListener("keydown", onKeyDown);
     window.removeEventListener("keyup", onKeyUp);
+    options.textInput?.removeEventListener("compositionstart", onCompositionStart);
+    options.textInput?.removeEventListener("compositionend", onCompositionEnd);
+    options.textInput?.removeEventListener("input", onTextInput);
     window.removeEventListener("focus", onFocus);
     window.removeEventListener("blur", onBlur);
     canvas.removeEventListener("blur", onCanvasBlur);

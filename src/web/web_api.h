@@ -7,7 +7,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
-#define RA2_WEB_PROTOCOL 6
+#define RA2_WEB_PROTOCOL 7
 
 #define RA2_CURSOR_PX 32
 

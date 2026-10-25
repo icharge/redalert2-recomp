@@ -53,6 +53,7 @@ function startOnce(files: FileSource, thaiFontFix: ThaiFontPreference): Promise<
 export function Play({ files }: { files: FileSource }) {
   const stage = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
+  const textInput = useRef<HTMLTextAreaElement>(null);
   const backdrop = useRef<HTMLCanvasElement>(null);
   const cursor = useRef<HTMLImageElement>(null);
   const [startError, setStartError] = useState<Error | null>(null);
@@ -62,6 +63,7 @@ export function Play({ files }: { files: FileSource }) {
   const [fullscreen, setFullscreen] = useState(false);
   const [pointerLocked, setPointerLocked] = useState(false);
   const [browseFiles, setBrowseFiles] = useState(false);
+  const [textInputOpen, setTextInputOpen] = useState(false);
   const [browserError, setBrowserError] = useState<string | null>(null);
   const gameId = sourceStorage(files);
   const [thaiFontFix] = useState(() => readThaiFontPreference(gameId));
@@ -171,6 +173,8 @@ export function Play({ files }: { files: FileSource }) {
         const detach = attachInput(element, game.exports, {
           picture: () => presenter.gameSize(),
           warp: () => presenter.cursorWarp(),
+          textInput: textInput.current ?? undefined,
+          sendText: (text) => game.exports.ra2_input_text(text),
           enabled: () =>
             runtimeLive() &&
             !gameStore.getSnapshot().settings?.open &&
@@ -268,6 +272,18 @@ export function Play({ files }: { files: FileSource }) {
   return (
     <div ref={stage} className={styles.stage}>
       <canvas ref={canvas} className={styles.canvas} tabIndex={0} aria-label="The game" />
+      <textarea
+        ref={textInput}
+        className={styles.textInput}
+        aria-label="Game text input"
+        autoCapitalize="off"
+        autoComplete="off"
+        enterKeyHint="done"
+        inputMode="text"
+        spellCheck={false}
+        onFocus={() => setTextInputOpen(true)}
+        onBlur={() => setTextInputOpen(false)}
+      />
       <canvas
         ref={backdrop}
         className={styles.backdrop}
@@ -282,6 +298,25 @@ export function Play({ files }: { files: FileSource }) {
           onClick={() => handle.current?.exports.ra2_setting(Setting.Menu, 1, 0)}
         >
           Settings (F10)
+        </Button>
+        <Button
+          size="1"
+          variant="soft"
+          aria-pressed={textInputOpen}
+          disabled={!presenter}
+          onPointerDown={(event) => {
+            if (document.activeElement === textInput.current) event.preventDefault();
+          }}
+          onClick={() => {
+            if (document.activeElement === textInput.current) {
+              textInput.current?.blur();
+              canvas.current?.focus();
+            } else {
+              textInput.current?.focus();
+            }
+          }}
+        >
+          {textInputOpen ? "Hide keyboard" : "Text input"}
         </Button>
         {liveFiles && (
           <Button size="1" variant="soft" onClick={() => setBrowseFiles(true)}>

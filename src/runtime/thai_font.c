@@ -469,3 +469,19 @@ void recomp_thai_call(uint32_t target, recomp_func_t original) {
     original();
     g_cur_func = caller;
 }
+
+void recomp_thai_indirect_call(uint32_t target) {
+    g_icall_trace[g_icall_trace_idx & (ICALL_TRACE_SIZE - 1)] = target;
+    g_icall_from[g_icall_trace_idx & (ICALL_TRACE_SIZE - 1)] = g_cur_func;
+    g_icall_trace_idx++;
+    g_icall_count++;
+    recomp_func_t original = recomp_lookup_manual(target);
+    if (!original) original = recomp_lookup(target);
+    if (!original) original = recomp_lookup_import(target);
+    if (original) {
+        recomp_thai_call(target, original);
+    } else {
+        fprintf(stderr, "ICALL: unresolved VA 0x%08X from 0x%08X\n", target, g_cur_func);
+        g_eax = 0;
+    }
+}

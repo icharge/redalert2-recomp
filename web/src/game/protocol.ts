@@ -1,7 +1,7 @@
 // What the page and the game say to each other (docs/web/protocol.md). The C side is
 // src/web/web_api.h: change the two together, and RA2_WEB_PROTOCOL with them.
 
-export const RA2_WEB_PROTOCOL = 6;
+export const RA2_WEB_PROTOCOL = 7;
 
 export const SCALES = ["sharp", "smooth", "crt", "nearest", "integer"] as const;
 export type Scale = (typeof SCALES)[number];
@@ -123,7 +123,9 @@ export function parseEventLine(line: string): GameEvent | null {
     case "exit":
       return typeof value.code === "number" ? { e: "exit", code: value.code } : null;
     case "exitConfirm":
-      return Number.isInteger(value.request) && Number(value.request) > 0 && Number(value.request) <= 0xffffffff
+      return Number.isInteger(value.request) &&
+        Number(value.request) > 0 &&
+        Number(value.request) <= 0xffffffff
         ? { e: "exitConfirm", request: Number(value.request) }
         : null;
     case "error":
@@ -226,6 +228,8 @@ export interface Ra2Exports {
   ra2_input_pointer(kind: number, x: number, y: number, button: number): void;
   /** vk: a Windows virtual key; scan: the set-1 scan code */
   ra2_input_key(down: number, vk: number, scan: number): void;
+  /** committed Unicode text; the game host converts supported characters to CP874 WM_CHAR messages */
+  ra2_input_text(text: string): void;
   ra2_crash_report(why: string): void;
 }
 
@@ -246,5 +250,6 @@ export const EXPORT_SIGNATURES: {
   ra2_exit_confirmation_reply: { returns: "number", args: ["number", "number"] },
   ra2_input_pointer: { returns: null, args: ["number", "number", "number", "number"] },
   ra2_input_key: { returns: null, args: ["number", "number", "number"] },
+  ra2_input_text: { returns: null, args: ["string"] },
   ra2_crash_report: { returns: null, args: ["string"] },
 };

@@ -2,7 +2,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { attachInput, keyFor, toGamePixels } from "./input";
 import { PointerKind } from "./protocol";
 
-afterEach(() => { vi.restoreAllMocks(); Reflect.deleteProperty(document, "pointerLockElement"); });
+afterEach(() => {
+  vi.restoreAllMocks();
+  Reflect.deleteProperty(document, "pointerLockElement");
+});
 
 describe("keyFor", () => {
   it("gives the virtual key and scan code of letters, digits and function keys", () => {
@@ -170,6 +173,31 @@ describe("attachInput", () => {
       [0, 0x41, 30],
       [1, 0x31, 2],
     ]);
+    detach();
+  });
+
+  it("leaves paste and other editing shortcuts to a focused dialog text field", () => {
+    const { game, detach } = setup();
+    const textarea = document.createElement("textarea");
+    document.body.append(textarea);
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyA", cancelable: true }));
+    game.ra2_input_key.mockClear();
+    textarea.focus();
+    const paste = new KeyboardEvent("keydown", {
+      code: "KeyV",
+      key: "v",
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    textarea.dispatchEvent(paste);
+    expect(paste.defaultPrevented).toBe(false);
+    expect(game.ra2_input_key).not.toHaveBeenCalled();
+    textarea.dispatchEvent(
+      new KeyboardEvent("keyup", { code: "KeyA", bubbles: true, cancelable: true }),
+    );
+    expect(game.ra2_input_key).toHaveBeenCalledWith(0, 0x41, 30);
+    textarea.remove();
     detach();
   });
 
