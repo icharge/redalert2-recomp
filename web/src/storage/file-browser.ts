@@ -1,6 +1,6 @@
 import type { FileEntry, GameRecord } from "./manifest";
 import { readGameFile } from "./opfs";
-import type { FsLike } from "./saves";
+import { isDirectory, modifiedMs, type FsLike } from "./saves";
 
 export interface BrowseEntry {
   name: string;
@@ -172,7 +172,7 @@ export function importedFileSourceOf(getRecord: () => GameRecord): ReadOnlyFileS
 export const importedFileSource = (record: GameRecord): ReadOnlyFileSource =>
   importedFileSourceOf(() => record);
 
-/** A safe, read-only view rooted at Emscripten's /game directory. */
+/** A safe, read-only view rooted at Emscripten's /game directory (a file the game reads in place from the import is listed too). */
 export function liveGameFileSource(fs: FsLike, title: string): ReadOnlyFileSource {
   const absolutePath = (path: string) => {
     const parts = safeParts(path);
@@ -190,9 +190,9 @@ export function liveGameFileSource(fs: FsLike, title: string): ReadOnlyFileSourc
         try {
           const stat = fs.stat(childPath);
           entries.push(
-            fs.isDir(stat.mode)
+            isDirectory(fs, stat.mode)
               ? { name, type: "folder" }
-              : { name, type: "file", size: stat.size, modified: stat.mtime.getTime() },
+              : { name, type: "file", size: stat.size, modified: modifiedMs(stat.mtime) },
           );
         } catch {
           // The running game may remove or replace an entry between readdir() and stat().
@@ -203,7 +203,7 @@ export function liveGameFileSource(fs: FsLike, title: string): ReadOnlyFileSourc
     async readText(path) {
       const fullPath = absolutePath(path);
       const stat = fs.stat(fullPath);
-      if (fs.isDir(stat.mode)) throw new Error("Folders cannot be opened as text files.");
+      if (isDirectory(fs, stat.mode)) throw new Error("Folders cannot be opened as text files.");
       assertTextFile(path, stat.size);
       return readAsText(path, fs.readFile(fullPath));
     },

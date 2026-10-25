@@ -1,7 +1,8 @@
 // Shared by the local end-to-end checks: a Chrome on the dev server's page, the game's
 // state, screenshots, and clicks in the game's own pixels.
 import { chromium } from "playwright-core";
-import { mkdirSync } from "node:fs";
+import { createReadStream, mkdirSync, statSync } from "node:fs";
+import { createServer } from "node:http";
 import path from "node:path";
 import { serveGame } from "./files-server.mjs";
 
@@ -17,6 +18,7 @@ export function options(argv) {
     chrome: process.env.CHROME_PATH ?? "C:/Program Files/Google/Chrome/Application/chrome.exe",
     pageArgs: argv.filter((a, i) => argv[i - 1] === "--arg"),
     testGame: option("--game", null),
+    gameBuild: option("--build", null),
   };
 }
 
@@ -28,6 +30,32 @@ export async function startPage(opts) {
     args: ["--no-sandbox"],
   });
   const context = await browser.newContext({ viewport: { width: 1280, height: 960 }, serviceWorkers: "block" });
+  // Pin a test's module without overwriting another developer's published build.
+  if (opts.gameBuild) {
+    // Stream the large debug WASM over HTTP; CDP fulfill bodies exceed Chrome's
+    // 100 MB DevTools pipe buffer and disconnect the browser.
+    const server = createServer((request, response) => {
+      const name = new URL(request.url, 'http://localhost').pathname.slice(1);
+      if (!/^ra2\.(js|wasm|data)$/.test(name)) { response.writeHead(404).end(); return; }
+      const file = path.resolve(opts.gameBuild, name);
+      response.writeHead(200, {
+        'Content-Length': statSync(file).size,
+        'Content-Type': name.endsWith('.js') ? 'text/javascript' : name.endsWith('.wasm') ? 'application/wasm' : 'application/octet-stream',
+        'Access-Control-Allow-Origin': '*',
+        'Cross-Origin-Resource-Policy': 'cross-origin',
+        'Cross-Origin-Embedder-Policy': 'require-corp',
+        'Cross-Origin-Opener-Policy': 'same-origin',
+      });
+      if (request.method === 'HEAD') response.end();
+      else createReadStream(file).pipe(response);
+    });
+    await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
+    browser.on('disconnected', () => server.close());
+    await context.route(/\/game\/(?:ra2\/)?ra2\.(js|wasm|data)(?:\?.*)?$/, route => {
+      const name = new URL(route.request().url()).pathname.split('/').at(-1);
+      return route.continue({ url: `http://127.0.0.1:${server.address().port}/${name}` });
+    });
+  }
   if (opts.testGame) {
     const server = await serveGame(path.resolve(opts.testGame), new URL(opts.url).origin, opts.gameFileOverrides);
     await server.route(context);

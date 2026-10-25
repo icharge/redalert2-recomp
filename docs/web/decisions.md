@@ -133,25 +133,66 @@ same shared buffer.
 **Was (before the first build).** The canvas transferred to the game thread as
 an OffscreenCanvas, SDL's renderer on WebGL2, and SDL's DOM event handling.
 
-## D11. The game reads OPFS through a copy into memory, not a WasmFS mount
+## D11. The game reads big files in place from OPFS through a WasmFS mount
 
-**Decision.** At start the page copies the game's files from OPFS into Emscripten's in-memory
-file system (`/game`), one file at a time, then puts back what the game saved last time and keeps
-watching its writes (`web/src/storage/saves.ts`): a file the game adds or changes is written to
-OPFS under `save/<game>/` within a few seconds, and when the tab is hidden. The WasmFS OPFS backend
-that [storage.md](storage.md) first described is not used.
+**Decision.** The page builds the game's folder (`/game`) in WasmFS's in-memory file system, as
+links: a file of 1 MiB or more is a symbolic link to its copy in OPFS, which the game's thread
+mounts at `/opfs` (`wasmfs_create_opfs_backend` in `src/web/main.c`), and the game reads it in
+place. Smaller files (settings, string tables, the game's own ini) are copied into memory, because
+the page edits some of them and the game reads them over and over. Then the page puts back what the
+game saved last time and keeps watching its writes (`web/src/storage/saves.ts`): a file the game adds
+or changes is written to OPFS under `save/<game>/` within a few seconds, and when the tab is hidden.
 
-**Why.** The in-memory route is what the dev server's folder already used and it plays at full
-speed; a WasmFS mount would replace the whole file layer the game and `win32hle` run on (open, read,
-the memory maps the archives rely on) to save memory, and it can be done later without changing the
-import or the manifest. The copy from OPFS takes a few seconds for 1 GB.
+**Why.** The browser has to stay under about 1 GiB for the whole game. The first design copied the
+whole install into memory (about 1.09 GB of JS heap for Yuri's Revenge), which could not. A spike
+(docs/web/handoff-zerocopy.md) linked 987 MB of it and kept the JS heap near 19 MB. The page cannot
+mount OPFS itself, so `main()` does it on the game thread, and the files are linked from the page
+before `main()` runs: the module starts with `noInitialRun`, the runtime comes up, the page links and
+copies the files, then calls `callMain`.
 
-**Costs.** The game's files are in memory twice at most for one file at a time, and then once: about
-1 GB for Yuri's Revenge. A phone or a small machine may not have it. A save made in the last couple of
-seconds before the tab is killed can be lost (a hidden tab flushes first).
+**How reads work.** `src/web/opfs_read.js` replaces the read half of WasmFS's OPFS backend. A file
+opened for reading takes a read-only sync access handle (Chrome's `mode: 'read-only'` takes a
+shared lock, so the same archive opens any number of times), so a `read()` is a plain call. Where the
+browser has no such mode, or another handle holds the file for writing, the file is read as a Blob
+through an 8 MB block cache (256 KB blocks). The stock backend does one promise and one copy per read.
+Two more pieces keep start-up short. `src/web/read_cache.c` shims `ReadFile` and serves the many small
+repeated reads from 1 MiB blocks held in wasm memory, so they are not a proxied round trip each (about
+0.2 ms). And a read-only handle is kept open after the last close and reused by the next open of the
+file (up to 24 idle ones): the game opens and closes the same archive several hundred times while it
+starts, at about 4 ms for each `createSyncAccessHandle`.
 
-**Would change if.** Memory is the limit on real machines (then WasmFS reads the archives on demand), or
-the game needs a file layer feature the in-memory one lacks.
+**Measured** (Chrome 152, a real 1,073 MB Yuri's Revenge install, 256 MB initial and 768 MB maximum
+linear memory, warm reloads, page time to the menu): files ready in about 0.3 s, JS heap 17 MB, wasm
+memory 256 MB at the menu and 307 MB in a skirmish. The copy it replaces took 1.5 to 1.9 s for the
+files, reached the menu at about 20 s and held 1.09 GB of JS heap. Menu time, in steps:
+
+| | menu |
+|---|---|
+| mounted, stock reads, `-O1` | 24 to 26 s |
+| + start-up movie and splash wait skipped, read cache, `-O1` | 7.1 to 7.7 s |
+| + handle pool, `-O1` | 3.5 to 6.4 s (median about 4.7 s) |
+| + handle pool, release `-O3` | 3.4 s (five reloads: 3.39 to 3.46 s; 4.0 s right after a fresh import) |
+| same, Red Alert 2, release `-O3` | 2.35 to 2.63 s (five reloads); 11 s on the first load of the new wasm |
+
+Where the 3.4 s goes: the wasm arrives and is up in about 1 s, the start-up movie is skipped at 1.2 s,
+the file scan runs to about 2.5 s, the menu opens shortly after. The first load of a newly built
+`-O3` wasm is slower (11 s for Red Alert 2 with the pane in front; the 124 MB module is compiled that
+once, and the next loads use the cached code). A headless Node run with `--memfs` copies 8 MB and links 1,085 MB and reaches the menu in 2.6 s.
+
+**Costs.** The game's thread now reads through the browser's file API: a first read of a file not yet
+in the browser's cache is slower than memory. WasmFS has no NODEFS and a different `FS` surface (no
+`isDir`, times in seconds, `readdir` fails on OPFS directories, so files are linked by name from the
+manifest). Anything that writes a path in `/game` must first remove a link, or it would change the
+imported file (`replaceFile` in `saves.ts`). A dev-server folder (`dev-folder`, `test-folder`) is still
+copied into memory whole: use a folder that fits (the build caps linear memory at 768 MB). A save made
+in the last couple of seconds before the tab is killed can be lost (a hidden tab flushes first).
+
+**Also costs.** An idle read-only handle holds a shared lock, so a write to that file from another tab
+fails while the game page is open (the game page is the only one that opens them; saves and the files
+the page writes are copied, not linked).
+
+**Would change if.** A browser without read-only sync handles is the common case (then the Blob path
+and its cache need a measure), or the game needs a file layer feature WasmFS lacks.
 
 **Also found.** The game stops at start ("Failed to initialize") if `MOVMD03.MIX` is missing, though it
 takes an empty archive in its place: the import writes a 12-byte empty one for each movie archive the

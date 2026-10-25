@@ -1,21 +1,61 @@
 // What the game writes while it runs, kept across reloads (docs/web/storage.md, "The layout in OPFS").
 //
-// The game's files live in the in-memory file system for as long as the page is open (game/loader.ts).
-// Its writes (a saved game, its settings file) would go with the page, so this puts them in OPFS under
-// `save/<game>/` as they happen, and puts them back over the game's files the next time it starts.
-// Only files that are new, or changed since the game started, are kept: the game's own files are
-// already in OPFS from the import.
+// The game's folder is an in-memory file system for as long as the page is open (game/loader.ts); its
+// large files are only links to the import in OPFS. What it writes (a saved game, its settings file)
+// would go with the page, so this puts it in OPFS under `save/<game>/` as it happens, and puts it back
+// over the game's files the next time it starts. Only files that are new, or changed since the game
+// started, are kept: the game's own files are already in OPFS from the import.
 
 import type { CopyTarget } from "./opfs";
 
-/** The parts of Emscripten's FS this uses. */
+/** What FS.stat answers: WasmFS gives the time in seconds as a number, the older file system a Date. */
+export interface StatLike {
+  mode: number;
+  size: number;
+  mtime: Date | number;
+}
+
+/** The parts of Emscripten's FS this uses. WasmFS has no isDir; `lstat`, `unlink` and `symlink` are for links. */
 export interface FsLike {
   readdir(path: string): string[];
-  stat(path: string): { mode: number; size: number; mtime: Date };
-  isDir(mode: number): boolean;
+  stat(path: string): StatLike;
+  lstat?(path: string): StatLike;
+  isDir?(mode: number): boolean;
   readFile(path: string): Uint8Array;
   writeFile(path: string, data: Uint8Array): void;
   mkdir(path: string): void;
+  unlink?(path: string): void;
+  symlink?(target: string, path: string): void;
+}
+
+const S_IFMT = 0o170000;
+const S_IFDIR = 0o040000;
+const S_IFLNK = 0o120000;
+
+export const isDirectory = (fs: FsLike, mode: number): boolean =>
+  fs.isDir ? fs.isDir(mode) : (mode & S_IFMT) === S_IFDIR;
+
+/** A stat time as milliseconds. */
+export const modifiedMs = (mtime: Date | number): number =>
+  typeof mtime === "number" ? mtime * 1000 : mtime.getTime();
+
+/** Whether the path is a link into the import (files the game reads in place), not a file of its own. */
+export function isLink(fs: FsLike, path: string): boolean {
+  if (!fs.lstat) return false;
+  try {
+    return (fs.lstat(path).mode & S_IFMT) === S_IFLNK;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Writes a whole file. If the path is a link into the import the link goes first: writing through it
+ * would change the imported file itself.
+ */
+export function replaceFile(fs: FsLike, path: string, data: Uint8Array): void {
+  if (fs.unlink && isLink(fs, path)) fs.unlink(path);
+  fs.writeFile(path, data);
 }
 
 const GAME = "/game";
@@ -37,11 +77,13 @@ function scan(fs: FsLike): Map<string, Seen> {
       const path = `${dir}/${name}`;
       let stat;
       try {
+        // a link is a file of the import, which the game does not change: not worth the look
+        if (isLink(fs, path)) continue;
         stat = fs.stat(path);
       } catch {
         continue;
       }
-      if (fs.isDir(stat.mode)) {
+      if (isDirectory(fs, stat.mode)) {
         if (
           deep &&
           (name.toLowerCase() === "saved games" ||
@@ -51,7 +93,7 @@ function scan(fs: FsLike): Map<string, Seen> {
         )
           walk(path, `${prefix}${name}/`, name.toLowerCase() !== "saved games");
       } else if (!IGNORED.test(name)) {
-        out.set(`${prefix}${name}`, { size: stat.size, mtime: stat.mtime.getTime() });
+        out.set(`${prefix}${name}`, { size: stat.size, mtime: modifiedMs(stat.mtime) });
       }
     }
   };
@@ -93,7 +135,7 @@ export async function restoreSaves(fs: FsLike, store: SaveStore, game: string,
         // already there
       }
     }
-    fs.writeFile(`${GAME}/${file.path}`, await file.read());
+    replaceFile(fs, `${GAME}/${file.path}`, await file.read());
   }
   return files.length;
 }

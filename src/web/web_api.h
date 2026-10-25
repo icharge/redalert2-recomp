@@ -45,6 +45,7 @@ _Static_assert(__builtin_offsetof(ra2_shared_t, pointer_x) == 4168, "web/src/gam
 /* events: one line on stdout, "@ra2 " and JSON (presenter.c) */
 void web_event_boot(const char *title, const char *exe, uint32_t stamp);
 void web_event_menu(void);
+extern volatile int web_menu_seen;   /* set when it was sent: movies before it are the start-up ones */
 void web_event_error(const char *message);
 void web_event_exit(int code);
 void web_event_json(const char *json);

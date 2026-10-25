@@ -1,6 +1,6 @@
 import type { FolderSource } from "./importer";
 import { Manifest } from "./manifest";
-import { readGameFile, type CopyTarget } from "./opfs";
+import { gamePath, mountedPath, READ_IN_PLACE_BYTES, readGameFile, type CopyTarget } from "./opfs";
 import type { FsLike } from "./saves";
 import { shouldLoadImportedGameFile } from "./thai-fonts";
 
@@ -81,11 +81,14 @@ export async function removeMod(
   for (const file of mod.files) await target.remove(`game/${game}/mods/${mod.name}/${file.name}`);
 }
 
-/** Mod assets share the import's game folder in OPFS; the runtime sees /game/mods. */
+/**
+ * Mod assets share the import's game folder in OPFS; the runtime sees /game/mods. Big files are linked
+ * to OPFS (`inPlace`), the rest copied into memory.
+ */
 export async function loadMods(
   fs: FsLike,
   game: string,
-  options: { excludeGameFont?: boolean } = {},
+  options: { excludeGameFont?: boolean; inPlace?: boolean } = {},
 ): Promise<string[]> {
   const manifest = await Manifest.open();
   try {
@@ -96,10 +99,10 @@ export async function loadMods(
       fs.mkdir(`/game/mods/${mod.name}`);
       for (const file of mod.files) {
         if (!shouldLoadImportedGameFile(file.name, options.excludeGameFont ?? false)) continue;
-        fs.writeFile(
-          `/game/mods/${mod.name}/${file.name}`,
-          await readGameFile(game, `mods/${mod.name}/${file.name}`),
-        );
+        const path = `mods/${mod.name}/${file.name}`;
+        if (options.inPlace && fs.symlink && file.size >= READ_IN_PLACE_BYTES)
+          fs.symlink(mountedPath(gamePath(game, path)), `/game/${path}`);
+        else fs.writeFile(`/game/${path}`, await readGameFile(game, path));
       }
     }
     return mods.map((mod) => mod.name);

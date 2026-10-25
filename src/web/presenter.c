@@ -62,7 +62,8 @@ void web_event_boot(const char *title, const char *exe, uint32_t stamp) {
              RA2_WEB_PROTOCOL, t, e, stamp);
     web_event_json(line);
 }
-void web_event_menu(void) { web_event_json("{\"e\":\"menu\"}"); }
+volatile int web_menu_seen;      /* the main menu has opened once (web_api.h) */
+void web_event_menu(void) { web_menu_seen = 1; web_event_json("{\"e\":\"menu\"}"); }
 void web_event_error(const char *message) {
     char m[512], line[640];
     web_json_escape(m, sizeof m, message);

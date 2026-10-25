@@ -19,8 +19,11 @@
 #include <unistd.h>
 #include <limits.h>
 #include <sys/stat.h>
+#include <dirent.h>
+#include <strings.h>
 #include <pthread.h>
 #include <emscripten.h>
+#include <emscripten/wasmfs.h>
 
 #include "win32hle.h"
 #include "pe_loader.h"
@@ -33,6 +36,11 @@
 extern const uint32_t ra2_entry_va;   /* recomp_dispatch.c */
 extern int hle_ws_webrtc_pop(uint8_t *packet, uint32_t capacity);
 extern int hle_ws_webrtc_push(const uint8_t *packet, uint32_t length);
+extern int hle_ws_udp_pop(uint8_t *packet, uint32_t capacity);
+extern int hle_ws_udp_push(const uint8_t *packet, uint32_t length);
+extern void hle_ws_set_trace(int on);
+extern void ra2_ReadFile(void);
+extern void ra2_CloseHandle(void);
 
 #define RA2_IMAGE_BASE 0x00400000u
 
@@ -52,6 +60,25 @@ EMSCRIPTEN_KEEPALIVE int ra2_net_pop(int capacity) {
 EMSCRIPTEN_KEEPALIVE int ra2_net_push(int length) {
     if (length < 0 || (uint32_t)length > sizeof g_ra2_net_packet) return -1;
     return hle_ws_webrtc_push(g_ra2_net_packet, (uint32_t)length);
+}
+
+/* The same kind of mailbox for the Internet (WOL) UDP datagrams the page relays
+ * through RA2Web: peer address, source port, destination port, payload. */
+#define RA2_UDP_PACKET_MAX (8u + 1500u)
+static uint8_t g_ra2_udp_packet[RA2_UDP_PACKET_MAX];
+EMSCRIPTEN_KEEPALIVE uint32_t ra2_udp_buffer(void) {
+    return (uint32_t)(uintptr_t)g_ra2_udp_packet;
+}
+EMSCRIPTEN_KEEPALIVE int ra2_udp_pop(int capacity) {
+    if (capacity < 0) return -1;
+    if ((uint32_t)capacity > sizeof g_ra2_udp_packet) capacity = sizeof g_ra2_udp_packet;
+    return hle_ws_udp_pop(g_ra2_udp_packet, (uint32_t)capacity);
+}
+/* The page turns Winsock tracing (stderr "[net]" lines) on with ?udptrace. */
+EMSCRIPTEN_KEEPALIVE void ra2_net_trace(int on) { hle_ws_set_trace(on); }
+EMSCRIPTEN_KEEPALIVE int ra2_udp_push(int length) {
+    if (length < 0 || (uint32_t)length > sizeof g_ra2_udp_packet) return -1;
+    return hle_ws_udp_push(g_ra2_udp_packet, (uint32_t)length);
 }
 
 static int g_debuglog, g_headless, g_fullscreen = -1;   /* -1: as ra2.ini says */
@@ -108,8 +135,63 @@ static void ra2_MessageBoxA(void) {
     RET(answer, 4);
 }
 
+/* The start-up movies (the logo, the intro) play at the speed they were made for: about eight
+ * seconds of a 640x480 Bink before the main menu opens. Until the menu has opened once a movie is
+ * opened as two frames at 15 fps, as bink.c does for a host with no decoder (a tenth of a second;
+ * a faster rate leaves the game's movie loop spinning, which only ends when BinkWait says it is not
+ * yet time), and every movie after that (a campaign's) plays whole. `--intro` plays them. */
+static int g_play_intro;
+static void ra2_BinkOpen(void) {
+    static recomp_func_t real;
+    if (!real)
+        for (const win32hle_shim *s = win32hle_bink; s->name; s++)
+            if (!strcmp(s->name, "_BinkOpen@8")) real = s->fn;
+    real();
+    uint32_t handle = g_eax;
+    if (handle && !g_play_intro && !web_menu_seen) {
+        uint32_t *bink = (uint32_t *)(uintptr_t)handle;      /* Width, Height, Frames, FrameNum, LastFrameNum, FrameRate, FrameRateDiv */
+        uint32_t was = bink[2];
+        bink[2] = 2, bink[5] = 15, bink[6] = 1;
+        fprintf(stderr, "[bink] start-up movie of %u frames skipped (--intro plays it)\n", was);
+    }
+}
+
+/* The game holds its start-up splash for a minimum time (YR: Get_Time64() + 5000 ms) by polling the
+ * timer in a tight loop, so the main menu opens five seconds in however fast the machine is. Before
+ * the menu has opened once, a run of polls with nothing between them (a spin, which the game's own
+ * calibration and frame pacing never are this long) moves the clock a second ahead, so the wait is
+ * over in a few milliseconds. The clock only ever goes forward, so what the game timed stays
+ * consistent. `--intro` leaves the clock alone, with the start-up movies. */
+#define SPIN_POLLS 20000                 /* polls inside one window that make a spin */
+#define SPIN_WINDOW_US 20000u
+#define SPIN_JUMP_US 1000000u
+static uint64_t g_clock_skew_us;
+static void ra2_QueryPerformanceCounter(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    uint64_t us = (uint64_t)ts.tv_sec * 1000000u + (uint64_t)ts.tv_nsec / 1000u;
+    if (!g_play_intro && !web_menu_seen) {
+        static uint64_t window_start;
+        static unsigned polls;
+        if (us - window_start > SPIN_WINDOW_US) window_start = us, polls = 0;
+        if (++polls > SPIN_POLLS) {
+            g_clock_skew_us += SPIN_JUMP_US;
+            polls = 0;
+            static int said;
+            if (!said++) fprintf(stderr, "[clock] a start-up wait is a spin on the timer: skipping ahead (--intro keeps it)\n");
+        }
+    }
+    us += g_clock_skew_us;
+    if (A32(0)) MEM32(A32(0)) = (uint32_t)us, MEM32(A32(0) + 4) = (uint32_t)(us >> 32);
+    RET(1, 1);
+}
+
 static const win32hle_shim g_ra2_shims[] = {
+    { "ReadFile", ra2_ReadFile },
+    { "CloseHandle", ra2_CloseHandle },
+    { "QueryPerformanceCounter", ra2_QueryPerformanceCounter },
     { "MessageBoxA", ra2_MessageBoxA },
+    { "_BinkOpen@8", ra2_BinkOpen },
     { 0, 0 }
 };
 
@@ -255,6 +337,7 @@ static void frame_pump(void) {
     int w, h, pitch, bpp;
     hle_screen_pump();
     ra2_launcher_poll();
+    ra2_wolapi_poll();
     web_presenter_pump();
     g_pumps++;
     if (g_trap_after && ++pumps == g_trap_after) __builtin_trap();
@@ -265,6 +348,16 @@ static void frame_pump(void) {
                 MEM32(RA2_GAME_FRAME_VA));
     if (g_dump_dir) dump_bmp(px, w, h, pitch, bpp, g_shown);
     g_shown++;
+}
+
+static uint32_t exe_stamp(const char *path) {
+    uint8_t head[4096] = { 0 };
+    FILE *f = fopen(path, "rb");
+    if (!f) return 0;
+    size_t n = fread(head, 1, sizeof head, f);
+    fclose(f);
+    uint32_t nt = n >= 0x40 ? *(const uint32_t *)(head + 0x3C) : 0;
+    return nt && nt < sizeof head - 12 ? *(const uint32_t *)(head + nt + 8) : 0;
 }
 
 #ifdef RA2_TARGET_GAME
@@ -343,27 +436,68 @@ static void ra2_dialog_template_hook(uint32_t id, uint32_t tmpl) {
 }
 #endif
 
-static uint32_t exe_stamp(const char *path) {
-    uint8_t head[4096] = { 0 };
-    FILE *f = fopen(path, "rb");
-    if (!f) return 0;
-    size_t n = fread(head, 1, sizeof head, f);
-    fclose(f);
-    uint32_t nt = n >= 0x40 ? *(const uint32_t *)(head + 0x3C) : 0;
-    return nt && nt < sizeof head - 12 ? *(const uint32_t *)(head + nt + 8) : 0;
-}
+/* The browser's origin-private file system, mounted at /opfs on this thread (WasmFS cannot
+ * mount it from the page's). The page links the imported archives from /game into it, so
+ * the game reads them in place instead of from a copy in memory (docs/web/storage.md). It
+ * only exists in a window or worker, not under Node. */
+EM_JS(int, ra2_has_opfs, (void), {
+    return typeof navigator !== 'undefined' && navigator.storage && navigator.storage.getDirectory ? 1 : 0;
+});
 
 /* Under Node (the headless runs, docs/web/testing.md) --game names a folder
- * on the real disk, put at /game on the main thread, since the game's own
- * thread has no file system of its own: by default mounted with NODEFS, the
- * files read in place; with --memfs copied into the in-memory file system,
- * only what the page's import would keep (docs/web/storage.md: the allowlist),
- * the way the files will be in a browser. */
+ * on the real disk, put at /game: by default WasmFS's Node backend, the
+ * files read in place; with --memfs laid out the way the page lays out /game
+ * (web/src/game/loader.ts): only what the page's import would keep (the
+ * allowlist, docs/web/storage.md), the big files read in place through links
+ * and the small ones copied into the in-memory file system. */
 static int g_memfs;
+#define MEMFS_LINK_FROM (1024 * 1024)   /* READ_IN_PLACE_BYTES in web/src/storage/opfs.ts */
+
+static int memfs_keeps(const char *name) {
+    static const char *const ext[] = { ".mix", ".bag", ".idx", ".ini", ".csf", ".fnt", ".mmx", ".map", ".mpr", ".yrm", ".exe", ".dll" };
+    size_t n = strlen(name);
+    for (size_t i = 0; i < sizeof ext / sizeof *ext; i++) {
+        size_t e = strlen(ext[i]);
+        if (n >= e && !strcasecmp(name + n - e, ext[i])) return 1;
+    }
+    return 0;
+}
+
+static void memfs_copy(const char *from, const char *to) {
+    static char block[1 << 20];
+    DIR *d = opendir(from);
+    struct dirent *ent;
+    double copied = 0, linked = 0;
+    mkdir(to, 0777);
+    while (d && (ent = readdir(d))) {
+        char src[4300], dst[4300];
+        struct stat st;
+        snprintf(src, sizeof src, "%s/%s", from, ent->d_name);
+        snprintf(dst, sizeof dst, "%s/%s", to, ent->d_name);
+        if (!memfs_keeps(ent->d_name) || stat(src, &st) != 0 || !S_ISREG(st.st_mode)) continue;
+        if (st.st_size >= MEMFS_LINK_FROM && strcasecmp(ent->d_name, RA2_INI_NAME)) {
+            if (symlink(src, dst) == 0) linked += (double)st.st_size;
+            continue;
+        }
+        FILE *in = fopen(src, "rb"), *out = fopen(dst, "wb");
+        size_t n;
+        while (in && out && (n = fread(block, 1, sizeof block, in)) > 0) fwrite(block, 1, n, out), copied += (double)n;
+        if (in) fclose(in);
+        if (out) fclose(out);
+    }
+    if (d) closedir(d);
+    fprintf(stderr, "[memfs] %.0f MB copied into %s, %.0f MB linked\n", copied / 1048576.0, to, linked / 1048576.0);
+}
+
 static const char *mount_node_game(const char *dir) {
-    /* Module.ra2MountGame is in pre.js (a macro argument cannot hold its commas) */
-    int ok = MAIN_THREAD_EM_ASM_INT({ return Module.ra2MountGame(UTF8ToString($0), $1); }, dir, g_memfs);
-    return ok ? "/game" : dir;
+    /* Module.ra2MountGame is in pre.js: the folder's absolute path, written into root */
+    static char root[4096];
+    int ok = MAIN_THREAD_EM_ASM_INT({ return Module.ra2MountGame(UTF8ToString($0), $1, $2); }, dir, root, (int)sizeof root);
+    if (!ok) return dir;
+    backend_t node = wasmfs_create_node_backend(root);
+    if (wasmfs_create_directory(g_memfs ? "/hostgame" : "/game", 0777, node) != 0) return dir;
+    if (g_memfs) memfs_copy("/hostgame", "/game");
+    return "/game";
 }
 
 /* a failure the page shows (protocol.md, the error event), and the log */
@@ -439,6 +573,7 @@ int main(int argc, char **argv) {
     const char *game = "game";
     int run = 0;
     setvbuf(stderr, NULL, _IONBF, 0);
+    if (ra2_has_opfs()) wasmfs_create_directory("/opfs", 0777, wasmfs_create_opfs_backend());
     /* --args FILE: more arguments, whitespace-separated, # to the end of a
      * line a comment (tools/lan's scripts), as the Windows host reads them. */
     for (int i = 1; i + 1 < argc; i++) {
@@ -478,6 +613,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--mod") && i + 1 < argc) g_mod = argv[++i];
         else if (!strcmp(argv[i], "--trace")) win32hle_trace = 1;
         else if (!strcmp(argv[i], "--memfs")) g_memfs = 1;
+        else if (!strcmp(argv[i], "--intro")) g_play_intro = 1;
         else if (!strcmp(argv[i], "--windows")) g_dump_windows = 1;
         else if (!strcmp(argv[i], "--msgtrace") && i + 1 < argc) setenv("HLE_MSGTRACE", argv[++i], 1);
         else if (!strcmp(argv[i], "--env") && i + 1 < argc) putenv(strdup(argv[++i]));   /* --env NAME=VALUE: a debugging switch for the host or win32hle */
@@ -498,7 +634,7 @@ int main(int argc, char **argv) {
             g_dump_dir = dir;                /* the run chdirs into the game folder */
         }
         else {
-            printf("usage: ra2 [--run] [--headless | --fullscreen] [--scale sharp|smooth|crt|nearest|integer] [--game DIR] [--mod NAME|none] [--thai-font-fix --thai-font-id ID] [--debuglog] [--mute] [--trace] [--heartbeat S] [--memfs] [--trap N] [--dump-frames DIR] [--hd-voxels] [--hd-voxels-dump DIR]\n"
+            printf("usage: ra2 [--run] [--headless | --fullscreen] [--scale sharp|smooth|crt|nearest|integer] [--game DIR] [--mod NAME|none] [--thai-font-fix --thai-font-id ID] [--debuglog] [--mute] [--trace] [--heartbeat S] [--memfs] [--intro] [--trap N] [--dump-frames DIR] [--hd-voxels] [--hd-voxels-dump DIR]\n"
                    "           [--press DLG:CTRL@s] [--select DLG:CTRL=N@s] [--waitlog TEXT@s] [--move|--click x,y@s]\n"
                    "           [--key [c][s][a]+vk@s] [--wait VA@s] [--drag x1,y1,x2,y2@s]\n");
             return !strcmp(argv[i], "--help") || !strcmp(argv[i], "-h") ? 0 : 1;
@@ -521,7 +657,12 @@ int main(int argc, char **argv) {
     recomp_host_init();
     hle_com_register_class(CLSID_Blowfish, ra2_blowfish_create);
 #ifdef RA2_TARGET_GAME
+    ra2_wolapi_set_no_router_flag(0x00A402D0u);   /* Session (0xA3D298) + 0x3038 */
+    ra2_wolapi_set_ipx_manager(0x00A40978u);
     hle_dialog_template_hook = ra2_dialog_template_hook;
+#else
+    ra2_wolapi_set_no_router_flag(0x00A8E2C8u);   /* Session (0xA8B238) + 0x3090 */
+    ra2_wolapi_set_ipx_manager(0x00A8E9C0u);
 #endif
     ra2_wolapi_register();
     printf(RA2_TITLE " recomp host (browser)\n  lifted functions in dispatch: %u\n", recomp_dispatch_count);

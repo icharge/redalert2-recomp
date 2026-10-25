@@ -3,7 +3,10 @@ import type { CopyTarget } from "./opfs";
 import {
   exportSaves,
   importSaves,
+  isDirectory,
   isSavePath,
+  modifiedMs,
+  replaceFile,
   restoreSaves,
   startSaveSync,
   type FsLike,
@@ -221,5 +224,85 @@ describe("exportSaves and importSaves", () => {
     const target = memoryTarget();
     expect(await importSaves(flat, target, "ra2md")).toBe(1);
     expect([...target.files.keys()]).toEqual(["save/ra2md/a.sav"]);
+  });
+});
+
+/** WasmFS's side of FsLike: no isDir, times in seconds, and links into the import in OPFS. */
+function linkedFs() {
+  const links = new Map<string, string>();
+  const files = new Map<string, string>();
+  const calls: string[] = [];
+  const S_IFREG = 0o100000;
+  const S_IFDIR = 0o040000;
+  const S_IFLNK = 0o120000;
+  const fs: FsLike = {
+    readdir: () => [".", "..", ...links.keys(), ...files.keys()].map((p) => p.replace("/game/", "")),
+    stat(path) {
+      if (links.has(path)) {
+        calls.push(`stat ${path}`);
+        return { mode: S_IFREG, size: 900_000_000, mtime: 5 };
+      }
+      if (path === "/game") return { mode: S_IFDIR, size: 0, mtime: 0 };
+      const text = files.get(path);
+      if (text === undefined) throw new Error("ENOENT");
+      return { mode: S_IFREG, size: text.length, mtime: 7 };
+    },
+    lstat(path) {
+      if (links.has(path)) return { mode: S_IFLNK, size: 20, mtime: 5 };
+      return fs.stat(path);
+    },
+    readFile: (path) => new TextEncoder().encode(files.get(path) ?? ""),
+    writeFile(path, data) {
+      // through a link, as the file system does: the import itself would change
+      if (links.has(path)) calls.push(`wrote through ${path}`);
+      files.set(path, new TextDecoder().decode(data));
+    },
+    mkdir: () => {},
+    unlink(path) {
+      links.delete(path);
+      files.delete(path);
+    },
+    symlink: (target, path) => void links.set(path, target),
+  };
+  return { fs, links, files, calls };
+}
+
+describe("a game folder whose big files are links into the import", () => {
+  it("reads WasmFS's stat: directories from the mode, times in seconds", () => {
+    const { fs } = linkedFs();
+    expect(isDirectory(fs, 0o040755)).toBe(true);
+    expect(isDirectory(fs, 0o100644)).toBe(false);
+    expect(modifiedMs(7)).toBe(7000);
+    expect(modifiedMs(new Date(1234))).toBe(1234);
+  });
+
+  it("does not look at a link when it watches for what the game wrote", async () => {
+    const game = linkedFs();
+    game.links.set("/game/ra2.mix", "/opfs/game/slot-1/ra2.mix");
+    game.files.set("/game/ra2md.ini", "[Video]");
+    const target = memoryTarget();
+    const sync = startSaveSync(game.fs, target, "slot-1-ra2md");
+    stop = () => sync.stop();
+    game.files.set("/game/SAVE0001.sav", "a save");
+    await sync.flush();
+    expect([...target.files.keys()]).toEqual(["save/slot-1-ra2md/SAVE0001.sav"]);
+    expect(game.calls).toEqual([]);
+  });
+
+  it("puts a saved copy over a link by removing the link first", async () => {
+    const game = linkedFs();
+    game.links.set("/game/game.fnt", "/opfs/game/slot-1/game.fnt");
+    replaceFile(game.fs, "/game/game.fnt", new TextEncoder().encode("thai"));
+    expect(game.calls).toEqual([]);
+    expect(game.links.size).toBe(0);
+    expect(game.files.get("/game/game.fnt")).toBe("thai");
+
+    game.links.set("/game/ra2md.ini", "/opfs/game/slot-1/ra2md.ini");
+    const store: SaveStore = {
+      list: async () => [{ path: "ra2md.ini", read: async () => new TextEncoder().encode("saved") }],
+    };
+    await restoreSaves(game.fs, store, "slot-1-ra2md");
+    expect(game.calls).toEqual([]);
+    expect(game.files.get("/game/ra2md.ini")).toBe("saved");
   });
 });

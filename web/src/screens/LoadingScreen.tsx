@@ -24,7 +24,7 @@ export function describeLoading(state: Pick<GameState, "phase" | "copy">) {
   if (copy && copy.doneFiles < copy.totalFiles) {
     const percent = copy.totalBytes > 0 ? (copy.doneBytes / copy.totalBytes) * 100 : 0;
     return {
-      step: "Copying your game files",
+      step: "Preparing your game files",
       detail: `${formatBytes(copy.doneBytes)} of ${formatBytes(copy.totalBytes)} · ${copy.file} (${copy.doneFiles + 1} of ${copy.totalFiles})`,
       percent,
     } as const;

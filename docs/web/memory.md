@@ -63,11 +63,15 @@ the fallback, not the plan ([decisions.md](decisions.md), D2).
 
 ## Memory size
 
-- `-sINITIAL_MEMORY=1GB`, `-sALLOW_MEMORY_GROWTH=1`, `-sMAXIMUM_MEMORY=4GB`.
-  Growth with pthreads makes every JS view of memory re-check its buffer.
-  The game's JS side is small (the audio ring, the crash report), so this is
-  cheap here. Stage 3 measures the game's real peak, and `INITIAL_MEMORY` is
-  set above it so growth is rare.
+- `-sINITIAL_MEMORY=256MB`, `-sALLOW_MEMORY_GROWTH=1`,
+  `-sMAXIMUM_MEMORY=768MB`. This caps Wasm linear memory below 1 GiB, leaving
+  room for compiled code and small browser-side buffers. This is not a total
+  browser-process cap. To keep the game within that total budget the archives
+  stay in OPFS and are read in place through WasmFS ([storage.md](storage.md),
+  "How the game reads its files"): copying a 1 GB install into memory would
+  not fit under this cap. WasmFS's in-memory files live in this linear memory,
+  so only the small files (under 1 MiB) are copied into it. Growth with
+  pthreads makes every JS view of memory re-check its buffer.
 - The host's C stack: `-sSTACK_SIZE=8MB` and
   `-sDEFAULT_PTHREAD_STACK_SIZE=8MB`, as on Linux. Every `RECOMP_CALL` is a
   real C call, and the game's call chains are deep. The guest's own stack

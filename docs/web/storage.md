@@ -38,6 +38,9 @@ next game start; re-import the folder after adding or replacing the font.
 Anything else is skipped. The list lives in `web/src/storage/install.ts` (`classify`);
 the dev server serves the same list, so a run from the local folder has what an import
 would have given it, and the Import screen can show what it skipped.
+`woldata.key` is intentionally not imported: each browser game runtime stages a
+fresh random 128-digit key in its in-memory game folder, giving LAN clients
+separate identities without changing the user's install or sharing a key between tabs.
 
 ## The checks, before copying
 
@@ -110,6 +113,21 @@ files/mods. Exact storage references protect any legacy shared files still
 in use. Saved games and settings are retained in their original namespace,
 which is never assigned to a later slot.
 
+## How the game reads its files
+
+At start the page makes `/game` in the game's file system, then for each file the record lists:
+a file of 1 MiB or more becomes a symbolic link, `/game/<name>` to `/opfs/game/<home>/<name>`, and
+anything smaller is copied into memory (`READ_IN_PLACE_BYTES` in `web/src/storage/opfs.ts`). The
+game's own ini is always copied, since the page sets its picture size and online port. Mod files
+follow the same rule under `/game/mods/<name>/`. Nothing is read into memory for the big files, so
+Yuri's Revenge needs about 20 MB of JS heap rather than 1 GB ([decisions.md](decisions.md), D11).
+
+The game's thread mounts OPFS at `/opfs` before `main()` reads anything (`src/web/main.c`), and
+reads through `src/web/opfs_read.js`, which keeps a read-only handle open between opens of the same
+file, and `src/web/read_cache.c`, which answers repeated small `ReadFile` calls from 1 MiB blocks in
+memory. A write to `/game` never goes through a link: saves, the
+Thai font and mod overlays remove a link first (`replaceFile`), and the save watcher skips links.
+
 ## Saves
 
 The game writes its saved games beside its exe (`SAVE%04lX.%3s`, so `SAVE0001.sav`), not in a
@@ -154,4 +172,4 @@ an imported file also removes that name from that game's `Saves`, or the change 
 it again.
 
 Nothing can be downloaded or exported from the browser, and the Play screen's live `/game` browser
-stays read-only: that file system is in memory and its changes would not last.
+stays read-only: its big files are the import itself, and the rest is in memory, where changes would not last.

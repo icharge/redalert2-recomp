@@ -15,7 +15,7 @@ const copy = (doneFiles: number, doneBytes: number) => ({
 describe("describeLoading", () => {
   it("says how far the copy is, in bytes and files", () => {
     expect(describeLoading({ phase: "loading", copy: copy(39, 400 * MB) })).toEqual({
-      step: "Copying your game files",
+      step: "Preparing your game files",
       detail: "400 MB of 1.00 GB · ra2.mix (40 of 55)",
       percent: (400 / 1024) * 100,
     });
@@ -43,7 +43,7 @@ describe("LoadingScreen", () => {
         <LoadingScreen state={{ phase: "loading", copy: copy(10, 200 * MB) }} />
       </Theme>,
     );
-    expect(screen.getByText("Copying your game files")).toBeInTheDocument();
+    expect(screen.getByText("Preparing your game files")).toBeInTheDocument();
     expect(screen.getByText(/200 MB of 1.00 GB/)).toBeInTheDocument();
     expect(screen.getByRole("progressbar")).toBeInTheDocument();
   });

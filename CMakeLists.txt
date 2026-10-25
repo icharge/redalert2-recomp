@@ -67,7 +67,7 @@ if(EMSCRIPTEN)
   set(HLE ${PCRECOMP}/runtime/win32hle)
   file(GLOB HLE_SOURCES CONFIGURE_DEPENDS "${HLE}/*.c")
   list(FILTER HLE_SOURCES EXCLUDE REGEX "_selftest\.c$")
-  add_executable(ra2 src/web/main.c src/web/wolapi.c src/web/presenter.c src/web/settings.c src/web/modern.c src/linux/launcher.c src/linux/blowfish.c src/linux/script.c src/linux/mods.c src/runtime/hdvox.c src/runtime/queuefive.c src/runtime/thai_font.c ${HLE_SOURCES} ${GEN_SOURCES})
+  add_executable(ra2 src/web/main.c src/web/read_cache.c src/web/wolapi.c src/web/presenter.c src/web/settings.c src/web/modern.c src/linux/launcher.c src/linux/blowfish.c src/linux/script.c src/linux/mods.c src/runtime/hdvox.c src/runtime/queuefive.c src/runtime/thai_font.c ${HLE_SOURCES} ${GEN_SOURCES})
   target_include_directories(ra2 PRIVATE src/web src/linux src/runtime ${GEN_DIR} ${HLE} ${PCRECOMP}/runtime/recomp32)
   target_compile_definitions(ra2 PRIVATE RECOMP_RETADDR=0u RECOMP_FLAT_MEMORY RECOMP_LOCAL_REGS)
   # Movies: with FFmpeg's Bink decoder (tools/build-ffmpeg-web.sh configures FFmpeg in ../ffmpeg-src/build and lists
@@ -95,11 +95,12 @@ if(EMSCRIPTEN)
     -pthread -fwasm-exceptions -sSUPPORT_LONGJMP=wasm -sPROXY_TO_PTHREAD -sPTHREAD_POOL_SIZE=8
     -sUSE_SDL=2 -sUSE_SDL_TTF=2
     -sGLOBAL_BASE=16MB
-    -sINITIAL_MEMORY=1GB -sALLOW_MEMORY_GROWTH -sMAXIMUM_MEMORY=4GB
+    -sINITIAL_MEMORY=256MB -sALLOW_MEMORY_GROWTH -sMAXIMUM_MEMORY=768MB
     -sSTACK_SIZE=8MB -sDEFAULT_PTHREAD_STACK_SIZE=8MB
     -sEXIT_RUNTIME=1 -sENVIRONMENT=web,worker,node
-    -sFORCE_FILESYSTEM -lnodefs.js
-    "-sEXPORTED_RUNTIME_METHODS=ccall,cwrap,FS,HEAP8,HEAPU8,HEAP32,HEAPU32"
+    -sFORCE_FILESYSTEM -sWASMFS
+    --js-library ${CMAKE_SOURCE_DIR}/src/web/opfs_read.js
+    "-sEXPORTED_RUNTIME_METHODS=ccall,cwrap,FS,callMain,HEAP8,HEAPU8,HEAP32,HEAPU32"
     "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/web/fonts/LiberationSans-Regular.ttf@/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
     "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/web/fonts/LiberationSans-Bold.ttf@/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"
     "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/web/fonts/LiberationSans-Italic.ttf@/usr/share/fonts/truetype/liberation/LiberationSans-Italic.ttf"
@@ -112,7 +113,7 @@ if(EMSCRIPTEN)
   if(WEB_LINK_OPT)
     target_link_options(ra2 PRIVATE ${WEB_LINK_OPT})
   endif()
-  set_target_properties(ra2 PROPERTIES SUFFIX ".js" LINK_DEPENDS "${CMAKE_SOURCE_DIR}/src/web/pre.js;${CMAKE_SOURCE_DIR}/src/web/extern-pre.js")
+  set_target_properties(ra2 PROPERTIES SUFFIX ".js" LINK_DEPENDS "${CMAKE_SOURCE_DIR}/src/web/pre.js;${CMAKE_SOURCE_DIR}/src/web/extern-pre.js;${CMAKE_SOURCE_DIR}/src/web/opfs_read.js")
   # Keep the two classic Emscripten modules separate. The expansion retains
   # its original URL; base RA2 lives below ra2/ in the same page build.
   set(WEB_OUT ${CMAKE_SOURCE_DIR}/web/public/game CACHE PATH "root of the page's game modules")

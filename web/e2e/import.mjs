@@ -7,7 +7,8 @@
 // Needs `pnpm dev` and a built game. The profile is a temporary folder, removed at the end (--keep
 // leaves it, to look at what OPFS holds).
 import { chromium } from "playwright-core";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { createReadStream, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { createServer } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { options } from "./lib.mjs";
@@ -40,7 +41,49 @@ const launch = () =>
     headless: !base.headed,
     args: ["--no-sandbox"],
     viewport: { width: 1280, height: 960 },
+    serviceWorkers: "block",
   });
+
+/** Serve an isolated link output without replacing the module another task may be testing. */
+async function routeBuild(context) {
+  if (!base.gameBuild) return () => [];
+  const buildDir = path.resolve(base.gameBuild);
+  const served = [];
+  const server = createServer((request, response) => {
+    const name = new URL(request.url, "http://localhost").pathname.slice(1);
+    if (!/^ra2\.(js|wasm|data)$/.test(name)) {
+      response.writeHead(404).end();
+      return;
+    }
+    served.push(name);
+    const file = path.join(buildDir, name);
+    try {
+      const size = statSync(file).size;
+      response.writeHead(200, {
+        "Content-Length": size,
+        "Content-Type": name.endsWith(".js") ? "text/javascript" : name.endsWith(".wasm") ? "application/wasm" : "application/octet-stream",
+        "Access-Control-Allow-Origin": "*",
+        "Cross-Origin-Resource-Policy": "cross-origin",
+        "Cross-Origin-Embedder-Policy": "require-corp",
+        "Cross-Origin-Opener-Policy": "same-origin",
+      });
+      if (request.method === "HEAD") response.end();
+      else createReadStream(file).pipe(response);
+    } catch {
+      response.writeHead(404).end();
+    }
+  });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  context.on("close", () => server.close());
+  await context.route(/\/game\/(?:ra2\/)?ra2\.(js|wasm|data)(?:\?.*)?$/, (route) => {
+    const name = new URL(route.request().url()).pathname.split("/").at(-1);
+    return route.continue({ url: `http://127.0.0.1:${server.address().port}/${name}` });
+  });
+  return () => [...new Set(served)];
+}
 
 /** Waits for the game's main menu; on a timeout says what state it was in, and the end of its log. */
 async function running(page) {
@@ -59,6 +102,7 @@ async function running(page) {
 
 // ---- first visit: nothing imported ------------------------------------------------------------
 let context = await launch();
+const servedBuildFiles = await routeBuild(context);
 let page = context.pages()[0] ?? (await context.newPage());
 page.on("pageerror", (e) => console.error("pageerror:", e.message));
 await page.goto(address);
@@ -153,11 +197,35 @@ await browseText(
 );
 
 // ---- play from OPFS -----------------------------------------------------------------------------
+const bootStarted = Date.now();
 await page
   .locator('[data-slot-id="1"] [data-game-id="ra2md"]')
   .getByRole("button", { name: "Play" })
   .click();
 await running(page);
+console.log(`    game reached the main menu in ${((Date.now() - bootStarted) / 1000).toFixed(1)} s`);
+if (base.gameBuild) console.log(`    isolated game assets served: ${servedBuildFiles().join(", ") || "none"}`);
+const runtimeMemory = await page.evaluate(() => {
+  const mib = (bytes) => (bytes == null ? null : +(bytes / (1024 * 1024)).toFixed(1));
+  return {
+    wasmMiB: mib(window.Module?.HEAPU8?.buffer?.byteLength),
+    jsHeapMiB: mib(performance.memory?.usedJSHeapSize),
+  };
+});
+console.log(`    memory: ${JSON.stringify(runtimeMemory)}`);
+const opfsLines = await page.evaluate(() =>
+  (window.ra2Store?.getLog() ?? []).filter((line) => /\[opfs-(?:open|read)\]/.test(line)),
+);
+for (const line of opfsLines) console.log(line);
+if (argv.includes("--boot-probe-only")) {
+  if (!opfsLines.some((line) => line.includes("[opfs-read]")))
+    console.log("    no per-file OPFS read reports yet; readers may stay open until exit");
+  const holdMs = Number(flag("--hold-after-menu", "0"));
+  if (holdMs > 0) await page.waitForTimeout(holdMs);
+  await context.close();
+  if (!argv.includes("--keep")) rmSync(profile, { recursive: true, force: true });
+  process.exit(0);
+}
 check(true, "the game starts from the copy in OPFS and reaches its main menu");
 await browseText(page.locator("body"), "RA2MD.INI", "live /game VFS");
 
@@ -170,6 +238,7 @@ await context.close();
 
 // ---- second visit: the same profile ---------------------------------------------------------------
 context = await launch();
+await routeBuild(context);
 page = context.pages()[0] ?? (await context.newPage());
 await page.goto(address);
 await page.getByText("Your games").waitFor({ timeout: 30_000 });

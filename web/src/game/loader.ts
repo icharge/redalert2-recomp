@@ -3,23 +3,44 @@ import { appPath } from "../paths";
 import { type GameStore, gameStore } from "./store";
 import type { WasmMemory } from "./presenter";
 import type { GameRecord } from "../storage/manifest";
-import { opfsSaveStore, opfsTarget, readGameFile } from "../storage/opfs";
-import { restoreSaves, startSaveSync, type FsLike, type SaveSync } from "../storage/saves";
+import {
+  gamePath,
+  mountedPath,
+  opfsSaveStore,
+  opfsTarget,
+  READ_IN_PLACE_BYTES,
+  readGameFile,
+} from "../storage/opfs";
+import {
+  replaceFile,
+  restoreSaves,
+  startSaveSync,
+  type FsLike,
+  type SaveSync,
+} from "../storage/saves";
 import { loadMods } from "../storage/mods";
 import type { GameId } from "../storage/install";
 import { liveGameFileSource, type ReadOnlyFileSource } from "../storage/file-browser";
-import { readThaiFont, shouldLoadImportedGameFile, type ThaiFontPreference } from "../storage/thai-fonts";
-import { withBrowserWolPort, wolLineBytes, WolClient } from "./wol";
+import {
+  readThaiFont,
+  shouldLoadImportedGameFile,
+  type ThaiFontPreference,
+} from "../storage/thai-fonts";
+import { toWolSocketUrl, withBrowserWolPort, wolLineBytes, WolClient } from "./wol";
+import { UdpRelay, parseStartHandoff } from "./udp-relay";
 
 /** Yuri's Revenge module; Red Alert 2 is nested below /game/ra2. */
 export const GAME_SCRIPT = appPath("game/ra2.js");
-export const gameScript = (game: GameId) => appPath(game === "ra2" ? "game/ra2/ra2.js" : "game/ra2.js");
-const gameIni = (game: GameId) => game === "ra2" ? "ra2.ini" : "ra2md.ini";
+export const gameScript = (game: GameId) =>
+  appPath(game === "ra2" ? "game/ra2/ra2.js" : "game/ra2.js");
+const gameIni = (game: GameId) => (game === "ra2" ? "ra2.ini" : "ra2md.ini");
 
 /** No module for this game is present (docs/web/toolchain.md). */
 export class GameNotBuilt extends Error {
   constructor(game: GameId = "ra2md") {
-    super(`The game is not built. Run build-web.cmd (or build-web.sh) in the repository root${game === "ra2" ? " with RA2_TARGET=game" : ""}.`);
+    super(
+      `The game is not built. Run build-web.cmd (or build-web.sh) in the repository root${game === "ra2" ? " with RA2_TARGET=game" : ""}.`,
+    );
     this.name = "GameNotBuilt";
   }
 }
@@ -28,6 +49,7 @@ export class GameNotBuilt extends Error {
 interface EmscriptenFs extends FsLike {
   mkdir(path: string): void;
   writeFile(path: string, data: Uint8Array): void;
+  symlink(target: string, path: string): void;
 }
 
 interface Ra2Module extends Partial<WasmMemory> {
@@ -36,11 +58,11 @@ interface Ra2Module extends Partial<WasmMemory> {
   printErr(line: string): void;
   onAbort(what: unknown): void;
   onRuntimeInitialized(): void;
-  preRun: (() => void)[];
+  /** The runtime comes up first, the page puts the game's files in place, and then it starts main() itself. */
+  noInitialRun: boolean;
+  callMain(args: string[]): void;
   locateFile(path: string): string;
   cwrap(name: string, returns: string | null, args: string[]): (...values: unknown[]) => unknown;
-  addRunDependency(id: string): void;
-  removeRunDependency(id: string): void;
   FS?: EmscriptenFs;
   ra2WolStart?(username: string, password: string): void;
   ra2WolSend?(line: string): void;
@@ -79,7 +101,7 @@ export function sourceStorage(files: FileSource): string {
 }
 
 export function sourceGame(files: FileSource): GameId {
-  return files.kind === "opfs" ? files.record.id : files.game ?? "ra2md";
+  return files.kind === "opfs" ? files.record.id : (files.game ?? "ra2md");
 }
 
 /** A per-runtime WOL identity. The original key format is 128 ASCII decimal digits. */
@@ -101,11 +123,16 @@ export function createWolDataKey(): Uint8Array {
 
 function stageWolDataKey(fs: EmscriptenFs, game: GameId): void {
   fs.writeFile("/game/woldata.key", createWolDataKey());
-  const name = fs.readdir("/game").find(name => name.toLowerCase() === gameIni(game)) ?? gameIni(game);
+  const name =
+    fs.readdir("/game").find((name) => name.toLowerCase() === gameIni(game)) ?? gameIni(game);
   const path = `/game/${name}`;
   let ini = new Uint8Array();
-  try { ini = fs.readFile(path) as Uint8Array<ArrayBuffer>; } catch { /* use the native defaults */ }
-  fs.writeFile(path, withBrowserWolPort(ini));
+  try {
+    ini = fs.readFile(path) as Uint8Array<ArrayBuffer>;
+  } catch {
+    /* use the native defaults */
+  }
+  replaceFile(fs, path, withBrowserWolPort(ini));
 }
 
 /** A battle's picture size. The game takes it from RA2MD.INI when a game starts. */
@@ -150,6 +177,24 @@ export function withVideoSize(ini: string, size: VideoSize): string {
   return lines.join(eol);
 }
 
+/** Reapply the launcher's explicit size after restored browser settings have replaced the imported INI. */
+export function stageVideoSize(
+  fs: Pick<FsLike, "readdir" | "readFile" | "writeFile">,
+  game: GameId,
+  size: VideoSize | null,
+): void {
+  if (!size) return;
+  const name = fs.readdir("/game").find((entry) => entry.toLowerCase() === gameIni(game));
+  if (!name) return;
+  const path = `/game/${name}`;
+  try {
+    const ini = new TextDecoder("latin1").decode(fs.readFile(path));
+    fs.writeFile(path, new TextEncoder().encode(withVideoSize(ini, size)));
+  } catch {
+    // A partial import may not have an INI; the game can use its native defaults.
+  }
+}
+
 export interface StartOptions {
   files: FileSource;
   /** When enabled, an app-managed Thai font replaces imported and mod game.fnt files before startup. */
@@ -164,13 +209,24 @@ export function argsFromQuery(search: string): string[] {
   return new URLSearchParams(search).getAll("arg");
 }
 
-export function gameArguments(extra: string[] = [], thaiFontFix: ThaiFontPreference = { enabled: false, fontId: "" }): string[] {
-  return ["--run", "--game", "/game", ...extra,
-    ...(thaiFontFix.enabled ? ["--thai-font-fix", "--thai-font-id", thaiFontFix.fontId] : [])];
+export function gameArguments(
+  extra: string[] = [],
+  thaiFontFix: ThaiFontPreference = { enabled: false, fontId: "" },
+): string[] {
+  return [
+    "--run",
+    "--game",
+    "/game",
+    ...extra,
+    ...(thaiFontFix.enabled ? ["--thai-font-fix", "--thai-font-id", thaiFontFix.fontId] : []),
+  ];
 }
 
 /** Whether this game's module is there. The dev server answers a missing file with the page, so check its content type. */
-export async function isBuilt(fetcher: typeof fetch = fetch, game: GameId = "ra2md"): Promise<boolean> {
+export async function isBuilt(
+  fetcher: typeof fetch = fetch,
+  game: GameId = "ra2md",
+): Promise<boolean> {
   try {
     const response = await fetcher(gameScript(game), { method: "HEAD" });
     return response.ok && (response.headers.get("content-type") ?? "").includes("javascript");
@@ -231,7 +287,9 @@ async function loadDevFiles(
   const index = (await response.json()) as DevIndex;
   if (index.files.length === 0) throw new Error("The dev server's game folder has no game files.");
   fs.mkdir("/game");
-  const files = index.files.filter((file) => shouldLoadImportedGameFile(file.name, thaiFontFix.enabled));
+  const files = index.files.filter((file) =>
+    shouldLoadImportedGameFile(file.name, thaiFontFix.enabled),
+  );
   const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
   let doneBytes = 0;
   let doneFiles = 0;
@@ -275,12 +333,15 @@ async function stageThaiFont(fs: EmscriptenFs, preference: ThaiFontPreference): 
   if (!preference.enabled) return;
   if (!preference.fontId) throw new Error("Choose a Thai font before enabling the Thai font fix.");
   const bytes = await readThaiFont(preference.fontId);
-  fs.writeFile("/game/game.fnt", bytes);
+  replaceFile(fs, "/game/game.fnt", bytes);
 }
 
 /**
- * A game the import put in OPFS, into the in-memory file system: each file whole, one at a time. Then
- * what the game saved last time goes back over it, and from then on its writes are kept (saves.ts).
+ * A game the import put in OPFS, into the game's folder. Big files (the archives) are only linked to
+ * their copy in OPFS, which the game's thread has mounted at /opfs and reads in place; the small ones
+ * are copied into memory, because the game edits some (the picture size, the online port) and reads
+ * the rest over and over. Then what the game saved last time goes back over it, and from then on its
+ * writes are kept (saves.ts).
  */
 async function loadOpfsFiles(
   fs: EmscriptenFs,
@@ -290,7 +351,9 @@ async function loadOpfsFiles(
   thaiFontFix: ThaiFontPreference,
 ): Promise<SaveSync> {
   fs.mkdir("/game");
-  const names = Object.keys(record.files).filter((name) => shouldLoadImportedGameFile(name, thaiFontFix.enabled));
+  const names = Object.keys(record.files).filter((name) =>
+    shouldLoadImportedGameFile(name, thaiFontFix.enabled),
+  );
   const totalBytes = names.reduce((sum, name) => sum + (record.files[name]?.size ?? 0), 0);
   let doneBytes = 0;
   let doneFiles = 0;
@@ -312,18 +375,34 @@ async function loadOpfsFiles(
         // already there
       }
     }
-    const bytes = await readGameFile(entry.home, name);
-    const stored =
-      video && name.toLowerCase() === gameIni(record.id)
-        ? new TextEncoder().encode(withVideoSize(new TextDecoder("latin1").decode(bytes), video))
-        : bytes;
-    fs.writeFile(`/game/${name}`, stored);
+    const isIni = name.toLowerCase() === gameIni(record.id);
+    if (entry.size >= READ_IN_PLACE_BYTES && !isIni) {
+      fs.symlink(mountedPath(gamePath(entry.home, name)), `/game/${name}`);
+    } else {
+      const bytes = await readGameFile(entry.home, name);
+      const stored =
+        video && isIni
+          ? new TextEncoder().encode(withVideoSize(new TextDecoder("latin1").decode(bytes), video))
+          : bytes;
+      fs.writeFile(`/game/${name}`, stored);
+    }
     doneBytes += entry.size;
     doneFiles++;
   }
-  const mods = await loadMods(fs, record.storage, { excludeGameFont: thaiFontFix.enabled });
-  await restoreSaves(fs, opfsSaveStore(), record.storage, (path) => !path.startsWith("mods/") || mods.includes(path.split("/")[1] ?? ""));
+  const mods = await loadMods(fs, record.storage, {
+    excludeGameFont: thaiFontFix.enabled,
+    inPlace: true,
+  });
+  await restoreSaves(
+    fs,
+    opfsSaveStore(),
+    record.storage,
+    (path) => !path.startsWith("mods/") || mods.includes(path.split("/")[1] ?? ""),
+  );
   stageWolDataKey(fs, record.id);
+  // Restored browser settings include the game's INI and can contain a stale mode.
+  // The launcher's explicit choice must win for this session and the next save sync.
+  stageVideoSize(fs, record.id, video);
   await stageThaiFont(fs, thaiFontFix);
   store.loading("the game");
   return startSaveSync(fs, opfsTarget(), record.storage);
@@ -376,74 +455,123 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
       print: (line: string) => store.line(line),
       printErr: (line: string) => store.line(line),
       onAbort: (what: unknown) => {
-        if (store.getSnapshot().phase !== "exited") fail(new Error(`The game aborted: ${String(what)}`));
+        if (store.getSnapshot().phase !== "exited")
+          fail(new Error(`The game aborted: ${String(what)}`));
       },
       locateFile: (path: string) => `${moduleBase}${path}`,
-      preRun: [] as (() => void)[],
     } as Partial<Ra2Module> as Ra2Module;
 
     let saves: SaveSync | null = null;
     let wolClient: WolClient | null = null;
-    // The bridge currently targets the local RA2Web server used by the WOL POC.
-    // Keep game credentials away from caller-supplied hosts.
-    const wolServer = "http://127.0.0.1:19090";
+    let udpRelay: UdpRelay | null = null;
+    // Only the operator's build settings choose where game credentials go.
+    // HTTP auth and the WOL socket can live at different paths behind a proxy.
+    const wolHttpUrl = import.meta.env.VITE_WOL_HTTP_URL ?? "http://127.0.0.1:19090";
+    const wolServer = {
+      httpUrl: wolHttpUrl,
+      socketUrl: import.meta.env.VITE_WOL_SOCKET_URL ?? toWolSocketUrl(wolHttpUrl),
+    };
     module.ra2WolStart = (username, password) => {
+      udpRelay?.stop();
       wolClient?.close();
       const client = new WolClient(wolServer, username, password);
       wolClient = client;
-      client.onLine((line) => module.ra2WolReceiveLine?.(line));
+      client.onLine((line) => {
+        if (wolClient !== client) return;
+        // STARTG carries the ticket for RA2Web's native datagram relay: open it
+        // before the game's OnGameStart so no first packet is lost.
+        const handoff = parseStartHandoff(line);
+        if (handoff) udpRelay?.start(handoff);
+        module.ra2WolReceiveLine?.(line);
+      });
+      client.onDisconnect(() => {
+        if (wolClient === client) module.ra2WolReceiveLine?.("@wolapi disconnected");
+      });
       void client.connect({ joinLobby: false }).then(
-        () => module.ra2WolReceiveLine?.("@wolapi connected"),
-        (error: unknown) => module.ra2WolReceiveLine?.(`@wolapi error ${error instanceof Error ? error.message : String(error)}`),
+        () => {
+          if (wolClient === client) module.ra2WolReceiveLine?.("@wolapi connected");
+        },
+        (error: unknown) => {
+          if (wolClient === client)
+            module.ra2WolReceiveLine?.(
+              `@wolapi error ${error instanceof Error ? error.message : String(error)}`,
+            );
+        },
       );
     };
     module.ra2WolSend = (line) => {
-      try { wolClient?.sendRaw(line); }
-      catch (error) {
-        module.ra2WolReceiveLine?.(`@wolapi error ${error instanceof Error ? error.message : String(error)}`);
+      try {
+        // Entering a new lobby/room ends the previous match. PART happens while
+        // the native game is still starting, so its relay must stay alive then.
+        if (/^(?:join|joingame)\s/i.test(line)) udpRelay?.stop();
+        wolClient?.sendRaw(line);
+      } catch (error) {
+        module.ra2WolReceiveLine?.(
+          `@wolapi error ${error instanceof Error ? error.message : String(error)}`,
+        );
       }
     };
     module.ra2WolStop = () => {
+      udpRelay?.stop();
       wolClient?.close();
       wolClient = null;
+    };
+    // Files cannot be put in place before the runtime is up (WasmFS's calls into the file system abort in
+    // preRun), so the game does not start itself: once it is up the page loads the files and calls main().
+    module.noInitialRun = true;
+    const files = options.files;
+    const loadFiles = (fs: EmscriptenFs): Promise<void> => {
+      if (files.kind === "opfs")
+        return loadOpfsFiles(fs, store, files.record, files.video ?? null, thaiFontFix).then(
+          (sync) => {
+            saves = sync;
+          },
+        );
+      if (files.kind === "dev-folder" || files.kind === "test-folder") {
+        const base = appPath(files.kind === "test-folder" ? "test-game" : "dev-game");
+        return loadDevFiles(fs, store, files.video ?? null, fetch, base, game, thaiFontFix);
+      }
+      return Promise.resolve();
     };
     module.onRuntimeInitialized = () => {
       try {
         const receiveWol = module.cwrap("ra2_wolapi_receive_line", null, ["array"]);
-        module.ra2WolReceiveLine = (line) => { receiveWol(wolLineBytes(line)); };
-        resolve(createHandle(module, saves, game));
-      }
-      catch (error) { fail(error); }
-    };
-
-    const files = options.files;
-    if (files.kind === "opfs") {
-      module.preRun.push(() => {
-        module.addRunDependency("game-files");
-        const fs = module.FS;
-        if (!fs) return fail(new Error("the game's file system is not up yet"));
-        loadOpfsFiles(fs, store, files.record, files.video ?? null, thaiFontFix).then(
-          (sync) => {
-            saves = sync;
-            module.removeRunDependency("game-files");
+        module.ra2WolReceiveLine = (line) => {
+          receiveWol(wolLineBytes(line));
+        };
+        const udp = {
+          ra2_udp_buffer: module.cwrap("ra2_udp_buffer", "number", []) as () => number,
+          ra2_udp_pop: module.cwrap("ra2_udp_pop", "number", ["number"]) as (
+            capacity: number,
+          ) => number,
+          ra2_udp_push: module.cwrap("ra2_udp_push", "number", ["number"]) as (
+            length: number,
+          ) => number,
+        };
+        // ?udptrace logs Winsock calls and the relay's datagrams. The router drops the
+        // query later, so read it now.
+        const udpTrace = typeof location !== "undefined" && /[?&]udptrace/.test(location.search);
+        if (udpTrace) (module.cwrap("ra2_net_trace", null, ["number"]) as (on: number) => void)(1);
+        udpRelay = new UdpRelay(
+          udp,
+          () => {
+            if (!module.HEAPU8) throw new Error("the game's memory is not up yet");
+            return module.HEAPU8;
           },
-          (error: unknown) => fail(error),
+          undefined,
+          (message) => console.warn(`[udp-relay] ${message}`),
+          udpTrace,
         );
-      });
-    }
-    if (files.kind === "dev-folder" || files.kind === "test-folder") {
-      module.preRun.push(() => {
-        module.addRunDependency("game-files");
         const fs = module.FS;
-        if (!fs) return fail(new Error("the game's file system is not up yet"));
-        const video = files.video;
-        const base = appPath(files.kind === "test-folder" ? "test-game" : "dev-game");
-        loadDevFiles(fs, store, video ?? null, fetch, base, game, thaiFontFix).then(
-          () => module.removeRunDependency("game-files"),
-          (error: unknown) => fail(error),
-        );
-      });
-    }
+        if (!fs) throw new Error("the game's file system is not up yet");
+        loadFiles(fs).then(() => {
+          resolve(createHandle(module, saves, game));
+          module.callMain(module.arguments);
+        }, fail);
+      } catch (error) {
+        fail(error);
+      }
+    };
 
     // a trap in the game's thread reaches the page as an uncaught error from its worker
     window.addEventListener("error", (event) => {

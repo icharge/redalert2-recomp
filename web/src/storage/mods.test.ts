@@ -1,7 +1,7 @@
 import { IDBFactory } from "fake-indexeddb";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { Manifest } from "./manifest";
-import { importMod, listMods, removeMod } from "./mods";
+import { importMod, listMods, loadMods, removeMod } from "./mods";
 import type { CopyTarget } from "./opfs";
 import type { FolderSource } from "./importer";
 
@@ -74,5 +74,32 @@ describe("mods", () => {
     expect(files.size).toBe(0);
     expect(await listMods(manifest, "ra2md")).toEqual([]);
     manifest.close();
+  });
+});
+
+describe("loadMods", () => {
+  it("links a big mod file to its copy in OPFS and copies the small ones", async () => {
+    const factory = new IDBFactory();
+    vi.stubGlobal("indexedDB", factory);
+    const manifest = await Manifest.open(factory);
+    await manifest.setSetting("mods:slot-1-ra2md", [
+      { name: "Big", files: [{ name: "big.mix", size: 5_000_000 }, { name: "rulesmd.ini", size: 4 }], bytes: 5_000_004 },
+    ]);
+    manifest.close();
+    const made: string[] = [];
+    const links: string[][] = [];
+    const written: string[] = [];
+    const fs = {
+      readdir: () => [],
+      stat: () => ({ mode: 0, size: 0, mtime: 0 }),
+      readFile: () => new Uint8Array(),
+      writeFile: (path: string) => void written.push(path),
+      mkdir: (path: string) => void made.push(path),
+      symlink: (target: string, path: string) => void links.push([target, path]),
+    };
+    // the small file's bytes come from OPFS, which this test has no files in
+    await loadMods(fs, "slot-1-ra2md", { inPlace: true }).catch(() => {}).finally(() => vi.unstubAllGlobals());
+    expect(links).toEqual([["/opfs/game/slot-1-ra2md/mods/Big/big.mix", "/game/mods/Big/big.mix"]]);
+    expect(written).not.toContain("/game/mods/Big/big.mix");
   });
 });

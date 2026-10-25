@@ -41,6 +41,16 @@ export class CopyCancelled extends Error {
 
 export const gamePath = (home: string, name: string) => `game/${home}/${name}`;
 
+/** Where the game's thread mounts OPFS in its own file system (src/web/main.c). */
+export const OPFS_MOUNT = "/opfs";
+
+/** Files this big are read in place from OPFS; smaller ones are copied into memory, where the game's
+ *  many small reads of them (its settings files, a string table) cost nothing. */
+export const READ_IN_PLACE_BYTES = 1024 * 1024;
+
+/** The path of an OPFS file in the game thread's file system. */
+export const mountedPath = (path: string) => `${OPFS_MOUNT}/${path}`;
+
 /** Passes a stream through, telling `onBytes` how many have gone by. */
 function counting(
   stream: ReadableStream<Uint8Array>,

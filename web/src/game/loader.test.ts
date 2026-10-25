@@ -9,6 +9,7 @@ import {
   isBuilt,
   readBody,
   startGame,
+  stageVideoSize,
   videoFromQuery,
   withVideoSize,
 } from "./loader";
@@ -19,6 +20,8 @@ const answer = (ok: boolean, type: string) =>
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
+  delete window.Module;
 });
 
 describe("arguments", () => {
@@ -26,7 +29,12 @@ describe("arguments", () => {
     expect(gameArguments()).toEqual(["--run", "--game", "/game"]);
     expect(gameArguments(["--hd-voxels"])).toEqual(["--run", "--game", "/game", "--hd-voxels"]);
     expect(gameArguments([], { enabled: true, fontId: "Tahoma-Th-1f" })).toEqual([
-      "--run", "--game", "/game", "--thai-font-fix", "--thai-font-id", "Tahoma-Th-1f",
+      "--run",
+      "--game",
+      "/game",
+      "--thai-font-fix",
+      "--thai-font-id",
+      "Tahoma-Th-1f",
     ]);
   });
 
@@ -123,13 +131,144 @@ describe("readBody", () => {
 });
 
 describe("startGame", () => {
+  it("uses the operator's build setting for WOL authentication", async () => {
+    vi.stubEnv("VITE_WOL_HTTP_URL", "https://wol.test/service/");
+    vi.stubEnv("VITE_WOL_SOCKET_URL", "wss://wol.test/service/wol");
+    const requests: string[] = [];
+    vi.stubGlobal("fetch", (input: unknown, init?: RequestInit) => {
+      if (init?.method === "HEAD") return answer(true, "text/javascript");
+      requests.push(String(input));
+      return new Promise<Response>(() => {});
+    });
+    const startup = startGame({ files: { kind: "already-there" }, store: new GameStore() }).catch(() => {});
+    await vi.waitFor(() => expect(window.Module?.ra2WolStart).toBeTypeOf("function"));
+    const module = window.Module!;
+    try {
+      module.ra2WolStart!("test", "password123");
+      expect(requests).toEqual(["https://wol.test/service/register"]);
+    } finally {
+      module.ra2WolStop!();
+      module.onAbort!("test cleanup");
+      await startup;
+    }
+  });
+
+  it.each(["join #Lob_41_0 zotclot9", "joingame #next 1 4 41 0 0 0 0", "reconnect"])(
+    "closes the prior gameplay relay on %s, preserving it on PART",
+    async (next) => {
+      const sockets: Socket[] = [];
+      class Socket extends EventTarget {
+        readyState = 0;
+        sent: string[] = [];
+        constructor(readonly url: string) {
+          super();
+          sockets.push(this);
+          queueMicrotask(() => { this.readyState = 1; this.dispatchEvent(new Event("open")); });
+        }
+        send(data: string) {
+          this.sent.push(data.trim());
+          const reply = data.startsWith("cvers ") ? ":wol 700 * :ok"
+            : data.startsWith("setlocale ") ? ":wol 310 * :ok"
+            : data.startsWith("session ") ? ":wol 376 test :done"
+            : data.startsWith("ticket ") ? "ok 10.1.2.3" : null;
+          if (reply) queueMicrotask(() => this.receive(reply));
+        }
+        receive(data: string) { this.dispatchEvent(new MessageEvent("message", { data })); }
+        close() { this.readyState = 3; this.dispatchEvent(new Event("close")); }
+      }
+      vi.stubGlobal("WebSocket", Socket);
+      vi.stubGlobal("fetch", (_url: unknown, init?: RequestInit) => init?.method === "HEAD"
+        ? answer(true, "text/javascript") : Promise.resolve(new Response(JSON.stringify({ sessionToken: "token" }))));
+      const startup = startGame({ files: { kind: "already-there" }, store: new GameStore() });
+      await vi.waitFor(() => expect(window.Module?.onRuntimeInitialized).toBeTypeOf("function"));
+      const module = window.Module!;
+      module.FS = { readdir: () => [] } as never;
+      module.cwrap = (() => () => 0) as never;
+      module.callMain = vi.fn();
+      module.HEAPU8 = new Uint8Array(2048);
+      module.onRuntimeInitialized!();
+      await startup;
+      try {
+        module.ra2WolStart!("test", "password123");
+        await vi.waitFor(() => expect(sockets[0]?.sent).toContain("session token"));
+        const wol = sockets[0]!;
+        wol.receive(":wol STARTG #room :ws://127.0.0.1:19090/gserv :g1-local 1 ticket");
+        await vi.waitFor(() => expect(sockets[1]?.sent).toContain("ticket ticket"));
+        const relay = sockets[1]!;
+        module.ra2WolSend!("part #room");
+        expect(relay.readyState).toBe(1); // WOL room exit precedes native map loading.
+        if (next === "reconnect") module.ra2WolStart!("test", "password123");
+        else module.ra2WolSend!(next);
+        expect(relay.readyState).toBe(3);
+        if (next !== "reconnect") {
+          expect(wol.readyState).toBe(1);
+          expect(wol.sent).toContain(next);
+        }
+      } finally {
+        module.ra2WolStop!();
+      }
+    },
+  );
+
+  it("does not deliver a cancelled WOL login result back into the game", async () => {
+    let answerLogin!: (response: Response) => void;
+    vi.stubGlobal("fetch", (_input: unknown, init?: RequestInit) =>
+      init?.method === "HEAD"
+        ? answer(true, "text/javascript")
+        : new Promise<Response>((resolve) => {
+            answerLogin = resolve;
+          }),
+    );
+    const startup = startGame({ files: { kind: "already-there" }, store: new GameStore() }).catch(
+      () => {},
+    );
+    await vi.waitFor(() => expect(window.Module?.ra2WolStart).toBeTypeOf("function"));
+    const module = window.Module!;
+    const receive = vi.fn();
+    module.ra2WolReceiveLine = receive;
+    module.ra2WolStart!("test", "password123");
+    module.ra2WolStop!();
+    try {
+      answerLogin(new Response(JSON.stringify({ sessionToken: "token" }), { status: 200 }));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(receive).not.toHaveBeenCalled();
+    } finally {
+      module.onAbort!("test cleanup");
+      await startup;
+    }
+  });
+
   it("rejects an aborted startup so leaving the page cannot wait forever", async () => {
     vi.stubGlobal("fetch", () => answer(true, "text/javascript"));
     const outcome = startGame({ files: { kind: "already-there" }, store: new GameStore() }).then(
-      () => "resolved", (error: Error) => error.message);
+      () => "resolved",
+      (error: Error) => error.message,
+    );
     await vi.waitFor(() => expect(window.Module?.onAbort).toBeTypeOf("function"));
     window.Module!.onAbort!("bad wasm");
-    expect(await Promise.race([outcome, new Promise((resolve) => setTimeout(() => resolve("still pending"), 100))])).toContain("bad wasm");
+    expect(
+      await Promise.race([
+        outcome,
+        new Promise((resolve) => setTimeout(() => resolve("still pending"), 100)),
+      ]),
+    ).toContain("bad wasm");
+  });
+  it("holds main() until the runtime is up and the files are in place, then starts it itself", async () => {
+    vi.stubGlobal("fetch", () => answer(true, "text/javascript"));
+    const startup = startGame({ files: { kind: "already-there" }, store: new GameStore() });
+    await vi.waitFor(() => expect(window.Module?.onRuntimeInitialized).toBeTypeOf("function"));
+    const module = window.Module as Record<string, unknown> & typeof window.Module;
+    // WasmFS's calls into the file system abort before the runtime is up, so Emscripten must not run main()
+    expect(module!.noInitialRun).toBe(true);
+    expect(module).not.toHaveProperty("preRun");
+    const callMain = vi.fn();
+    module!.callMain = callMain;
+    module!.FS = { readdir: () => [] } as never;
+    module!.cwrap = (() => () => 0) as never;
+    module!.onRuntimeInitialized!();
+    const handle = await startup;
+    expect(callMain).toHaveBeenCalledWith(["--run", "--game", "/game"]);
+    expect(handle.saves).toBeNull();
   });
   it("says the game isn't built when there is no ra2.js", async () => {
     vi.stubGlobal("fetch", () => answer(true, "text/html"));
@@ -163,6 +302,24 @@ describe("video size", () => {
     );
     expect(withVideoSize("[Audio]\nx=1", { w: 1280, h: 720 })).toBe(
       "[Audio]\nx=1\n[Video]\nScreenWidth=1280\nScreenHeight=720",
+    );
+  });
+
+  it("reapplies the launcher size after a saved RA2.INI is restored", async () => {
+    const fs = new Map<string, Uint8Array>([
+      [
+        "/game/RA2MD.INI",
+        new TextEncoder().encode("[Video]\nScreenWidth=1024\nScreenHeight=768\n"),
+      ],
+    ]);
+    const stagedFs = {
+      readdir: () => ["RA2MD.INI"],
+      readFile: (path: string) => fs.get(path)!,
+      writeFile: (path: string, bytes: Uint8Array) => fs.set(path, bytes),
+    };
+    stageVideoSize(stagedFs, "ra2md", { w: 1920, h: 1080 });
+    expect(new TextDecoder().decode(fs.get("/game/RA2MD.INI"))).toContain(
+      "ScreenWidth=1920\nScreenHeight=1080",
     );
   });
 });
