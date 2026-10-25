@@ -26,6 +26,49 @@ Additional checks recorded in the working session:
 - RA2 and Yuri's Revenge WOLAPI self-tests pass and check preservation of
   room flag bits `0x200` and `0x400` through create and room-list parsing.
 
+## Status, 2026-10-25 (end of session)
+
+Committed as `b555f0a`. Done and verified: the shell/match switch, the saved-game switch,
+the Options list, the in-game menu alignment, the return to 800x600 (native and browser),
+and the browser `--web` cases (5 of 5 on a private 1 GB / 4 GB-cap build, run with
+`playtest.py --web --web-url http://localhost:<port>/`; `skirmish-start`, `res-1280x720`,
+`res-1920x1080`, `options-pick-size`, `res-pause-menu-1280x720`). The published build's
+768 MB cap still cannot run that suite (zero-copy work). Left: the online clamp in a real
+lobby with the 0x200 flag (below; the unflagged upper and lower clamps ran live) and nothing
+else: `skirmish-build` now passes (below).
+
+## Online clamp in a real two-player lobby (run 2026-10-25)
+
+Two browsers through the local RA2Web server (`127.0.0.1:19090`), a private 1 GB / 4 GB-cap
+build served with `--build`, the dev server's game folder, accounts `woltst1`/`woltst2`.
+`web/e2e/wol.mjs` gained `--expect-size WxH`: after both simulations pass frame 300 it
+asserts both clients' canvas size.
+
+```
+node e2e/wol.mjs --url 'http://localhost:5173/?target=game' --build <private build>/ra2 \
+  --shots ../work/wol-clamp-A --arg --intro --play --expect-size 1920x1080
+```
+
+- Both clients with `RA2.INI` 2560x1440, an unflagged room: the lobby, STARTG handoff and
+  FRAMESYNC all worked, and both clients played at 1920x1080 (host and guest `size`
+  1920x1080 at frame ~540; their settings still said 2560x1440). The upper clamp holds live.
+- Not run in a lobby: the room flag 0x200 (1024 limit) join path, since the test's host
+  creates an unflagged room; the flag bits are covered by the WOLAPI self-test and the unit
+  tests.
+- Both clients with `RA2.INI` 640x480 (`--expect-size 1024x768`): both played at 1024x768
+  (frame ~540, FRAMESYNC), so the lower bound holds live too.
+- `RA2.INI` in `game/` was changed for these runs and restored from `work/RA2.INI.bak`.
+
+## `skirmish-build` (fixed 2026-10-25)
+
+It failed on the recomp build because the case clicked where Yuri's MCV starts; Red Alert 2's
+start position is random, so the deploy never happened and no cameo was built. The case now
+drags a band over the view before pressing D, and asks for two builds and two placements, not
+a surviving player (Red Alert 2's Brutal AI beats an idle player in the run). It passed three
+times on the recomp build (`produce x3, place x11`; `produce x2, place x17`). `--original`
+still fails it (the shipping build starts at 640x480 with no 800x600 shell and never builds),
+which is not a regression of this work.
+
 ## Remaining verification
 
 The online clamp has not been exercised in a real two-player lobby. Patch unit

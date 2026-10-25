@@ -56,7 +56,14 @@ async function verifyPlaying(host, guest) {
     assert.ok(simulationFrame(run) > before[index] + 60, 'simulation keeps advancing with its remote peer');
     assert.ok(run.all.some(line => line.includes('Received FRAMESYNC')), 'native connection receives frame synchronization');
   }
-  console.log('PLAYING', JSON.stringify({ before, after: [host, guest].map(simulationFrame) }));
+  const sizes = (await Promise.all([host, guest].map(run => run.state()))).map(state => state?.size);
+  console.log('PLAYING', JSON.stringify({ before, after: [host, guest].map(simulationFrame), sizes }));
+  // --expect-size 1920x1080: the online resolution clamp (docs/ra2-resolution-plan.md, step 3)
+  const expectAt = process.argv.indexOf('--expect-size');
+  if (expectAt > 0) {
+    const [w, h] = process.argv[expectAt + 1].split('x').map(Number);
+    assert.deepEqual(sizes, [{ w, h }, { w, h }], `both clients play at ${w}x${h}`);
+  }
   await dump('host', 'playing');
   await dump('guest', 'playing');
 }

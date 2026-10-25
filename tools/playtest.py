@@ -257,14 +257,17 @@ def place(script):
 case('skirmish-build', place(place(
     SP().press(SINGLE, 'Skirmish', SKIRMISH).press(SKIRMISH, 'StartGame')
     .waitlog(INGAME).move(236, 240, after=2).key('0x48', after=10)
-    .click(236, 213, after=2).key('0x44', after=1).waitlog('Adding event DEPLOY')
+    # a band over the whole view, not a click: the start position (and so the MCV) is random
+    .drag(8, 8, 470, 440, after=2).key('0x44', after=1).waitlog('Adding event DEPLOY')
     .move(523, 251, after=8).click(523, 251, after=1)                   # power plant
     .move(523, 251, after=28).click(523, 251, after=1))                  # ready: pick it up
     .move(523, 300, after=4).click(523, 300, after=1)                   # barracks
     .move(523, 300, after=31).click(523, 300, after=1))                  # ready: pick it up
     .move(573, 210, after=4).click(573, 210, after=1)                   # the infantry tab (third)
     .move(523, 251, after=2).click(523, 251, after=1),                  # a GI
-    230, ingame=True, alive=True, log={'Adding event PRODUCE': 3, 'Adding event PLACE': 2},
+    # Red Alert 2's Brutal AI beats an idle player within the run, so the player's
+    # survival is not asked; the third cameo (the GI) comes after that, so two builds are.
+    230, ingame=True, log={'Adding event PRODUCE': 2, 'Adding event PLACE': 2},
     # The sidebar's coordinates are 640x480's, whatever the player's INI says
     # (a CnCNet install had 3440x1440, and every click missed the sidebar).
     ini={'Video': {'ScreenWidth': 640, 'ScreenHeight': 480}})
