@@ -212,7 +212,7 @@ try {
     const guest = await open('guest', 'woltst2');
     await waitWire(guest, l => l.includes(' 322 ') && l.includes("#woltst1's_game"), 'host room listing');
     await guest.page.waitForTimeout(300);
-    await guest.clickGame(150, ra2 ? 105 : 65);
+    await guest.clickGame(150, ra2 ? 47 : 65);
     await guest.clickGame(720, 263);
     if (!ra2 && (await guest.state()).settings.width > 1024) {
       await waitNative(guest, '[dialog] open 0xFB');
@@ -234,7 +234,7 @@ try {
         await waitWire(guest, (l, i) => i >= retryWire && l.includes(' 323 '), 'lobby recovery after bad password');
         await guest.page.waitForTimeout(300);
         const retryNative = guest.all.length;
-        await guest.clickGame(150, ra2 ? 105 : 65);
+        await guest.clickGame(150, ra2 ? 47 : 65);
         await guest.clickGame(720, 263);
         await waitNative(guest, '[dialog] open 0xE1', retryNative);
         await guest.page.waitForTimeout(300);

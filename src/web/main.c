@@ -267,6 +267,82 @@ static void frame_pump(void) {
     g_shown++;
 }
 
+#ifdef RA2_TARGET_GAME
+/* Red Alert 2's Custom Match screen (dialog 0x113) is laid out for 640x480 (426x295 dialog units),
+ * while Yuri's Revenge ships the same screen laid out for 800x600 (533x369). The game puts RA2's
+ * list, chat and entry controls at their template rectangles plus the offset that centres 640x480
+ * in 800x600 (80,60 pixels), and the sidebar's buttons and channel list are placed by the game
+ * itself. Give the content controls YR's rectangles, less that offset, so they fill the area the
+ * sidebar leaves free. Rectangles in dialog units (6/4 and 13/8 pixels); the sort-header row YR has
+ * above its lists does not exist here, so the lists start higher. */
+#define LOBBY_RA2_ID 0x113u
+#define LOBBY_OFFSET_X 80
+#define LOBBY_OFFSET_Y 60
+static int16_t lobby_shift(int du, int offset_px, int num, int den) {   /* du*num/den px, less offset_px, back in du */
+    int v = (du * num / den - offset_px) * den;
+    return (int16_t)(v >= 0 ? (v + num / 2) / num : -((-v + num / 2) / num));
+}
+static const struct { uint32_t id; int16_t x, y, cx, cy; } g_lobby_rects[] = {
+    { 0x55D,   8,   6,  17, 14 },   /* refresh */
+    { 0x6EE,   7,  22, 200, 201 },  /* games */
+    { 0x53E, 214,  22, 200, 201 },  /* players */
+    { 0x53F,   7, 227, 407,  98 },  /* chat */
+    { 0x540,   7, 328, 386,  14 },  /* chat entry */
+    { 0x3ED, 397, 328,  17,  14 },  /* send */
+    { 0x75F, 396,   6,  18,  12 },
+    { 0x760, 384,   8,  10,  10 },
+};
+static const struct { int16_t x, y, cx, cy; } g_lobby_labels[2] = {   /* the two unnamed statics: games, players */
+    { 33, 6, 133, 10 }, { 216, 6, 104, 10 },
+};
+
+static uint32_t dlg_skip_name(uint32_t p) {   /* a DLGTEMPLATE sz_or_ord */
+    uint16_t w = MEM16(p);
+    if (w == 0) return p + 2;
+    if (w == 0xFFFFu) return p + 4;
+    while (MEM16(p)) p += 2;
+    return p + 2;
+}
+
+static void ra2_dialog_template_hook(uint32_t id, uint32_t tmpl) {
+    if (id != LOBBY_RA2_ID || MEM16(tmpl) != 1 || MEM16(tmpl + 2) != 0xFFFFu) return;
+    if ((int16_t)MEM16(tmpl + 22) != 426) return;   /* already patched, or not RA2's */
+    uint32_t count = MEM16(tmpl + 16), p = tmpl + 26;
+    MEM16(tmpl + 22) = 533, MEM16(tmpl + 24) = 369;
+    p = dlg_skip_name(p);                /* menu */
+    p = dlg_skip_name(p);                /* class */
+    p = dlg_skip_name(p);                /* title */
+    if (MEM32(tmpl + 12) & 0x40u) {      /* DS_SETFONT: point size, weight, italic + charset, typeface */
+        p += 6;
+        p = dlg_skip_name(p);
+    }
+    int label = 0;
+    for (uint32_t i = 0; i < count; i++) {
+        p = (p + 3) & ~3u;
+        uint32_t cid = MEM32(p + 20);
+        int16_t *r = NULL;
+        int16_t placed[4];
+        if (cid == 0xFFFFFFFFu && label < 2) {
+            placed[0] = g_lobby_labels[label].x, placed[1] = g_lobby_labels[label].y;
+            placed[2] = g_lobby_labels[label].cx, placed[3] = g_lobby_labels[label].cy;
+            label++, r = placed;
+        } else {
+            for (size_t k = 0; k < sizeof g_lobby_rects / sizeof *g_lobby_rects && !r; k++)
+                if (g_lobby_rects[k].id == cid) r = &g_lobby_rects[k].x;
+        }
+        if (r) {
+            MEM16(p + 12) = (uint16_t)lobby_shift(r[0], LOBBY_OFFSET_X, 6, 4);
+            MEM16(p + 14) = (uint16_t)lobby_shift(r[1], LOBBY_OFFSET_Y, 13, 8);
+            MEM16(p + 16) = (uint16_t)r[2], MEM16(p + 18) = (uint16_t)r[3];
+        }
+        p += 24;
+        p = dlg_skip_name(p);            /* class */
+        p = dlg_skip_name(p);            /* title */
+        p += 2 + MEM16(p);               /* creation data */
+    }
+}
+#endif
+
 static uint32_t exe_stamp(const char *path) {
     uint8_t head[4096] = { 0 };
     FILE *f = fopen(path, "rb");
@@ -444,6 +520,9 @@ int main(int argc, char **argv) {
     win32hle_register(g_ra2_shims);    /* first: the game's own answers win */
     recomp_host_init();
     hle_com_register_class(CLSID_Blowfish, ra2_blowfish_create);
+#ifdef RA2_TARGET_GAME
+    hle_dialog_template_hook = ra2_dialog_template_hook;
+#endif
     ra2_wolapi_register();
     printf(RA2_TITLE " recomp host (browser)\n  lifted functions in dispatch: %u\n", recomp_dispatch_count);
 
