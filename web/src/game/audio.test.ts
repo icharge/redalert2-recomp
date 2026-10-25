@@ -6,6 +6,12 @@ class FakeContext extends EventTarget {
   state: AudioContextState = "suspended";
   audioWorklet = { addModule: vi.fn(() => Promise.resolve()) };
   destination = {};
+  currentTime = 1.5;
+  gainNode = {
+    gain: { setTargetAtTime: vi.fn() },
+    connect: vi.fn((target: unknown) => target),
+  };
+  createGain = vi.fn(() => this.gainNode);
   resume = vi.fn(() => {
     if (this.allowed) this.become("running");
     return Promise.resolve();
@@ -26,7 +32,7 @@ class FakeNode {
   constructor(_context: unknown, name: string, options: AudioWorkletNodeOptions) {
     FakeNode.made.push({ name, options });
   }
-  connect = vi.fn();
+  connect = vi.fn((target: unknown) => target);
 }
 
 function setup() {
@@ -136,6 +142,38 @@ describe("GameAudio", () => {
     expect(audio.state).toBe("unavailable");
     expect(env.createContext).not.toHaveBeenCalled();
     warn.mockRestore();
+  });
+
+  it("plays through a gain that goes to zero when quiet and back to one after", async () => {
+    const { audio, context } = setup();
+    await audio.start();
+    const [node] = FakeNode.made;
+    expect(node).toBeDefined();
+    expect(context.gainNode.connect).toHaveBeenCalledWith(context.destination);
+    const ramp = context.gainNode.gain.setTargetAtTime;
+    ramp.mockClear();
+    audio.setQuiet(true);
+    expect(ramp).toHaveBeenLastCalledWith(0, 1.5, expect.any(Number));
+    audio.setQuiet(false);
+    expect(ramp).toHaveBeenLastCalledWith(1, 1.5, expect.any(Number));
+  });
+
+  it("is quiet from the first sound when asked to be before it starts", async () => {
+    const { audio, context } = setup();
+    audio.setQuiet(true);
+    await audio.start();
+    expect(context.gainNode.gain.setTargetAtTime).toHaveBeenLastCalledWith(
+      0,
+      1.5,
+      expect.any(Number),
+    );
+  });
+
+  it("ignores being told to be quiet once closed", async () => {
+    const { audio } = setup();
+    await audio.start();
+    audio.close();
+    expect(() => audio.setQuiet(true)).not.toThrow();
   });
 
   it("reads the underrun count the worklet keeps, and lets go on close", async () => {

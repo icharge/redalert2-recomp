@@ -168,6 +168,12 @@ static int match_running(void) {
            g_sh.cursor_kind == RA2_CURSOR_NONE && !pause_dialog_visible();
 }
 
+/* A match is on, for the music: the game's frames are moving, or its pause menu holds them still. Unlike
+ * match_running, it does not care for the cursor, and the pause menu counts: the music goes on behind it. */
+static int in_match(void) {
+    return (g_frame_at && emscripten_get_now() - g_frame_at < 1000.0) || pause_dialog_visible();
+}
+
 /* Open the game's menu, as Escape does, if a match is running: the page lost the player's attention
  * (focus left the window or the game area, Settings opened). Asked again within a moment (the
  * menu takes a frame to show) it does nothing, or the second Escape would close it. */
@@ -343,6 +349,10 @@ EMSCRIPTEN_KEEPALIVE void ra2_quit(void) { push(IN_QUIT, 0, 0, 0); }
 EMSCRIPTEN_KEEPALIVE void ra2_focus(int focused) { push(IN_FOCUS, (uint32_t)(focused != 0), 0, 0); }
 EMSCRIPTEN_KEEPALIVE void ra2_setting(int key, int value, int extra) { push(IN_SETTING, (uint32_t)key, (uint32_t)value, (uint32_t)extra); }
 EMSCRIPTEN_KEEPALIVE void ra2_set_volume(float v) { hle_dsound_set_master(v < 0 ? 0 : v > 1 ? 1 : v); }
+/* Whether the game's music plays outside a match (the page's setting). Off, the song goes on playing, silent, in
+ * menus, lobbies and movies, and is heard again when a match is on (in_match). */
+static volatile int g_menu_music = 1;
+EMSCRIPTEN_KEEPALIVE void ra2_set_menu_music(int allowed) { g_menu_music = allowed != 0; }
 /* The sound ring (win32hle.h, hle_audio_ring_t): the page's audio worklet reads it while ra2_audio_live(1) holds. */
 EMSCRIPTEN_KEEPALIVE void *ra2_audio(void) { return hle_audio_ring(); }
 EMSCRIPTEN_KEEPALIVE void ra2_audio_live(int live) { hle_audio_live(live); }
@@ -425,6 +435,7 @@ void web_presenter_pump(void) {
     /* Dialog paints can finish without a primary Unlock. Sample the game's
      * presented surface at its regular pump boundary as well. */
     present_now();
+    hle_dsound_music_gate(g_menu_music || in_match());
     uint32_t now = hle_ticks_ms();
     uint32_t seen = MEM32(RA2_GAME_FRAME_VA);
     if (seen != g_frame_seen) {                          /* a game frame came: how long since the last */

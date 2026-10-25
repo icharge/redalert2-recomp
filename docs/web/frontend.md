@@ -45,7 +45,7 @@ web/
     components/
       SettingsDialog.tsx    browser-side settings (below)
       StorageMeter.tsx
-      SoundControl.tsx      the "click to start sound" bar, and the volume
+      SoundControl.tsx      the "click to start sound" bar, the volume and the two switches about when the game is heard
       LanPanel.tsx          one-peer LAN setup through a manual WebRTC offer/answer
       ImportProgress.tsx
       CrashReport.tsx
@@ -56,9 +56,11 @@ web/
       protocol.ts           the types of every message, export and shared-memory word
       presenter.ts          draws the game's shared picture and cursor on the canvas
       input.ts              the mouse and keys, as calls on the game's exports; the key table
-      audio.ts              the AudioContext and the worklet over the sound ring; resumes on the first gesture
+      audio.ts              the AudioContext and the worklet over the sound ring; resumes on the first gesture; a gain after the worklet goes quiet when asked (`setQuiet`)
       lan.ts                WebRTC peer signaling and the page-to-IPX datagram bridge
       volume.ts             the volume, kept in the manifest's settings
+      sound-preferences.ts  "mute when the window loses focus" and "play music in menus", kept the same way
+      attention.ts          `useAttention`: the tab shows and the window has the focus
     storage/
       opfs.ts               copying into OPFS, reading back, removing
       manifest.ts           what is imported (IndexedDB)
@@ -124,6 +126,8 @@ belongs to the browser:
 | Fullscreen on start | IndexedDB |
 | Pointer lock in a window (edge scrolling) | IndexedDB |
 | Master volume | IndexedDB, sent to the game (`ra2_set_volume`) |
+| Mute when the window loses focus (off by default) | IndexedDB; a page-side gain, the game keeps mixing |
+| Play music in menus (on by default) | IndexedDB, sent to the game (`ra2_set_menu_music`) |
 | Storage: used, quota, "persist storage" request, remove a game | OPFS, `navigator.storage` |
 | Show the frame-time overlay | IndexedDB |
 

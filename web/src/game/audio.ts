@@ -4,6 +4,8 @@ import { AUDIO_PCM_OFFSET, AudioRing, type Ra2Exports } from "./protocol";
 /** The game mixes at this rate (HLE_AUDIO_RATE): the context runs at it, so the worklet never resamples. */
 export const AUDIO_RATE = 44100;
 export const WORKLET_NAME = "ra2-ring";
+/** Time constant, in seconds, of the fade when the page goes quiet or comes back (about 50 ms to settle). */
+const QUIET_RAMP = 0.012;
 
 /**
  * - `starting`: the context is being made
@@ -48,6 +50,8 @@ export class GameAudio {
   private context: AudioContext | null = null;
   private stopGesture: (() => void) | null = null;
   private head: Int32Array | null = null;
+  private gain: GainNode | null = null;
+  private quiet = false;
   private closed = false;
 
   constructor(
@@ -104,6 +108,22 @@ export class GameAudio {
     return loudest / 32768;
   }
 
+  /**
+   * Silences everything the page plays (true) or lets it through again (false), without touching the
+   * game: its mixer goes on, so nothing in the game waits and the sound comes back in step. Meant for
+   * while the player is somewhere else. Set before `start`, it holds from the first sound.
+   */
+  setQuiet(quiet: boolean): void {
+    this.quiet = quiet;
+    this.applyQuiet();
+  }
+
+  private applyQuiet(): void {
+    if (!this.gain || !this.context) return;
+    // a short ramp, so the cut is not a click
+    this.gain.gain.setTargetAtTime(this.quiet ? 0 : 1, this.context.currentTime, QUIET_RAMP);
+  }
+
   async start(): Promise<void> {
     try {
       const buffer = this.memory().HEAPU8.buffer;
@@ -122,7 +142,9 @@ export class GameAudio {
         outputChannelCount: [2],
         processorOptions: { buffer, address },
       });
-      node.connect(context.destination);
+      this.gain = context.createGain();
+      this.applyQuiet();
+      node.connect(this.gain).connect(context.destination);
       context.addEventListener("statechange", this.follow);
       this.follow();
       if (context.state !== "running") void this.resume(); // allowed at once when the page has been clicked before
@@ -150,6 +172,7 @@ export class GameAudio {
     this.context?.removeEventListener("statechange", this.follow);
     void this.context?.close().catch(() => {});
     this.context = null;
+    this.gain = null;
     this.head = null;
   }
 

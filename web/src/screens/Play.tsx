@@ -26,6 +26,12 @@ import {
 import { readThaiFontPreference, type ThaiFontPreference } from "../storage/thai-fonts";
 import { Presenter } from "../game/presenter";
 import { gameStore, useGameState } from "../game/store";
+import { useAttention } from "../game/attention";
+import {
+  DEFAULT_SOUND_PREFERENCES,
+  loadSoundPreferences,
+  saveSoundPreference,
+} from "../game/sound-preferences";
 import { loadVolume, saveVolume } from "../game/volume";
 import { FrameStats } from "./FrameStats";
 import { LoadingScreen } from "./LoadingScreen";
@@ -60,6 +66,8 @@ export function Play({ files }: { files: FileSource }) {
   const [presenter, setPresenter] = useState<Presenter | null>(null);
   const [audio, setAudio] = useState<GameAudio | null>(null);
   const [volume, setVolume] = useState(1);
+  const [soundPreferences, setSoundPreferences] = useState(DEFAULT_SOUND_PREFERENCES);
+  const attention = useAttention();
   const [fullscreen, setFullscreen] = useState(false);
   const [pointerLocked, setPointerLocked] = useState(false);
   const [browseFiles, setBrowseFiles] = useState(false);
@@ -95,6 +103,27 @@ export function Play({ files }: { files: FileSource }) {
   useEffect(() => {
     if (settings) presenter?.configure(settings.scale);
   }, [presenter, settings]);
+  useEffect(() => {
+    let cancelled = false;
+    void loadSoundPreferences().then((saved) => {
+      if (!cancelled) setSoundPreferences(saved);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  // the page goes quiet while the player is elsewhere, if they asked for that
+  useEffect(() => {
+    audio?.setQuiet(soundPreferences.muteOnBlur && !attention);
+  }, [audio, soundPreferences.muteOnBlur, attention]);
+  useEffect(() => {
+    if (!audio) return;
+    try {
+      handle.current?.exports.ra2_set_menu_music(Number(soundPreferences.menuMusic));
+    } catch {
+      // a game build from before this setting: its music plays everywhere
+    }
+  }, [audio, soundPreferences.menuMusic]);
   useEffect(() => {
     if (!settings || settings.open || !canvas.current) return;
     canvas.current.focus();
@@ -392,6 +421,11 @@ export function Play({ files }: { files: FileSource }) {
             setVolume(next);
             handle.current?.exports.ra2_set_volume(next);
             void saveVolume(next);
+          }}
+          preferences={soundPreferences}
+          onPreference={(key, value) => {
+            setSoundPreferences((now) => ({ ...now, [key]: value }));
+            void saveSoundPreference(key, value);
           }}
           giveBack={() => canvas.current?.focus()}
         />

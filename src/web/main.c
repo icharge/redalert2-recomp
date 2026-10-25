@@ -99,6 +99,10 @@ void script_log_line(const char *line);
 void script_start(void);
 
 void ra2_hook_debuglog(void) {
+    /* The game prints this as a song starts, right after its buffer plays: how the mixer learns which one is the music
+     * (dsound.c), so the page can keep it for matches. The debug print is called whether or not --debuglog shows it. */
+    const char *theme = (const char *)(uintptr_t)MEM32(g_esp + 4);
+    if (theme && !strncmp(theme, "Theme::PlaySong", 15)) hle_dsound_mark_music();
     if (g_debuglog || script_active()) {
         char buf[1024];
         const char *fmt = (const char *)(uintptr_t)MEM32(g_esp + 4);
@@ -608,6 +612,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--thai-font-fix")) g_thai_font_fix = 1;
         else if (!strcmp(argv[i], "--thai-font-id") && i + 1 < argc) g_thai_font_id = argv[++i];
         else if (!strcmp(argv[i], "--debuglog")) g_debuglog = 1;
+        else if (!strcmp(argv[i], "--no-menu-music")) ra2_set_menu_music(0);
         else if (!strcmp(argv[i], "--mute")) hle_dsound_set_master(0.0f);
         else if (!strcmp(argv[i], "--game") && i + 1 < argc) game = argv[++i];
         else if (!strcmp(argv[i], "--mod") && i + 1 < argc) g_mod = argv[++i];

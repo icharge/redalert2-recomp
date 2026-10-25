@@ -219,6 +219,8 @@ export interface Ra2Exports {
   /** 1 while the page has an audio context running and reads the ring; 0 otherwise */
   ra2_audio_live(live: number): void;
   ra2_focus(focused: number): void;
+  /** 1 (the default) lets the game's music play anywhere; 0 keeps it for matches (the mixer silences it elsewhere) */
+  ra2_set_menu_music(allowed: number): void;
   ra2_quit(): void;
   /** queued to the game thread; settings are owned and saved by the host */
   ra2_setting(key: number, value: number, extra: number): void;
@@ -245,6 +247,7 @@ export const EXPORT_SIGNATURES: {
   ra2_audio: { returns: "number", args: [] },
   ra2_audio_live: { returns: null, args: ["number"] },
   ra2_focus: { returns: null, args: ["number"] },
+  ra2_set_menu_music: { returns: null, args: ["number"] },
   ra2_quit: { returns: null, args: [] },
   ra2_setting: { returns: null, args: ["number", "number", "number"] },
   ra2_exit_confirmation_reply: { returns: "number", args: ["number", "number"] },
