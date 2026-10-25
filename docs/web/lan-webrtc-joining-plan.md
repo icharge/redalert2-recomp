@@ -8,10 +8,11 @@
 
 **Tech Stack:** Existing Emscripten C host, React 18, TypeScript, Radix Dialog, WebRTC, Vitest, and Playwright browser scripts.
 
-**Spec:** The requested flow and constraints below, together with [D13](decisions.md#d13-browser-lan-play-one-peer-over-webrtc-manual-sdp-exchange). This is a documentation-only proposal dated 2026-10-25; W12.4–W12.8 are not implemented.
+**Spec:** The requested flow and constraints below, together with [D13](decisions.md#d13-browser-lan-play-one-peer-over-webrtc-manual-sdp-exchange). This is a documentation-only proposal dated 2026-10-25, updated 2026-10-26 to use Vite environment configuration; W12.0 and W12.4–W12.8 are not implemented. Complete W12.0 before every remaining task below.
 
 ## Global constraints
 
+- First add `VITE_SHOW_NETWORK_LAN` to control the **Network (LAN)** sidebar menu item: `true` shows it, `false` hides it, and an unset or unrecognized value defaults to shown. Read this from `import.meta.env`; it is deployment/build configuration, with no player Settings switch or persisted browser preference.
 - Show the original Network/LAN screen before opening the browser Create/Join dialog.
 - Keep the game's native LAN lobby, game list, names, chat, options, Accept and Start flow.
 - Pair exactly two browser clients with manual SDP offer/answer exchange.
@@ -30,6 +31,14 @@
 - A stale reply, a lost peer, or a crashed runtime must not resume a different lobby or call dead wasm exports. Covered by W12.5, W12.7 and W12.8.
 
 ## Requested flow and design
+
+Before implementing this flow, add the Vite environment toggle in Task W12.0. When shown, the sidebar/More menu exposes **Network (LAN)**; when hidden, the item is absent from visual, keyboard and accessibility navigation. Configure `VITE_SHOW_NETWORK_LAN=true` or `VITE_SHOW_NETWORK_LAN=false` in `web/.env.local` or the build environment. Restart the dev server after changes; rebuild and redeploy for production changes. The original game's Network button and LAN session ownership remain independent of sidebar visibility.
+
+```dotenv
+# Show the Network (LAN) sidebar menu item (default).
+VITE_SHOW_NETWORK_LAN=true
+# Set to false to hide it in this deployment.
+```
 
 1. From the original main menu, click **Network**. Let the original LAN screen (`0xBB`) initialize and publish a frame.
 2. Open a Radix dialog titled **LAN multiplayer** above that screen. Its initial choices are **Create WebRTC session**, **Join WebRTC session**, and **Cancel**. The floating LAN button is no longer the prerequisite for entering Network.
@@ -57,6 +66,7 @@ Like the earlier Exit interception, the browser owns the replacement interaction
 
 | File | Responsibility in this change |
 |---|---|
+| New `web/src/config.ts`, `config.test.ts`, and `web/.env.example`; `web/src/vite-env.d.ts`; sidebar/More owner (planned in the sidebar work) | Parse and document `VITE_SHOW_NETWORK_LAN`, type the environment field, and conditionally render the sidebar action |
 | `src/web/presenter.c` | Observe LAN/native-menu lifecycle, defer prompting until the LAN frame is published, gate queued game input while pairing |
 | `src/web/main.c`, `src/web/web_api.h` | Request/reply mailbox and game-thread application of Continue/Cancel |
 | `src/linux/script.c` | Existing Emscripten-only dialog callback; extend only if source tracing proves a missing notification |
@@ -68,6 +78,21 @@ Like the earlier Exit interception, the browser owns the replacement interaction
 | `web/e2e/lan.mjs`, new `web/e2e/lan-session.mjs` | Successful game flow and cancellation/re-entry/failure checks |
 
 Do not patch generated `src/recomp/gen*/` files. The existing callback is the first implementation path; a lift patch is only justified if W12.4 establishes that a necessary command cannot be intercepted there. Any such patch must be Emscripten-only, identify both targets unambiguously, and receive matcher tests in `tools/test_lift_patches.py`.
+
+## Task W12.0: Configure Network (LAN) sidebar visibility first
+
+**Order:** First prerequisite for all remaining LAN tasks. Coordinate with the [sidebar plan](../superpowers/plans/2026-10-25-game-sidebar.md) and its sidebar/More integration. This replaces the earlier player-preference proposal; no LAN visibility field belongs in `PlayPreferences`, localStorage, or IndexedDB.
+
+**Files:** Create `web/src/config.ts`, `config.test.ts`, and `web/.env.example`; modify `web/src/vite-env.d.ts` and `web/README.md`. Create or modify the sidebar plan's `web/src/components/GameSidebar.tsx`, `GameSidebar.test.tsx`, and `web/src/screens/Play.tsx`/`Play.test.tsx` at the component that owns the sidebar/More menu. These sidebar surfaces are planned, not assumed to exist already. Extend an existing config module/example instead if one exists by implementation time.
+
+**Interfaces:** Export `networkLanVisible(value: string | undefined = import.meta.env.VITE_SHOW_NETWORK_LAN): boolean` from `web/src/config.ts`. Return false only for the exact string `"false"`; `"true"`, unset, empty, or unrecognized values return true. Declare `readonly VITE_SHOW_NETWORK_LAN?: string` on `ImportMetaEnv` in `web/src/vite-env.d.ts`. Play passes the resulting read-only `showNetworkLan: boolean` to the sidebar/More menu; expose no Settings change callback.
+
+- [ ] Write failing config tests for `"true"` -> shown, `"false"` -> hidden, and unset/empty/`"0"`/`"FALSE"`/unrecognized -> shown. Include a `vi.stubEnv("VITE_SHOW_NETWORK_LAN", "false")` case exercising the default argument; restore stubbed environment values after each test. Never use `Boolean(envValue)` because the string `"false"` is truthy.
+- [ ] Write failing sidebar/Play integration tests with the environment flag enabled and disabled: the item is present when enabled and absent from visual, keyboard and accessibility navigation when disabled. Assert no player-facing Settings switch or persistence read overrides the flag. Keeping an existing LAN owner mounted must not depend on this rendering condition.
+- [ ] Run `pnpm --dir web test -- src/config.test.ts src/components/GameSidebar.test.tsx src/screens/Play.test.tsx`; confirm the new assertions fail before implementing the configuration.
+- [ ] Implement the environment parser, optional environment type and conditional sidebar action. Keep the LAN session owner mounted independently of visibility. Document both flag values and the default in `web/.env.example` and `web/README.md`, including dev-server restart and production rebuild requirements.
+- [ ] Rerun the focused tests and `pnpm --dir web typecheck`. Verify separate shown/hidden dev or production configurations in the browser before proceeding to W12.4.
+- [ ] Commit only this task's changes when a commit is requested: `feat(web): configure Network LAN sidebar visibility`.
 
 ## Task W12.4: Prove the LAN lifecycle and cancellation boundary
 
@@ -141,4 +166,4 @@ Do not patch generated `src/recomp/gen*/` files. The existing callback is the fi
 
 ## Completion criteria
 
-A player clicks Network, sees the original LAN screen with a browser Create/Join dialog, pairs without a separate toolbar step, then completes native host/join setup and a shared match. Cancellation, re-entry, clipboard denial and connection failure have repeatable results; stale requests cannot change a later session. Evidence covers both editions. This plan does not claim those checks have been run yet.
+The deployment can show or hide the Network (LAN) sidebar item through `VITE_SHOW_NETWORK_LAN`, with shown as the default and no player preference overriding it. A player clicks Network, sees the original LAN screen with a browser Create/Join dialog, pairs without a separate toolbar step, then completes native host/join setup and a shared match. Cancellation, re-entry, clipboard denial and connection failure have repeatable results; stale requests cannot change a later session. Evidence covers both editions. This plan does not claim those checks have been run yet.

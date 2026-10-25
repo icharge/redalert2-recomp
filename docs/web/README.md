@@ -27,6 +27,7 @@ See [deploy.md](deploy.md) for the hosting constraint.
 |---|---|
 | [plan.md](plan.md) | The stages, from a first `emcc` compile to both games in a tab, each with its check |
 | [tasks.md](tasks.md) | The stages broken into tasks: repo, dependencies, size, and when each is done |
+| [lan-webrtc-joining-plan.md](lan-webrtc-joining-plan.md) | Planned Network/LAN entry interception: show the original LAN screen, then a browser Create/Join WebRTC session dialog |
 | [runtime-bundle.md](runtime-bundle.md) | Planned local runtime bundles and per-edition content readiness checks |
 | [architecture.md](architecture.md) | Threads, rendering, audio, input, files and crashes: how the native Linux build maps onto a browser |
 | [memory.md](memory.md) | The guest's address space in wasm linear memory: the pcrecomp change, which is the first risk |

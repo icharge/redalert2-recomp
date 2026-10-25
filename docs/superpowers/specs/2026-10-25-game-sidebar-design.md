@@ -94,6 +94,8 @@ On desktop, place Settings beside the rail using the existing host settings stat
 
 More must reuse the live FileExplorer and LAN session rather than recreate them each time it opens. LAN pairing and polling remain mounted while a dialog is closed. Remove the old independently positioned LAN and volume triggers only when their sidebar replacements are wired. Preserve the browser audio-enable prompt, crash diagnostics, save errors, and optional frame statistics.
 
+Before the remaining LAN/WebRTC joining tasks, add `VITE_SHOW_NETWORK_LAN` environment configuration for the sidebar/More action labeled **Network (LAN)**. Read `import.meta.env.VITE_SHOW_NETWORK_LAN`: the exact string `false` hides it; `true`, unset, or unrecognized values show it. Configure through `web/.env.local` or the build environment, restarting the dev server or rebuilding/redeploying production after changes. Hidden means absent from visual, keyboard and accessibility navigation. This replaces the earlier Settings-switch proposal: no player Settings switch, `showNetworkLan` persistence field, or localStorage/IndexedDB override. Sidebar visibility must not govern LAN session ownership or alter the original game's Network button. See [LAN task W12.0](../../web/lan-webrtc-joining-plan.md#task-w120-configure-network-lan-sidebar-visibility-first).
+
 ## Acceptance criteria
 
 1. Both editions expose all existing browser controls through the sidebar without a duplicate top bar or corner buttons.

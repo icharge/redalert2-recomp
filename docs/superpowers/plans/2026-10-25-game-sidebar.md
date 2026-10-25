@@ -54,9 +54,9 @@ Tasks 1-3 establish interfaces; Tasks 4-5 integrate them; Task 6 verifies the re
 
 **Files:** Create web/src/storage/play-preferences.ts and play-preferences.test.ts.
 
-**Interfaces:** Export PlayPreferences { sidebarPinned: boolean; muteWhenUnfocused: boolean }, readPlayPreferences(storage?: Pick<Storage, "getItem"> | null): PlayPreferences, and writePlayPreferences(value: PlayPreferences, storage?: Pick<Storage, "setItem"> | null): void. Default storage is obtained with a guarded localStorage accessor. Use key ra2.play-controls.v1; validate each field independently and persist only these booleans. Writes never throw.
+**Interfaces:** Export PlayPreferences { sidebarPinned: boolean; muteWhenUnfocused: boolean }, readPlayPreferences(storage?: Pick<Storage, "getItem"> | null): PlayPreferences, and writePlayPreferences(value: PlayPreferences, storage?: Pick<Storage, "setItem"> | null): void. Default storage is obtained with a guarded localStorage accessor. Use key ra2.play-controls.v1; validate each field independently and persist only these booleans, both defaulting to false. Writes never throw. Network (LAN) visibility is configured separately through `VITE_SHOW_NETWORK_LAN` in [LAN joining prerequisite W12.0](../../web/lan-webrtc-joining-plan.md#task-w120-configure-network-lan-sidebar-visibility-first), not persisted in this interface.
 
-- [ ] Add failing tests named defaults_missing_or_invalid_fields_to_false, round_trips_both_preferences, ignores_extra_fields, and tolerates_blocked_storage. Assert false/false for absent or invalid data and preserve a valid sibling field when one field is malformed.
+- [ ] Add failing tests named defaults_missing_or_invalid_fields_to_false, round_trips_both_preferences, ignores_extra_fields, and tolerates_blocked_storage. Assert false/false for absent or invalid data and preserve a valid sibling field when one field is malformed. An obsolete showNetworkLan field is ignored and never overrides Vite configuration.
 - [ ] Run `pnpm test src/storage/play-preferences.test.ts`; expect failures for the missing module/API.
 - [ ] Implement the interface with guarded JSON parsing and storage access. Do not move or migrate the Manifest-backed volume preference.
 - [ ] Rerun the focused test command; expect all preference tests to pass.
@@ -103,6 +103,8 @@ Tasks 1-3 establish interfaces; Tasks 4-5 integrate them; Task 6 verifies the re
 - [ ] Commit the scoped changes with message `feat(web): confirm return home and isolate game controls`.
 
 ## Task 5: Consolidate Settings, Sound, and More
+
+Label the corresponding More action **Network (LAN)** and conditionally render it using `networkLanVisible()` from W12.0's `web/src/config.ts`, which reads `import.meta.env.VITE_SHOW_NETWORK_LAN`. The exact string `false` hides it; `true`, unset, empty, or unrecognized values show it. Pass a read-only showNetworkLan boolean to the sidebar/More owner; add no Settings control or persisted visibility preference. Test both environment configurations, absence from keyboard/accessibility navigation when hidden, and LAN ownership remaining independent of menu rendering. This completes the UI portion of LAN prerequisite W12.0 before subsequent LAN joining tasks; document restart/rebuild requirements in W12.0's env example and README.
 
 **Files:** Modify Play.tsx/Play.test.tsx; SoundControl.tsx/.module.css/.test.tsx; SettingsDialog.tsx and new SettingsDialog.test.tsx/.module.css; LanPanel.tsx/.module.css/.test.tsx.
 

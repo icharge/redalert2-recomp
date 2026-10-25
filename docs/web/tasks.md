@@ -151,6 +151,17 @@ Tick a task off here in the same pull request that finishes it.
 | ~~W12.1~~ | Decide scope for browser LAN play and peer discovery | here | | S | [D13](decisions.md#d13-browser-lan-play-one-peer-over-webrtc-manual-sdp-exchange): one peer, manual offer/answer exchange, WebRTC data channels carry IPX |
 | ~~W12.2~~ | `wsock32.c`: carry IPX datagrams over a WebRTC data channel | pcrecomp | W12.1 | L | connected peers exchange IPX datagrams over WebRTC, routed by source/destination socket |
 | ~~W12.3~~ | Manual SDP offer/answer exchange in the Play screen, with a generated WOL identity per HLE runtime | here | W12.2 | M | `e2e/lan.mjs` confirms two distinct 128-digit keys, then both clients connect and render the same LAN match without a hosted signaling service |
+| W12.0 | First: add Vite environment configuration for Network (LAN) sidebar visibility | here | W12.3 | S | `VITE_SHOW_NETWORK_LAN=true` shows the item, `false` hides it; unset defaults to shown; no player Settings/persistence override; finish before W12.4–W12.8 |
+| W12.4 | Trace LAN entry, first painted frame, native cancellation and host/join transitions in both editions | here | W12.0 | S | [Joining plan](lan-webrtc-joining-plan.md): exact lifecycle hooks and native cancel command recorded; `0xBB` can paint before prompting; host/join transitions preserve the session |
+| W12.5 | Add typed LAN session request/end events and request-checked Continue/Cancel replies | here | W12.4 | M | protocol/store tests pass; stale/duplicate replies are rejected; game-thread pump applies replies without blocking LAN discovery |
+| W12.6 | Show the LAN screen, then a browser Create/Join WebRTC dialog using the earlier Exit interception pattern | here | W12.5 | M | Network automatically opens pairing over the native LAN picture; Continue requires an open channel; modal input stays out of the game |
+| W12.7 | Invalidate abandoned pairing attempts and preserve transport through native setup/gameplay | here | W12.6 | M | cancellation, retry, late callbacks, lobby transitions and runtime cleanup tests pass without leaked peers or duplicate bridge timers |
+| W12.8 | Exercise automatic pairing and native LAN joining with two real browser clients in both editions | here | W12.7 | M | updated `e2e/lan.mjs` enters Network before pairing, joins/starts the same match and proves shared gameplay; cancellation/re-entry/failure checks and screenshots are recorded |
+
+W12.0 and W12.4–W12.8 are planned work, specified in
+[LAN WebRTC joining](lan-webrtc-joining-plan.md). They keep D13's one-peer,
+manual offer/answer transport and change how players reach it. W12.0 is the
+first remaining task; W12.1–W12.3 above are historical completed work.
 
 ## Stage 13: internet multiplayer through WOLAPI (optional)
 
@@ -159,6 +170,17 @@ Tick a task off here in the same pull request that finishes it.
 | ~~W13.1~~ | Identify the WOLAPI client surface, compatible service, and browser/network constraints | here | W12.1 | M | `decisions.md` records the target service, required lobby/session operations, and how game traffic reaches peers; original WOL servers are not assumed available |
 | ~~W13.2~~ | Adapt the WOLAPI client surface to the RA2Web lobby/session service | here | W13.1 | L | a browser client authenticates to RA2Web, lists/joins lobbies and game rooms, exchanges options, and receives the start handoff |
 | W13.3 | Trace and bridge the native WOL Internet gameplay packet path | here, pcrecomp | W13.1, W13.2 | L | RA2/YR online socket and packet flow is traced past `STARTG`, then clients on separate networks complete a match through a browser-compatible transport; include a relayed case if WebRTC is selected |
+
+Match latency. Every WOL match currently starts with a 40-frame command delay (about 0.7 s at Fastest) because the bridge reports no ping times. The steps, tests and evidence are in [the latency plan](../superpowers/plans/2026-10-25-wol-latency.md).
+
+| ID | Task | Repo | Needs | Size | Done when |
+|---|---|---|---|---|---|
+| W13.4 | Latency report from match logs (plan Task 1) | here | | S | `node --test e2e/latency.test.mjs` passes; the baseline (`pingTimesAvailable: false`, `PrecalcMaxAhead 40`) is in the plan's Results |
+| W13.5 | RA2Web measures ping at login (≥ 1 ms once measured) and has a test-only relay delay (plan Task 2) | ra2web | | S | `bun test` passes, with tests for the immediate PING, the 1 ms floor and `NATIVE_RELAY_TEST_DELAY_MS` |
+| W13.6 | The bridge keeps member pings and answers `GetAvgPing`/`RequestPing` (plan Tasks 3–4) | here | W13.5 | M | both WOLAPI selftests pass; a local match logs `Max ping is N ms` and a `P2,...` ping string with no `-1` |
+| W13.7 | Start matches with a MaxAhead sized to the ping, `--classic-latency` to opt out (plan Task 5) | here | W13.4, W13.6 | M | YR and RA2 matches log `PrecalcMaxAhead is 20` on loopback, and a match with a 150 ms relay delay finishes without a desync |
+| W13.8 | Send datagrams as soon as the game queues them, not on an 8 ms timer (plan Task 6) | here, pcrecomp | W13.3 | M | `udp-relay.test.ts` covers `wake()`; a full match still ends in victory; a hidden, muted tab keeps the match responsive |
+| W13.9 | Measure on separate networks and decide the match transport: WebSocket relay or WebRTC (plan Task 7) | here | W13.7, W13.8 | M | `decisions.md` has the entry, with the measured numbers |
 
 ## Stage 14: bundled runtime inputs and edition readiness
 

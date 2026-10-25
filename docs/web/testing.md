@@ -164,6 +164,9 @@ More steps and switches, from chasing the first play's issues ([issues.md](issue
 node build-web/ra2.js --run --game ./game --headless --mute --debuglog
 ```
 
+The game's `getenv` does not see the shell's environment under Node: pass
+`--env NAME=VALUE` (once per variable) for a host or win32hle debugging switch.
+
 The same arguments as the Linux build. `tools/conformance.py --host web` runs
 it and scores eight boot milestones from the lines the host prints (the image
 mapped and bound, the entry point, the launcher's answer, the display mode, the

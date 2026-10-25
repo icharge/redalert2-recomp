@@ -87,6 +87,18 @@ stage 13 adds internet lobby/session support through WOLAPI. Stage 13 first
 has to establish which WOLAPI-compatible service and browser-facing protocol
 are usable; it must not assume the original Westwood Online servers are live.
 
+Stage 12's existing manual WebRTC transport has passed the two-client LAN
+match check. Its next planned step is the
+[LAN session joining flow](lan-webrtc-joining-plan.md): first W12.0 adds
+`VITE_SHOW_NETWORK_LAN` to show/hide the Network (LAN) sidebar item (`true`
+shows it, `false` hides it; default shown), then W12.4–W12.8 implement joining. Entering
+Network first shows the game's original LAN screen, then automatically opens
+a browser dialog to create or join a WebRTC session. After pairing, players
+continue through the native lobby's New/Join, Accept and Start flow. This
+replaces the current toolbar-first pairing step and follows the earlier Exit
+interception's event/reply and modal input isolation pattern, while keeping
+the game's pump running during pairing. This follow-up is not implemented.
+
 ## Stage 14: bundled runtime inputs and edition readiness
 
 See [runtime-bundle.md](runtime-bundle.md). The local build generates ignored,
