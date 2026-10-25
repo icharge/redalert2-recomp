@@ -8,6 +8,9 @@ build-linux-game/
 # Browser builds (build-web.sh, build-web.cmd)
 build-web/
 build-web-game/
+# Private native-WOL verification modules, also generated from the retail game.
+build-web-udp/
+build-web-wol-yr/
 web/public/game/
 # xwin's download cache, made wherever it is run (setup.sh)
 .xwin-cache/
