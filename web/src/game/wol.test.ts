@@ -51,6 +51,47 @@ describe("WOL wire helpers", () => {
 });
 
 describe("WolClient", () => {
+  it("posts native packets to the trusted HTTP prefix with the authenticated session", async () => {
+    class Socket extends EventTarget {
+      readyState = 1;
+      send(data: string): void {
+        const reply = data.startsWith("cvers ") ? ":wol 700 * :ok" : data.startsWith("setlocale ") ? ":wol 310 * :ok" : ":wol 376 test :done";
+        queueMicrotask(() => this.dispatchEvent(new MessageEvent("message", { data: reply })));
+      }
+      close(): void { this.readyState = 3; }
+    }
+    const calls: { url: string; init?: RequestInit }[] = [];
+    let status = 200;
+    let accepted = true;
+    let stalled = false;
+    const fetcher: typeof fetch = async (input, init) => {
+      calls.push({ url: String(input), init });
+      if (stalled) return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(new Error("request timed out")), { once: true });
+      });
+      return new Response(JSON.stringify({ sessionToken: "session-only", gameId: "g1-abc", stored: accepted, ranked: false }), { status });
+    };
+    const client = new WolClient({ httpUrl: "https://wol.test/emu-api/", socketUrl: "wss://wol.test/wol" }, "test", "password", fetcher, () => new Socket(), 50);
+    try {
+      await client.connect({ joinLobby: false });
+      const bytes = new Uint8Array([0, 255, 128, 1]);
+      await client.submitNativeResult("g1-abc", bytes);
+      const request = calls[1]!;
+      expect(request.url).toBe("https://wol.test/emu-api/native-results/g1-abc");
+      expect(request.init?.headers).toEqual({ Authorization: "Bearer session-only", "Content-Type": "application/octet-stream" });
+      expect(request.init?.body).toEqual(bytes);
+      expect(request.init?.signal).toBeInstanceOf(AbortSignal);
+      status = 503;
+      await expect(client.submitNativeResult("g1-abc", bytes)).rejects.toThrow("503");
+      status = 200; accepted = false;
+      await expect(client.submitNativeResult("g1-abc", bytes)).rejects.toThrow("acknowledgement");
+      stalled = true;
+      await expect(client.submitNativeResult("g1-abc", bytes)).rejects.toThrow("timed out");
+      await expect(client.submitNativeResult("g1-abc", new Uint8Array(32769))).rejects.toThrow("size");
+      await expect(client.submitNativeResult("../login", bytes)).rejects.toThrow("match ID");
+    } finally { client.close(); }
+    await expect(client.submitNativeResult("g1-abc", new Uint8Array([1]))).rejects.toThrow("authenticated");
+  });
   it("keeps HTTP authentication at its base when the WOL socket has a different path", async () => {
     class Socket extends EventTarget {
       readyState = 1;

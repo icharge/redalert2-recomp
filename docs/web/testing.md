@@ -258,6 +258,40 @@ allowlist into a volume first (1.1 GB, seconds).
 
 ## WOLAPI bridge
 
+### Native Custom Match results
+
+Use fresh native modules from the private builds `build-web-udp/published/ra2.*`
+(RA2) and `build-web-wol-yr/published/ra2md.*` (YR). Older native bundles still
+contain the result-send stub. Restart the updated sibling `ra2web/server` backend
+before creating a new match; the server now records each native instance's edition.
+Keep private builds separate from another task's live preview assets.
+
+The user owns this gameplay check:
+
+1. With two distinct accounts, use **Internet → Custom Match**, create/join and
+   start a match. Finish it by winning or resigning; continue back to the lobby.
+2. In browser DevTools → Network, find `POST /native-results/g…`. Success is HTTP
+   200 with `{ gameId, stored: true, ranked: false }`. The native log should then
+   show `OnGameresSent  0`; server logs show `native results: stored …`.
+3. Inspect the existing admin API `GET /admin/matches?limit=50` with an admin
+   session. The match has `scored: false`, duration/map and player outcomes, plus
+   `nativeReports` containing each authenticated reporter's safe packet fields
+   and statistics. Conflicting terminal reports are marked `disputed: true`.
+4. Rankings, MMR and points must remain unchanged. Returning to the lobby while
+   a report is pending must still allow storage; a later match/login must not
+   receive the old completion. AI/observer combinations remain manual coverage.
+
+This implementation does not change the ranked `/wgameres/{sku}` endpoint and
+does not turn client reports into authoritative ladder results. Report transport
+uses `VITE_WOL_HTTP_URL`, independently of the frontend context path. Accounts,
+IP fields and unknown fields are stripped before archival. Never include Bearer
+tokens or STARTG tickets when sharing logs.
+
+Automated result checks (no game launch): `bun test test/nativeResults.test.ts
+test/nativeRelay.test.ts test/wgameres.test.ts test/ladderService.test.ts` in the
+server, focused `wol.test.ts`/`loader.test.ts` in the frontend, and both editions
+of the COM selftest below.
+
 The COM/protocol selftest runs without game assets. From the repository root in
 PowerShell, with the sibling pcrecomp and emsdk checkouts:
 

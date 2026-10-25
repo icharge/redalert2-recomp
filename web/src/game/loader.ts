@@ -127,6 +127,7 @@ interface Ra2Module extends Partial<WasmMemory> {
   ra2WolSend?(line: string): void;
   ra2WolStop?(): void;
   ra2WolReceiveLine?(line: string): void;
+  ra2WolReport?(requestId: number, gameNumber: number, packet: Uint8Array): void;
 }
 
 declare global {
@@ -534,6 +535,8 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
     let saves: SaveSync | null = null;
     let wolClient: WolClient | null = null;
     let udpRelay: UdpRelay | null = null;
+    const wolResultGames = new Map<number, string>();
+    let latestResultGame = "";
     // Only the operator's build settings choose where game credentials go.
     // HTTP auth and the WOL socket can live at different paths behind a proxy.
     const wolHttpUrl = import.meta.env.VITE_WOL_HTTP_URL ?? "http://127.0.0.1:19090";
@@ -544,6 +547,8 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
     module.ra2WolStart = (username, password) => {
       udpRelay?.stop();
       wolClient?.close();
+      wolResultGames.clear();
+      latestResultGame = "";
       const client = new WolClient(wolServer, username, password);
       wolClient = client;
       client.onLine((line) => {
@@ -551,7 +556,15 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
         // STARTG carries the ticket for RA2Web's native datagram relay: open it
         // before the game's OnGameStart so no first packet is lost.
         const handoff = parseStartHandoff(line);
-        if (handoff) udpRelay?.start(handoff);
+        if (handoff) {
+          const number = Number(/^g(\d+)-/.exec(handoff.gameId)?.[1]);
+          if (Number.isInteger(number) && number > 0 && number <= 0xffffffff) {
+            latestResultGame = handoff.gameId;
+            wolResultGames.set(number, handoff.gameId);
+            if (wolResultGames.size > 8) wolResultGames.delete(wolResultGames.keys().next().value!);
+          }
+          udpRelay?.start(handoff);
+        }
         module.ra2WolReceiveLine?.(line);
       });
       client.onDisconnect(() => {
@@ -581,10 +594,32 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
         );
       }
     };
+    module.ra2WolReport = (requestId, gameNumber, packet) => {
+      const client = wolClient;
+      const gameId = wolResultGames.get(gameNumber);
+      if (!client || !gameId) {
+        console.warn("Native result submission has no authenticated match context.");
+        module.ra2WolReceiveLine?.(`@wolapi gameres ${requestId} ${0x80004005}`);
+        return;
+      }
+      void client.submitNativeResult(gameId, packet).then(
+        () => {
+          if (wolClient === client && latestResultGame === gameId)
+            module.ra2WolReceiveLine?.(`@wolapi gameres ${requestId} 0`);
+        },
+        (error: unknown) => {
+          console.warn("Native result submission failed:", error instanceof Error ? error.message : String(error));
+          if (wolClient === client && latestResultGame === gameId)
+            module.ra2WolReceiveLine?.(`@wolapi gameres ${requestId} ${0x80004005}`);
+        },
+      );
+    };
     module.ra2WolStop = () => {
       udpRelay?.stop();
       wolClient?.close();
       wolClient = null;
+      wolResultGames.clear();
+      latestResultGame = "";
     };
     // Files cannot be put in place before the runtime is up (WasmFS's calls into the file system abort in
     // preRun), so the game does not start itself: once it is up the page loads the files and calls main().

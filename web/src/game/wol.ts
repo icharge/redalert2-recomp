@@ -143,6 +143,7 @@ export class WolClient {
   private readonly listeners = new Set<(line: string) => void>();
   private readonly disconnectListeners = new Set<() => void>();
   private readonly timeoutMs: number;
+  private authToken: string | null = null;
 
   constructor(
     private readonly server: string | WolServer,
@@ -178,6 +179,7 @@ export class WolClient {
       const socketUrl = toWolSocketUrl(typeof this.server === "string" ? this.server : this.server.socketUrl);
       const token = await sessionToken(httpUrl, this.username, this.password, this.fetcher);
       if (generation !== this.generation) throw new Error("WOL connection closed.");
+      this.authToken = token;
       const socket = this.createSocket(socketUrl);
       this.socket = socket;
       socket.addEventListener("message", this.handleMessage as EventListener);
@@ -211,6 +213,29 @@ export class WolClient {
   /** Send a WOL command issued by the game's COM interface. */
   sendRaw(line: string): void {
     this.send(line);
+  }
+
+  /** Save a native Custom Match report; it never enters ranked scoring. */
+  async submitNativeResult(gameId: string, packet: Uint8Array): Promise<void> {
+    const token = this.authToken;
+    if (!token) throw new Error("WOL result submission is not authenticated.");
+    if (!/^g[1-9]\d*-[a-z0-9]+$/i.test(gameId)) throw new Error("Invalid native match ID.");
+    if (!packet.length || packet.length > 32768) throw new Error("Invalid native result size.");
+    const server = typeof this.server === "string" ? this.server : this.server.httpUrl;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      const response = await this.fetcher(new URL(`native-results/${gameId}`, ensureSlash(server)), {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/octet-stream" },
+        body: new Uint8Array(packet),
+        signal: controller.signal,
+      });
+      if (!response.ok) throw new Error(`Native result submission failed (${response.status}).`);
+      const accepted = await response.json() as { stored?: boolean; gameId?: string; ranked?: boolean };
+      if (accepted.stored !== true || accepted.gameId !== gameId || accepted.ranked !== false)
+        throw new Error("Invalid native result storage acknowledgement.");
+    } finally { clearTimeout(timeout); }
   }
 
   async listGames(channelType = 45): Promise<WolRoom[]> {
@@ -256,6 +281,7 @@ export class WolClient {
 
   close(): void {
     this.generation++;
+    this.authToken = null;
     this.connecting = false;
     const error = new Error("WOL connection closed.");
     this.cancelOpen?.(error);

@@ -13,6 +13,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <emscripten.h>
+#include <emscripten/heap.h>
 
 #include "win32hle.h"
 #include "wolapi.h"
@@ -202,6 +203,27 @@ static wol_object g_chat = { .primary_iid = IID_WOL_CHAT, .event_iid = IID_WOL_C
 static wol_object g_channel = { .primary_iid = IID_WOL_CHANNEL, .event_iid = IID_WOL_CHANNEL_EVENTS };
 static wol_object g_profile = { .primary_iid = IID_WOL_PROFILE, .event_iid = IID_WOL_PROFILE_EVENTS };
 static uint32_t g_chat_vt, g_channel_vt, g_profile_vt, g_container_vt, g_point_vt;
+/* Requests survive lobby return, but not a new match/login or sink replacement. */
+static struct { uint32_t id, sink, generation; } g_reports[8];
+static uint32_t g_report_id, g_report_generation;
+
+static void invalidate_reports(void) {
+    ++g_report_generation;
+    memset(g_reports, 0, sizeof g_reports);
+}
+
+static void complete_report(uint32_t id, uint32_t status) {
+    for (unsigned i = 0; i < 8; ++i) {
+        if (g_reports[i].id != id || !id) continue;
+        uint32_t sink = g_reports[i].sink;
+        uint32_t generation = g_reports[i].generation;
+        g_reports[i].id = 0;
+        if (!sink || sink != g_channel.sink || generation != g_report_generation) return;
+        uint32_t args[] = { sink, status };
+        hle_call_guest(MEM32(MEM32(sink) + 5u * 4u), 2, args); /* INetUtilEvent::OnGameresSent */
+        return;
+    }
+}
 
 static wol_object *object_of(uint32_t self) { return (wol_object *)(uintptr_t)MEM32(self + 8); }
 
@@ -524,6 +546,11 @@ static void receive_chat(const char *line) {
 }
 
 static void handle_line(const char *line) {
+    if (!strncmp(line, "@wolapi gameres ", 16)) {
+        unsigned id, status; char extra;
+        if (sscanf(line + 16, "%u %u %c", &id, &status, &extra) == 2) complete_report(id, status);
+        return;
+    }
     const char *command = strchr(line, ' ');
     if (channel_error(line)) return;
     if (strcmp(line, "@wolapi connected") == 0) {
@@ -668,6 +695,7 @@ static void handle_line(const char *line) {
             return;
         session.game_number = (uint32_t)number;
         session.timestamp = (uint32_t)time;
+        invalidate_reports();
         g_session = session;
         g_starting_game = 0;
         wol_channel *channel = current_channel();
@@ -734,8 +762,10 @@ static void pump_lines(void) {
         g_motd_ready = 0;
     }
     uint32_t read = __atomic_load_n(&g_line_read, __ATOMIC_RELAXED);
+    /* Callbacks can synchronously enqueue another send failure. Process only
+     * this snapshot so a retry cannot keep the game thread inside one pump. */
+    uint32_t write = __atomic_load_n(&g_line_write, __ATOMIC_ACQUIRE);
     for (;;) {
-        uint32_t write = __atomic_load_n(&g_line_write, __ATOMIC_ACQUIRE);
         if (read == write) break;
         char line[WOL_LINE_CAP];
         copy_text(line, sizeof line, g_lines[read]);
@@ -801,6 +831,7 @@ static void m_get_connection_container(void) {
 static void m_advise(void) {
     wol_object *state = object_of(A32(0));
     if (!A32(1) || !A32(2)) RET(E_POINTER, 3);
+    if (state == &g_channel) invalidate_reports();
     state->sink = A32(1);
     state->cookie = 1;
     MEM32(A32(2)) = state->cookie;
@@ -810,6 +841,7 @@ static void m_advise(void) {
 static void m_unadvise(void) {
     wol_object *state = object_of(A32(0));
     if (A32(1) != state->cookie || !state->cookie) RET(0x80040200u, 2);
+    if (state == &g_channel) invalidate_reports();
     state->sink = 0;
     state->cookie = 0;
     RET(S_OK, 2);
@@ -829,6 +861,48 @@ static void m_stub_11(void) { RET(E_NOTIMPL, 11); }
 static void m_idle_pump(void) { RET(S_OK, 1); }
 
 static void m_chat_pump(void) { pump_lines(); RET(S_OK, 1); }
+static void m_net_pump(void) { pump_lines(); RET(S_OK, 1); }
+static uint32_t read_be32(const uint8_t *p) {
+    return (uint32_t)p[0] << 24 | (uint32_t)p[1] << 16 | (uint32_t)p[2] << 8 | p[3];
+}
+static void m_net_gameres_send(void) {
+    const uint8_t *data = APTR(3);
+    uint32_t length = A32(4), ptr = A32(3), number = 0;
+    size_t heap_size = emscripten_get_heap_size();
+    if (!ptr || ptr > heap_size || length < 4 || length > 32768 || length > heap_size - ptr) RET(E_POINTER, 5);
+    if (((uint32_t)data[0] << 8 | data[1]) != length || data[2] || data[3]) RET(E_FAIL, 5);
+    for (uint32_t at = 4; at < length;) {
+        if (length - at < 8) RET(E_FAIL, 5);
+        uint32_t size = (uint32_t)data[at + 6] << 8 | data[at + 7];
+        uint32_t padded = (size + 3u) & ~3u;
+        if (padded > length - at - 8) RET(E_FAIL, 5);
+        if (!memcmp(data + at, "IDNO", 4)) {
+            if (number || data[at + 4] || data[at + 5] != 6 || size != 4) RET(E_FAIL, 5);
+            number = read_be32(data + at + 8);
+        }
+        at += 8 + padded;
+    }
+    if (!number) RET(E_FAIL, 5);
+    unsigned slot;
+    for (slot = 0; slot < 8 && g_reports[slot].id; ++slot) {}
+    if (slot == 8) RET(E_FAIL, 5);
+    if (!++g_report_id) ++g_report_id;
+    uint32_t id = g_report_id;
+    g_reports[slot].id = id;
+    g_reports[slot].sink = g_channel.sink;
+    g_reports[slot].generation = g_report_generation;
+    /* The game frees/reuses data after return. This synchronous slice completes
+     * before return and HTTP runs asynchronously on the main browser thread. */
+    MAIN_THREAD_EM_ASM({
+        if (Module.ra2WolReport) Module.ra2WolReport($0, $3, HEAPU8.slice($1, $1 + $2));
+        else if (Module.ra2WolReceiveLine) Module.ra2WolReceiveLine("@wolapi gameres " + $0 + " 2147500037");
+    }, id, data, length, number);
+    RET(S_OK, 5);
+}
+static void m_chat_game_end(void) {
+    /* No score in this notification. Retain STARTG and outstanding submissions. */
+    RET(S_OK, 1);
+}
 static void m_chat_request_server_list(void) {
     g_product_sku = A32(1);
     g_pending_server_list = 1;
@@ -837,6 +911,7 @@ static void m_chat_request_server_list(void) {
 static void m_chat_request_connection(void) {
     wol_server *server = (wol_server *)(uintptr_t)A32(1);
     if (!server) RET(E_POINTER, 4);
+    invalidate_reports();
     memset(&g_session, 0, sizeof g_session);
     g_connected = g_starting_game = g_creating_channel = g_joining_channel = 0;
     g_connection_pending = 1;
@@ -1099,7 +1174,7 @@ static void m_chat_get_attribute_value(void) {
     { "WolChat::GetVersion", m_chat_get_version }, { "WolChat::RequestUserKick", m_stub_2 }, { "WolChat::RequestUserIP", m_stub_2 }, \
     { "WolChat::GetGametypeInfo", m_stub_7 }, { "WolChat::RequestFind", m_stub_2 }, { "WolChat::RequestPage", m_stub_3 }, \
     { "WolChat::SetFindPage", m_stub_3 }, { "WolChat::SetSquelch", m_stub_3 }, { "WolChat::GetSquelch", m_stub_2 }, \
-    { "WolChat::SetChannelFilter", m_stub_2 }, { "WolChat::RequestGameEnd", m_stub_1 }, { "WolChat::SetLangFilter", m_stub_2 }, \
+    { "WolChat::SetChannelFilter", m_stub_2 }, { "WolChat::RequestGameEnd", m_chat_game_end }, { "WolChat::SetLangFilter", m_stub_2 }, \
     { "WolChat::RequestChannelBan", m_stub_3 }, { "WolChat::GetGametypeList", m_stub_2 }, { "WolChat::GetHelpURL", m_stub_2 }, \
     { "WolChat::SetProductSKU", m_chat_profile_value }, { "WolChat::GetNick", m_chat_get_nick }, { "WolChat::SetNick", m_chat_set_nick }, \
     { "WolChat::GetLobbyCount", m_chat_get_lobby_count }, { "WolChat::RequestRawMessage", m_chat_raw_message }, \
@@ -1143,9 +1218,9 @@ static uint32_t create_chat(const uint8_t *iid, uint32_t *out) {
 static uint32_t create_channel(const uint8_t *iid, uint32_t *out) {
     static const win32hle_shim methods[] = {
         { "WolChannel::QueryInterface", m_query_interface }, { "WolChannel::AddRef", m_add_ref }, { "WolChannel::Release", m_release },
-        { "WolChannel::RequestGameresSend", m_stub_5 }, { "WolChannel::RequestLadderSearch", m_stub_10 },
+        { "WolChannel::RequestGameresSend", m_net_gameres_send }, { "WolChannel::RequestLadderSearch", m_stub_10 },
         { "WolChannel::RequestLadderList", m_stub_8 }, { "WolChannel::RequestPing", m_stub_4 },
-        { "WolChannel::PumpMessages", m_idle_pump },
+        { "WolChannel::PumpMessages", m_net_pump },
         { "WolChannel::GetAvgPing", m_net_get_avg_ping }, { "WolChannel::RequestNewNick", m_stub_7 },
         { "WolChannel::RequestAgeCheck", m_stub_5 }, { "WolChannel::RequestWDTState", m_stub_4 },
         { "WolChannel::RequestLocaleLadderList", m_stub_9 }, { "WolChannel::RequestLocaleLadderSearch", m_stub_11 },

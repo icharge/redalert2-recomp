@@ -14,6 +14,8 @@ static uint32_t test_class_count;
 static uint32_t test_event_count, test_event_method[128], test_event_args[128][8];
 static char test_event_text[128][4096];
 static uint16_t test_event_wide[128][4096];
+static uint32_t test_retry_results, test_retry_args[4];
+static uint32_t invoke(uint32_t object, unsigned slot, int count, const uint32_t *args);
 
 uint32_t hle_com_vtable(const win32hle_shim *methods) {
     uint32_t count = 0;
@@ -50,6 +52,13 @@ uint32_t hle_call_guest(uint32_t method, int count, const uint32_t *args) {
             for (unsigned i = 0; i < 4095 && text[i]; i++) test_event_wide[test_event_count][i] = text[i];
         }
         memcpy(test_event_args[test_event_count++], args, count * sizeof *args);
+        if (method == 0x20005 && test_retry_results) {
+            --test_retry_results;
+            assert(invoke(g_channel.chat, 3, 4, test_retry_args) == S_OK);
+            uint32_t retry_id = EM_ASM_INT({ return Module.testResult.id; });
+            char retry_line[96]; snprintf(retry_line, sizeof retry_line, "@wolapi gameres %u %u", retry_id, E_FAIL);
+            ra2_wolapi_receive_line(retry_line);
+        }
         return S_OK;
     }
     uint32_t stack[32] = { 0 };
@@ -444,6 +453,66 @@ int main(void) {
     assert(invoke(g_chat.chat, 3, 0, NULL) == S_OK);
     assert(test_event_count == before_login_failure + 1 && test_event_method[before_login_failure] == 0x10006);
     assert(test_event_args[before_login_failure][1] == E_FAIL && !strcmp(test_event_text[before_login_failure], "Login failed"));
+    /* INetUtil result transport: copy opaque bytes immediately; complete later
+     * on INetUtilEvent slot 5, never the IChat sink at the same ordinal. */
+    uint32_t result_vtable[8] = { 0 };
+    result_vtable[5] = 0x20005;
+    uint32_t result_sink[] = { (uint32_t)(uintptr_t)result_vtable };
+    uint32_t result_cookie = 0;
+    uint32_t result_advise[] = { (uint32_t)(uintptr_t)result_sink, (uint32_t)(uintptr_t)&result_cookie };
+    assert(invoke(g_channel.point, 5, 2, result_advise) == S_OK);
+    EM_ASM({ Module.ra2WolReport = function(id, game, bytes) {
+        Module.testResult = ({ id: id, game: game, bytes: bytes });
+    }; });
+    uint8_t result_packet[] = { 0,28,0,0, 'I','D','N','O',0,6,0,4,0,0,0,1,
+        'I','N','B','0',0,20,0,3,0,255,128,0 };
+    uint32_t result_send[] = { (uint32_t)(uintptr_t)"retired.invalid", 1234, (uint32_t)(uintptr_t)result_packet, sizeof result_packet };
+    uint32_t result_events = test_event_count;
+    assert(invoke(g_channel.chat, 3, 4, result_send) == S_OK);
+    assert(test_event_count == result_events);
+    result_packet[25] = 1;
+    assert(EM_ASM_INT({ return Module.testResult.game === 1 && Module.testResult.bytes[25] === 255 && Module.testResult.bytes[26] === 128; }));
+    uint32_t result_id = EM_ASM_INT({ return Module.testResult.id; });
+    char result_line[96]; snprintf(result_line, sizeof result_line, "@wolapi gameres %u 0", result_id);
+    ra2_wolapi_receive_line(result_line);
+    assert(test_event_count == result_events);
+    assert(invoke(g_channel.chat, 7, 0, NULL) == S_OK);
+    assert(test_event_count == result_events + 1 && test_event_method[result_events] == 0x20005);
+    assert(test_event_args[result_events][0] == (uint32_t)(uintptr_t)result_sink && test_event_args[result_events][1] == S_OK);
+    ra2_wolapi_receive_line(result_line);
+    assert(invoke(g_channel.chat, 7, 0, NULL) == S_OK && test_event_count == result_events + 1);
+    result_send[3] = 32769;
+    assert(invoke(g_channel.chat, 3, 4, result_send) != S_OK);
+    result_send[3] = sizeof result_packet;
+    assert(invoke(g_channel.chat, 3, 4, result_send) == S_OK);
+    result_id = EM_ASM_INT({ return Module.testResult.id; });
+    snprintf(result_line, sizeof result_line, "@wolapi gameres %u %u", result_id, E_FAIL);
+    ra2_wolapi_receive_line(result_line);
+    assert(invoke(g_channel.chat, 7, 0, NULL) == S_OK);
+    assert(test_event_count == result_events + 2 && test_event_args[result_events + 1][1] == E_FAIL);
+    assert(invoke(g_channel.chat, 3, 4, result_send) == S_OK);
+    result_id = EM_ASM_INT({ return Module.testResult.id; });
+    uint32_t unadvise_result[] = { result_cookie };
+    assert(invoke(g_channel.point, 6, 1, unadvise_result) == S_OK);
+    assert(invoke(g_channel.point, 5, 2, result_advise) == S_OK);
+    snprintf(result_line, sizeof result_line, "@wolapi gameres %u 0", result_id);
+    ra2_wolapi_receive_line(result_line);
+    assert(invoke(g_channel.chat, 7, 0, NULL) == S_OK && test_event_count == result_events + 2);
+    strcpy(g_session.game_id, "g1-test");
+    assert(invoke(g_chat.chat, 30, 0, NULL) == S_OK);
+    assert(!strcmp(g_session.game_id, "g1-test"));
+    /* A native failed-send callback may request the next send immediately.
+     * An unavailable browser context must not make one pump spin forever. */
+    memcpy(test_retry_args, result_send, sizeof test_retry_args);
+    assert(invoke(g_channel.chat, 3, 4, result_send) == S_OK);
+    result_id = EM_ASM_INT({ return Module.testResult.id; });
+    snprintf(result_line, sizeof result_line, "@wolapi gameres %u %u", result_id, E_FAIL);
+    ra2_wolapi_receive_line(result_line);
+    test_retry_results = 3;
+    assert(invoke(g_channel.chat, 7, 0, NULL) == S_OK);
+    assert(test_retry_results == 2);
+    test_retry_results = 0;
+    invalidate_reports();
     puts("WOLAPI COM startup ABI: PASS");
     return 0;
 }

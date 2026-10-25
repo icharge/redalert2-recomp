@@ -1,5 +1,74 @@
 # Handoff: WOLAPI bridge and Internet play, 25 October 2026
 
+## Native Custom Match result reporting (25 October, evening)
+
+Approved design: `docs/superpowers/specs/2026-10-25-native-match-results-design.md`.
+Plan/evidence: `docs/superpowers/plans/2026-10-25-native-match-results.md`.
+This addition is recorded in the native result-reporting commits. The companion
+RA2Web server commit is `9752731` (`feat(server): archive native custom match results`).
+The user selected **match history only**, with no ladder/MMR/point changes,
+and still owns real gameplay testing. No new gameplay or public probes were run.
+
+- `INetUtil::RequestGameresSend` (slot 3, host/port/data/length) copies the native
+  packet synchronously to `Module.ra2WolReport`. Original host/port are ignored;
+  HTTP uses only the trusted operator settings. Capture checks pointer/size,
+  packet boundaries and numeric IDNO. Limit: 32 KiB and eight pending callbacks.
+- Completion is `INetUtilEvent::OnGameresSent` at **absolute vtable slot 5**,
+  delivered by the game-thread message pump after explicit server storage
+  acknowledgement. A replacement sink, new login or STARTG invalidates stale
+  callbacks. `RequestGameEnd` now succeeds without erasing the result/session.
+- Pump draining uses a snapshot. A native failed-send callback can synchronously
+  request another send, and immediate failures otherwise keep one pump spinning.
+  A regression demonstrated this before the fix and passes for RA2 and YR.
+- Browser match contexts survive PART, lobby return and relay shutdown; a late
+  HTTP completion cannot notify a new login or match. HTTP timeout is 10 seconds
+  (the WolClient configured timeout); failures log and deliver a failure HRESULT.
+- Server route: **POST `/native-results/{full-game-id}`**, Bearer session, raw
+  `application/octet-stream` native packet. It validates authenticated roster
+  membership, full/numeric ID association, edition, field bounds and report window.
+  Native channel types 33/41 bind new instances to SKU 16640/18688. Existing
+  instances created by the old running server do not have that metadata: restart
+  the updated backend and create a new match before manual validation.
+- Native FieldClass differs from the web report: flags are type 2 / one byte,
+  signed/unsigned 32-bit fields use types 5/6, C strings type 7, binary tallies
+  type 20; payloads have four-byte padding. Headers/numeric values are big endian.
+  Native IDs use numeric **IDNO**, not the web client's string GMID. Native player
+  suffixes start at 0. The report builder is RA2 0x698d00 / YR 0x6c6f50; previous
+  `wol-yr-finish-final` logs already contain "Sending game results" on both clients.
+- Sanitized packets and decoded flags, duration, map, outcomes and statistics are
+  stored in the existing unscored match payload's `nativeReports`. Account/IP and
+  unknown fields are removed, including uninitialized padding. Provenance is
+  `source: native-client` and authenticated reporter. Duplicates are idempotent;
+  up to four distinct reports per reporter are retained. Incomplete reports cannot
+  replace terminal summaries; conflicting terminal outcomes set `disputed: true`
+  and unknown summary outcomes. AI counts bound extra house records; human
+  membership must match the server's STARTG roster.
+- Existing admin match reads expose the report payload; player history rows use
+  season 0 and zero ranking gains. Scored rows are protected. No schema migration
+  is needed. SQLite history rows now upsert like the memory backend.
+- Native relay instances become active once the roster connects and retire after
+  the last peer leaves, retaining their metadata for the configured report window
+  (default 600 seconds). Long games no longer expire as never-started instances.
+
+Verification so far: 287 frontend tests / 35 files passed, then 43 focused browser
+tests passed again after acknowledgement validation and timeout/failure coverage. Frontend TypeScript/scoped
+ESLint and server TypeScript passed. 122 focused server tests passed, including
+native results, native relay, ranked reports, ladder service, WOL creation and
+gserv lifecycle. Both native COM
+selftest editions passed, including the retry regression. Independent review
+found no material issues, including a follow-up review of the retry/ACK changes.
+The broader admin run had three pre-existing Windows replay-fixture errors from
+colon-containing filenames; no result-reporting failure. Logs are ignored under
+`build-web/native-results-*` and `build-web/wolapi-results-*-final.log`.
+Both private module builds succeeded under `build-web-udp` and `build-web-wol-yr`;
+published WASM SHA256 hashes match their build outputs. RA2 needed default
+FreeType/HarfBuzz port variants prewarmed before SDL_ttf to avoid Emscripten's
+nested cache lock. Their
+published stems now follow current CMake: `ra2` and `ra2md`, respectively. Keep
+another task's live preview bundles intact. See `testing.md` for manual checks.
+
+## Earlier playable WOL POC
+
 Work resumed from Claude's "WOLAPI work". **Nothing is committed**, in any of the
 three checkouts (listed below). Two native Red Alert 2 clients now play through
 the RA2Web relay: both receive FRAMESYNC, advance beyond frame 20,000, and accept
