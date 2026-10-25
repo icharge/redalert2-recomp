@@ -37,8 +37,14 @@ try {
     viewport: { width: 1280, height: 960 },
     serviceWorkers: "block",
   });
-  filesServer = await serveGame(game, new URL(config.url).origin);
-  await filesServer.route(context);
+  // Test mode (?test=1) fulfils every game file from `game` into the page's memory, which the
+  // published build's memory cap cannot hold. `import` runs the launcher's own path instead:
+  // the folder is imported into OPFS and the game reads it in place (needs the dev server,
+  // which exposes window.ra2Store).
+  if (!config.import) {
+    filesServer = await serveGame(game, new URL(config.url).origin);
+    await filesServer.route(context);
+  }
   const page = await context.newPage();
   let menuAt = 0;
   let ended = false;
@@ -66,9 +72,28 @@ try {
   page.on("console", (message) => {
     if (message.type() === "error") line(`[browser] ${message.text()}`);
   });
-  const url = new URL(config.url);
-  url.searchParams.set("test", "1");
-  url.searchParams.set("target", config.target ?? "gamemd");
+  let url = new URL(config.url);
+  if (config.import) {
+    await page.goto(url.toString());
+    await page.getByRole("heading", { name: "Your games" }).waitFor({ timeout: 60_000 });
+    await page.getByRole("button", { name: "Import a folder…" }).click();
+    await page.locator('input[type="file"]').setInputFiles(game);
+    await page.getByText(/^Found /).waitFor({ timeout: 120_000 });
+    await page.getByRole("button", { name: /^Import / }).click();
+    await page.locator('[data-slot-id="1"]').waitFor({ timeout: 900_000 });
+    const installation = page.locator('[data-slot-id="1"]');
+    const edition = installation.getByRole("radio", {
+      name: config.target === "game" ? "Red Alert 2" : "Yuri's Revenge",
+    });
+    if (await edition.count()) await edition.click();
+    const card = installation.locator(`[data-game-id="${config.target === "game" ? "ra2" : "yr"}"]`);
+    await card.getByRole("button", { name: "Play" }).click();
+    await page.waitForURL(/\/game\/1(?:\?|$)/, { timeout: 30_000 });
+    url = new URL(page.url());
+  } else {
+    url.searchParams.set("test", "1");
+    url.searchParams.set("target", config.target ?? "gamemd");
+  }
   for (const arg of ["--mute", "--debuglog", ...args]) url.searchParams.append("arg", arg);
   await page.goto(url.toString());
   const started = Date.now();

@@ -47,9 +47,12 @@ sources (15:08, served by `vite preview --outDir` on its own port):
 - Private wide build, `playtest.py --web`: `skirmish-start`, `res-1280x720`,
   `res-1920x1080`, `options-pick-size`, `res-pause-menu-1280x720` and `skirmish-build` all
   pass (6 of 6; modes 800x600 -> chosen size -> 800x600, no 0xD9 dialog).
-- The published build still cannot run that `--web` suite: its 768 MB cap is below what the
-  page's test mode (copy every game file into memory) needs. That belongs to the zero-copy
-  work, not to this one; the suite needs the wide build above or a test mode that mounts.
+- The published build cannot run that `--web` suite in its default test mode: its 768 MB cap is
+  below what the page's test mode (copy every game file into memory) needs. `playtest.py
+  --web --web-import --web-url http://localhost:5173/` imports the case's folder into OPFS the
+  way the launcher does and plays from there (the game is read in place), so it runs on the
+  published build; `res-1280x720` passed that way on it (800x600 -> 1280x720). The rest of
+  the suite was not run in that mode (each case imports about 1 GB, so it is slow).
 
 ## Online clamp in a real two-player lobby (run 2026-10-25)
 

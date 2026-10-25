@@ -381,7 +381,7 @@ def farm(d, ini=None):
     return d
 
 
-def run(name, args, seconds, expect, every, original=False, web=None, web_headed=False):
+def run(name, args, seconds, expect, every, original=False, web=None, web_headed=False, web_import=False):
     d = os.path.join(OUT, name + ('.web' if web else '.original' if original else ''))
     if os.path.isdir(os.path.join(d, 'game')):
         shutil.rmtree(os.path.join(d, 'game'))      # a fresh folder: no saves left over
@@ -401,7 +401,7 @@ def run(name, args, seconds, expect, every, original=False, web=None, web_headed
         with open(config, 'w') as f:
             json.dump({'game': game, 'output': d, 'seconds': seconds, 'every': every,
                        'args': args + shlex.split(os.environ.get('RA2_HOST_ARGS', '')),
-                       'url': web, 'target': TARGET, 'headed': web_headed}, f)
+                       'url': web, 'target': TARGET, 'headed': web_headed, 'import': web_import}, f)
         cmd = ['node', os.path.join(ROOT, 'web', 'e2e', 'playtest.mjs'), config]
     lan = WINE and ('network' in name or 'lan' in name)
     with open(log, 'w', errors='replace') as f, (IPX if lan else contextlib.nullcontext()):
@@ -488,6 +488,9 @@ def main():
     ap.add_argument('--original', action='store_true', help='run the shipping code instead (oracle.c)')
     ap.add_argument('--web', action='store_true', help='run the same cases in Chromium against the built page')
     ap.add_argument('--headed', action='store_true', help='show Chromium during --web runs')
+    ap.add_argument('--web-import', action='store_true',
+                    help='with --web: import the case folder into OPFS as the launcher does, and play from there '
+                         '(the game is read in place: needs the dev server, and no memory for a full copy)')
     ap.add_argument('--web-url', default='http://127.0.0.1:4173/', help='built page on pnpm preview')
     ap.add_argument('--out', help='artifact directory (use separate directories for concurrent runs)')
     a = ap.parse_args()
@@ -495,6 +498,8 @@ def main():
         OUT = os.path.abspath(a.out)
     if a.web and a.original:
         ap.error('--original runs native machine code and cannot be used with --web')
+    if a.web_import and not a.web:
+        ap.error('--web-import requires --web')
     if a.headed and not a.web:
         ap.error('--headed requires --web')
     if a.list:
@@ -512,7 +517,7 @@ def main():
     summary = open(os.path.join(OUT, 'summary%s.txt' % ('.web' if a.web else '.original' if a.original else '')), 'w')
     with ThreadPoolExecutor(a.jobs) as ex:
         for name, code, bad, seen in ex.map(lambda n: run(n, *CASES[n], a.every, a.original,
-                                                       a.web_url if a.web else None, a.headed), names):
+                                                       a.web_url if a.web else None, a.headed, a.web_import), names):
             name += '.web' if a.web else '.original' if a.original else ''
             line = '%s %-20s exit %-7s %s%s' % ('FAIL' if bad else 'pass', name, code, '; '.join(seen) or '-',
                                                 ('  !! ' + ' | '.join(bad[:3])) if bad else '')
