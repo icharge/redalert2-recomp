@@ -96,11 +96,16 @@ which is not a regression of this work.
 ## Remaining verification
 
 The online clamp has been exercised in real two-player lobbies (section above): both
-clamps at match start and at join, with unflagged, 0x200 and 0x400 rooms. Not verified: the
-RA2Web server passes the room topic metadata through unchanged, but it does not enforce the
-resolution range itself (a client that skipped the check would not be stopped), and the
-published browser build must be rebuilt for the join fix (the `--build` runs used a private
-build with the same patches).
+clamps at match start and at join, with unflagged, 0x200 and 0x400 rooms.
+
+RA2Web (`../ra2web/server/src`, read 2026-10-25): it stores a room's topic, WOLAPI2 metadata
+included, as an opaque string and relays it; it does not read the resolution flags or any
+player's size. The range is therefore enforced by the clients, as the original game does
+with `ResolutionLimited640/800`; a modified client that skipped the check would not be
+stopped by the server. Enforcing it there would be a change in that separate checkout (parse
+the first WOLAPI2 number on `topic` and refuse a `joingame` whose client reports a size
+outside the range) and needs the protocol to carry the client's size, which it does not
+today. Not done here. The published browser build was rebuilt for the join fix (15:04).
 
 The browser saved-game resolution fix is implemented and covered by the web
 tests, but still needs this runtime check:
