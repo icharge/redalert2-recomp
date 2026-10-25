@@ -205,6 +205,21 @@ memory scan of the published module at menu time shows the rectangles rebuilt fo
 (0xAC11F4 x = 1112, bottom bar 1112 wide). The e2e script now checks the pause menu
 screenshot by hand (`pause-menu.png`) rather than asserting on it.
 
+## Fixed: the command bar's buttons were not drawn at the toggled size (2026-10-25)
+
+Symptom: at 1280x720 the bottom command bar was an empty strip; its six buttons showed only
+on hover or click. Cause: the buttons are placed by `sub_006A1880` (from `TabClass` `sub_006A0C50`)
+at y = `0xABE374` and x from `0xABE37C`, values cached once at game init from the in-game
+rectangle set (`0xAC11FC`, the bar's rectangle) for the 800x600 shell. `sub_005434E0` places
+the buttons right after its layout resize (`sub_006F33B0`), while that set still described the
+old size; the profile reset ran later and did not touch the cached values. The buttons sat at
+y = 568 under the map. `ra2_tab_patches` (run_lift.py, after the call at 0x005439E9) rebuilds the
+set (`sub_006F44D0`), reloads `0xABE374` and recomputes `0xABE37C` (`sub_006A0670`) before the
+placement, at every switch. New playtest cases `res-commandbar-1280x720` and
+`res-commandbar-800x600` hover and click along the bar; the recording shows the six buttons
+the whole time. Native batch `work/tests-game/cmdbar6`: 7 of 7 pass. Checked on the
+recording, not by hand in a real window.
+
 The original defect notes follow for the record.
 
 Press Escape in a match (Keyboard.ini `Options=27`; the dialog is 0xB5). At 1280x720 the

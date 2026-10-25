@@ -345,6 +345,16 @@ if TARGET == 'game':
          .waitlog(INGAME).move(560, 360, after=2).key('0x1B', after=10),
          180, ingame=True, size=(1280, 720), mode_sequence=[(800, 600), (1280, 720)],
          ini={'Video': {'ScreenWidth': 1280, 'ScreenHeight': 720}})
+    # The bottom command bar at the toggled size: hover and click along it.
+    case('res-commandbar-1280x720', SP().press(SINGLE, 'Skirmish', SKIRMISH).press(SKIRMISH, 'StartGame')
+         .waitlog(INGAME).move(560, 360, after=3).move(110, 584, after=3).move(160, 584, after=3)
+         .move(110, 704, after=3).move(160, 704, after=3).move(560, 360, after=3),
+         180, ingame=True, size=(1280, 720), mode_sequence=[(800, 600), (1280, 720)],
+         ini={'Video': {'ScreenWidth': 1280, 'ScreenHeight': 720}})
+    case('res-commandbar-800x600', SP().press(SINGLE, 'Skirmish', SKIRMISH).press(SKIRMISH, 'StartGame')
+         .waitlog(INGAME).move(400, 300, after=3).move(100, 584, after=3).move(400, 584, after=3)
+         .click(400, 584, after=3).move(700, 584, after=3).move(400, 300, after=3),
+         180, ingame=True, size=(800, 600), ini={'Video': {'ScreenWidth': 800, 'ScreenHeight': 600}})
 case('res-campaign-1920x1080',SP().press(SINGLE, 'NewCampaign', CAMPAIGN).press(CAMPAIGN, 1770)
      .waitlog(INGAME).move(880, 540, after=2).key('0x48', after=10), 300, ingame=True, alive=True,
      size=(1920, 1080), ini={'Video': {'ScreenWidth': 1920, 'ScreenHeight': 1080}})

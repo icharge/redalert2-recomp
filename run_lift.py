@@ -754,6 +754,31 @@ def ra2_profile_patches(code, cs):
                  '/* remaster: the display profile follows the switch, run_lift.py ra2_profile_patches */')}
 
 
+# The command bar (the tab's row of buttons along the bottom, sub_006A1880) is placed from
+# the in-game rectangle set (0xAC11FC, the bar's y) cached at one-time init in 0xABE374 and
+# 0xABE37C, and sub_005434E0 positions the buttons (TabClass sub_006A0C50) straight after
+# its layout resize (sub_006F33B0), while the rectangles still describe the old mode. A
+# match at another size drew the bar's buttons at the 800x600 shell's y, under the map, and
+# only a hover or a click repainted them. Rebuild the rectangle set and the two cached
+# values between the resize and the placement, at every switch.
+RA2_TAB_SITE = 0x005439E9               # call 0x6F33B0 in sub_005434E0, before TabClass sub_006A0C50
+RA2_TAB_TARGET = 0x006F33B0
+
+
+def ra2_tab_patches(code, cs):
+    """Rebuild the in-game layout before the switch places the command bar's buttons."""
+    va = RA2_TAB_SITE
+    rel = int.from_bytes(code[va - cs + 1:va - cs + 5], 'little', signed=True)
+    if code[va - cs] != 0xE8 or va + 5 + rel != RA2_TAB_TARGET:
+        print('[*] ra2_tab_patches: the layout resize in the switch does not match this build; no tab patch')
+        return {}
+    return {va: ('{ uint32_t _ecx = ecx, _edx = edx; RECOMP_CALL(sub_006F44D0); RECOMP_FLAGS_IN(); '
+                 'MEM32(0xABE374) = MEM32(MEM32(0xAC11FC) + 4u); '
+                 'ecx = MEM32(0xABE2AC); RECOMP_CALL(sub_006A0670); RECOMP_FLAGS_IN(); '
+                 'ecx = _ecx; edx = _edx; } '
+                 '/* remaster: the command bar follows the switch, run_lift.py ra2_tab_patches */')}
+
+
 # A mode switch invalidates the display profile cache (sub_006F4160) and sets
 # AC119C back to zero. The next resize through sub_006F33B0 previously jumped
 # straight into sub_006F3E70, which dereferences the now-empty AC1010/AC1128
@@ -909,7 +934,8 @@ def targets():
                                                **ra2_shell_patches(code, cs), **ra2_hires_patches(code, cs),
                                                **ra2_online_patches(code, cs), **ra2_confirm_patches(code, cs),
                                                **ra2_cache_patches(code, cs), **ra2_mode_cap_patches(code, cs),
-                                               **ra2_load_patches(code, cs), **ra2_profile_patches(code, cs)}),
+                                               **ra2_load_patches(code, cs), **ra2_profile_patches(code, cs),
+                                               **ra2_tab_patches(code, cs)}),
     }
 
 

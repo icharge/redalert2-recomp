@@ -22,7 +22,10 @@ from run_lift import (
     RA2_LOAD_TARGET,
     ra2_load_patches,
     RA2_PROFILE_SITE,
+    RA2_TAB_SITE,
+    RA2_TAB_TARGET,
     ra2_profile_patches,
+    ra2_tab_patches,
     ra2_online_patches,
     ra2_shell_patches,
     thai_font_call_replacements,
@@ -350,6 +353,30 @@ class RA2ProfilePatchTests(unittest.TestCase):
     def test_a_different_build_gets_no_patch(self):
         self.assertEqual(ra2_profile_patches(self.image(target=0x00500000), 0), {})
         self.assertEqual(ra2_profile_patches(self.image(call=0x90), 0), {})
+
+
+class RA2TabPatchTests(unittest.TestCase):
+    """The command bar is placed from the new layout (ra2_tab_patches)."""
+
+    @staticmethod
+    def image(target=RA2_TAB_TARGET, call=0xE8):
+        code = bytearray(0x00700000)
+        va = RA2_TAB_SITE
+        code[va] = call
+        code[va + 1:va + 5] = ((target - (va + 5)) & 0xFFFFFFFF).to_bytes(4, 'little')
+        return bytes(code)
+
+    def test_the_layout_and_the_bars_cached_position_follow_the_resize(self):
+        patches = ra2_tab_patches(self.image(), 0)
+        self.assertEqual(set(patches), {RA2_TAB_SITE})
+        c = patches[RA2_TAB_SITE]
+        self.assertLess(c.index('sub_006F44D0'), c.index('MEM32(0xABE374) = MEM32(MEM32(0xAC11FC) + 4u)'))
+        self.assertLess(c.index('0xABE374'), c.index('sub_006A0670'))
+        self.assertIn('ecx = MEM32(0xABE2AC)', c)
+
+    def test_a_different_build_gets_no_patch(self):
+        self.assertEqual(ra2_tab_patches(self.image(target=0x00500000), 0), {})
+        self.assertEqual(ra2_tab_patches(self.image(call=0x90), 0), {})
 
 
 class RA2CachePatchTests(unittest.TestCase):
