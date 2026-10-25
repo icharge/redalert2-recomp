@@ -47,10 +47,24 @@ function fromFile(path: string, file: File): SourceFile {
 
 /** A folder from `showDirectoryPicker()`: its top level, and `Saved Games/`. Nothing else is opened. */
 export function directorySource(handle: FileSystemDirectoryHandle): FolderSource {
+  async function* directoryEntries(dir: FileSystemDirectoryHandle) {
+    const directory = dir as unknown as {
+      entries?: () => AsyncIterable<[string, FileSystemHandle]>;
+      values?: () => AsyncIterable<FileSystemHandle>;
+    };
+    if (directory.entries) {
+      for await (const [, entry] of directory.entries()) yield entry;
+      return;
+    }
+    if (directory.values) {
+      yield* directory.values();
+      return;
+    }
+    throw new Error("This browser cannot read the selected game folder.");
+  }
+
   async function walk(dir: FileSystemDirectoryHandle, prefix: string, out: SourceFile[]) {
-    // lib.dom has no iterator for a directory handle yet
-    const entries = (dir as unknown as { values(): AsyncIterable<FileSystemHandle> }).values();
-    for await (const entry of entries) {
+    for await (const entry of directoryEntries(dir)) {
       if (entry.kind === "file") {
         out.push(fromFile(prefix + entry.name, await (entry as FileSystemFileHandle).getFile()));
       } else if (prefix === "" && entry.name.toLowerCase() === "saved games") {
@@ -113,6 +127,11 @@ export async function prepareImport(
   estimate: { quota?: number; usage?: number },
 ): Promise<Prepared> {
   const list = await source.list();
+  console.info("[RA2 import] Files found", {
+    folder: source.name,
+    count: list.length,
+    paths: list.map((file) => file.path),
+  });
   const files = new Map(list.map((file) => [file.path, file]));
   const plan = planImport(list, build, options);
   const exes: Prepared["exes"] = {};
@@ -287,9 +306,13 @@ export async function droppedSource(items: DataTransferItemList): Promise<Folder
     getAsFileSystemHandle?(): Promise<FileSystemHandle | null>;
   };
   if (withHandle.getAsFileSystemHandle) {
-    const handle = await withHandle.getAsFileSystemHandle();
-    if (handle?.kind === "directory") return directorySource(handle as FileSystemDirectoryHandle);
-    return null;
+    try {
+      const handle = await withHandle.getAsFileSystemHandle();
+      if (handle?.kind === "directory") return directorySource(handle as FileSystemDirectoryHandle);
+    } catch {
+      // Some browsers expose this method but cannot produce a handle for a dropped folder.
+      // Fall through to the older entry API below.
+    }
   }
   const entry = (
     item as DataTransferItem & { webkitGetAsEntry?(): LegacyEntry | null }
