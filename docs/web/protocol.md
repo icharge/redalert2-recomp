@@ -27,14 +27,17 @@ window.Module = {
 document.head.append(Object.assign(document.createElement("script"), { src: "/game/ra2.js" }));
 ```
 
-`main()` runs on the game's thread (`PROXY_TO_PTHREAD`) once the runtime is up.
+The module is built with `noInitialRun`: once the runtime is up the page puts the game's files in
+place (WasmFS's calls into the file system abort in `preRun`) and then calls `callMain` itself.
+`main()` runs on the game's thread (`PROXY_TO_PTHREAD`).
 The game folder is passed with `--game`, as on Linux; any `arg=` in the page's
 URL query (`?arg=--hd-voxels`, for tests and debugging) is appended. The
 canvas is not handed over: the picture comes back through shared memory.
 
-Where `/game` comes from: for now, in development only, the dev server's
-`/dev-game/` (a local game folder, filtered to the import allowlist), fetched
-into the in-memory file system in `preRun`. The import (stage 6) mounts OPFS.
+Where `/game` comes from: the import in OPFS (big files linked and read in place from the
+`/opfs` mount, small ones copied into memory; [storage.md](storage.md), "How the game reads its
+files"), or, in development, the dev server's `/dev-game/` (a local game folder, filtered to the
+import allowlist), fetched whole into the in-memory file system once the runtime is up.
 
 ## Shared memory: the picture and the cursor
 
@@ -69,6 +72,7 @@ hook (`hle_set_pump_hook`).
 | `ra2_net_push` | `int length` → `int` | queues one inbound prefixed datagram from the scratch buffer for the game's IPX socket |
 | `ra2_input_pointer` | `int kind, int x, int y, int button` | kind 0 move, 1 down, 2 up; `x`, `y` in the picture's pixels; button as the DOM numbers it (0 left, 1 middle, 2 right) |
 | `ra2_input_key` | `int down, int vk, int scan` | a Windows virtual key and set-1 scan code |
+| `ra2_input_text` | `const char *text` | committed UTF-8 text; supported CP874 characters become `WM_CHAR` messages for the game's focused window |
 | `ra2_resize` | `int w, int h, float dpr` | the canvas's CSS size; stored for the game's use (stage 9: a resolution to match the window) |
 | `ra2_set_volume` | `float v` (0 to 1) | `hle_dsound_set_master(v)` |
 | `ra2_audio` | none | the address of the sound ring (`hle_audio_ring_t`); `AudioRing` and `AUDIO_PCM_OFFSET` in protocol.ts say where its words are |

@@ -256,3 +256,123 @@ folder, and is not imported or persisted, so two tabs on one browser profile
 still get separate LAN identities. `e2e/lan.mjs` checks the keys differ and
 then verifies both clients enter and render the same LAN match. The automated
 browser test passed, and a manual retest confirmed the fix.
+
+## 24 October 2026: native RA2 Custom Match POC through STARTG
+
+The rebuilt Red Alert 2 module now joins its correct Lob_33_0 lobby. Its first
+untyped directory request previously received the wrong edition's lobby name,
+which the game rejected. The initial directory regression passes for both RA2
+and Yuri's Revenge; YR uses Lob_41_0.
+
+Two native RA2 clients were exercised against local RA2Web: login, room listing,
+Create Game, Join, matching rosters/map, a host Short Game change received by the
+guest, guest Accept and host Start Game. RequestGameStart now forwards the native
+linked player list instead of listing only the host. Both clients receive the
+same STARTG session, invoke OnGameStart, and store the server's instance number
+(4 in the final run). The full gserv URL, game ID, timestamp and each client's
+ticket remain in WASM memory, verified through the exported session getter.
+The passing durable test is web/e2e/wol.mjs --start; captures are under
+build-web/wol-ra2-start. Explicit YR login/lobby/logout also passed, with the
+WebSocket closing. RA2 Back/hub/Main Menu was checked manually without a hang.
+
+Closing a WOL client while HTTP login or WebSocket opening is pending now
+cancels the connection attempt; stopped/replaced loader clients cannot deliver
+late callbacks into the game. The cancellation regressions failed before the
+fix and now pass. Both game modules and both COM selftest editions build.
+The frontend suite passed 246 tests, TypeScript and scoped ESLint passed, and
+24 lift-patch tests passed. A narrow fix to the existing RA2 resolution patch
+was required to compile: its quiet clamp jumped to a C label emitted in another
+function; the patch now emits those stores/save inline. Other local work was
+preserved and this continuation's changes are uncommitted.
+
+This establishes the native menu/session POC, not a live Internet match. After
+STARTG the game attempts UDP NET_PORT_PROBE packets; browser delivery of that
+native Internet packet path remains W13.3. W13.2 still has compatibility and
+negative-path work, including YR two-client/start verification and failed room
+operations. Current details and reproduction commands are in
+[handoff-wolapi.md](handoff-wolapi.md) and [testing.md](testing.md#wolapi-bridge).
+
+## 24 October 2026: room metadata, passwords and rejected joins
+
+The bridge now carries native resolution flags, minimum/capacity, flags and
+ex-info in a WOLAPI2 topic envelope, while retaining WOLAPI1 read compatibility.
+Joining preserves the selected Channel record. Raw MODE +l capacity changes
+are reflected in the metadata, and server password/private bits survive the
+native extras. The guest now sees the actual four-player RA2 / six-player YR
+room limit in these runs instead of a hardcoded eight.
+
+Native room keys are forwarded on create/join. Rejected joins return the
+specific HRESULTs used by the game's bad-password, full, closed and banned
+branches; duplicate/rate-limited creation gets OnChannelCreate failure. The
+pending state is cleared before callbacks so returning to the lobby or retrying
+inside a native callback is retained. COM regressions cover these cases,
+malformed metadata and wrong-channel errors.
+
+Both native editions passed the extended two-player browser regression:
+protected room, wrong key, native error message, acknowledge/recover to lobby,
+retry the correct key, roster/options, Accept/Start, matching handoffs, native
+instance IDs and full session retained in WASM memory. YR exercised its original
+resolution confirmation. Captures are build-web/wol-yr-password-start (instance
+6) and build-web/wol-ra2-password-start (instance 7). Both COM selftest editions,
+TypeScript, scoped ESLint and all 246 frontend tests passed. Both modules were
+rebuilt; no commit was made. W13.2 still needs chat and start-abort/disconnect
+handling; W13.3 still needs a compatible native Internet packet transport.
+
+## 25 October 2026: playable native RA2 relay POC
+
+Resumed Claude's WOLAPI handoff and tested its existing connection-port
+normalization. Both native RA2 clients received FRAMESYNC and continued through
+more than 28,000 simulation frames through RA2Web's ticket-authenticated native
+relay. Each player deployed its MCV into a construction yard using native input;
+no sync error was observed during that run. Captures are in
+`build-web/wol-udp-port-normalized/{host,guest}`.
+
+A fresh trace-free gameplay check exposed another startup race: the host leaves
+the WOL room before the guest consumes NET_GO, and PART/NAMES removed the host
+identity needed by the game's scenario-negotiation code. The bridge now retains
+the committed match roster while still completing its own leave; new room/lobby
+requests clear the prior session. Unrelated-channel PART/NAMES are ignored.
+The ordering regression failed before the change and passes for both COM
+editions. The private RA2 module rebuilt and passed native gameplay without
+network tracing (`build-web/wol-ra2-roster-fixed`).
+The forced early host PART/NAMES gameplay check also passed without tracing
+(`build-web/wol-ra2-early-part`): both simulations advanced from frames
+[354,405] to [519,574] during the five-second observation window.
+
+The e2e harness now supports `--build` to stream a private module without
+overwriting shared assets, `--play` to require FRAMESYNC and sustained simulation
+progress, and `--part-race` to force the problematic lobby-event ordering.
+Relay tickets are redacted and binary captures record datagram sizes. The full
+frontend suite passed 259 tests; both COM editions, TypeScript, scoped ESLint and
+the six native-relay server tests passed. Changes remain uncommitted.
+
+W13.2's native menu/session acceptance is complete. W13.3 stays open for YR
+Internet gameplay, separate-network validation and relay lifecycle hardening.
+
+## 25 October 2026: YR gameplay and completed-match lifecycle
+
+The private `build-web-wol-yr` module compiled and linked with the bridge's
+current source, keeping its generated output out of shared dev modules and Git.
+The YR manager/connection offsets were checked against the lift and exercised by
+two native clients. Both receive FRAMESYNC and sustain gameplay through RA2Web's
+native relay, including the forced early host PART/NAMES ordering. The host ran at
+2580x1080 and the guest at the game's confirmed 640x480 mode; both deployed MCVs.
+Manual capture: `build-web/wol-yr-play/{host,guest}`.
+
+The match completed via native guest Abort Mission -> Quit, remote host victory,
+score continuation and return to Custom Match. This exposed the old gameplay
+relay staying open on lobby return. The loader now stops it for new lobby/room
+entry and WOL login while preserving it for the startup PART transition. Lost
+sockets also close and release the packet-poll timer. Five new lifecycle cases
+failed before the fixes and now pass. The full frontend suite passes 265 tests;
+TypeScript and scoped ESLint pass.
+
+`--finish` now verifies native YR resignation, remote defeat/victory handling,
+score continuation, both native lobby callbacks, both old relay sockets closed,
+and both native session getters cleared. Passing gameplay/end-of-match captures
+are under `build-web/wol-yr-finish-verified`. An earlier automation run clicked
+before native menu initialization; the fixture now waits for the menu to open
+and settle. The remaining W13.3 gate is separate-network verification, with a
+staging-endpoint question pending. No generated game build is to be published.
+The final fixture additionally waits for both native lobby callbacks and passed
+again (`build-web/wol-yr-finish-final`, frame samples [413,421] -> [585,588]).

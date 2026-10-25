@@ -94,7 +94,7 @@ Tick a task off here in the same pull request that finishes it.
 | ~~W6.3~~ | `storage/opfs.ts`: streamed copy, cancel, resume, remove | here | W6.2 | M | a 280 MB file copies without the tab's memory growing by that much |
 | ~~W6.4~~ | Import screen: picker, drop zone, checks, quota, `persist()`, progress | here | W6.1, W6.3 | M | `e2e/import.mjs`: a real install imports in Chrome through the file input (Firefox and Safari: not yet tried) |
 | ~~W6.5~~ | Library screen: cards, storage meter, remove with confirmation | here | W6.2 | S | `e2e/import.mjs` removes a game; the manifest tests cover a file the other game still needs |
-| ~~W6.6~~ | The game starts from OPFS (copied into the in-memory file system at start), and what it writes is kept in OPFS | here | W3.4, W6.3 | M | `e2e/import.mjs`: it reaches the main menu from the copy, and a file written before a reload is back ([decisions.md](decisions.md), D11) |
+| ~~W6.6~~ | The game starts from OPFS (big files linked and read in place through a WasmFS mount, small ones copied into memory), and what it writes is kept in OPFS | here | W3.4, W6.3 | M | `e2e/import.mjs`: it reaches the main menu from the mount, and a file written before a reload is back ([decisions.md](decisions.md), D11) |
 | ~~W6.7~~ | The service worker: precache, wasm cache by build hash, COOP/COEP, update prompt, manifest | here | W4.1 | M | `e2e/offline.mjs`: with no headers from the host the page isolates itself, a new build is offered and swaps the kept game files, and with the server gone the page and the game still start |
 | ~~W6.8~~ | Download saves as a zip; import saves | here | W6.6 | S | `e2e/import.mjs` downloads the zip; its paths are `Saved Games/<name>`, as the Windows build keeps them |
 
@@ -157,8 +157,23 @@ Tick a task off here in the same pull request that finishes it.
 | ID | Task | Repo | Needs | Size | Done when |
 |---|---|---|---|---|---|
 | ~~W13.1~~ | Identify the WOLAPI client surface, compatible service, and browser/network constraints | here | W12.1 | M | `decisions.md` records the target service, required lobby/session operations, and how game traffic reaches peers; original WOL servers are not assumed available |
-| W13.2 | Adapt the WOLAPI client surface to the RA2Web lobby/session service | here | W13.1 | L | a browser client authenticates to RA2Web, lists/joins lobbies and game rooms, exchanges options, and receives the start handoff |
+| ~~W13.2~~ | Adapt the WOLAPI client surface to the RA2Web lobby/session service | here | W13.1 | L | a browser client authenticates to RA2Web, lists/joins lobbies and game rooms, exchanges options, and receives the start handoff |
 | W13.3 | Trace and bridge the native WOL Internet gameplay packet path | here, pcrecomp | W13.1, W13.2 | L | RA2/YR online socket and packet flow is traced past `STARTG`, then clients on separate networks complete a match through a browser-compatible transport; include a relayed case if WebRTC is selected |
+
+## Stage 14: bundled runtime inputs and edition readiness
+
+See [runtime-bundle.md](runtime-bundle.md) for the proposed design, scope,
+content-readiness rules, and verification cases. Runtime bundles are generated
+locally and stay in ignored build output; user-provided MIX archives are not
+bundled.
+
+| ID | Task | Repo | Needs | Size | Done when |
+|---|---|---|---|---|---|
+| W14.1 | Trace startup, menu, and skirmish file accesses for both editions; define the required, edition-specific, shared, and optional archive manifest | here | W11.2 | M | `runtime-bundle.md` records each required filename with evidence, and a full supported install passes the readiness rules for its edition |
+| W14.2 | Generate per-edition local runtime bundles with the matching PE image, shared `Blowfish.dll`, edition, build ID, stamp, and input hashes | here | W11.1, W14.1 | M | default YR and `RA2_TARGET=game` builds each emit a matching bundle under ignored output; validation rejects a stale or mismatched input |
+| W14.3 | Load the selected bundle into the browser runtime and remove EXE/`Blowfish.dll` from the player's import requirements | here | W14.2, W6.6 | M | an import with only user game content starts from the local bundle; no executable or DLL is written to the user's OPFS record |
+| W14.4 | Add independent RA2 and Yuri's Revenge content-readiness reports to Import and Library | here | W14.1, W14.3 | M | reports distinguish runtime-not-built, ready, missing required content, and optional movie omissions; shared content is counted for both editions |
+| W14.5 | Verify bundled runtime and readiness in both browser targets | here | W14.2, W14.3, W14.4 | M | both editions reach the menu and a scripted skirmish without imported EXE/DLL files; incomplete-content cases show the exact edition-specific missing files |
 
 ## Open, before the page ships to a public host
 

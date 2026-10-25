@@ -115,7 +115,9 @@ For the full game path, run
 with the Vite server on port 5178. The test exchanges SDP manually, joins and
 starts a LAN lobby match, then waits for active game frame reports and checks
 that both clients render non-black match frames. It saves each client's
-offer/lobby/match screenshots and full log under `--shots`.
+offer/lobby/match screenshots and full log under `--shots`. Before entering
+the lobby it checks that each HLE runtime has a different 128-digit random
+`woldata.key`; both clients then join the same match.
 
 More steps and switches, from chasing the first play's issues ([issues.md](issues.md)):
 
@@ -174,13 +176,13 @@ launcher's answer here. Bink playback is covered separately by
 `e2e/movies.mjs`. This needs a local game folder, so it runs on a developer's
 machine, not in CI.
 
-**MEMFS, as in a browser.** `--memfs` copies the import allowlist
-([storage.md](storage.md): `*.mix` but not `.bak`, the sound bags, the data
-files, the exe and DLLs) into Emscripten's in-memory file system and runs from
-that, instead of reading the folder in place (NODEFS). For Yuri's Revenge that
-is 1,039 MB of the 2.6 GB folder, and the main menu opens 9 seconds after
-launch with the copy included. `conformance.py --host web --memfs` scores it:
-8/8, so the allowlist is enough to reach the menu.
+**/game laid out as in a browser.** `--memfs` makes `/game` the way the page does
+([storage.md](storage.md), "How the game reads its files"): only the import allowlist
+(`*.mix` but not `.bak`, the sound bags, the data files, the exe and DLLs), the files of 1 MiB or
+more as links read in place from the folder, and the small ones copied into the in-memory file
+system. For Yuri's Revenge that is about 8 MB copied and 1,085 MB linked, and the main menu opens
+after the same time as a plain run. `conformance.py --host web --memfs` scores it, so the allowlist is enough
+to reach the menu.
 
 **A trap, on purpose.** `--trap N` makes the game's thread trap on its Nth
 trip through the pump hook. `src/web/pre.js` catches the exception on the main
@@ -253,6 +255,81 @@ allowlist into a volume first (1.1 GB, seconds).
 | `pnpm build` (page only, no game) | yes | yes |
 | Node boot (`conformance.py --host web`) | no (needs game files) | yes |
 | `playtest.py --web` | no (needs game files) | yes |
+
+## WOLAPI bridge
+
+The COM/protocol selftest runs without game assets. From the repository root in
+PowerShell, with the sibling pcrecomp and emsdk checkouts:
+
+```powershell
+$env:EMCC_DEBUG = '1'
+foreach ($target in @('yr', 'ra2')) {
+  $defines = @()
+  if ($target -eq 'ra2') { $defines = @('-DRA2_TARGET_GAME=1') }
+  & ../emsdk/upstream/emscripten/emcc.exe src/web/wolapi_selftest.c `
+    -I../pcrecomp/runtime/win32hle -I../pcrecomp/runtime/recomp32 `
+    -DRECOMP_FLAT_MEMORY @defines -sENVIRONMENT=node -sEXIT_RUNTIME=1 `
+    -o "build-web/wolapi-selftest-$target.js"
+  if ($LASTEXITCODE) { throw "WOLAPI $target compilation failed" }
+  node "build-web/wolapi-selftest-$target.js"
+  if ($LASTEXITCODE) { throw "WOLAPI $target selftest failed" }
+}
+```
+
+This exercises x86 COM stack cleanup, connection points, discovery/login,
+locale, the initial untyped lobby directory for each edition, room creation,
+listing, opaque option bytes, compatibility metadata, MOTD and logout events.
+`pnpm test` also checks the browser protocol client and cancellation during
+HTTP login or WebSocket opening.
+
+With Vite on `http://localhost:5173`, local RA2Web on `127.0.0.1:19090`, and the
+game modules built, run the original menu smoke check from `web/`:
+
+```powershell
+node e2e/wol.mjs --url 'http://localhost:5173/?target=game' --shots e2e/shots/wol-ra2
+node e2e/wol.mjs --url 'http://localhost:5173/?target=game' --shots e2e/shots/wol-ra2-two --two --interactive
+node e2e/wol.mjs --url 'http://localhost:5173/?target=game' --shots e2e/shots/wol-ra2-start --start
+node e2e/wol.mjs --url 'http://localhost:5173/' --shots e2e/shots/wol-yr-password --start --wrong-password
+node e2e/wol.mjs --url 'http://localhost:5173/?target=game' --build ../build-web-udp --shots ../build-web/wol-ra2-play --arg --intro --play
+node e2e/wol.mjs --url 'http://localhost:5173/' --build ../build-web-wol-yr --shots ../build-web/wol-yr-finish --arg --intro --part-race --finish
+```
+
+Omit `?target=game` for Yuri's Revenge. The test uses the development game
+folder, the native 800x600 menus and temporary accounts `woltst1`/`woltst2`,
+with password `wolpass1` (override with `WOL_TEST_PASSWORD`). The default check
+logs in, joins the edition's lobby, leaves it and logs out to Main Menu;
+`--two` creates a room and joins from a second native client, checking the
+join acknowledgement and host options. `--start` also toggles Short Game,
+accepts, starts, and checks both STARTG handoffs, native game-ID fields, and the
+full session retained in WASM memory for the packet adapter.
+`--play` goes further: both native simulations must receive FRAMESYNC, reach
+frame 300, and continue advancing for another five seconds. It verifies local
+two-browser gameplay through the RA2Web native relay; separate-network play
+still needs validation. `--part-race` adds a forced early host PART/NAMES update
+after STARTG, covering the guest's NET_GO identity-validation race.
+`--build` pins a private build without replacing the
+shared game assets. It streams js/wasm/data through a temporary loopback HTTP
+server because the debug WASM exceeds Chrome's DevTools fulfillment-buffer limit.
+Use the private `build-web-udp` memory configuration and `--arg --intro` described
+in [handoff-wolapi.md](handoff-wolapi.md#build-and-test-recipes).
+For YR, `--finish` additionally drives the known 640x480 guest quit-menu fixture,
+checks the remote victory and score continuation, waits for both native lobby
+callbacks, and asserts that old relay sockets and native sessions are cleared.
+It is currently a YR-only fixture; general RA2/YR play checks use `--play`.
+`--password` creates a protected room; `--wrong-password` submits an incorrect
+key, acknowledges the native failure dialog, then retries successfully. Both
+imply two clients. Room keys are redacted from the wire capture. For YR with
+an imported widescreen setting, the test accepts its original resolution prompt.
+`--start` alone establishes only the session handoff. Screenshots, game logs and
+redacted WebSocket captures are saved under
+`--shots`. `--interactive` accepts JSON actions such as
+`{"client":"host","click":[720,557],"shot":"back"}` and `{"quit":true}`;
+send carriage return when driving an interactive Windows PTY.
+
+Do not build while another `run_lift.py` is regenerating the same edition's
+sources. If compiling all objects with `EMCC_DEBUG=1` is slow, compile object
+targets with it disabled, then enable it for the final link; debug mode avoids
+the local Emscripten JS symbol-cache lock hang during linking.
 
 ## Performance
 

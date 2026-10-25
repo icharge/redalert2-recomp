@@ -20,6 +20,7 @@ stages 1 to 3. [tasks.md](tasks.md) breaks each stage into tasks.
 | 11 | **Red Alert 2** | `RA2_TARGET=game` builds and passes the same cases | toolchain |
 | 12 | **LAN multiplayer** (optional) | two browser clients play a LAN-style match; IPX datagrams use WebRTC data channels | architecture |
 | 13 | **Internet multiplayer** (optional) | players can find and join an online match through a WOLAPI-compatible service, then play over the supported network transport | architecture |
+| 14 | **Bundled runtime inputs and edition readiness** | local web builds provide the matching executable image and `Blowfish.dll`; user imports retain MIX content only and report RA2/Yuri readiness separately | runtime-bundle |
 
 ## Stage 1: toolchain
 
@@ -44,8 +45,8 @@ comes before linking the whole game.
 `src/web/main.c`, a copy of `src/linux/main.c` without the signal handlers,
 the recorder and the watchdog thread. Linked with `-sPROXY_TO_PTHREAD` and
 SDL's dummy video and audio drivers. Run under Node with `--game` pointing at
-a NODEFS mount of the local `game/` folder, or with `--memfs` the allowlisted
-files copied into MEMFS (the table's check). Faults show up as wasm traps;
+a WasmFS Node-backend mount of the local `game/` folder, or with `--memfs` the
+allowlisted files laid out as the page lays them out (the table's check). Faults show up as wasm traps;
 [architecture.md](architecture.md) covers how to report them.
 
 ## Stage 4: the page
@@ -85,6 +86,17 @@ split into two stages: stage 12 carries LAN-style IPX traffic over WebRTC;
 stage 13 adds internet lobby/session support through WOLAPI. Stage 13 first
 has to establish which WOLAPI-compatible service and browser-facing protocol
 are usable; it must not assume the original Westwood Online servers are live.
+
+## Stage 14: bundled runtime inputs and edition readiness
+
+See [runtime-bundle.md](runtime-bundle.md). The local build generates ignored,
+per-edition runtime bundles from the matching `game.exe` / `gamemd.exe` and
+`Blowfish.dll`. The browser stages those inputs at runtime without asking the
+player to import them. MIX archives remain user-provided. Before changing the
+import gate, trace and record the required archive set for each edition. The
+Import and Library views report RA2 and Yuri's Revenge readiness independently,
+including missing required archives and optional movie content. Generated
+bundles remain local: they are not committed or published.
 
 ## Risks
 

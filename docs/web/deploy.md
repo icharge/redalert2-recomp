@@ -62,6 +62,42 @@ worker has been installed. Once installed, the worker supplies a
 base-relative navigation fallback offline, caching build metadata and
 isolating its build-cache cleanup from other deployment bases.
 
+## WOL server endpoints
+
+The native Internet / Custom Match bridge defaults to the local RA2Web server
+at `http://127.0.0.1:19090`. An operator can select a trusted server using Vite
+environment variables before starting development or building the frontend:
+
+```powershell
+cd web
+$env:VITE_WOL_HTTP_URL = 'https://service.thaira2.com/'
+$env:VITE_WOL_SOCKET_URL = 'wss://service.thaira2.com/wol'
+pnpm dev
+```
+
+Restart Vite after changing these settings. For a production frontend, set them
+before `pnpm build`. Both are public endpoint configuration, not secrets. The
+HTTP base serves `register` and `login`; the WebSocket URL is independent so
+authentication does not accidentally go to `/wol/register`. Both support a
+server context path, independently of the frontend's `RA2_BASE`. Without an
+explicit socket URL, its URL is derived from the HTTP base using WS(S).
+Game URLs and query parameters cannot change the login destination. Clear both
+variables to return to the local default.
+
+The RA2Web deployment must include `server/src/gserv/NativeRelay.ts` and its
+`server/src/index.ts` route. Forward WebSocket upgrades at `/wol` and
+`/gserv/native`; STARTG must advertise the public WSS gserv base. Allow the
+player's local frontend origin for HTTP authentication and WebSocket access.
+Keep generated game modules on each player's own machine as described above.
+
+On 25 October, browser probes of `service.thaira2.com` returned HTTP 200 for
+`health` and `servers.ini` from `http://localhost:5173`, and `/wol` accepted
+`cvers`. However, `/gserv/native` replied to an invalid ticket with the older
+gserv numeric protocol (`103`) rather than the native relay's
+`error invalid ticket` and close code 4001. Its WebSocket upgrade alone does
+not prove that the native relay is deployed. Public gameplay remains unverified;
+the user is handling further manual testing.
+
 ## Headers
 
 Threads need `SharedArrayBuffer`, which needs the page to be cross-origin
