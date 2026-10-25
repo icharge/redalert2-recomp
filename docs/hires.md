@@ -1,6 +1,7 @@
 # High resolution and widescreen
 
-Yuri's Revenge takes its in-game resolution from `RA2MD.INI`:
+Yuri's Revenge takes its in-game resolution from `RA2MD.INI`; Red Alert 2 uses
+`RA2.INI`:
 
 ```ini
 [Video]
@@ -8,11 +9,43 @@ ScreenWidth=1920
 ScreenHeight=1080
 ```
 
-The menus stay at 800x600 (the shell resolution); a game, a skirmish or a
-mission, opens at the INI's size. On the virtual display any size is accepted
-(`SetDisplayMode` is remembered, not applied), and the presenter shows the
-picture at its own aspect: a 16:9 game fills a 16:9 window or screen, the 4:3
-menus are letterboxed in it.
+Both games use an 800x600 shell. Red Alert 2's mode toggle is forced on by
+`run_lift.py`'s `ra2_shell_patches`, so its menus return to 800x600 after a
+game. A skirmish or mission opens at the saved INI size. The native host and
+browser HLE list 16-bit modes from 640x480 through 5120x1440; the native host
+also adds the monitor's current mode and the size in `RA2.INI`. `AllowHiResModes`
+is forced on and the game-side dimension cap is 8192. On the virtual display,
+`SetDisplayMode` is remembered, not applied. The presenter keeps the game's
+aspect ratio, letterboxing 4:3 menus in a widescreen window.
+
+## Red Alert 2's menu, size picker and online range
+
+Red Alert 2 (`game.exe`) has Yuri's mode toggle, off by default. `run_lift.py`
+forces it on (`ra2_shell_patches`), sets the shell to 800x600 and sends the
+switch back after a game to 800x600 too. Related patches, all checked by their
+bytes first so a different build gets none:
+
+- `ra2_confirm_patches`: picking a size in Options or Display Options opens no
+  "The display mode will be changed" confirm (dialog 0xD9); the size is stored
+  for the next game and nothing switches live.
+- `ra2_hires_patches` and `ra2_mode_cap_patches`: `AllowHiResModes` forced on and the
+  size cap in both dialogs raised.
+- `ra2_online_patches`: the online join check (`sub_00745780`, which the shipping
+  exe skips with a jump) is real again with the range 1024x768 to 1920x1080: room
+  flag `0x200` allows up to 1024 wide, `0x400` and unflagged rooms 1920. A larger
+  size is clamped quietly and stored; at match start an online game below
+  1024x768 is raised to it. Skirmish and campaign are unrestricted. A patched
+  client can ignore this, so the RA2Web server must enforce the range itself.
+- `src/web/wolapi.c` keeps the room flag bits (`0x200`, `0x400`) through room
+  creation and room-list parsing; `wolapi_selftest.c` checks the round trip.
+
+The host (`CMakeLists.txt`, `src/runtime/host.c`) links at `/BASE:0x10000000` with a
+1 MB stack and runs the game on a thread with a 16 MB one: at the old base
+(0x60000000) this Windows would not start the ~480 MB image, and a 16 MB main
+stack sat on the guest's 0x00400000 range. The host skips its suspended-child
+range hold when that range is already free.
+
+Not covered by a run: the online clamp in a real two-player lobby.
 
 ## What works
 
@@ -24,7 +57,9 @@ The playtest suite checks each size in a skirmish, and 1080p in a campaign
 | 1280x720 | pass | | |
 | 1920x1080 | pass | pass (Allied, first mission) | sidebar of 16 cameo slots; view 1752x1048 |
 | 2560x1440 | pass | | |
+| 3440x1440 | pass | | ultrawide |
 | 3840x2160 | pass | | sidebar rows capped at 30 (below) |
+| 5120x1440 | pass | | 5K mode cycle verified without recording; headless frame capture is very slow at this size |
 
 A larger resolution shows more of the battlefield, not a bigger picture: the
 art stays at its native size, and the presenter's sharp scaling is what makes

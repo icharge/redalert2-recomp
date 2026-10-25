@@ -2,6 +2,10 @@
 #pragma once
 #include <windows.h>
 
+/* Max game frame supported by the host snapshot and presenter buffers. */
+#define HOST_FRAME_MAX_WIDTH 8192
+#define HOST_FRAME_MAX_HEIGHT 2160
+
 /* sharp, smooth, crt, nearest, integer -> 0..4, or -1. */
 int  present_mode_from_name(const char* name);
 

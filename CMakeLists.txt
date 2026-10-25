@@ -160,10 +160,15 @@ target_include_directories(ra2 PRIVATE
 # 0xDEAD0000 into a size argument (forcecommander).
 target_compile_definitions(ra2 PRIVATE RECOMP_RETADDR=0u _CRT_SECURE_NO_WARNINGS
                                     RECOMP_FLAT_MEMORY RECOMP_LOCAL_REGS)
-# Linked high and not relocatable, so the guest's 0x00400000..0x00B7A000 is
-# free.
-target_link_options(ra2 PRIVATE /BASE:0x60000000 /FIXED:NO /DYNAMICBASE:NO
-                               /NXCOMPAT /LARGEADDRESSAWARE /STACK:0x1000000
+# Prefer a high base, and keep relocations for systems that force ASLR even
+# with /DYNAMICBASE:NO. native32_hold_image reserves the guest image's fixed
+# range in a suspended child before its runtime dependencies are loaded.
+# The image is 480 to 490 MB; at a base of 0x60000000 Windows refused to start it
+# ("subsystem needed to support the image type", error 308), so it links lower.
+# Its stack is small: a 16 MB one at process start sat on the guest's 0x00400000
+# range, so host.c runs the game on a thread with the large stack.
+target_link_options(ra2 PRIVATE /BASE:0x10000000 /FIXED:NO /DYNAMICBASE:NO
+                               /NXCOMPAT /LARGEADDRESSAWARE /STACK:0x100000
                                /MANIFESTUAC:NO)
 set(GEN_OPT "/O2" CACHE STRING "optimisation for the generated C")
 # Visual Studio 2026's compiler (19.50 and later) drops the sign test of a

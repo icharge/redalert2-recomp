@@ -407,6 +407,53 @@ static void shim_CreateMutexA(void) {
     g_esp += 4 + 3 * 4;
 }
 
+/* Retail and Ares installs (not the Steam/EA exes, which have the check
+ * patched out) bail with "Launcher not running" unless the launcher (RA2.exe /
+ * RA2MD.exe) holds this named mutex when the game starts. The host plays the
+ * launcher: it holds the mutex for the life of the process, under the plain name
+ * and under the per-process name the headless CreateMutexA shim looks up, and
+ * the event the game signals once its display is up. (Restored from 7b8fa48:
+ * the launcher check bailed in every headless run without it.) */
+static HANDLE g_launcher_event, g_launcher_map;
+static DWORD g_launcher_tid;
+
+/* The launcher's answer to the event: thread message 0xBEEF, whose lParam is a
+ * file mapping holding the string the game checks. */
+static DWORD WINAPI launcher_thread(LPVOID unused) {
+    (void)unused;
+    while (WaitForSingleObject(g_launcher_event, INFINITE) == WAIT_OBJECT_0)
+        PostThreadMessageA(g_launcher_tid, 0xBEEF, 0, (LPARAM)g_launcher_map);
+    return 0;
+}
+
+static void hold_launcher_mutex(void) {
+    static const char name[] = "48BC11BD-C4D7-466b-8A31-C6ABBAD47B3E";
+    char pname[MAX_PATH];
+    MSG msg;
+    char* view;
+    CreateMutexA(NULL, FALSE, name);
+    _snprintf(pname, sizeof pname - 1, "%s.%lu", name, GetCurrentProcessId()), pname[sizeof pname - 1] = 0;
+    CreateMutexA(NULL, FALSE, pname);
+    /* "Notify launcher": the game opens this event and signals it; Yuri's
+     * Revenge then waits up to ten seconds for the message, and takes one at
+     * startup too. The game runs on this thread; peeking first makes its queue. */
+    g_launcher_event = CreateEventA(NULL, FALSE, FALSE, "D6E7FC97-64F9-4d28-B52C-754EDF721C6F");
+    g_launcher_map = CreateFileMappingA(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, 4096, NULL);
+    view = g_launcher_map ? (char*)MapViewOfFile(g_launcher_map, FILE_MAP_ALL_ACCESS, 0, 0, 0) : NULL;
+    if (!g_launcher_event || !view) return;
+    /* What each game compares the launcher's data with: Red Alert 2 re-checks it
+     * every 1024 frames and queues an event against the player when it differs. */
+#ifdef RA2_TARGET_GAME
+    strcpy(view, "(c) 2000 Electronic Arts, Inc. All Rights Reserved");
+#else
+    strcpy(view, "UIDATA,3DDATA,MAPS");
+#endif
+    g_launcher_tid = GetCurrentThreadId();
+    PeekMessageA(&msg, NULL, 0, 0, PM_NOREMOVE);
+    PostThreadMessageA(g_launcher_tid, 0xBEEF, 0, (LPARAM)g_launcher_map);
+    CloseHandle(CreateThread(NULL, 0, launcher_thread, NULL, 0, NULL));
+}
+
 static void shim_OpenMutexA(void) {
     char name[MAX_PATH];
     const char* n = (const char*)(uintptr_t)ARG(2);
@@ -604,6 +651,99 @@ static ULONG WINAPI hl_DDRelease(IDirectDraw* dd) {
     return r;
 }
 
+/* ---- resolution list -----------------------------------------------------
+ * The game's Options combo lists the modes IDirectDraw::EnumDisplayModes gives
+ * that are 16-bit and between 640x480 and its maximum (sub_004962A0 in
+ * RA2's lift: the depth is the caller's 0x10). Many drivers list only the
+ * desktop's depth, so the combo was short or blank. The host calls the real
+ * enumeration with a callback of its own, logs each mode the driver gives,
+ * and then offers the sizes the driver did not, at 16 bits: the standard
+ * sizes to 4K, the ultrawides through 5120x1440, the monitor's own size and
+ * the size RA2.INI holds (so the combo always has the current one). The
+ * game's callback is a guest address, so it is called through native32_call_guest. */
+static const uint32_t g_extra_modes[][2] = {
+    { 640, 480 }, { 800, 600 }, { 1024, 768 }, { 1152, 864 }, { 1280, 720 }, { 1280, 768 },
+    { 1280, 800 }, { 1280, 960 }, { 1280, 1024 }, { 1360, 768 }, { 1366, 768 }, { 1400, 1050 },
+    { 1440, 900 }, { 1600, 900 }, { 1600, 1200 }, { 1680, 1050 }, { 1920, 1080 }, { 1920, 1200 },
+    { 2048, 1152 }, { 2560, 1080 }, { 2560, 1440 }, { 2560, 1600 }, { 3440, 1440 }, { 3840, 1600 },
+    { 3840, 2160 }, { 5120, 1440 },
+};
+#define MAX_DRIVER_MODES 64
+
+typedef HRESULT (WINAPI *dd_enum_t)(IDirectDraw*, DWORD, LPDDSURFACEDESC, LPVOID, LPDDENUMMODESCALLBACK);
+static dd_enum_t g_real_enum;
+
+struct mode_enum {
+    uint32_t cb, ctx;                      /* the game's callback and its context (guest addresses) */
+    int cancelled;
+    int n;
+    uint32_t seen[MAX_DRIVER_MODES][2];    /* 16-bit sizes the driver gave */
+};
+
+/* The game's callback takes the descriptor and its context; its result is
+ * al: non-zero to go on. */
+static int call_game_mode(uint32_t cb, uint32_t ctx, LPDDSURFACEDESC d) {
+    uint32_t a[2] = { (uint32_t)(uintptr_t)d, ctx };
+    native32_call_guest(cb, 2, a);
+    return (g_eax & 0xFF) != 0;
+}
+
+static BOOL WINAPI mode_enum_proxy(LPDDSURFACEDESC d, LPVOID p) {
+    struct mode_enum* e = (struct mode_enum*)p;
+    fprintf(stderr, "[headless] EnumDisplayModes: driver mode %lux%lux%lu\n",
+            d->dwWidth, d->dwHeight, d->ddpfPixelFormat.dwRGBBitCount);
+    if (d->ddpfPixelFormat.dwRGBBitCount == 16 && e->n < MAX_DRIVER_MODES) {
+        e->seen[e->n][0] = d->dwWidth, e->seen[e->n][1] = d->dwHeight, e->n++;
+    }
+    if (!call_game_mode(e->cb, e->ctx, d)) e->cancelled = 1;
+    return !e->cancelled;
+}
+
+static int mode_seen(const struct mode_enum* e, uint32_t w, uint32_t h) {
+    for (int i = 0; i < e->n; i++)
+        if (e->seen[i][0] == w && e->seen[i][1] == h) return 1;
+    return 0;
+}
+
+static void mode_add(struct mode_enum* e, uint32_t w, uint32_t h, int* added) {
+    if (e->cancelled || mode_seen(e, w, h)) return;
+    DDSURFACEDESC d;
+    memset(&d, 0, sizeof d);
+    d.dwSize = sizeof d;
+    d.dwFlags = DDSD_HEIGHT | DDSD_WIDTH | DDSD_PITCH | DDSD_PIXELFORMAT | DDSD_REFRESHRATE;
+    d.dwHeight = h, d.dwWidth = w, d.lPitch = (LONG)(w * 2);
+    d.dwRefreshRate = 60;
+    d.ddpfPixelFormat.dwSize = sizeof d.ddpfPixelFormat;
+    d.ddpfPixelFormat.dwFlags = DDPF_RGB;
+    d.ddpfPixelFormat.dwRGBBitCount = 16;
+    d.ddpfPixelFormat.dwRBitMask = 0xF800, d.ddpfPixelFormat.dwGBitMask = 0x07E0;
+    d.ddpfPixelFormat.dwBBitMask = 0x001F;
+    if (!call_game_mode(e->cb, e->ctx, &d)) { e->cancelled = 1; return; }
+    if (e->n < MAX_DRIVER_MODES) e->seen[e->n][0] = w, e->seen[e->n][1] = h, e->n++;
+    (*added)++;
+}
+
+static HRESULT WINAPI hl_EnumDisplayModes(IDirectDraw* dd, DWORD flags, LPDDSURFACEDESC filter,
+                                          LPVOID ctx, LPDDENUMMODESCALLBACK cb) {
+    struct mode_enum e;
+    memset(&e, 0, sizeof e);
+    e.cb = (uint32_t)(uintptr_t)cb, e.ctx = (uint32_t)(uintptr_t)ctx;
+    HRESULT hr = g_real_enum(dd, flags, filter, &e, mode_enum_proxy);
+    if (!filter && !e.cancelled) {          /* the game's own list: add what the driver left out */
+        int added = 0;
+        DWORD mw = (DWORD)GetSystemMetrics(SM_CXSCREEN), mh = (DWORD)GetSystemMetrics(SM_CYSCREEN);
+        if (mw && mh) mode_add(&e, mw, mh, &added);
+        int ini_w = (int)GetPrivateProfileIntA("Video", "ScreenWidth", 0, RA2_INI_NAME);
+        int ini_h = (int)GetPrivateProfileIntA("Video", "ScreenHeight", 0, RA2_INI_NAME);
+        if (ini_w > 0 && ini_h > 0) mode_add(&e, (uint32_t)ini_w, (uint32_t)ini_h, &added);
+        for (size_t i = 0; i < sizeof g_extra_modes / sizeof *g_extra_modes; i++)
+            mode_add(&e, g_extra_modes[i][0], g_extra_modes[i][1], &added);
+        fprintf(stderr, "[headless] EnumDisplayModes: driver gave %d 16-bit modes, host added %d\n",
+                e.n - added, added);
+    }
+    return hr;
+}
+
 static void patch(void** vt, int slot, void* fn, void** real) {
     DWORD old;
     *real = vt[slot];
@@ -620,6 +760,7 @@ static void shim_DirectDrawCreate(void) {
         void** vt = *(void***)*out;
         patch(vt, 2, (void*)hl_DDRelease, (void**)&g_real_ddrelease);
         patch(vt, 6, (void*)hl_CreateSurface, (void**)&g_real_surf);
+        patch(vt, 8, (void*)hl_EnumDisplayModes, (void**)&g_real_enum);
         patch(vt, 12, (void*)hl_GetDisplayMode, (void**)&g_real_getmode);
         patch(vt, 20, (void*)hl_SetCooperativeLevel, (void**)&g_real_coop);
         patch(vt, 21, (void*)hl_SetDisplayMode, (void**)&g_real_mode);
@@ -702,7 +843,7 @@ static void record_close(void) {
  * a picture at 1352x845 on a Mac: the presenter kept the game at 40 frames a
  * second. The lock is now held for a memcpy, and the work runs on the copy.
  * One snapshot at a time (the presenter and the recorder share it). */
-static uint8_t g_snap[4096 * 2160 * 4];
+static uint8_t g_snap[HOST_FRAME_MAX_WIDTH * HOST_FRAME_MAX_HEIGHT * 4];
 static CRITICAL_SECTION g_snap_lock;
 
 /* With g_snap_lock held: the primary into g_snap, rows of *pitch bytes. */
@@ -718,7 +859,7 @@ static int snapshot(int* w, int* h, int* bpp, int* pitch) {
     }
     *w = (int)d.dwWidth, *h = (int)d.dwHeight, *bpp = (int)d.ddpfPixelFormat.dwRGBBitCount;
     *pitch = *w * (*bpp / 8);
-    int ok = *w <= 4096 && *h <= 2160 && (*bpp == 16 || *bpp == 32);
+    int ok = *w <= HOST_FRAME_MAX_WIDTH && *h <= HOST_FRAME_MAX_HEIGHT && (*bpp == 16 || *bpp == 32);
     for (int y = 0; ok && y < *h; y++)
         memcpy(g_snap + (size_t)y * *pitch, (const uint8_t*)d.lpSurface + (size_t)y * d.lPitch, (size_t)*pitch);
     g_primary->lpVtbl->Unlock(g_primary, NULL);
@@ -773,12 +914,12 @@ int host_frame_hd(uint32_t* out, int maxw, int maxh, int* pw, int* ph) {
 static const char* g_hd_frames_dir;
 
 static DWORD WINAPI hd_frame_dumper(LPVOID unused) {
-    static uint32_t px[4096 * 2160];
+    static uint32_t px[HOST_FRAME_MAX_WIDTH * HOST_FRAME_MAX_HEIGHT];
     (void)unused;
     for (int n = 0; n < 60; ) {
         int w, h;
         Sleep(10000);
-        if (host_frame_hd(px, 4096, 2160, &w, &h) <= 0) continue;
+        if (host_frame_hd(px, HOST_FRAME_MAX_WIDTH, HOST_FRAME_MAX_HEIGHT, &w, &h) <= 0) continue;
         w *= 2, h *= 2;
         char path[MAX_PATH];
         _snprintf(path, sizeof path - 1, "%s/frame_%02d.bmp", g_hd_frames_dir, n++), path[sizeof path - 1] = 0;
@@ -796,14 +937,14 @@ static DWORD WINAPI hd_frame_dumper(LPVOID unused) {
 }
 
 static DWORD WINAPI recorder(LPVOID unused) {
-    static uint32_t frame[4096 * 2160], row[4096];
+    static uint32_t frame[HOST_FRAME_MAX_WIDTH * HOST_FRAME_MAX_HEIGHT], row[HOST_FRAME_MAX_WIDTH];
     DWORD next = GetTickCount();
     (void)unused;
     for (;;) {
         int w, h;
         next += 33;
         { LONG wait = (LONG)(next - GetTickCount()); if (wait > 0) Sleep(wait); }
-        if (!host_frame(frame, 4096, 2160, &w, &h)) continue;
+        if (!host_frame(frame, HOST_FRAME_MAX_WIDTH, HOST_FRAME_MAX_HEIGHT, &w, &h)) continue;
         EnterCriticalSection(&g_rec_lock);
         if (!g_ffmpeg && g_recorded) { LeaveCriticalSection(&g_rec_lock); return 0; }   /* closed */
         if (!g_ffmpeg) {
@@ -1216,6 +1357,41 @@ static DWORD WINAPI watchdog(LPVOID unused) {
     return 0;
 }
 
+static DWORD WINAPI guest_thread(LPVOID unused) {
+    MSG msg;
+    (void)unused;
+    if (g_launcher_map) {
+        g_launcher_tid = GetCurrentThreadId();
+        PeekMessageA(&msg, NULL, 0, 0, PM_NOREMOVE);
+        PostThreadMessageA(g_launcher_tid, 0xBEEF, 0, (LPARAM)g_launcher_map);
+    }
+    native32_call_guest(ra2_entry_va, 0, NULL);
+    return 0;
+}
+
+/* 1 when the guest exe's whole image range (its base, SizeOfImage from its
+ * header) is free in this process, so the host can map it directly. */
+static int guest_range_free(const char* guest_path) {
+    IMAGE_DOS_HEADER dos;
+    IMAGE_NT_HEADERS32 nt;
+    FILE* f = fopen(guest_path, "rb");
+    int ok = f && fread(&dos, sizeof dos, 1, f) == 1 && fseek(f, dos.e_lfanew, SEEK_SET) == 0 &&
+             fread(&nt, sizeof nt, 1, f) == 1 && nt.Signature == IMAGE_NT_SIGNATURE;
+    if (f) fclose(f);
+    if (!ok) return 0;
+    uintptr_t at = RA2_IMAGE_BASE, end = at + nt.OptionalHeader.SizeOfImage;
+    while (at < end) {
+        MEMORY_BASIC_INFORMATION mbi;
+        if (!VirtualQuery((void*)at, &mbi, sizeof mbi) || mbi.State != MEM_FREE) {
+            fprintf(stderr, "[host] guest range not free at 0x%08X: base %p, %lu bytes, state 0x%lX, type 0x%lX\n",
+                    (unsigned)at, mbi.BaseAddress, (unsigned long)mbi.RegionSize, mbi.State, mbi.Type);
+            return 0;
+        }
+        at = (uintptr_t)mbi.BaseAddress + mbi.RegionSize;
+    }
+    return 1;
+}
+
 int main(int argc, char** argv) {
     const char* exe = "game\\" RA2_EXE_NAME;
     const char* game = "game";
@@ -1300,6 +1476,17 @@ int main(int argc, char** argv) {
         g_record = rec_full;
     }
     _snprintf(g_guest_exe, sizeof g_guest_exe - 1, "%s\\" RA2_EXE_NAME, game_full);
+    /* Windows can force ASLR on this host despite /DYNAMICBASE:NO. Its
+     * randomized image may overlap the guest's fixed 0x00400000 range. Have a
+     * suspended child reserve that range before resuming; retry if this child's
+     * image landed across it. */
+    int held = guest_range_free(exe_full);      /* nothing to hold when the range is already free */
+    for (int attempt = 0; attempt < 32 && !held; attempt++)
+        held = native32_hold_image(exe_full, RA2_IMAGE_BASE);
+    if (!held) {
+        fprintf(stderr, "cannot reserve guest image range at 0x%08X after 32 attempts\n", RA2_IMAGE_BASE);
+        return 1;
+    }
     mods_start(game_full, mod);         /* mods\<game>\<name> over the game's folder (mods.c) */
     _snprintf(g_guest_cmdline, sizeof g_guest_cmdline - 1, "\"%s\"", g_guest_exe);
 
@@ -1333,6 +1520,7 @@ int main(int argc, char** argv) {
                 live[n++] = shims[k];
         shims = live, nshims = n;
     }
+    hold_launcher_mutex();
     if (g_original) {
         /* The shipping machine code under the same host, shims and input
          * (oracle.c): the reference a lifted run is compared against. */
@@ -1394,7 +1582,14 @@ int main(int argc, char** argv) {
     if (g_hd_frames_dir) CloseHandle(CreateThread(NULL, 0, hd_frame_dumper, NULL, 0, NULL));
     printf("  entering 0x%08X\n\n", ra2_entry_va);
     fflush(stdout);
-    native32_call_guest(ra2_entry_va, 0, NULL);
+    /* The host's own stack is small (CMakeLists.txt): a 16 MB one at process
+     * start sat on 0x00400000, the guest's range. The game runs on a thread
+     * with the large stack, and the launcher's message goes to that thread. */
+    {
+        HANDLE t = CreateThread(NULL, 0x1000000, guest_thread, NULL, STACK_SIZE_PARAM_IS_A_RESERVATION, NULL);
+        if (!t) { fprintf(stderr, "cannot start the game thread (error %lu)\n", GetLastError()); return 1; }
+        WaitForSingleObject(t, INFINITE);
+    }
     printf("\nentry returned eax=%08X\n", g_eax);
     return (int)g_eax;
 }

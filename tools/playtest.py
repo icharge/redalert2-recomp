@@ -307,13 +307,35 @@ def set_ini(text, section, key, value):
 
 # Hi-res and widescreen: the game's own resolution setting, the in-game
 # picture at that size, in a skirmish and a campaign (docs/hires.md).
-RES = [(1280, 720), (1920, 1080), (2560, 1440), (3840, 2160)]
+RES = [(1280, 720), (1366, 768), (1920, 1080), (2560, 1440), (3440, 1440), (3840, 2160), (5120, 1440)]
 for w, h in RES:
     video = {'Video': {'ScreenWidth': w, 'ScreenHeight': h}}
+    seconds = 300 if (w, h) == (5120, 1440) else 180
+    resolution_expect = dict(ingame=True, size=(w, h), mode_sequence=[(800, 600), (w, h)], ini=video)
+    if (w, h) == (5120, 1440):
+        # Recording/downscaling a 5K frame holds the game's surface lock for
+        # too long. Verify the full mode cycle without the optional recorder.
+        resolution_expect.update(no_record=True, min_distinct=0, defeated=True,
+                                 mode_sequence=[(800, 600), (w, h), (800, 600)])
     case('res-%dx%d' % (w, h), SP().press(SINGLE, 'Skirmish', SKIRMISH).press(SKIRMISH, 'StartGame')
          .waitlog(INGAME).move(w // 2 - 80, h // 2, after=2).key('0x48', after=10),
-         180, ingame=True, size=(w, h), ini=video)
-case('res-campaign-1920x1080', SP().press(SINGLE, 'NewCampaign', CAMPAIGN).press(CAMPAIGN, 1770)
+         seconds, **resolution_expect)
+# Picking a size in Options: no "display mode will be changed" confirm (0xD9),
+# and the size is what the next skirmish opens at. Combo 1773 lists the sizes
+# from 640x480 up, so index 4 is 1280x720 (the host's list, src/runtime/host.c).
+if TARGET == 'game':
+    case('options-pick-size', S().press(MAIN, 'Options', OPTIONS).select(OPTIONS, 1773, 4)
+         .press(OPTIONS, 'MainMenu').press(MAIN, 'SinglePlayer', SINGLE).press(SINGLE, 'Skirmish', SKIRMISH)
+         .press(SKIRMISH, 'StartGame').waitlog(INGAME).move(560, 360, after=2).key('0x48', after=10),
+         240, ingame=True, size=(1280, 720), mode_sequence=[(800, 600), (1280, 720)], absent=[0xD9])
+if TARGET == 'game':
+    # The in-game menu (Escape) at the toggled size: the last frame has to show its
+    # sidebar piece at the right edge (docs/ra2-resolution-handoff.md).
+    case('res-pause-menu-1280x720', SP().press(SINGLE, 'Skirmish', SKIRMISH).press(SKIRMISH, 'StartGame')
+         .waitlog(INGAME).move(560, 360, after=2).key('0x1B', after=10),
+         180, ingame=True, size=(1280, 720), mode_sequence=[(800, 600), (1280, 720)],
+         ini={'Video': {'ScreenWidth': 1280, 'ScreenHeight': 720}})
+case('res-campaign-1920x1080',SP().press(SINGLE, 'NewCampaign', CAMPAIGN).press(CAMPAIGN, 1770)
      .waitlog(INGAME).move(880, 540, after=2).key('0x48', after=10), 300, ingame=True, alive=True,
      size=(1920, 1080), ini={'Video': {'ScreenWidth': 1920, 'ScreenHeight': 1080}})
 
@@ -356,8 +378,10 @@ def run(name, args, seconds, expect, every, original=False, web=None, web_headed
     os.makedirs(d, exist_ok=True)
     game = farm(os.path.join(d, 'game'), expect.get('ini'))
     mp4, log = os.path.join(d, 'run.mp4'), os.path.join(d, 'run.log')
-    cmd = WINE + [HOST, '--headless', '--run', '--mute', '--debuglog', '--watchdog', str(seconds),
-                  '--record', host_path(mp4), '--exe', host_path(os.path.join(game, GAME_EXE)),
+    cmd = WINE + [HOST, '--headless', '--run', '--mute', '--debuglog', '--watchdog', str(seconds)]
+    if not expect.get('no_record'):
+        cmd += ['--record', host_path(mp4)]
+    cmd += ['--exe', host_path(os.path.join(game, GAME_EXE)),
                   '--game', host_path(game)] + args
     cmd += os.environ.get('RA2_HOST_ARGS', '').replace('{case}', d).split()  # extra host flags; {case} is the case's folder
     if original:
@@ -393,23 +417,42 @@ def run(name, args, seconds, expect, every, original=False, web=None, web_headed
     distinct = len(set(re.findall(r'\[record\] frame \d+ (?:at \S+ )?checksum ([0-9A-F]{8})', text)))
     ingame = '[game] Capture_Mouse()' in text
     modes = re.findall(r'\[(?:headless|ddraw)\] SetDisplayMode\((\d+)x(\d+)x\d+\)', text)
+    mode_sizes = [tuple(map(int, mode)) for mode in modes]
     defeated = re.search(r'\[game\] MPlayer_Defeated\(\) - Player <human player> has been defeated', text)
     seen = ['dialogs ' + ' '.join(opened)] if opened else []
     if ingame:
-        seen.append('in game, %d distinct frames' % distinct)
+        seen.append('in game (no recording)' if expect.get('no_record') else 'in game, %d distinct frames' % distinct)
     if defeated:
         seen.append('human defeated')
     for dlg in expect.get('dialogs', []):
         if '%X' % dlg not in opened:
             bad.append('dialog 0x%X never opened' % dlg)
-    if expect.get('ingame') and not (ingame and distinct >= 5):
+    # absent: dialogs that must not open (the size confirm 0xD9, once a size is picked)
+    for dlg in expect.get('absent', []):
+        if '%X' % dlg in opened:
+            bad.append('dialog 0x%X opened, it must not' % dlg)
+    min_distinct = expect.get('min_distinct', 5)
+    if expect.get('ingame') and not (ingame and distinct >= min_distinct):
         bad.append('never in game' if not ingame else 'picture stopped (%d frames)' % distinct)
-    if 'size' in expect and (not modes or tuple(map(int, modes[-1])) != tuple(expect['size'])):
-        bad.append('in game at %s, wanted %dx%d' % ('x'.join(modes[-1]) if modes else 'no mode', *expect['size']))
+    if 'size' in expect and tuple(expect['size']) not in mode_sizes:
+        bad.append('never entered %dx%d (modes: %s)' %
+                   (*expect['size'], ' -> '.join('%dx%d' % size for size in mode_sizes) or 'none'))
+    if 'mode_sequence' in expect:
+        at = 0
+        for size in expect['mode_sequence']:
+            try:
+                at = mode_sizes.index(tuple(size), at) + 1
+            except ValueError:
+                bad.append('mode sequence %s missing from %s' %
+                           (' -> '.join('%dx%d' % tuple(size) for size in expect['mode_sequence']),
+                            ' -> '.join('%dx%d' % size for size in mode_sizes) or 'none'))
+                break
     if modes and ingame:
-        seen.append('%sx%s' % modes[-1])
+        seen.append('modes ' + ' -> '.join('%dx%d' % size for size in mode_sizes))
     if expect.get('alive') and defeated:
         bad.append('the human player was defeated')
+    if expect.get('defeated') and not defeated:
+        bad.append('the human player was not defeated before the watchdog')
     # log: {text: at least n}, lines the game's own debug log must print
     # ("Adding event PRODUCE" for each order to build or train).
     for text, n in expect.get('log', {}).items():

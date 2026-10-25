@@ -145,7 +145,7 @@ skirmish, 16.0 ms in the Soviet mission's opening, headless): the work fits
 inside the game's own pacing.
 
 The 2x frame needs twice the game's resolution to fit the presenter's
-4096x2160 frame: up to 2048x1080; above that the presenter shows the 1x
+8192x2160 frame: up to 4096x1080; above that the presenter shows the 1x
 frame.
 
 **Voxel animations and debris** (`VoxelAnimClass::Draw_It`, `0x00749B70`)

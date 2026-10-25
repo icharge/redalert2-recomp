@@ -455,8 +455,13 @@ static void settings_save(HWND hw) {
 #endif
 #define OPT_W ((volatile int32_t*)(uintptr_t)(GAME_OPTIONS + OPT_W_AT))
 #define OPT_H ((volatile int32_t*)(uintptr_t)(GAME_OPTIONS + OPT_W_AT + 4))
-static const int k_res[][2] = { { 800, 600 }, { 1024, 768 }, { 1280, 720 }, { 1366, 768 }, { 1600, 900 },
-                                { 1920, 1080 }, { 2560, 1440 }, { 3840, 2160 } };
+static const int k_res[][2] = {
+    { 640, 480 }, { 800, 600 }, { 1024, 768 }, { 1152, 864 }, { 1280, 720 }, { 1280, 768 },
+    { 1280, 800 }, { 1280, 960 }, { 1280, 1024 }, { 1360, 768 }, { 1366, 768 }, { 1400, 1050 },
+    { 1440, 900 }, { 1600, 900 }, { 1600, 1200 }, { 1680, 1050 }, { 1920, 1080 }, { 1920, 1200 },
+    { 2048, 1152 }, { 2560, 1080 }, { 2560, 1440 }, { 2560, 1600 }, { 3440, 1440 }, { 3840, 1600 },
+    { 3840, 2160 }, { 5120, 1440 },
+};
 #define NRES ((int)(sizeof k_res / sizeof k_res[0]))
 
 static int opt_ok(void) { return *OPT_W >= 320 && *OPT_W <= 8192 && *OPT_H >= 200 && *OPT_H <= 8192; }
@@ -675,7 +680,7 @@ static void frame_stats(LARGE_INTEGER t0, LARGE_INTEGER t1, LARGE_INTEGER t2) {
 
 
 static DWORD WINAPI present_thread(LPVOID arg) {
-    static uint32_t frame[4096 * 2160];
+    static uint32_t frame[HOST_FRAME_MAX_WIDTH * HOST_FRAME_MAX_HEIGHT];
     int fullscreen = (int)(intptr_t)arg;
     /* Per-monitor DPI aware, this thread only. Unaware, Windows stretched the
      * window's pixels by the display scale (2x at 200%) after our shader had
@@ -759,7 +764,7 @@ static DWORD WINAPI present_thread(LPVOID arg) {
         }
         LARGE_INTEGER t0, t1, t2;
         QueryPerformanceCounter(&t0);
-        int hd = host_frame_hd(frame, 4096, 2160, &gw, &gh);
+        int hd = host_frame_hd(frame, HOST_FRAME_MAX_WIDTH, HOST_FRAME_MAX_HEIGHT, &gw, &gh);
         if (hd < 0) {                              /* locked: the last picture stays */
             Sleep(1);
         } else if (hd) {                           /* the picture at 2x */
@@ -769,7 +774,7 @@ static DWORD WINAPI present_thread(LPVOID arg) {
             draw(frame, 2 * gw, 2 * gh);
             QueryPerformanceCounter(&t2);
             frame_stats(t0, t1, t2);
-        } else if (host_frame(frame, 4096, 2160, &gw, &gh)) {
+        } else if (host_frame(frame, HOST_FRAME_MAX_WIDTH, HOST_FRAME_MAX_HEIGHT, &gw, &gh)) {
             InterlockedExchange(&g_gw, gw);
             InterlockedExchange(&g_gh, gh);
             QueryPerformanceCounter(&t1);

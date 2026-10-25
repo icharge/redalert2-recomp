@@ -54,10 +54,11 @@ A `--scale` or `--fullscreen` on the command line wins over the file.
 - **HD vehicles** (on unless turned off) draws voxel units at twice the
   resolution of the rest of the picture ([voxels.md](voxels.md)); the
   presenter's picture is then the game's at 2x, up to a game resolution of
-  2048x1080.
+  4096x1080. Above that, it shows the 1x frame.
 - **Game resolution** applies to the next game (skirmish or mission); the
-  menus are always 800x600. It is written to the game's `RA2MD.INI`
-  `[Video] ScreenWidth/ScreenHeight`, and to the game's options in memory
+  menus are 800x600. It is written to `RA2MD.INI` for Yuri's Revenge or
+  `RA2.INI` for Red Alert 2, under `[Video] ScreenWidth/ScreenHeight`, and to
+  the game's options in memory
   (`0x00A8EB60` +0x24/+0x28, the object the settings reader is called on at
   `0x0052C630`), because the game saves its own options on exit and would put
   the old size back. 3840x2160 needs the sidebar fix in [hires.md](hires.md).

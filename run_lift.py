@@ -513,6 +513,353 @@ HOOKS_GAME = {
     0x004068F0: 'debuglog',            # the bare-ret debug printf, 1,592 callers
 }
 
+# Red Alert 2's menus at 800x600, like Yuri's Revenge (docs/resolution.md, the
+# plan in docs/ra2-resolution-plan.md). The mode toggle [Video] AllowModeToggle
+# (byte 0xA40D0B) is read from the INI in two places; both force it on. With it
+# on, the shell is 800x600 (Startup's 0x006901B1 path), the switch back to the
+# shell goes to 800x600 (three copies, at 0x0065D92B, 0x0065DF5C and 0x0065E6D2),
+# and the Options dialog only stores a size (its native branch at 0x0054276B).
+# The INI size (0xA40B38/3C) is left as the INI gives it: the match-start switch
+# at 0x0065BF98 still goes to that size. Each site is checked by its bytes
+# first; a different build gets no patches at all.
+RA2_SHELL_SITES = {
+    # Each site: the bytes of the instruction the patch lands on (checked).
+    'toggle_ini': (0x0068E9D9, 'a20b0d a400'),       # mov [AllowModeToggle], al (INI read at startup)
+    'toggle_options': (0x005D8E2D, 'a20b0d a400'),   # mov [AllowModeToggle], al (Options load)
+    'shell_height': (0x006901B1, 'be90010000'),      # mov esi, 0x190 (the toggle-on shell's size)
+}
+# The three copies of the switch back to the shell (0x0065D92B, 0x0065DF5C,
+# 0x0065E6D2). Each: the width compare at cmp_w (`cmp [0x839648], 0x280`) with
+# its je, the height compare at cmp_h (`cmp [0x83964C], 0x1E0`) with its jle, and
+# four mov immediates: the first pair sets edx and ecx for the call to 0x5434E0
+# to 640x400 (or 640x480); the second pair is its retry. done is the label the
+# switch skips to.
+RA2_SHELL_SWITCH_BACK = (
+    dict(cmp_w=0x0065D934, je=0x0065D93E, cmp_h=0x0065D940, jle=0x0065D94A, done=0x0065D97B,
+         movs=((0x0065D959, 'edx', 0x190), (0x0065D95E, 'ecx', 0x280),
+               (0x0065D96C, 'edx', 0x1E0), (0x0065D971, 'ecx', 0x280))),
+    dict(cmp_w=0x0065DF65, je=0x0065DF6F, cmp_h=0x0065DF71, jle=0x0065DF7B, done=0x0065DFAC,
+         movs=((0x0065DF8A, 'edx', 0x190), (0x0065DF8F, 'ecx', 0x280),
+               (0x0065DF9D, 'edx', 0x1E0), (0x0065DFA2, 'ecx', 0x280))),
+    dict(cmp_w=0x0065E6DC, je=0x0065E6E6, cmp_h=0x0065E6E8, jle=0x0065E6F2, done=0x0065E723,
+         movs=((0x0065E701, 'edx', 0x190), (0x0065E706, 'ecx', 0x280),
+               (0x0065E714, 'edx', 0x1E0), (0x0065E719, 'ecx', 0x280))),
+)
+# The shell's size: 800 x 600 (0x320 x 0x258), what Yuri's shell uses.
+RA2_SHELL_W, RA2_SHELL_H = 0x320, 0x258
+RA2_SHELL_TAG = '/* remaster: shell 800x600, run_lift.py ra2_shell_patches */'
+
+
+# [Video] AllowHiResModes: the Options load stores it into the options object
+# (esi + 0x29, 0xA40B41) at 0x005D8DF3. Forced on, the resolution list keeps
+# every size up to 4096 (the readers are 0x00542A56, 0x00543D4B and friends).
+RA2_HIRES_SITE = (0x005D8DF3, '884629')            # mov byte ptr [esi + 0x29], al
+
+
+# Online play's resolution range (docs/ra2-resolution-plan.md, step 3). The
+# join check sub_00745780 (wonline.cpp) reads the room's flags at [room + 0x20]:
+# 0x400 (ResolutionLimited800) caps the width at 800, 0x200 (ResolutionLimited640)
+# at 640, neither at 1024. The plan's new range: 0x400 and neither allow 1920
+# (1920x1080), 0x200 allows 1024 (1024x768). The shipping exe skips the check with
+# an unconditional jump (0x007457CC); the real check replaces it, and a width over
+# the limit is clamped quietly: the size is stored for the next game (the live
+# switch is not run), and the join is accepted. At match start an online game's
+# size is held to 1024x768 .. 1920x1080 (0x0065BF98; session type 4 is the online
+# lobby, read by sub_00755CD0).
+RA2_ONLINE_SITES = {
+    # va: (hex of the instruction the patch lands on, what it is)
+    'limit_800': (0x007457AA, 'bb20030000'),          # mov ebx, 0x320 (ResolutionLimited800)
+    'limit_and': (0x007457BA, '2580feffff'),          # and eax, 0xfffffe80
+    'limit_add': (0x007457BF, '0500040000'),          # add eax, 0x400
+    'jmp_check': (0x007457CC, 'e9'),                  # jmp 0x745895 (the skipped comparison)
+    'size_edi':  (0x00745859, '8bd7'),                # mov edx, edi
+    'live_call': (0x0074585B, 'e8'),                  # call 0x543a70 (the live display switch)
+    'after_jle': (0x00745889, '7e0a'),                # jle 0x745895 (after the clamp)
+    'match_w':   (0x0065BF98, 'a1380ba400'),          # mov eax, [0xa40b38] (match-start size)
+}
+RA2_ONLINE_TARGETS = {
+    'jmp_check': 0x00745895,
+    'live_call': 0x00543A70,
+    'after_jle': 0x00745895,
+}
+RA2_ONLINE_LABELS = {'clamp': 0x0074582A, 'accept': 0x00745895}
+
+
+def ra2_online_patches(code, cs):
+    """Red Alert 2's online resolution range (see RA2_ONLINE_SITES).
+
+    Every site is checked by its bytes first: the opcodes, and for the jumps and
+    the call the target they reach. A different build gets no patches."""
+    def at(va, hexbytes):
+        raw = bytes.fromhex(hexbytes.replace(' ', ''))
+        return code[va - cs:va - cs + len(raw)] == raw
+
+    def rel_target(va, length):
+        """The target of the rel32 branch of `length` bytes at va."""
+        rel = int.from_bytes(code[va - cs + length - 4:va - cs + length], 'little', signed=True)
+        return va + length + rel
+
+    checks = []
+    for name in ('limit_800', 'limit_and', 'limit_add', 'size_edi', 'match_w'):
+        va, shape = RA2_ONLINE_SITES[name]
+        checks.append(at(va, shape))
+    va = RA2_ONLINE_SITES['jmp_check'][0]
+    checks.append(at(va, 'e9') and rel_target(va, 5) == RA2_ONLINE_TARGETS['jmp_check'])
+    va = RA2_ONLINE_SITES['live_call'][0]
+    checks.append(at(va, 'e8') and rel_target(va, 5) == RA2_ONLINE_TARGETS['live_call'])
+    va = RA2_ONLINE_SITES['after_jle'][0]
+    checks.append(at(va, '7e0a'))
+    if not all(checks):
+        print('[*] ra2_online_patches: a site does not match this build; no online patches')
+        return {}
+
+    tag = '/* remaster: online resolution range, run_lift.py ra2_online_patches */'
+    sites = RA2_ONLINE_SITES
+    out = {
+        sites['limit_800'][0]: 'ebx = 0x780u; ' + tag,
+        sites['limit_and'][0]: '@replace:eax = eax & 0xFFFFFC80u; ' + tag,
+        sites['limit_add'][0]: '@replace:eax = eax + 0x780u; ' + tag,
+        # The shipping jump makes the old clamp unreachable here, so the lifter
+        # puts it in another C function. Keep the quiet stores and INI save inline
+        # instead of jumping to that function's label (or its dialog cleanup).
+        sites['jmp_check'][0]: ('@replace:if ((int32_t)MEM32(0x008523E0) <= (int32_t)ebx) goto L_%08X; '
+                                '{ esi = (ebx == 0x400u) ? 0x400u : 0x780u; '
+                                'edi = (esi == 0x400u) ? 0x300u : 0x438u; '
+                                'MEM32(0x00A40B38) = esi; MEM32(0x00A40B3C) = edi; '
+                                'ecx = 0x00A40B18u; RECOMP_CALL(sub_005D91B0); RECOMP_FLAGS_IN(); } '
+                                'goto L_%08X; %s') % (RA2_ONLINE_LABELS['accept'], RA2_ONLINE_LABELS['accept'], tag),
+        # The clamped size, for the next game: 1024x768 for the 1024 limit,
+        # else 1920x1080. edx carries the height the store below uses.
+        sites['size_edi'][0]: ('esi = (ebx == 0x400u) ? 0x400u : 0x780u; '
+                               'edi = (esi == 0x400u) ? 0x300u : 0x438u; edx = edi; ' + tag),
+        sites['live_call'][0]: '@replace:eax = 1u; /* stored, not switched live */ ' + tag,
+        sites['after_jle'][0]: '@replace:goto L_%08X; %s' % (RA2_ONLINE_LABELS['accept'], tag),
+        sites['match_w'][0]: ('{ if (MEM32(0x00A3D298) == 4u) { uint32_t _w = eax, _h = MEM32(0x00A40B3C); '
+                              'if (_w < 1024u) _w = 1024u; if (_h < 768u) _h = 768u; '
+                              'if (_w > 1920u) _w = 1920u; if (_h > 1080u) _h = 1080u; '
+                              'eax = _w; MEM32(0x00A40B38) = _w; MEM32(0x00A40B3C) = _h; } } ' + tag),
+    }
+    return out
+
+
+# The "The display mode will be changed..." confirm (dialog 0xD9, Ok/Cancel) that
+# a picked size opens. Two callers: the Options resolution combo's change
+# (call 0x00542719, proc 0x00542160) and Display Options' Proceed (call
+# 0x00543B0C, proc 0x00543C40). Each pushes one argument (0) right before the
+# call to 0x005FF610, which pops it (ret 4). The patch pops it too and treats
+# the dialog as Ok: Options then stores the picked size (the toggle is forced
+# on, so the store-only branch at 0x0054276B runs, not the live switch), and
+# Display Options keeps the current mode (its "Keeping display mode" branch).
+RA2_CONFIRM_SITES = {
+    # name: (call va, expected push 0 before it, result slot offset after the pop)
+    'options': (0x00542719, 0x00542705, 0x60),
+    'display': (0x00543B0C, 0x00543B0A, 0x10),
+}
+RA2_CONFIRM_TARGET = 0x005FF610     # the dialog creator both calls reach
+
+
+def ra2_confirm_patches(code, cs):
+    """Skip the 0xD9 size confirm: Ok, no dialog, no live switch (RA2_CONFIRM_SITES).
+
+    Each site is checked by bytes first: the push 0 and the call with its
+    rel32 target at RA2_CONFIRM_TARGET. A different build gets no patches."""
+    def at(va, hexbytes):
+        raw = bytes.fromhex(hexbytes)
+        return code[va - cs:va - cs + len(raw)] == raw
+
+    out = {}
+    for name, (va, push_va, slot) in RA2_CONFIRM_SITES.items():
+        if not at(push_va, '6a00') or not at(va, 'e8'):
+            print('[*] ra2_confirm_patches: the %s confirm call does not match this build; no patches' % name)
+            return {}
+        rel = int.from_bytes(code[va - cs + 1:va - cs + 5], 'little', signed=True)
+        if va + 5 + rel != RA2_CONFIRM_TARGET:
+            print('[*] ra2_confirm_patches: the %s confirm call targets another function; no patches' % name)
+            return {}
+        out[va] = ('@replace:{ esp += 4; MEM32(esp + 0x%X) = 1u; eax = 0; } '
+                   '/* remaster: the size confirm is Ok, no dialog (run_lift.py ra2_confirm_patches) */' % slot)
+    return out
+
+
+
+# A saved game never reached the match-start switch (0x0065BF98 is Start_Scenario's);
+# its loader (sub_00656A60's caller chain, ending at "LOADING GAME [%s] - Complete")
+# runs the whole mission at the shell's 800x600. After the loader's last step
+# (call 0x006F30F0, the same call Start_Scenario makes before its switch) the
+# same switch runs: when the toggle is on and the INI size differs from the current
+# mode, sub_005434E0 goes to it, and the switch back at the end of a game is the
+# existing one (RA2_SHELL_SWITCH_BACK).
+RA2_LOAD_SITE = 0x00656B1E            # call 0x006F30F0, last step of the saved-game loader
+RA2_LOAD_TARGET = 0x006F30F0
+RA2_LOAD_AFTER = (0x00656B23, '56')   # push esi: the "LOADING GAME ... Complete" log argument
+
+
+def ra2_load_patches(code, cs):
+    """Switch to the INI size when a saved game has loaded (RA2_LOAD_SITE).
+
+    Checked by bytes first: the call and its target, the push after it. A
+    different build gets no patch."""
+    def at(va, hexbytes):
+        raw = bytes.fromhex(hexbytes)
+        return code[va - cs:va - cs + len(raw)] == raw
+
+    va, (after_va, after) = RA2_LOAD_SITE, RA2_LOAD_AFTER
+    if not at(va, 'e8') or not at(after_va, after):
+        print('[*] ra2_load_patches: the saved-game loader does not match this build; no load patch')
+        return {}
+    rel = int.from_bytes(code[va - cs + 1:va - cs + 5], 'little', signed=True)
+    if va + 5 + rel != RA2_LOAD_TARGET:
+        print('[*] ra2_load_patches: the saved-game loader calls another function; no load patch')
+        return {}
+    return {va: ('if (MEM8(0xA40D0B) != 0u && (MEM32(0x00839648) != MEM32(0x00A40B38) || '
+                 'MEM32(0x0083964C) != MEM32(0x00A40B3C))) { uint32_t _keep = eax; '
+                 'ecx = MEM32(0x00A40B38); edx = MEM32(0x00A40B3C); RECOMP_CALL(sub_005434E0); '
+                 'RECOMP_FLAGS_IN(); ' + RA2_PROFILE_RESET + ' eax = _keep; } '
+                 '/* remaster: a loaded game switches to the INI size, run_lift.py ra2_load_patches */')}
+
+# The display profile (sub_006F3650's objects at 0xAC1184.., the layout rectangles
+# at 0xAC11B4..0xAC1200: the sidebar at x = width - 168, the bottom bar at y = height - 32)
+# is built from the mode of the moment. RA2's own order for a match is the profile
+# reset (sub_006F30F0), then the switch to the INI size (sub_005434E0), so the
+# profile built for the 800x600 shell outlived the switch: the in-game menu drew its
+# sidebar piece at x = 632. Yuri's order is the switch, then the reset. After each
+# switch to the match size the profile is torn down and built again for the new mode,
+# with the same steps ra2_cache_patches uses. The in-game rectangle set (0xAC11A0.., flag
+# 0xAC11B0, sub_006F4620's lazy build) is a second profile with its own rebuild, sub_006F44D0.
+RA2_PROFILE_RESET = ('MEM8(0xAC119C) = 1u; RECOMP_CALL(sub_006F30F0); RECOMP_FLAGS_IN(); '
+                     'RECOMP_CALL(sub_0051A2B0); RECOMP_FLAGS_IN(); '
+                     'RECOMP_CALL(sub_006F3D50); RECOMP_FLAGS_IN(); '
+                     'ecx = MEM32(0x7F871C); edx = 0x00AC1184u; PUSH32(esp, 0x00AC1188u); '
+                     'RECOMP_CALL(sub_006F1FA0); RECOMP_FLAGS_IN(); '
+                     'ecx = MEM32(0x7F8720); edx = 0x00AC118Cu; PUSH32(esp, 0x00AC1190u); '
+                     'RECOMP_CALL(sub_006F1FA0); RECOMP_FLAGS_IN(); '
+                     'ecx = MEM32(0x7F8724); edx = 0x00AC1194u; PUSH32(esp, 0x00AC1198u); '
+                     'RECOMP_CALL(sub_006F1FA0); RECOMP_FLAGS_IN(); '
+                     'edx = MEM32(0x008523E4); ecx = MEM32(0x008523E0); RECOMP_CALL(sub_006F3E70); RECOMP_FLAGS_IN(); '
+                     'RECOMP_CALL(sub_006F44D0); RECOMP_FLAGS_IN(); '
+                     'MEM8(0xAC119C) = 1u;')
+RA2_PROFILE_SITE = 0x0065BFD0         # call 0x5434E0 in Start_Scenario (the match-start switch)
+
+
+def ra2_profile_patches(code, cs):
+    """Rebuild the display profile after the match-start switch (RA2_PROFILE_SITE)."""
+    va = RA2_PROFILE_SITE
+    rel = int.from_bytes(code[va - cs + 1:va - cs + 5], 'little', signed=True)
+    if code[va - cs] != 0xE8 or va + 5 + rel != 0x005434E0:
+        print('[*] ra2_profile_patches: the match-start switch does not match this build; no profile patch')
+        return {}
+    return {va: ('{ uint32_t _eax = eax; ' + RA2_PROFILE_RESET + ' eax = _eax; } '
+                 '/* remaster: the display profile follows the switch, run_lift.py ra2_profile_patches */')}
+
+
+# A mode switch invalidates the display profile cache (sub_006F4160) and sets
+# AC119C back to zero. The next resize through sub_006F33B0 previously jumped
+# straight into sub_006F3E70, which dereferences the now-empty AC1010/AC1128
+# profiles. Match the normal lazy-init path from sub_006F3650 before that resize.
+RA2_CACHE_SITE = (0x006F3450, 'e91b0a0000')  # jmp 0x006F3E70, after deleting old surfaces
+
+
+def ra2_cache_patches(code, cs):
+    """Reload invalidated display profiles before the next surface resize."""
+    va, shape = RA2_CACHE_SITE
+    raw = bytes.fromhex(shape)
+    if code[va - cs:va - cs + len(raw)] != raw:
+        print('[*] ra2_cache_patches: the resize site does not match this build; not patched')
+        return {}
+
+    tag = '/* remaster: reload invalidated display profiles, run_lift.py ra2_cache_patches */'
+    return {va: ('@replace:if (MEM8(0xAC119C) == 0) { '
+        'RECOMP_CALL(sub_0051A2B0); RECOMP_FLAGS_IN(); '
+        'RECOMP_CALL(sub_006F3D50); RECOMP_FLAGS_IN(); '
+        'ecx = MEM32(0x7F871C); edx = 0x00AC1184u; PUSH32(esp, 0x00AC1188u); '
+        'RECOMP_CALL(sub_006F1FA0); RECOMP_FLAGS_IN(); '
+        'ecx = MEM32(0x7F8720); edx = 0x00AC118Cu; PUSH32(esp, 0x00AC1190u); '
+        'RECOMP_CALL(sub_006F1FA0); RECOMP_FLAGS_IN(); '
+        'ecx = MEM32(0x7F8724); edx = 0x00AC1194u; PUSH32(esp, 0x00AC1198u); '
+        'RECOMP_CALL(sub_006F1FA0); RECOMP_FLAGS_IN(); '
+        'MEM8(0xAC119C) = 1u; } goto L_006F3E70; ' + tag)}
+
+
+def ra2_hires_patches(code, cs):
+    """Force AllowHiResModes on, as the mode toggle is forced (ra2_shell_patches).
+
+    Checked by its bytes first, like the shell patches."""
+    va, shape = RA2_HIRES_SITE
+    raw = bytes.fromhex(shape)
+    if code[va - cs:va - cs + len(raw)] != raw:
+        print('[*] ra2_hires_patches: the AllowHiResModes store does not match this build; not patched')
+        return {}
+    return {va: 'MEM8(esi + 0x29) = 1u; /* remaster: AllowHiResModes forced on, run_lift.py ra2_hires_patches */'}
+
+
+# With AllowHiResModes set, both mode enumerators accept dimensions up to the
+# constant pushed here. 5120x1440 is in the supported list, so 4096 was too low.
+RA2_MODE_CAP_SITES = (
+    (0x00542A5F, '6800100000'), (0x00542A64, '6800100000'),  # Options resolution combo
+    (0x00543D56, '6800100000'), (0x00543D5B, '6800100000'),  # Display Options list
+)
+
+
+def ra2_mode_cap_patches(code, cs):
+    """Raise the width and height caps in both resolution lists to 8192."""
+    if not all(code[va - cs:va - cs + len(bytes.fromhex(shape))] == bytes.fromhex(shape)
+               for va, shape in RA2_MODE_CAP_SITES):
+        print('[*] ra2_mode_cap_patches: a cap push does not match this build; no patches')
+        return {}
+    tag = '/* remaster: mode enumeration cap 8192, run_lift.py ra2_mode_cap_patches */'
+    return {va: '@replace:PUSH32(esp, 0x2000u); ' + tag for va, _shape in RA2_MODE_CAP_SITES}
+
+
+def ra2_shell_patches(code, cs):
+    """Red Alert 2's menus at 800x600, with the mode toggle forced on.
+
+    The toggle [Video] AllowModeToggle (byte 0xA40D0B) is read from the INI at
+    0x0068E9D9 and again by the Options load at 0x005D8E2D; both store it, and
+    both are forced to 1 here. With it on, Startup takes the path that sets the
+    shell's size (0x006901B1: 640 x 400 by default, now 800 x 600). The switch
+    back to the shell goes to 800 x 600 instead of 640 x 400/480 (three copies,
+    listed in RA2_SHELL_SWITCH_BACK). Options already stores its size without a
+    live switch while the toggle is on (0x0054276B), so it needs no patch.
+    The INI size (0xA40B38/3C) is left alone: the match-start switch at
+    0x0065BF98 still goes to it.
+
+    Each site is checked by its bytes first: a different build gets no patches
+    at all (the same rule as dropdown_frame_patches).
+    """
+    def at(va, hexbytes):
+        raw = bytes.fromhex(hexbytes.replace(' ', ''))
+        return code[va - cs:va - cs + len(raw)] == raw
+
+    def mov_imm(reg, imm):           # mov edx/ecx, imm32
+        return ('ba' if reg == 'edx' else 'b9') + imm.to_bytes(4, 'little').hex()
+
+    checks = [at(va, shape) for va, shape in RA2_SHELL_SITES.values()]
+    for site in RA2_SHELL_SWITCH_BACK:
+        # cmp [0x839648], 0x280 at cmp_w, its je 10 bytes on; cmp [0x83964C], 0x1E0
+        # at cmp_h, its jle 10 bytes on. The je/jle opcode is short (74/7E) or near (0F 84/8E).
+        checks.append(at(site['cmp_w'], '813d48968300' + '80020000'))
+        checks.append(site['je'] == site['cmp_w'] + 10 and (at(site['je'], '74') or at(site['je'], '0f84')))
+        checks.append(at(site['cmp_h'], '813d4c968300' + 'e0010000'))
+        checks.append(site['jle'] == site['cmp_h'] + 10 and (at(site['jle'], '7e') or at(site['jle'], '0f8e')))
+        checks += [at(va, mov_imm(reg, imm)) for va, reg, imm in site['movs']]
+    if not all(checks):
+        print('[*] ra2_shell_patches: a site does not match this build; no shell patches')
+        return {}
+    out = {}
+    for name in ('toggle_ini', 'toggle_options'):
+        va = RA2_SHELL_SITES[name][0]
+        out[va] = 'MEM8(0xA40D0B) = 1u; ' + RA2_SHELL_TAG
+    out[RA2_SHELL_SITES['shell_height'][0]] = 'ebx = 0x%Xu; esi = 0x%Xu; %s' % (
+        RA2_SHELL_W, RA2_SHELL_H, RA2_SHELL_TAG)
+    for site in RA2_SHELL_SWITCH_BACK:
+        out[site['je']] = ('@replace:if (MEM32(0x839648) == 0x%Xu && MEM32(0x83964C) == 0x%Xu) '
+                           'goto L_%08X; %s' % (RA2_SHELL_W, RA2_SHELL_H, site['done'], RA2_SHELL_TAG))
+        out[site['jle']] = '@replace:/* width and height decided above */ ' + RA2_SHELL_TAG
+        for va, reg, _old in site['movs']:
+            new = RA2_SHELL_W if reg == 'ecx' else RA2_SHELL_H
+            out[va] = '%s = 0x%Xu; %s' % (reg, new, RA2_SHELL_TAG)
+    return out
+
 # Route direct font-path calls through the optional translated runtime shaper.
 # The original lifted function remains intact and is called by the wrapper.
 THAI_FONT_CALLS = {
@@ -522,11 +869,15 @@ THAI_FONT_CALLS = {
 
 
 def thai_font_call_replacements(body, target):
-    """Route direct layout/render/text calls through the compiled shaper."""
+    """Route direct and indirect layout/render/text calls through the shaper."""
     for font_va in THAI_FONT_CALLS.get(target, ()):
         name = 'sub_%08X' % font_va
         body = body.replace('RECOMP_CALL(%s)' % name,
                             'RECOMP_THAI_CALL(0x%08Xu, %s)' % (font_va, name))
+    # The glyph renderer is reached through virtual dispatch in parts of the
+    # UI (including network chat). RECOMP_CALL replacements alone miss those
+    # paths, so route indirect calls through a target-aware dispatcher too.
+    body = body.replace('RECOMP_ICALL(', 'RECOMP_THAI_ICALL(')
     return body
 
 
@@ -552,7 +903,11 @@ def targets():
                                                                      (0x0083962C, 0x00ABCD64)),
                                                **dropdown_frame_patches(code, cs), **HD_VOXEL_PATCHES_GAME,
                                                **modern_controls_patches('game'), **queue_five_patches('game'),
-                                               **web_exit_confirmation_patches(code, cs, 'game')}),
+                                               **web_exit_confirmation_patches(code, cs, 'game'),
+                                               **ra2_shell_patches(code, cs), **ra2_hires_patches(code, cs),
+                                               **ra2_online_patches(code, cs), **ra2_confirm_patches(code, cs),
+                                               **ra2_cache_patches(code, cs), **ra2_mode_cap_patches(code, cs),
+                                               **ra2_load_patches(code, cs), **ra2_profile_patches(code, cs)}),
     }
 
 

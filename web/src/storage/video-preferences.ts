@@ -1,12 +1,33 @@
-/** Game resolutions the browser launcher can apply before startup. */
+/** Game resolutions the browser launcher can apply before startup. The same
+ * sizes the browser host offers in the game's own Options list (pcrecomp's
+ * win32hle/ddraw.c g_modes), so the launcher's choice is in the game's list. */
 export const LAUNCHER_VIDEO_SIZES = [
+  { w: 640, h: 480 },
   { w: 800, h: 600 },
   { w: 1024, h: 768 },
+  { w: 1152, h: 864 },
   { w: 1280, h: 720 },
+  { w: 1280, h: 768 },
+  { w: 1280, h: 800 },
+  { w: 1280, h: 960 },
+  { w: 1280, h: 1024 },
+  { w: 1360, h: 768 },
   { w: 1366, h: 768 },
+  { w: 1400, h: 1050 },
+  { w: 1440, h: 900 },
   { w: 1600, h: 900 },
+  { w: 1600, h: 1200 },
+  { w: 1680, h: 1050 },
   { w: 1920, h: 1080 },
+  { w: 1920, h: 1200 },
+  { w: 2048, h: 1152 },
+  { w: 2560, h: 1080 },
   { w: 2560, h: 1440 },
+  { w: 2560, h: 1600 },
+  { w: 3440, h: 1440 },
+  { w: 3840, h: 1600 },
+  { w: 3840, h: 2160 },
+  { w: 5120, h: 1440 },
 ] as const;
 
 const PREFERENCE_PREFIX = "ra2.video.";
