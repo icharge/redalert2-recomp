@@ -16,6 +16,20 @@
 
 #include "win32hle.h"
 #include "wolapi.h"
+#if defined(__has_include)
+#if __has_include("recomp_target.h")
+#include "recomp_target.h"
+#endif
+#endif
+
+/* The lobby channel type each game builds its "Lob_<type>_<n>" names from. Red Alert 2
+ * asks for the channel list with type 0 first and only accepts a lobby named Lob_33_*;
+ * Yuri's Revenge sets its own 41 with a typed list request before it joins. */
+#ifdef RA2_TARGET_GAME
+#define WOL_LOBBY_TYPE 33
+#else
+#define WOL_LOBBY_TYPE 41
+#endif
 
 #define S_OK 0u
 #define E_NOINTERFACE 0x80004002u
@@ -50,6 +64,7 @@ typedef struct {
 _Static_assert(sizeof(wol_server) == 248, "WOLAPI x86 Server layout");
 _Static_assert(sizeof(wol_channel) == 268, "WOLAPI x86 Channel layout");
 _Static_assert(sizeof(wol_user) == 108, "WOLAPI x86 User layout");
+_Static_assert(sizeof(ra2_wolapi_session) == 504, "browser WOL session layout");
 
 #define WOL_LINE_CAP 4096u
 #define WOL_LINE_COUNT 128u
@@ -61,11 +76,13 @@ static wol_channel g_channels[64];
 static wol_channel g_lobby, g_active_channel;
 static wol_user g_users[32];
 static wol_user g_locale_user;
-static uint32_t g_channel_count, g_user_count, g_channel_type = 45;
+static uint32_t g_channel_count, g_user_count, g_channel_type = WOL_LOBBY_TYPE;
 static uint32_t g_pending_server_list;
 static uint32_t g_pending_channel_list;
 static uint32_t g_pending_logout;
 static uint32_t g_creating_channel;
+static uint32_t g_joining_channel;
+static uint32_t g_starting_game, g_connected, g_connection_pending;
 static char g_login[64], g_password[64], g_nick[32], g_current_channel[48];
 static struct { char nick[10], password[10]; } g_saved_nicks[11];
 static char g_attribute_name[64], g_attribute_value[256];
@@ -74,6 +91,11 @@ static char g_attribute_name[64], g_attribute_value[256];
 static char g_motd[1024];
 static uint32_t g_motd_ready;
 static uint32_t g_product_sku;
+static ra2_wolapi_session g_session;
+
+EMSCRIPTEN_KEEPALIVE const ra2_wolapi_session *ra2_wolapi_current_session(void) {
+    return g_session.game_id[0] && strcmp(g_session.channel, g_current_channel) == 0 ? &g_session : NULL;
+}
 /* Locale enum from Wolapi.dll's type library, in its original numeric order. */
 static const struct { const char *name, *code; } g_locales[] = {
     { "Unknown", "" }, { "Other", "" }, { "USA", "en-US" }, { "Canada", "en-CA" },
@@ -120,6 +142,14 @@ static void browser_send(const char *line) {
 
 static void browser_stop(void) {
     MAIN_THREAD_EM_ASM({ if (Module.ra2WolStop) Module.ra2WolStop(); });
+}
+
+static void browser_send_unicode(const char *prefix, const uint16_t *text) {
+    MAIN_THREAD_EM_ASM({
+        var line = UTF8ToString($0);
+        for (var at = $1 >> 1; HEAPU16[at]; at++) line += String.fromCharCode(HEAPU16[at]);
+        if (Module.ra2WolSend) Module.ra2WolSend(line);
+    }, prefix, text);
 }
 
 /* COM identities observed at GameMD.exe:0x785370. */
@@ -271,15 +301,41 @@ static wol_channel *current_channel(void) {
 
 /* RA2Web treats room topics as opaque strings. Preserve the native compatibility
  * record separately from the human topic inside a versioned envelope. */
+static int metadata_number(const char **text, uint32_t *value, char delimiter) {
+    if (**text < '0' || **text > '9') return 0;
+    char *end;
+    unsigned long long number = strtoull(*text, &end, 10);
+    if (number > UINT32_MAX || *end != delimiter) return 0;
+    *value = (uint32_t)number;
+    *text = end + 1;
+    return 1;
+}
+
 static void read_channel_metadata(wol_channel *channel, const char *text) {
     channel->ex_info[0] = '\0';
-    if (strncmp(text, "WOLAPI1:", 8) == 0) {
-        const char *end = strstr(text + 8, "::");
+    const char *info = NULL;
+    uint32_t reserved = 0, min_users = 0, max_users = 0, flags = 0;
+    int extended = strncmp(text, "WOLAPI2:", 8) == 0;
+    if (extended) {
+        info = text + 8;
+        if (!metadata_number(&info, &reserved, ',') || !metadata_number(&info, &min_users, ',') ||
+            !metadata_number(&info, &max_users, ',') || !metadata_number(&info, &flags, ';') ||
+            max_users < 2 || max_users > 8 || min_users > max_users) info = NULL;
+    } else if (strncmp(text, "WOLAPI1:", 8) == 0) info = text + 8;
+    if (info) {
+        const char *end = strstr(info, "::");
         if (end) {
-            size_t length = (size_t)(end - (text + 8));
+            size_t length = (size_t)(end - info);
             if (length >= sizeof channel->ex_info) length = sizeof channel->ex_info - 1;
-            memcpy(channel->ex_info, text + 8, length);
+            memcpy(channel->ex_info, info, length);
             channel->ex_info[length] = '\0';
+            if (extended) {
+                channel->reserved = reserved;
+                channel->min_users = min_users;
+                channel->max_users = max_users;
+                /* Keep the password/private mode supplied by RA2Web's LIST. */
+                channel->flags = (channel->flags & 0x180u) | flags;
+            }
             text = end + 2;
         }
     }
@@ -291,7 +347,9 @@ static void send_channel_metadata(void) {
     if (!channel) return;
     char line[WOL_LINE_CAP];
     if (channel->ex_info[0])
-        snprintf(line, sizeof line, "topic %s :WOLAPI1:%s::%s", g_current_channel, channel->ex_info, channel->topic);
+        snprintf(line, sizeof line, "topic %s :WOLAPI2:%u,%u,%u,%u;%s::%s", g_current_channel,
+            channel->reserved, channel->min_users, channel->max_users, channel->flags,
+            channel->ex_info, channel->topic);
     else snprintf(line, sizeof line, "topic %s :%s", g_current_channel, channel->topic);
     browser_send(line);
 }
@@ -323,7 +381,14 @@ static void parse_room_line(const char *line) {
     read_channel_metadata(channel, topic ? topic + 2 : "");
 }
 
+static uint32_t virtual_ip(const char *name);
+
 static void parse_roster(const char *line) {
+    char channel[48];
+    if (sscanf(line, ":%*s 353 %*s %*s %47s", channel) != 1 || strcmp(channel, g_current_channel)) return;
+    /* The native guest validates NET_GO against the WOL host's identity. The
+     * host can already have left the chat room while that UDP packet is in flight. */
+    if (g_session.game_id[0] && !strcmp(g_session.channel, g_current_channel)) return;
     if (g_channel_count == 0) (void)current_channel();
     g_user_count = 0;
     const char *names = strrchr(line, ':');
@@ -339,10 +404,32 @@ static void parse_roster(const char *line) {
         wol_user *user = &g_users[g_user_count++];
         memset(user, 0, sizeof *user);
         copy_text(user->name, sizeof user->name, name);
+        user->ipaddr = virtual_ip(name);
         user->flags = flags | (strcmp(name, g_nick) == 0 ? 0x8000u : 0u);
     }
     emit_user_list();
 }
+
+/* Internet play is relayed through RA2Web (server/src/gserv/NativeRelay.ts), which
+ * addresses players by a virtual IPv4 address hashed from their nick: FNV-1a of
+ * the lower-cased nick as 10.x.y.z, last byte never 0 or 255. Returned in network
+ * order, the way the game hands a User's address to sendto. */
+static uint32_t virtual_ip(const char *name) {
+    uint32_t hash = 2166136261u;
+    for (const char *c = name; *c; c++) {
+        hash ^= (uint8_t)((*c >= 'A' && *c <= 'Z') ? *c + 32 : *c);
+        hash *= 16777619u;
+    }
+    uint8_t low = (uint8_t)hash;
+    if (low == 0 || low == 255) low ^= 1;
+    uint8_t octets[4] = { 10, (uint8_t)(hash >> 16), (uint8_t)(hash >> 8), low };
+    uint32_t address;
+    memcpy(&address, octets, 4);
+    return address;
+}
+
+/* Absent in the Node selftest, which links no Winsock layer. */
+extern void hle_ws_udp_set_local_ip(uint32_t address) __attribute__((weak));
 
 static wol_user *user_for_name(const char *name) {
     if (!name || !*name) name = g_nick;
@@ -352,6 +439,7 @@ static wol_user *user_for_name(const char *name) {
     wol_user *user = &g_users[g_user_count++];
     memset(user, 0, sizeof *user);
     copy_text(user->name, sizeof user->name, name);
+    user->ipaddr = virtual_ip(name);
     user->flags = strcmp(name, g_nick) == 0 ? 0x8000u : 0u;
     return user;
 }
@@ -365,8 +453,82 @@ static wol_user *sender_user(const char *line) {
     return user_for_name(name);
 }
 
+static int channel_error(const char *line) {
+    if (!g_creating_channel && !g_joining_channel) return 0;
+    unsigned code;
+    char target[48];
+    if (sscanf(line, ":%*s %u %*s %47s", &code, target) != 2 || strcmp(target, g_current_channel)) return 0;
+    uint32_t status;
+    /* HRESULT branches observed in RA2/YR's native OnChannelJoin callbacks. */
+    switch (code) {
+        case 471: status = 0x8004006eu; break; /* channel full */
+        case 475: status = 0x80040071u; break; /* bad password */
+        case 403: case 478: status = 0x80040070u; break; /* game closed */
+        case 474: status = 0x80040072u; break; /* banned */
+        case 711: status = E_FAIL; break; /* duplicate/rate-limited creation */
+        default: return 0;
+    }
+    wol_channel *channel = current_channel();
+    int creating = g_creating_channel;
+    g_creating_channel = g_joining_channel = 0;
+    if (creating) {
+        uint32_t values[] = { status, (uint32_t)(uintptr_t)channel };
+        event_call(6, 2, values); /* IChatEvent::OnChannelCreate */
+    } else {
+        wol_user *user = user_for_name(g_nick);
+        uint32_t values[] = { status, (uint32_t)(uintptr_t)channel, (uint32_t)(uintptr_t)user };
+        event_call(7, 3, values); /* IChatEvent::OnChannelJoin */
+    }
+    /* A failure callback can itself issue a retry or return to the lobby. */
+    if (!g_creating_channel && !g_joining_channel && !strcmp(target, g_current_channel))
+        g_current_channel[0] = '\0';
+    return 1;
+}
+
+static void disconnected(void) {
+    if (!g_connected) return;
+    g_connected = g_connection_pending = g_creating_channel = g_joining_channel = g_starting_game = 0;
+    memset(&g_session, 0, sizeof g_session);
+    g_current_channel[0] = '\0';
+    g_user_count = g_channel_count = 0;
+    uint32_t status[] = { 0x0004012fu };
+    event_call(16, 1, status); /* IChatEvent::OnNetStatus: connection closed */
+}
+
+static void receive_chat(const char *line) {
+    char sender[10], target[48], command[16];
+    if (sscanf(line, ":%9[^! ]%*s %15s %47s", sender, command, target) != 3 || strcmp(command, "PRIVMSG")) return;
+    int public = target[0] == '#';
+    if (strcmp(target, public ? g_current_channel : g_nick)) return;
+    const char *text = strstr(line, " :");
+    if (!text) return;
+    wol_user user = { 0 };
+    copy_text(user.name, sizeof user.name, sender);
+    for (uint32_t i = 0; i < g_user_count; i++)
+        if (!strcmp(g_users[i].name, sender)) { user = g_users[i]; break; }
+    user.next = 0; /* A whisper from outside the channel must not change its roster. */
+    uint16_t wide[WOL_LINE_CAP];
+    MAIN_THREAD_EM_ASM({
+        var text = UTF8ToString($0);
+        var at = $1 >> 1;
+        for (var i = 0; i < text.length && i < 4095; i++) HEAPU16[at + i] = text.charCodeAt(i);
+        HEAPU16[at + i] = 0;
+    }, text + 2, wide);
+    if (public) {
+        uint32_t values[] = { S_OK, (uint32_t)(uintptr_t)current_channel(), (uint32_t)(uintptr_t)&user, (uint32_t)(uintptr_t)wide };
+        event_call(37, 4, values); /* IChatEvent::OnPublicUnicodeMessage */
+    } else {
+        uint32_t values[] = { S_OK, (uint32_t)(uintptr_t)&user, (uint32_t)(uintptr_t)wide };
+        event_call(38, 3, values); /* IChatEvent::OnPrivateUnicodeMessage */
+    }
+}
+
 static void handle_line(const char *line) {
+    const char *command = strchr(line, ' ');
+    if (channel_error(line)) return;
     if (strcmp(line, "@wolapi connected") == 0) {
+        g_connected = 1;
+        g_connection_pending = 0;
         /* The native screen prints OnConnection's `motd` argument in the chat box;
          * it does not show anything delivered through OnMessageOfTheDay. */
         emit_connection(S_OK, g_motd_ready ? g_motd : "Connected to RA2Web");
@@ -378,7 +540,23 @@ static void handle_line(const char *line) {
         return;
     }
     if (strncmp(line, "@wolapi error ", 14) == 0) {
-        emit_connection(E_FAIL, line + 14);
+        if (g_connected) disconnected();
+        else if (g_connection_pending) {
+            g_connection_pending = 0;
+            emit_connection(E_FAIL, line + 14);
+        }
+        return;
+    }
+    if (!strcmp(line, "@wolapi disconnected")) { disconnected(); return; }
+    if (command && !strncmp(command, " PRIVMSG ", 9)) { receive_chat(line); return; }
+    if (command && !strncmp(command, " STARTG_ABORT ", 14)) {
+        char channel[48]; unsigned reason;
+        if (g_starting_game && sscanf(line, ":%*s STARTG_ABORT %47s :%u", channel, &reason) == 2 && !strcmp(channel, g_current_channel)) {
+            g_starting_game = 0;
+            memset(&g_session, 0, sizeof g_session);
+            uint32_t values[] = { E_FAIL, (uint32_t)(uintptr_t)current_channel(), 0, 0 };
+            event_call(20, 4, values);
+        }
         return;
     }
     if (strstr(line, " 309 ") && g_locale_user.name[0]) {
@@ -408,6 +586,12 @@ static void handle_line(const char *line) {
         return;
     }
     if (strstr(line, " PART ")) {
+        char target[48];
+        if (sscanf(line, ":%*s PART %47s", target) != 1 || strcmp(target, g_current_channel)) return;
+        size_t nick_length = strlen(g_nick);
+        int own = line[0] == ':' && !strncmp(line + 1, g_nick, nick_length) &&
+            (line[nick_length + 1] == '!' || line[nick_length + 1] == ' ');
+        if (!own && g_session.game_id[0] && !strcmp(g_session.channel, g_current_channel)) return;
         wol_channel *channel = current_channel();
         wol_user *user = sender_user(line);
         char leaving[48];
@@ -421,8 +605,10 @@ static void handle_line(const char *line) {
     if (strstr(line, " JOINGAME ")) {
         const char *name = strrchr(line, ':');
         wol_user *user = sender_user(line);
-        if (name && user && (user->flags & 0x8000u))
+        if (name && user && (user->flags & 0x8000u)) {
             copy_text(g_current_channel, sizeof g_current_channel, name + 1);
+            g_joining_channel = 0;
+        }
         wol_channel *channel = current_channel();
         if (g_creating_channel && user && (user->flags & 0x8000u)) {
             g_creating_channel = 0;
@@ -446,6 +632,7 @@ static void handle_line(const char *line) {
         memcpy(user_name, nick, length); user_name[length] = '\0';
         wol_channel *channel = current_channel();
         wol_user *user = user_for_name(user_name);
+        if (user && (user->flags & 0x8000u)) g_joining_channel = 0;
         uint32_t values[] = { S_OK, (uint32_t)(uintptr_t)channel, (uint32_t)(uintptr_t)user };
         event_call(7, 3, values); /* IChatEvent::OnChannelJoin */
         return;
@@ -467,14 +654,52 @@ static void handle_line(const char *line) {
         return;
     }
     if (strstr(line, " STARTG ")) {
+        ra2_wolapi_session session = { 0 };
+        char timestamp[11], extra, *end;
+        if (sscanf(line, ":%*s STARTG %47s :%255s :%63s %10[0-9] %127s %c",
+            session.channel, session.gserv_url, session.game_id, timestamp, session.ticket, &extra) != 5)
+            return;
+        if (strcmp(session.channel, g_current_channel) != 0 ||
+            (strncmp(session.gserv_url, "ws://", 5) && strncmp(session.gserv_url, "wss://", 6)) ||
+            session.game_id[0] != 'g') return;
+        unsigned long long number = strtoull(session.game_id + 1, &end, 10);
+        unsigned long long time = strtoull(timestamp, NULL, 10);
+        if (end == session.game_id + 1 || *end != '-' || !end[1] || !number || number > UINT32_MAX || time > UINT32_MAX)
+            return;
+        session.game_number = (uint32_t)number;
+        session.timestamp = (uint32_t)time;
+        g_session = session;
+        g_starting_game = 0;
         wol_channel *channel = current_channel();
         uint32_t values[] = { S_OK, (uint32_t)(uintptr_t)channel,
-            g_user_count ? (uint32_t)(uintptr_t)&g_users[0] : 0, 1 };
+            g_user_count ? (uint32_t)(uintptr_t)&g_users[0] : 0, session.game_number };
         event_call(20, 4, values); /* IChatEvent::OnGameStart */
     }
 }
 
+static uint32_t g_no_router_flag, g_ipx_manager;
+void ra2_wolapi_set_no_router_flag(uint32_t guest_address) { g_no_router_flag = guest_address; }
+void ra2_wolapi_set_ipx_manager(uint32_t guest_address) { g_ipx_manager = guest_address; }
+
+/* IPXManagerClass: connection pointers from +0x28, their count at +0x44; each
+ * connection keeps its peer's address object at +0x4C, whose first word is a port. */
+static void clear_connection_ports(void) {
+    uint32_t count = MEM32(g_ipx_manager + 0x44);
+    for (uint32_t i = 0; i < count && i < 8; i++) {
+        uint32_t connection = MEM32(g_ipx_manager + 0x28 + 4 * i);
+        if (connection) MEM16(connection + 0x4C) = 0;
+    }
+}
+
+/* The session is reset between STARTG and Create_Connections, so keep it cleared. */
+void ra2_wolapi_poll(void) {
+    if (!g_session.game_id[0]) return;
+    if (g_no_router_flag) MEM8(g_no_router_flag) = 0;
+    if (g_ipx_manager) clear_connection_ports();
+}
+
 static void pump_lines(void) {
+    ra2_wolapi_poll();
     if (g_pending_server_list) {
         g_pending_server_list = 0;
         emit_server_list();
@@ -612,9 +837,13 @@ static void m_chat_request_server_list(void) {
 static void m_chat_request_connection(void) {
     wol_server *server = (wol_server *)(uintptr_t)A32(1);
     if (!server) RET(E_POINTER, 4);
+    memset(&g_session, 0, sizeof g_session);
+    g_connected = g_starting_game = g_creating_channel = g_joining_channel = 0;
+    g_connection_pending = 1;
     copy_text(g_login, sizeof g_login, server->login);
     copy_text(g_password, sizeof g_password, server->password);
     copy_text(g_nick, sizeof g_nick, g_login);
+    if (hle_ws_udp_set_local_ip) hle_ws_udp_set_local_ip(virtual_ip(g_nick));
     browser_start();
     RET(S_OK, 4);
 }
@@ -631,6 +860,8 @@ static void m_chat_request_channel_create(void) {
     wol_channel *channel = (wol_channel *)(uintptr_t)A32(1);
     char line[160], name[48];
     if (!channel) RET(E_POINTER, 2);
+    memset(&g_session, 0, sizeof g_session);
+    g_starting_game = 0;
     copy_text(name, sizeof name, channel->name);
     if (name[0] != '#') {
         char prefixed[48];
@@ -641,9 +872,10 @@ static void m_chat_request_channel_create(void) {
     g_active_channel = *channel;
     g_active_channel.next = 0;
     g_creating_channel = 1;
-    snprintf(line, sizeof line, "joingame %s 1 %u %u 0 0 0 0", name,
+    g_joining_channel = 0;
+    snprintf(line, sizeof line, "joingame %s 1 %u %u 0 0 0 0%s%.8s", name,
         channel->max_users >= 2 && channel->max_users <= 8 ? channel->max_users : 4u,
-        (uint32_t)channel->type);
+        (uint32_t)channel->type, channel->key[0] ? " " : "", channel->key);
     browser_send(line);
     RET(S_OK, 2);
 }
@@ -651,10 +883,17 @@ static void m_chat_request_channel_join(void) {
     wol_channel *channel = (wol_channel *)(uintptr_t)A32(1);
     char line[128], name[48];
     if (!channel) RET(E_POINTER, 2);
+    memset(&g_session, 0, sizeof g_session);
+    g_starting_game = 0;
     snprintf(name, sizeof name, "%s%s", channel->name[0] == '#' ? "" : "#", channel->name);
     copy_text(g_current_channel, sizeof g_current_channel, name);
+    g_active_channel = *channel;
+    g_active_channel.next = 0;
+    copy_text(g_active_channel.name, sizeof g_active_channel.name, name + 1);
+    g_joining_channel = 1;
+    g_creating_channel = 0;
     if (strncmp(name, "#Lob_", 5) == 0) snprintf(line, sizeof line, "join %s zotclot9", name);
-    else snprintf(line, sizeof line, "joingame %s 0", name);
+    else snprintf(line, sizeof line, "joingame %s 0%s%.8s", name, channel->key[0] ? " " : "", channel->key);
     browser_send(line);
     RET(S_OK, 2);
 }
@@ -671,15 +910,45 @@ static void m_chat_request_user_list(void) {
     if (g_current_channel[0]) { snprintf(line, sizeof line, "names %s", g_current_channel); browser_send(line); }
     RET(S_OK, 1);
 }
-static void m_chat_request_public_message(void) {
-    char line[600];
-    snprintf(line, sizeof line, "privmsg %s :%s", g_current_channel, ASTR(1) ? ASTR(1) : "");
-    browser_send(line);
-    RET(S_OK, 2);
+static uint32_t send_chat(const wol_user *user, const void *message, int wide, int private) {
+    if (!message || (private && !user)) return E_POINTER;
+    if (!private && !g_current_channel[0]) return E_FAIL;
+    size_t length = 0;
+    for (; length < 1024; length++) {
+        uint32_t ch = wide ? ((const uint16_t *)message)[length] : ((const unsigned char *)message)[length];
+        if (!ch) break;
+        if (ch == '\r' || ch == '\n') return E_FAIL;
+    }
+    if (length == 1024) return E_FAIL;
+    char targets[512] = "";
+    size_t used = 0;
+    if (private) {
+        for (unsigned i = 0; user && i < 32; i++, user = (const wol_user *)(uintptr_t)user->next) {
+            if (!user->name[0] || !memchr(user->name, 0, sizeof user->name) || strcspn(user->name, " ,:\r\n") != strlen(user->name)) return E_FAIL;
+            int n = snprintf(targets + used, sizeof targets - used, "%s%s", i ? "," : "", user->name);
+            if (n < 0 || (size_t)n >= sizeof targets - used) return E_FAIL;
+            used += (size_t)n;
+        }
+        if (user) return E_FAIL;
+    } else copy_text(targets, sizeof targets, g_current_channel);
+    char line[WOL_LINE_CAP];
+    snprintf(line, sizeof line, "privmsg %s :", targets);
+    if (wide) browser_send_unicode(line, message);
+    else {
+        copy_text(line + strlen(line), sizeof line - strlen(line), message);
+        browser_send(line);
+    }
+    return S_OK;
 }
-static void m_chat_request_private_message(void) { RET(S_OK, 3); }
+static void m_chat_request_public_message(void) { uint32_t result = send_chat(NULL, ASTR(1), 0, 0); RET(result, 2); }
+static void m_chat_request_private_message(void) { uint32_t result = send_chat((const wol_user *)(uintptr_t)A32(1), ASTR(2), 0, 1); RET(result, 3); }
+static void m_chat_request_public_unicode_message(void) { uint32_t result = send_chat(NULL, (void *)(uintptr_t)A32(1), 1, 0); RET(result, 2); }
+static void m_chat_request_private_unicode_message(void) { uint32_t result = send_chat((const wol_user *)(uintptr_t)A32(1), (void *)(uintptr_t)A32(2), 1, 1); RET(result, 3); }
 /* The "Logging off" dialog waits for IChatEvent::OnLogout; report it from the pump. */
 static void m_chat_request_logout(void) {
+    memset(&g_session, 0, sizeof g_session);
+    g_connected = g_connection_pending = g_starting_game = 0;
+    g_creating_channel = g_joining_channel = 0;
     browser_stop(); g_pending_logout = 1; RET(S_OK, 1);
 }
 static void m_chat_request_private_game_options(void) {
@@ -701,8 +970,20 @@ static void m_chat_request_public_game_options(void) {
 static void m_chat_request_public_action(void) { RET(S_OK, 2); }
 static void m_chat_request_private_action(void) { RET(S_OK, 3); }
 static void m_chat_request_game_start(void) {
-    char line[128];
-    snprintf(line, sizeof line, "startg %s %s", g_current_channel, g_nick);
+    const wol_user *user = (const wol_user *)(uintptr_t)A32(1);
+    if (!user) RET(E_POINTER, 2);
+    if (!g_current_channel[0]) RET(E_FAIL, 2);
+    char line[512];
+    size_t used = (size_t)snprintf(line, sizeof line, "startg %s ", g_current_channel);
+    for (uint32_t i = 0; user && i < 32; i++, user = (const wol_user *)(uintptr_t)user->next) {
+        if (!user->name[0] || !memchr(user->name, '\0', sizeof user->name)) RET(E_FAIL, 2);
+        int length = snprintf(line + used, sizeof line - used, "%s%s", i ? "," : "", user->name);
+        if (length < 0 || (size_t)length >= sizeof line - used) RET(E_FAIL, 2);
+        used += (size_t)length;
+    }
+    if (user) RET(E_FAIL, 2); /* Reject a cyclic/oversized list rather than start a partial roster. */
+    memset(&g_session, 0, sizeof g_session);
+    g_starting_game = 1;
     browser_send(line);
     RET(S_OK, 2);
 }
@@ -778,7 +1059,26 @@ static void m_chat_request_user_locale(void) {
     browser_send(line);
     RET(S_OK, 2);
 }
-static void m_chat_raw_message(void) { if (ASTR(1)) browser_send(ASTR(1)); RET(S_OK, 2); }
+static void m_chat_raw_message(void) {
+    const char *line = ASTR(1);
+    if (line) {
+        browser_send(line);
+        /* The native setup changes capacity with raw MODE +l after creation.
+         * Keep the LIST metadata in step with the limit RA2Web actually applies. */
+        char command[8], name[48], mode[8], extra;
+        unsigned limit;
+        if (sscanf(line, "%7s %47s %7s %u %c", command, name, mode, &limit, &extra) == 4 &&
+            (!strcmp(command, "mode") || !strcmp(command, "MODE")) &&
+            !strcmp(name, g_current_channel) && !strcmp(mode, "+l") && limit >= 2 && limit <= 8) {
+            wol_channel *channel = current_channel();
+            if (channel && channel->max_users != limit) {
+                channel->max_users = limit;
+                if (channel->ex_info[0]) send_channel_metadata();
+            }
+        }
+    }
+    RET(S_OK, 2);
+}
 static void m_chat_get_attribute_value(void) {
     if (A32(2)) MEM32(A32(2)) = strcmp(ASTR(1) ? ASTR(1) : "", g_attribute_name) == 0
         ? (uint32_t)(uintptr_t)g_attribute_value : 0;
@@ -809,8 +1109,8 @@ static void m_chat_get_attribute_value(void) {
     { "WolChat::RequestUserTeam", m_stub_2 }, { "WolChat::GetNickLocale", m_stub_3 }, { "WolChat::SetNickLocale", m_stub_3 }, \
     { "WolChat::GetLocaleString", m_chat_get_locale_string }, { "WolChat::GetLocaleCount", m_chat_get_locale_count }, { "WolChat::SetClientVersion", m_stub_2 }, \
     { "WolChat::SetCodepageFilter", m_stub_2 }, { "WolChat::RequestBuddyList", m_stub_1 }, { "WolChat::RequestBuddyAdd", m_stub_2 }, \
-    { "WolChat::RequestBuddyDelete", m_stub_2 }, { "WolChat::RequestPublicUnicodeMessage", m_stub_2 }, \
-    { "WolChat::RequestPrivateUnicodeMessage", m_stub_3 }, { "WolChat::RequestPublicUnicodeAction", m_stub_2 }, \
+    { "WolChat::RequestBuddyDelete", m_stub_2 }, { "WolChat::RequestPublicUnicodeMessage", m_chat_request_public_unicode_message }, \
+    { "WolChat::RequestPrivateUnicodeMessage", m_chat_request_private_unicode_message }, { "WolChat::RequestPublicUnicodeAction", m_stub_2 }, \
     { "WolChat::RequestPrivateUnicodeAction", m_stub_3 }, { "WolChat::RequestUnicodePage", m_stub_3 }, \
     { "WolChat::RequestSetPlayerCount", m_stub_3 }, { "WolChat::RequestServerTime", m_stub_1 }, \
     { "WolChat::RequestInsiderStatus", m_stub_2 }, { "WolChat::RequestSetLocalIP", m_stub_1 }

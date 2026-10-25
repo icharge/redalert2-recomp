@@ -5,6 +5,8 @@
  * the WASM boundary. TextEncoder/cwrap("string") would change those bytes.
  */
 export function wolLineBytes(line: string): Uint8Array {
+  // Chat is Unicode text; GAMEOPT and other native strings remain opaque bytes.
+  if (/^:[^ ]+ PRIVMSG [^ ]+ :/i.test(line)) return new TextEncoder().encode(`${line}\0`);
   return Uint8Array.from(`${line}\0`, character => character.charCodeAt(0));
 }
 
@@ -124,16 +126,26 @@ function ensureSlash(value: string): string {
   return value.endsWith("/") ? value : `${value}/`;
 }
 
+/** Operator-configured endpoints; HTTP auth need not share the WOL socket path. */
+export interface WolServer {
+  httpUrl: string;
+  socketUrl: string;
+}
+
 /** Authenticates to RA2Web and exposes the lobby and custom-game commands used by RA2/YR. */
 export class WolClient {
   private socket: WolSocket | null = null;
+  private generation = 0;
+  private connecting = false;
+  private cancelOpen: ((error: Error) => void) | null = null;
   private readonly buffered: string[] = [];
   private readonly pending: Pending[] = [];
   private readonly listeners = new Set<(line: string) => void>();
+  private readonly disconnectListeners = new Set<() => void>();
   private readonly timeoutMs: number;
 
   constructor(
-    private readonly server: string,
+    private readonly server: string | WolServer,
     private readonly username: string,
     private readonly password: string,
     private readonly fetcher: typeof fetch = fetch,
@@ -152,23 +164,40 @@ export class WolClient {
     return () => this.listeners.delete(listener);
   }
 
+  onDisconnect(listener: () => void): () => void {
+    this.disconnectListeners.add(listener);
+    return () => this.disconnectListeners.delete(listener);
+  }
+
   async connect(options: { joinLobby?: boolean } = {}): Promise<void> {
-    if (this.socket) throw new Error("WOL client is already connected.");
-    const token = await sessionToken(this.server, this.username, this.password, this.fetcher);
-    const socket = this.createSocket(toWolSocketUrl(this.server));
-    this.socket = socket;
-    socket.addEventListener("message", this.handleMessage as EventListener);
-    socket.addEventListener("close", this.handleClose as EventListener);
-    await this.waitForOpen(socket);
+    if (this.socket || this.connecting) throw new Error("WOL client is already connected.");
+    this.connecting = true;
+    const generation = ++this.generation;
+    try {
+      const httpUrl = typeof this.server === "string" ? this.server : this.server.httpUrl;
+      const socketUrl = toWolSocketUrl(typeof this.server === "string" ? this.server : this.server.socketUrl);
+      const token = await sessionToken(httpUrl, this.username, this.password, this.fetcher);
+      if (generation !== this.generation) throw new Error("WOL connection closed.");
+      const socket = this.createSocket(socketUrl);
+      this.socket = socket;
+      socket.addEventListener("message", this.handleMessage as EventListener);
+      socket.addEventListener("close", this.handleClose as EventListener);
+      await this.waitForOpen(socket);
 
-    this.send("cvers 0.83.4 16640");
-    await this.waitFor((line) => /\s700\s/.test(line), "WOL version acceptance");
-    this.send("setlocale 2");
-    await this.waitFor((line) => /\s310\s/.test(line), "locale acceptance");
-    this.send(`session ${token}`);
-    await this.waitFor((line) => /\s376\s/.test(line), "authenticated MOTD");
+      this.send("cvers 0.83.4 16640");
+      await this.waitFor((line) => /\s700\s/.test(line), "WOL version acceptance");
+      this.send("setlocale 2");
+      await this.waitFor((line) => /\s310\s/.test(line), "locale acceptance");
+      this.send(`session ${token}`);
+      await this.waitFor((line) => /\s376\s/.test(line), "authenticated MOTD");
 
-    if (options.joinLobby !== false) await this.joinLobby();
+      if (options.joinLobby !== false) await this.joinLobby();
+    } catch (error) {
+      if (generation === this.generation) this.close();
+      throw error;
+    } finally {
+      if (generation === this.generation) this.connecting = false;
+    }
   }
 
   async joinLobby(): Promise<void> {
@@ -226,12 +255,16 @@ export class WolClient {
   }
 
   close(): void {
+    this.generation++;
+    this.connecting = false;
+    const error = new Error("WOL connection closed.");
+    this.cancelOpen?.(error);
     const socket = this.socket;
     this.socket = null;
     socket?.removeEventListener("message", this.handleMessage as EventListener);
     socket?.removeEventListener("close", this.handleClose as EventListener);
     socket?.close();
-    this.failPending(new Error("WOL connection closed."));
+    this.failPending(error);
     this.buffered.length = 0;
   }
 
@@ -243,18 +276,26 @@ export class WolClient {
   private waitForOpen(socket: WolSocket): Promise<void> {
     if (socket.readyState === OPEN) return Promise.resolve();
     return new Promise((resolve, reject) => {
-      const open = () => {
+      const cleanup = () => {
+        clearTimeout(timer);
         socket.removeEventListener("open", open);
         socket.removeEventListener("error", error);
-        resolve();
+        socket.removeEventListener("close", closed);
+        this.cancelOpen = null;
       };
-      const error = () => {
-        socket.removeEventListener("open", open);
-        socket.removeEventListener("error", error);
-        reject(new Error("WOL WebSocket connection failed."));
-      };
+      const fail = (reason: Error) => { cleanup(); reject(reason); };
+      const open = () => { cleanup(); resolve(); };
+      const error = () => fail(new Error("WOL WebSocket connection failed."));
+      const closed = () => fail(new Error("WOL connection closed."));
+      const timer = setTimeout(() => fail(new Error("Timed out opening WOL WebSocket.")), this.timeoutMs);
+      this.cancelOpen = fail;
+      if (socket.readyState > OPEN) {
+        closed();
+        return;
+      }
       socket.addEventListener("open", open, { once: true });
       socket.addEventListener("error", error, { once: true });
+      socket.addEventListener("close", closed, { once: true });
     });
   }
 
@@ -297,9 +338,16 @@ export class WolClient {
     }
   };
 
-  private handleClose = (): void => {
+  private handleClose = (event: Event): void => {
+    const socket = this.socket;
+    if (!socket || event.currentTarget !== socket) return;
+    socket.removeEventListener("message", this.handleMessage as EventListener);
+    socket.removeEventListener("close", this.handleClose as EventListener);
     this.socket = null;
     this.failPending(new Error("WOL server closed the connection."));
+    this.buffered.length = 0;
+    // A failed handshake is reported by connect(). Intentional close detaches us.
+    if (!this.connecting) this.disconnectListeners.forEach(listener => listener());
   };
 
   private failPending(error: Error): void {
