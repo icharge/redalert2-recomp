@@ -5,7 +5,7 @@
 export function isGameBuildFile(pathname: string, base = "/"): boolean {
   return (
     pathname.startsWith(base) &&
-    /^game\/(ra2\/)?ra2\.(js|wasm|data)$/.test(pathname.slice(base.length))
+    /^game\/(ra2|ra2md)\.(js|wasm|data)$/.test(pathname.slice(base.length))
   );
 }
 

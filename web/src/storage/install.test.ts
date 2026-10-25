@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   checkExe,
   checkSpace,
@@ -11,7 +11,14 @@ import {
 
 const yuri: BuildInfo = {
   games: {
-    ra2md: { title: "Yuri's Revenge", exe: "gamemd.exe", ini: "RA2MD.INI", stamp: 0x3bdf544e },
+    ra2md: {
+      title: "Yuri's Revenge",
+      exe: "gamemd.exe",
+      ini: "RA2MD.INI",
+      stamp: 0x3bdf544e,
+      build: "test",
+      runtime: { edition: "ra2md", build: "test", exeSha256: "a", blowfishSha256: "b" },
+    },
   },
 };
 
@@ -25,9 +32,9 @@ describe("classify", () => {
     expect(classify("rules.ini")).toEqual({ kind: "data", needs: ["ra2", "ra2md"] });
     expect(classify("game.fnt")).toEqual({ kind: "data", needs: ["ra2", "ra2md"] });
     expect(classify("GAME.FNT")).toEqual({ kind: "data", needs: ["ra2", "ra2md"] });
-    expect(classify("GameMD.exe")).toEqual({ kind: "exe", needs: ["ra2md"] });
-    expect(classify("Game.exe")).toEqual({ kind: "exe", needs: ["ra2"] });
-    expect(classify("Blowfish.dll")).toEqual({ kind: "library", needs: ["ra2", "ra2md"] });
+    expect(classify("GameMD.exe")).toBeNull();
+    expect(classify("Game.exe")).toBeNull();
+    expect(classify("Blowfish.dll")).toBeNull();
     expect(classify("movmd01.mix")?.kind).toBe("movie");
     expect(classify("MOVIES01.MIX")?.kind).toBe("movie");
     expect(classify("Saved Games\\a.sav")?.kind).toBe("save");
@@ -54,9 +61,11 @@ const folder = [
   { path: "gamemd.exe", size: 6_000_000 },
   { path: "game.exe", size: 5_000_000 },
   { path: "ra2.mix", size: 400_000_000 },
+  { path: "maps01.mix", size: 100_000_000 },
+  { path: "multi.mix", size: 10_000_000 },
   { path: "ra2md.mix", size: 300_000_000 },
   { path: "expandmd01.mix", size: 12_000_000 },
-  { path: "movmd01.mix", size: 280_000_000 },
+  { path: "movmd03.mix", size: 280_000_000 },
   { path: "audio.bag", size: 50_000_000 },
   { path: "rulesmd.ini", size: 400_000 },
   { path: "Ares.dll", size: 900_000 },
@@ -69,10 +78,17 @@ const folder = [
 
 describe("planImport", () => {
   it("brings a loose game font into the game folder for archive override", () => {
-    const plan = planImport([...folder, { path: "GAME.FNT", size: 131100 }], yuri,
-      { movies: false, saves: false });
+    const plan = planImport([...folder, { path: "GAME.FNT", size: 131100 }], yuri, {
+      movies: false,
+      saves: false,
+    });
     expect(plan.error).toBeNull();
-    expect(plan.copy).toContainEqual({ path: "GAME.FNT", size: 131100, kind: "data", needs: ["ra2", "ra2md"] });
+    expect(plan.copy).toContainEqual({
+      path: "GAME.FNT",
+      size: 131100,
+      kind: "data",
+      needs: ["ra2", "ra2md"],
+    });
     expect(plan.skipped.some((file) => file.path === "GAME.FNT")).toBe(false);
     expect(classify("fonts/game.fnt")).toBeNull();
     expect(classify("game.fnt.bak")).toBeNull();
@@ -85,31 +101,31 @@ describe("planImport", () => {
     expect(plan.copy.map((f) => f.path).sort()).toEqual(
       [
         "Saved Games/one.sav",
-        "Blowfish.dll",
         "audio.bag",
-        "binkw32.dll",
         "expandmd01.mix",
-        "gamemd.exe",
-        "movmd01.mix",
+        "maps01.mix",
+        "multi.mix",
+        "movies01.mix",
+        "movmd03.mix",
         "ra2.mix",
         "ra2md.mix",
         "rulesmd.ini",
       ].sort(),
     );
     expect(plan.bytes).toBe(
-      6_000_000 +
-        400_000_000 +
+      400_000_000 +
+        100_000_000 +
+        10_000_000 +
         300_000_000 +
         12_000_000 +
         280_000_000 +
         50_000_000 +
         400_000 +
         5_000 +
-        30_000 +
-        300_000,
+        12,
     );
     expect(plan.skipped.map((s) => s.path)).toContain("Ares.dll");
-    expect(plan.skipped.find((s) => s.path === "game.exe")?.reason).toMatch(/does not have/);
+    expect(plan.skipped.find((s) => s.path === "game.exe")?.reason).toMatch(/not read/);
     expect(plan.warnings).toEqual([]);
   });
 
@@ -117,29 +133,58 @@ describe("planImport", () => {
     const plan = planImport(folder, yuri, { movies: false, saves: false });
     expect(plan.copy.some((f) => f.kind === "save")).toBe(false);
     // the game stops at start without the archive, so an empty one is written in its place
-    expect(plan.copy.find((f) => f.path === "movmd01.mix")).toMatchObject({ size: 12, stub: true });
+    expect(plan.copy.find((f) => f.path === "movmd03.mix")).toMatchObject({ size: 12, stub: true });
     expect(plan.movieBytes).toBe(280_000_000);
     expect(plan.bytes).toBeLessThan(plan.movieBytes + 1_000_000_000 - 280_000_000);
   });
 
-  it("stops without Blowfish.dll, warns without binkw32.dll, and explains a folder with no program", () => {
-    const thin = planImport([{ path: "gamemd.exe", size: 1 }], yuri, { movies: true, saves: true });
-    expect(thin.error).toMatch(/Blowfish.dll is missing/);
-    expect(thin.warnings).toHaveLength(1);
-    const noBink = planImport(
-      [
-        { path: "gamemd.exe", size: 1 },
-        { path: "Blowfish.dll", size: 1 },
-      ],
+  it("creates startup movie stubs even when the source install has no movie packs", () => {
+    const plan = planImport(
+      ["ra2.mix", "ra2md.mix", "maps01.mix", "multi.mix"].map((path) => ({ path, size: 100 })),
       yuri,
       { movies: true, saves: true },
     );
-    expect(noBink.error).toBeNull();
-    expect(noBink.warnings[0]).toMatch(/binkw32.dll/);
-    const none = planImport([{ path: "ra2.mix", size: 1 }], yuri, { movies: true, saves: true });
-    expect(none.error).toMatch(/no gamemd\.exe at the top/);
-    const wrong = planImport([{ path: "game.exe", size: 1 }], yuri, { movies: true, saves: true });
-    expect(wrong.error).toMatch(/different game/);
+    expect(
+      plan.copy
+        .filter((file) => file.stub)
+        .map((file) => file.path)
+        .sort(),
+    ).toEqual(["movies01.mix", "movmd03.mix"]);
+    expect(plan.readiness.ra2md).toMatchObject({ status: "ready", moviesMissing: true });
+  });
+
+  it("reports missing required content and optional movies without requiring runtime binaries", () => {
+    const thin = planImport([{ path: "ra2md.mix", size: 1 }], yuri, { movies: true, saves: true });
+    expect(thin.error).toBeNull();
+    expect(thin.readiness.ra2md).toMatchObject({
+      status: "missing-content",
+      missing: ["ra2.mix", "maps01.mix", "multi.mix"],
+      moviesMissing: true,
+    });
+    const none = planImport([{ path: "readme.txt", size: 1 }], yuri, { movies: true, saves: true });
+    expect(none.error).toMatch(/no Red Alert 2 game data/i);
+    const complete = planImport(
+      ["ra2.mix", "ra2md.mix", "maps01.mix", "multi.mix", "movies01.mix", "movmd03.mix"].map(
+        (path) => ({
+          path,
+          size: 1,
+        }),
+      ),
+      yuri,
+      { movies: true, saves: true },
+    );
+    expect(complete.readiness.ra2md).toEqual({
+      status: "ready",
+      missing: [],
+      moviesMissing: false,
+    });
+    const unsupported = planImport(
+      ["ra2.mix", "maps01.mix", "multi.mix"].map((path) => ({ path, size: 1 })),
+      yuri,
+      { movies: true, saves: true },
+    );
+    expect(unsupported.error).toMatch(/Red Alert 2 runtime/);
+    expect(unsupported.readiness.ra2?.status).toBe("runtime-not-built");
   });
 });
 
@@ -200,5 +245,11 @@ describe("loadBuildInfo", () => {
     await expect(loadBuildInfo(missing as typeof fetch)).rejects.toThrow(/not built/);
     const page = async () => new Response("<html>");
     await expect(loadBuildInfo(page as typeof fetch)).rejects.toThrow();
+  });
+
+  it("does not keep stale build metadata in the browser cache", async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify(yuri)));
+    await loadBuildInfo(fetcher as unknown as typeof fetch);
+    expect(fetcher).toHaveBeenCalledWith("/game/build.json", { cache: "no-store" });
   });
 });

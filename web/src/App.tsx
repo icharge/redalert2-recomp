@@ -112,12 +112,19 @@ function Main() {
     const manifest = manifestRef.current;
     if (fixture || location.pathname !== "/" || !manifest) return;
     let live = true;
-    void refresh(manifest).then((records) => {
-      if (live) setBoot((previous) => previous.name === "ready" ? { ...previous, ...records } : previous);
-    }).catch((error: unknown) => {
-      if (live) setBoot({ name: "failed", message: String(error) });
-    });
-    return () => { live = false; };
+    void refresh(manifest)
+      .then((records) => {
+        if (live)
+          setBoot((previous) =>
+            previous.name === "ready" ? { ...previous, ...records } : previous,
+          );
+      })
+      .catch((error: unknown) => {
+        if (live) setBoot({ name: "failed", message: String(error) });
+      });
+    return () => {
+      live = false;
+    };
   }, [location.pathname, fixture, refresh]);
 
   if (leaving) return <UnloadGame destination={window.location.href} />;
@@ -143,11 +150,15 @@ function Main() {
     );
 
   const { build, manifest, games, installations } = boot;
-  const reload = async () => setBoot({ ...boot, ...(await refresh(manifest)) });
+  const reload = async () => {
+    const [build, records] = await Promise.all([loadBuildInfo(), refresh(manifest)]);
+    setBoot({ ...boot, build, ...records });
+  };
   const resume = slotFromPath(query.get("resume") ?? undefined);
   const library = (
     <Library
       games={games}
+      build={build}
       installations={installations}
       modManager={(game) => <ModLibrary game={game.storage} manifest={manifest} target={target} />}
       onPlay={(game) => navigate(gamePath(game.slot, game.id))}
@@ -220,13 +231,22 @@ function Main() {
           )
         }
       />
-      <Route path="/game/:slot" element={<InstallationGame games={games} installations={installations} />} />
+      <Route
+        path="/game/:slot"
+        element={<InstallationGame games={games} installations={installations} />}
+      />
       <Route path="*" element={<RouteError message="That page was not found." />} />
     </Routes>
   );
 }
 
-function InstallationGame({ games, installations }: { games: GameRecord[]; installations: InstallationRecord[] }) {
+function InstallationGame({
+  games,
+  installations,
+}: {
+  games: GameRecord[];
+  installations: InstallationRecord[];
+}) {
   const { slot: value } = useParams();
   const location = useLocation();
   const slot = slotFromPath(value);
@@ -234,8 +254,7 @@ function InstallationGame({ games, installations }: { games: GameRecord[]; insta
   const choices = games.filter((game) => game.slot === slot);
   const installation = installations.find((entry) => entry.slot === slot);
   const planned = installation?.editions ?? choices.map((game) => game.id);
-  const edition =
-    query.get("edition") ?? (planned.includes("ra2md") ? "ra2md" : "ra2");
+  const edition = query.get("edition") ?? (planned.includes("ra2md") ? "ra2md" : "ra2");
   const selected = choices.find((game) => game.id === edition);
   const files = useMemo<FileSource | null>(
     () =>

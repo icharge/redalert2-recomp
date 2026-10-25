@@ -220,7 +220,7 @@ Playwright runs Chromium headless, with GPU or SwiftShader for WebGL2.
 Use `--headed` with `--web` to show Chromium for a local interactive run.
 The default target is Yuri's Revenge. To run the same suite on Red Alert 2,
 build its module with `RA2_TARGET=game` and use `RA2_TARGET=game` when invoking
-`tools/playtest.py --web`; the page then loads `/game/ra2/ra2.js`.
+`tools/playtest.py --web`; the page then loads `/game/ra2.js`.
 
 A case fails in the browser and passes on Linux: then it's a browser bug
 (the host, `win32hle` under Emscripten, or the page), not a lift bug.

@@ -209,9 +209,10 @@ re-lift regenerates it anyway.
   PowerShell; an unquoted relative value was split at `.cmake`. Compile objects
   with `EMCC_DEBUG=0`, then link `ninja -C build-web-wol-yr ra2.js` with
   `EMCC_DEBUG=1`. Both private build directories are gitignored.
-- **The build publishes to `web/public/game/ra2/`, which another developer's builds
-  overwrite**. Prefer the e2e option `--build ../build-web-udp`: it streams that
-  build's js/wasm/data over a temporary loopback HTTP server, keeping shared assets
+- **The build publishes both edition bundles into the shared `web/public/game/`
+  directory**, so another developer's build can replace the same edition files.
+  Prefer the e2e option `--build ../build-web-udp`: it streams that build's
+  js/wasm/data over a temporary loopback HTTP server, keeping shared assets
   intact. Do not fulfill the 144 MB debug WASM through CDP: Chrome closes its
   DevTools connection at its 100 MB input-buffer limit.
 - **Pass `--arg --intro` to the e2e scripts.** The new start-up-movie skip in

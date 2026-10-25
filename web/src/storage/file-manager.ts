@@ -21,7 +21,7 @@ import {
   type ReadOnlyFileSource,
   type UploadReport,
 } from "./file-browser";
-import { checkExe, classify, type BuildInfo, type GameId } from "./install";
+import { classify, type BuildInfo, type GameId } from "./install";
 import type { FileEntry, GameRecord, Manifest } from "./manifest";
 import { gamePath, readGameFile, removeFiles, type CopyTarget } from "./opfs";
 import { isSavePath, type SavedFile, type SaveStore } from "./saves";
@@ -33,7 +33,7 @@ export interface ManagerDeps {
   manifest: Manifest;
   target: CopyTarget;
   saves: SaveStore;
-  /** the games this build can run, for the exe of an edition the installation does not have yet */
+  /** the games this build can run, for adding another edition from its game data */
   build: BuildInfo;
   /** the records changed: the Library shows their size, file count and editions */
   onChange?(): void;
@@ -156,7 +156,7 @@ export function managedInstallationSource(
     );
     if (id === "ra2md" && !Object.keys(files).some((name) => lower(name) === "rulesmd.ini"))
       report.notes.push(
-        "Yuri's Revenge also reads files with md in their names (rulesmd.ini, expandmd01.mix and others); upload them before playing it.",
+        "Yuri's Revenge also needs edition-specific game data, including rulesmd.ini and expandmd01.mix.",
       );
   }
 
@@ -180,29 +180,14 @@ export function managedInstallationSource(
       }
       const editions = records.filter((record) => kind.needs.includes(record.id));
       let adding: GameId | null = null;
-      if (kind.kind === "exe") {
-        const id = kind.needs[0]!;
-        const have = records.find((record) => record.id === id);
-        const expected = have?.exeStamp ?? deps.build.games[id]?.stamp;
-        if (expected === undefined) {
-          report.problems.push(`${name}: this build cannot run that game.`);
+      if (!editions.length) {
+        adding = kind.needs.find(
+          (id) => deps.build.games[id] && !records.some((record) => record.id === id),
+        ) ?? null;
+        if (!adding) {
+          report.problems.push(`${name}: no game in this installation reads it.`);
           continue;
         }
-        const check = checkExe(
-          new Uint8Array(await file.slice(0, 4096).arrayBuffer()),
-          expected,
-          name,
-        );
-        if (!check.ok) {
-          report.problems.push(`${name}: ${check.message}`);
-          continue;
-        }
-        if (!have) adding = id;
-      } else if (!editions.length) {
-        report.problems.push(
-          `${name}: no game in this installation reads it. Upload that game's exe (game.exe or gamemd.exe) first.`,
-        );
-        continue;
       }
       try {
         const existing = records.flatMap((record) => {
@@ -348,11 +333,6 @@ export function managedInstallationSource(
         const saves = lower(SAVES_DIR);
         if (names.every((name) => name === saves || name.startsWith(`${saves}/`)))
           return "Deleted saves and settings cannot be brought back.";
-        const needed = names.find(
-          (name) => name === "blowfish.dll" || classify(name)?.kind === "exe",
-        );
-        if (needed)
-          return `The game cannot start without ${needed}. Upload it again to put it back.`;
         return "The game may not start without files it reads. Upload a file again to put it back.";
       },
       async remove(paths) {

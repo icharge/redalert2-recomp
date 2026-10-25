@@ -27,11 +27,13 @@ import { LauncherGameSettings } from "../components/LauncherGameSettings";
 import { FileExplorer } from "../components/FileExplorer";
 import { StorageMeter } from "../components/StorageMeter";
 import { importedFileSource, type ReadOnlyFileSource } from "../storage/file-browser";
+import { assessEditionReadiness, type BuildInfo } from "../storage/install";
 import type { GameRecord, InstallationRecord } from "../storage/manifest";
 import styles from "./Library.module.css";
 
 export interface LibraryProps {
   games: GameRecord[];
+  build?: BuildInfo;
   installations?: InstallationRecord[];
   onResume?(slot: number): void;
   onPlay(game: GameRecord): void;
@@ -60,6 +62,7 @@ function rememberedEdition(slot: number): string | null {
 
 export function Library({
   games,
+  build,
   installations,
   onResume,
   onPlay,
@@ -187,6 +190,21 @@ export function Library({
             }
           };
           const selected = selectedEdition(installation.slot, choices);
+          const readiness = (game: GameRecord) =>
+            build
+              ? assessEditionReadiness(
+                  game.id,
+                  build,
+                  Object.entries(game.files)
+                    .filter(([, entry]) => entry.done)
+                    .filter(
+                      ([name, entry]) =>
+                        !/^(?:movies|movmd)[^/]*\.mix$/i.test(name) || entry.size > 12,
+                    )
+                    .map(([name]) => name),
+                )
+              : null;
+          const selectedReadiness = selected ? readiness(selected) : null;
           return (
             <Card
               key={installation.slot}
@@ -317,6 +335,20 @@ export function Library({
                                   The import did not finish. Resume this installation to carry on.
                                 </Text>
                               )}
+                              {readiness(game) && (
+                                <Text
+                                  size="2"
+                                  color={readiness(game)?.status === "ready" ? "green" : "amber"}
+                                >
+                                  {readiness(game)?.status === "runtime-not-built"
+                                    ? "Runtime not built for this edition."
+                                    : readiness(game)?.status === "missing-content"
+                                      ? `Missing required content: ${readiness(game)?.missing.join(", ")}.`
+                                      : "Ready to run."}
+                                  {readiness(game)?.moviesMissing &&
+                                    " Optional movie archives are missing."}
+                                </Text>
+                              )}
                             </Flex>
                             <Flex className={styles.actions} gap="2" align="center">
                               <IconButton
@@ -337,7 +369,13 @@ export function Library({
                               >
                                 <GearIcon />
                               </IconButton>
-                              <Button disabled={!game.complete} onClick={() => onPlay(game)}>
+                              <Button
+                                disabled={
+                                  !game.complete ||
+                                  (!!build && selectedReadiness?.status !== "ready")
+                                }
+                                onClick={() => onPlay(game)}
+                              >
                                 <PlayIcon />
                                 Play
                               </Button>

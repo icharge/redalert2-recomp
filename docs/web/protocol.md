@@ -20,11 +20,11 @@ window.Module = {
   print: (line) => store.line(line),       // the game's stdout: events and log
   printErr: (line) => store.line(line),
   onAbort: (what) => store.crashed(what),
-  locateFile: (path) => `/game/${path}`,   // ra2.wasm, ra2.data (the fonts)
+  locateFile: (path) => gameModuleFile(game, "/game/", path), // maps Yuri's ra2.* names to ra2md.*
   preRun: [ /* put the game's files in /game, below */ ],
   onRuntimeInitialized: () => resolve(handle),
 };
-document.head.append(Object.assign(document.createElement("script"), { src: "/game/ra2.js" }));
+document.head.append(Object.assign(document.createElement("script"), { src: gameScript(game) }));
 ```
 
 The module is built with `noInitialRun`: once the runtime is up the page puts the game's files in

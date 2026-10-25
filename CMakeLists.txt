@@ -113,23 +113,66 @@ if(EMSCRIPTEN)
   if(WEB_LINK_OPT)
     target_link_options(ra2 PRIVATE ${WEB_LINK_OPT})
   endif()
-  set_target_properties(ra2 PROPERTIES SUFFIX ".js" LINK_DEPENDS "${CMAKE_SOURCE_DIR}/src/web/pre.js;${CMAKE_SOURCE_DIR}/src/web/extern-pre.js;${CMAKE_SOURCE_DIR}/src/web/opfs_read.js")
-  # Keep the two classic Emscripten modules separate. The expansion retains
-  # its original URL; base RA2 lives below ra2/ in the same page build.
+  set_target_properties(ra2 PROPERTIES SUFFIX ".js" LINK_DEPENDS "${CMAKE_SOURCE_DIR}/src/web/pre.js;${CMAKE_SOURCE_DIR}/src/web/extern-pre.js;${CMAKE_SOURCE_DIR}/src/web/opfs_read.js;${CMAKE_SOURCE_DIR}/tools/compress-wasm.mjs")
+  # Put both classic Emscripten modules in one flat served directory and give
+  # their JS, Wasm, and data files edition-specific names.
   set(WEB_OUT ${CMAKE_SOURCE_DIR}/web/public/game CACHE PATH "root of the page's game modules")
+  set(RA2_GAME_DIR "${CMAKE_SOURCE_DIR}/game" CACHE PATH "local licensed game install used for runtime inputs")
   set(_module_out ${WEB_OUT})
+  set(_runtime_id ra2md)
+  set(_module_stem ra2md)
   if(RA2_TARGET STREQUAL "game")
-    set(_module_out ${WEB_OUT}/ra2)
+    set(_runtime_id ra2)
+    set(_module_stem ra2)
   endif()
+  # The browser maps the original PE image and reads the Blowfish tables at
+  # runtime. Package those exact build inputs alongside the generated module.
+  # Resolve names case-insensitively because supported installs differ in case.
+  if(RA2_TARGET STREQUAL "game")
+    set(_runtime_exe_name game.exe)
+  else()
+    set(_runtime_exe_name gamemd.exe)
+  endif()
+  file(GLOB _runtime_candidates LIST_DIRECTORIES false "${RA2_GAME_DIR}/*")
+  set(_runtime_exe_source "")
+  set(_runtime_blowfish_source "")
+  foreach(_candidate IN LISTS _runtime_candidates)
+    get_filename_component(_candidate_name "${_candidate}" NAME)
+    string(TOLOWER "${_candidate_name}" _candidate_lower)
+    if(_candidate_lower STREQUAL _runtime_exe_name)
+      set(_runtime_exe_source "${_candidate}")
+    elseif(_candidate_lower STREQUAL "blowfish.dll")
+      set(_runtime_blowfish_source "${_candidate}")
+    endif()
+  endforeach()
+  if(NOT _runtime_exe_source OR NOT _runtime_blowfish_source)
+    message(FATAL_ERROR "Runtime bundle inputs are missing from ${RA2_GAME_DIR}: need ${_runtime_exe_name} and Blowfish.dll")
+  endif()
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${_runtime_exe_source}" "${_runtime_blowfish_source}")
+  set(_runtime_out ${WEB_OUT}/runtime/${_runtime_id})
+  find_program(NODE_EXECUTABLE node REQUIRED)
   add_custom_command(TARGET ra2 POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory ${_module_out}
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:ra2> $<TARGET_FILE_DIR:ra2>/ra2.wasm $<TARGET_FILE_DIR:ra2>/ra2.data ${_module_out})
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:ra2> ${_module_out}/${_module_stem}.js
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE_DIR:ra2>/ra2.wasm ${_module_out}/${_module_stem}.wasm
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE_DIR:ra2>/ra2.data ${_module_out}/${_module_stem}.data
+    COMMAND ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/compress-wasm.mjs
+            ${_module_out}/${_module_stem}.wasm
+            ${_module_out}/${_module_stem}.wasm.br
+            ${_module_out}/${_module_stem}.wasm.gz
+    VERBATIM)
+  if(RA2_TARGET STREQUAL "game")
+    add_custom_command(TARGET ra2 POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E rm -rf ${WEB_OUT}/ra2
+      VERBATIM)
+  endif()
   # build.json: which game this build runs, the exe it was lifted from, and an id for this build
   # (cmake/build_json.cmake). Written when cmake configures, and again after each link, which is when
   # there is a ra2.wasm to take the id from. A change to the lifted target header configures again.
   set(_target_h ${CMAKE_SOURCE_DIR}/${GEN_DIR}/recomp_target.h)
   set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${_target_h})
-  set(_build_json ${CMAKE_COMMAND} -DTARGET_H=${_target_h} -DOUT=${WEB_OUT}/build.json -DLOCK=${CMAKE_SOURCE_DIR}/.build-json.publish-lock)
+  set(_build_json ${CMAKE_COMMAND} -DTARGET_H=${_target_h} -DOUT=${WEB_OUT}/build.json -DLOCK=${CMAKE_SOURCE_DIR}/.build-json.publish-lock -DRUNTIME_EXE_SOURCE=${_runtime_exe_source} -DRUNTIME_EXE_NAME=${_runtime_exe_name} -DRUNTIME_BLOWFISH_SOURCE=${_runtime_blowfish_source} -DRUNTIME_DIR=${_runtime_out})
   # Advertise a module only after a successful link and copy.
   add_custom_command(TARGET ra2 POST_BUILD
     COMMAND ${_build_json} -DWASM=$<TARGET_FILE_DIR:ra2>/ra2.wasm -P ${CMAKE_SOURCE_DIR}/cmake/build_json.cmake)

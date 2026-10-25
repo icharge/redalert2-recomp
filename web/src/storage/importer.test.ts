@@ -56,7 +56,7 @@ const folder = (stamp = STAMP) => [
   file("binkw32.dll", 10),
   file("ra2.mix", 40),
   file("ra2md.mix", 30),
-  file("movmd01.mix", 100),
+  file("movmd03.mix", 100),
   file("Syringe.exe", 5),
   file("Saved Games/one.sav", 3),
 ];
@@ -88,21 +88,20 @@ const roomy = { quota: 1e12, usage: 0 };
 const all = { movies: true, saves: true };
 
 describe("prepareImport", () => {
-  it("plans the copy, checks the exe against the lift and the room against the plan", async () => {
+  it("plans game data without requiring the bundled executable and DLL", async () => {
     const prepared = await prepareImport(source(folder()), build, all, roomy);
     expect(prepared.plan.games).toEqual(["ra2md"]);
-    expect(prepared.exes.ra2md).toEqual({ ok: true, message: null });
     expect(prepared.space.fits).toBe(true);
     expect(blocker(prepared)).toBeNull();
   });
 
-  it("is blocked by another build of the exe, by no room, and by a folder with no game", async () => {
+  it("is blocked by no room or by a folder with no game data", async () => {
     const wrongBuild = await prepareImport(source(folder(0x11111111)), build, all, roomy);
-    expect(blocker(wrongBuild)).toMatch(/not the build the game was lifted from/);
+    expect(blocker(wrongBuild)).toBeNull();
     const tight = await prepareImport(source(folder()), build, all, { quota: 100, usage: 0 });
     expect(blocker(tight)).toMatch(/not enough room/);
     const none = await prepareImport(source([file("readme.txt", 1)]), build, all, roomy);
-    expect(blocker(none)).toMatch(/no gamemd\.exe/);
+    expect(blocker(none)).toMatch(/no Red Alert 2 game data/i);
   });
 });
 
@@ -129,11 +128,9 @@ describe("runImport", () => {
     });
     expect([...target.files.keys()].sort()).toEqual(
       [
-        "game/slot-1/Blowfish.dll",
         "game/slot-1/Saved Games/one.sav",
-        "game/slot-1/binkw32.dll",
-        "game/slot-1/gamemd.exe",
-        "game/slot-1/movmd01.mix",
+        "game/slot-1/movies01.mix",
+        "game/slot-1/movmd03.mix",
         "game/slot-1/ra2.mix",
         "game/slot-1/ra2md.mix",
       ].sort(),
@@ -141,9 +138,9 @@ describe("runImport", () => {
     const record = await manifest.getGame("ra2md");
     expect(record?.complete).toBe(true);
     expect(record?.exeStamp).toBe(STAMP);
-    // the movie archive is a 12-byte empty one in its place
-    expect(seen.at(-1)).toBe(20 + 10 + 10 + 40 + 30 + 3 + 12);
-    expect(target.files.get("game/slot-1/movmd01.mix")).toBe(12);
+    // both edition startup movie anchors are 12-byte empty archives when omitted
+    expect(seen.at(-1)).toBe(40 + 30 + 3 + 12 + 12);
+    expect(target.files.get("game/slot-1/movmd03.mix")).toBe(12);
   });
 
   it("imports both games and keeps their shared files in OPFS only once", async () => {
@@ -162,10 +159,6 @@ describe("runImport", () => {
     ];
     const prepared = await prepareImport(source(both), bothBuild, all, roomy);
     expect(prepared.plan.games).toEqual(["ra2", "ra2md"]);
-    expect(prepared.exes).toEqual({
-      ra2: { ok: true, message: null },
-      ra2md: { ok: true, message: null },
-    });
     await runImport({ prepared, build: bothBuild, manifest, target });
 
     const ra2 = await manifest.getGame("ra2");
@@ -232,8 +225,21 @@ describe("runImport", () => {
     const manifest = await Manifest.open(new IDBFactory());
     const installation = await manifest.createInstallation("Both games", ["ra2", "ra2md"]);
     await manifest.beginImport("ra2", "Red Alert 2", RA2_STAMP, [], installation.slot);
-    const prepared = await prepareImport(source([...folder(), file("game.exe", 21, peHead(RA2_STAMP))]), bothBuild, all, roomy);
-    await expect(runImport({ prepared, build: bothBuild, manifest, target: memoryTarget(), slot: installation.slot })).resolves.toBe(installation.slot);
+    const prepared = await prepareImport(
+      source([...folder(), file("game.exe", 21, peHead(RA2_STAMP))]),
+      bothBuild,
+      all,
+      roomy,
+    );
+    await expect(
+      runImport({
+        prepared,
+        build: bothBuild,
+        manifest,
+        target: memoryTarget(),
+        slot: installation.slot,
+      }),
+    ).resolves.toBe(installation.slot);
     expect((await manifest.listGames(installation.slot)).every((game) => game.complete)).toBe(true);
   });
 });

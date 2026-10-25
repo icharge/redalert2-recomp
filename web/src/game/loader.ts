@@ -19,7 +19,14 @@ import {
   type SaveSync,
 } from "../storage/saves";
 import { loadMods } from "../storage/mods";
-import type { GameId } from "../storage/install";
+import {
+  checkExe,
+  EMPTY_ARCHIVE,
+  loadBuildInfo,
+  REQUIRED_MOVIE_ARCHIVES,
+  type BuildInfo,
+  type GameId,
+} from "../storage/install";
 import { liveGameFileSource, type ReadOnlyFileSource } from "../storage/file-browser";
 import {
   readThaiFont,
@@ -29,11 +36,19 @@ import {
 import { toWolSocketUrl, withBrowserWolPort, wolLineBytes, WolClient } from "./wol";
 import { UdpRelay, parseStartHandoff } from "./udp-relay";
 
-/** Yuri's Revenge module; Red Alert 2 is nested below /game/ra2. */
-export const GAME_SCRIPT = appPath("game/ra2.js");
+/** The two edition bundles share /game and use edition-specific filenames. */
+export const GAME_SCRIPT = appPath("game/ra2md.js");
 export const gameScript = (game: GameId) =>
-  appPath(game === "ra2" ? "game/ra2/ra2.js" : "game/ra2.js");
+  appPath(game === "ra2" ? "game/ra2.js" : "game/ra2md.js");
+export function gameModuleFile(game: GameId, moduleBase: string, file: string): string {
+  const moduleFile =
+    game === "ra2md" && (file === "ra2.wasm" || file === "ra2.data")
+      ? `ra2md${file.slice("ra2".length)}`
+      : file;
+  return `${moduleBase}${moduleFile}`;
+}
 const gameIni = (game: GameId) => (game === "ra2" ? "ra2.ini" : "ra2md.ini");
+const locallyBundledRuntimeFile = /^(?:game|gamemd)\.exe$|^(?:blowfish|binkw32)\.dll$/i;
 
 /** No module for this game is present (docs/web/toolchain.md). */
 export class GameNotBuilt extends Error {
@@ -50,6 +65,50 @@ interface EmscriptenFs extends FsLike {
   mkdir(path: string): void;
   writeFile(path: string, data: Uint8Array): void;
   symlink(target: string, path: string): void;
+}
+
+type RuntimeGame = NonNullable<BuildInfo["games"][GameId]>;
+
+async function runtimeAsset(
+  fetcher: typeof fetch,
+  url: string,
+  expectedSha256: string,
+  name: string,
+): Promise<Uint8Array> {
+  const response = await fetcher(url);
+  if (!response.ok)
+    throw new Error(`The local runtime bundle is missing ${name}. Rebuild this game target.`);
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  const digest = await crypto.subtle.digest("SHA-256", bytes.slice().buffer as ArrayBuffer);
+  const actual = [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+  if (actual !== expectedSha256.toLowerCase())
+    throw new Error(`${name} does not match build.json. Rebuild this game target.`);
+  return bytes;
+}
+
+/** Put the build-matched PE and Blowfish tables at the paths the host expects. */
+export async function stageRuntimeBundle(
+  fs: EmscriptenFs,
+  game: GameId,
+  build: RuntimeGame,
+  fetcher: typeof fetch = fetch,
+): Promise<void> {
+  const runtime = build.runtime;
+  if (!runtime || runtime.edition !== game || !build.build || runtime.build !== build.build)
+    throw new Error(
+      `The ${build.title} runtime bundle is not built or does not match this Wasm build.`,
+    );
+  const base = `${import.meta.env.BASE_URL}game/runtime/${game}/`;
+  const [exe, blowfish] = await Promise.all([
+    runtimeAsset(fetcher, `${base}${build.exe}`, runtime.exeSha256, build.exe),
+    runtimeAsset(fetcher, `${base}Blowfish.dll`, runtime.blowfishSha256, "Blowfish.dll"),
+  ]);
+  const check = checkExe(exe.slice(0, 4096), build.stamp, build.exe);
+  if (!check.ok) throw new Error(`The bundled executable is invalid: ${check.message}`);
+  fs.writeFile(`/game/${build.exe}`, exe);
+  fs.writeFile("/game/Blowfish.dll", blowfish);
 }
 
 interface Ra2Module extends Partial<WasmMemory> {
@@ -351,8 +410,10 @@ async function loadOpfsFiles(
   thaiFontFix: ThaiFontPreference,
 ): Promise<SaveSync> {
   fs.mkdir("/game");
-  const names = Object.keys(record.files).filter((name) =>
-    shouldLoadImportedGameFile(name, thaiFontFix.enabled),
+  const names = Object.keys(record.files).filter(
+    (name) =>
+      !locallyBundledRuntimeFile.test(name) &&
+      shouldLoadImportedGameFile(name, thaiFontFix.enabled),
   );
   const totalBytes = names.reduce((sum, name) => sum + (record.files[name]?.size ?? 0), 0);
   let doneBytes = 0;
@@ -388,6 +449,12 @@ async function loadOpfsFiles(
     }
     doneBytes += entry.size;
     doneFiles++;
+  }
+  // Older imports may predate movie stubs, or users may remove one in the file manager.
+  // The host probes these archives during startup even when movies are optional.
+  const importedNames = new Set(Object.keys(record.files).map((name) => name.toLowerCase()));
+  for (const name of REQUIRED_MOVIE_ARCHIVES[record.id]) {
+    if (!importedNames.has(name)) fs.writeFile(`/game/${name}`, EMPTY_ARCHIVE);
   }
   const mods = await loadMods(fs, record.storage, {
     excludeGameFont: thaiFontFix.enabled,
@@ -442,6 +509,9 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
   const moduleBase = scriptUrl.slice(0, scriptUrl.lastIndexOf("/") + 1);
   store.begin();
   if (!(await isBuilt(fetch, game))) throw new GameNotBuilt(game);
+  const buildInfo = await loadBuildInfo(fetch);
+  const runtimeGame = buildInfo.games[game];
+  if (!runtimeGame) throw new GameNotBuilt(game);
 
   return new Promise<GameHandle>((resolve, reject) => {
     const fail = (error: unknown) => {
@@ -458,7 +528,7 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
         if (store.getSnapshot().phase !== "exited")
           fail(new Error(`The game aborted: ${String(what)}`));
       },
-      locateFile: (path: string) => `${moduleBase}${path}`,
+      locateFile: (path: string) => gameModuleFile(game, moduleBase, path),
     } as Partial<Ra2Module> as Ra2Module;
 
     let saves: SaveSync | null = null;
@@ -564,10 +634,12 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
         );
         const fs = module.FS;
         if (!fs) throw new Error("the game's file system is not up yet");
-        loadFiles(fs).then(() => {
-          resolve(createHandle(module, saves, game));
-          module.callMain(module.arguments);
-        }, fail);
+        loadFiles(fs)
+          .then(() => stageRuntimeBundle(fs, game, runtimeGame))
+          .then(() => {
+            resolve(createHandle(module, saves, game));
+            module.callMain(module.arguments);
+          }, fail);
       } catch (error) {
         fail(error);
       }

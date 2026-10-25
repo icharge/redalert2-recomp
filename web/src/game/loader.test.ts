@@ -4,6 +4,7 @@ import {
   createWolDataKey,
   GAME_SCRIPT,
   gameScript,
+  gameModuleFile,
   GameNotBuilt,
   gameArguments,
   isBuilt,
@@ -17,6 +18,60 @@ import { GameStore } from "./store";
 
 const answer = (ok: boolean, type: string) =>
   Promise.resolve({ ok, headers: new Headers({ "content-type": type }) } as Response);
+
+const RUNTIME_STAMP = 0x12345678;
+const runtimeExe = new Uint8Array(4096);
+new DataView(runtimeExe.buffer).setUint16(0, 0x5a4d, true);
+new DataView(runtimeExe.buffer).setUint32(0x3c, 0x80, true);
+new DataView(runtimeExe.buffer).setUint32(0x80, 0x4550, true);
+new DataView(runtimeExe.buffer).setUint32(0x88, RUNTIME_STAMP, true);
+const runtimeBlowfish = new Uint8Array([1, 2, 3, 4]);
+
+async function runtimeFetch(
+  fallback: (input: unknown, init?: RequestInit) => Promise<Response> = () =>
+    answer(true, "text/plain"),
+) {
+  const sha256 = async (bytes: Uint8Array) =>
+    [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes.slice().buffer as ArrayBuffer))]
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join("");
+  const build = {
+    games: {
+      ra2md: {
+        title: "Yuri's Revenge",
+        exe: "gamemd.exe",
+        ini: "ra2md.ini",
+        build: "test-build",
+        stamp: RUNTIME_STAMP,
+        runtime: {
+          edition: "ra2md",
+          build: "test-build",
+          exeSha256: await sha256(runtimeExe),
+          blowfishSha256: await sha256(runtimeBlowfish),
+        },
+      },
+    },
+  };
+  return (input: unknown, init?: RequestInit): Promise<Response> => {
+    if (init?.method === "HEAD") return answer(true, "text/javascript");
+    const url = String(input);
+    if (url.endsWith("/game/build.json")) return Promise.resolve(Response.json(build));
+    if (url.endsWith("/game/runtime/ra2md/gamemd.exe"))
+      return Promise.resolve(new Response(runtimeExe));
+    if (url.endsWith("/game/runtime/ra2md/Blowfish.dll"))
+      return Promise.resolve(new Response(runtimeBlowfish));
+    return fallback(input, init);
+  };
+}
+
+function testFs(files = new Map<string, Uint8Array>()) {
+  return {
+    readdir: () => [],
+    mkdir: () => {},
+    writeFile: (path: string, bytes: Uint8Array) => files.set(path, bytes),
+    symlink: () => {},
+  } as never;
+}
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -62,8 +117,11 @@ describe("isBuilt", () => {
     vi.stubEnv("BASE_URL", "/emu/");
     const fetcher = vi.fn(() => answer(true, "text/javascript"));
     expect(await isBuilt(fetcher as unknown as typeof fetch, "ra2md")).toBe(true);
-    expect(fetcher).toHaveBeenLastCalledWith("/emu/game/ra2.js", { method: "HEAD" });
-    expect(gameScript("ra2")).toBe("/emu/game/ra2/ra2.js");
+    expect(fetcher).toHaveBeenLastCalledWith("/emu/game/ra2md.js", { method: "HEAD" });
+    expect(gameScript("ra2")).toBe("/emu/game/ra2.js");
+    expect(gameModuleFile("ra2md", "/emu/game/", "ra2.wasm")).toBe("/emu/game/ra2md.wasm");
+    expect(gameModuleFile("ra2md", "/emu/game/", "ra2.data")).toBe("/emu/game/ra2md.data");
+    expect(gameModuleFile("ra2", "/emu/game/", "ra2.wasm")).toBe("/emu/game/ra2.wasm");
     vi.unstubAllEnvs();
   });
   it("is true when ra2.js comes back as JavaScript", async () => {
@@ -87,10 +145,15 @@ describe("isBuilt", () => {
 
   it("checks Red Alert 2's separately built module", async () => {
     const fetcher = vi.fn(() => answer(true, "text/javascript"));
-    expect(gameScript("ra2")).toBe("/game/ra2/ra2.js");
+    expect(gameScript("ra2")).toBe("/game/ra2.js");
     expect(await isBuilt(fetcher as unknown as typeof fetch, "ra2")).toBe(true);
-    expect(fetcher).toHaveBeenCalledWith("/game/ra2/ra2.js", { method: "HEAD" });
+    expect(fetcher).toHaveBeenCalledWith("/game/ra2.js", { method: "HEAD" });
     expect(new GameNotBuilt("ra2").message).toContain("RA2_TARGET=game");
+  });
+
+  it("uses the edition-specific Yuri Wasm filename", () => {
+    expect(gameScript("ra2md")).toBe("/game/ra2md.js");
+    expect(gameModuleFile("ra2md", "/game/", "ra2.wasm")).toBe("/game/ra2md.wasm");
   });
 });
 
@@ -135,12 +198,16 @@ describe("startGame", () => {
     vi.stubEnv("VITE_WOL_HTTP_URL", "https://wol.test/service/");
     vi.stubEnv("VITE_WOL_SOCKET_URL", "wss://wol.test/service/wol");
     const requests: string[] = [];
-    vi.stubGlobal("fetch", (input: unknown, init?: RequestInit) => {
-      if (init?.method === "HEAD") return answer(true, "text/javascript");
-      requests.push(String(input));
-      return new Promise<Response>(() => {});
-    });
-    const startup = startGame({ files: { kind: "already-there" }, store: new GameStore() }).catch(() => {});
+    vi.stubGlobal(
+      "fetch",
+      await runtimeFetch((input) => {
+        requests.push(String(input));
+        return new Promise<Response>(() => {});
+      }),
+    );
+    const startup = startGame({ files: { kind: "already-there" }, store: new GameStore() }).catch(
+      () => {},
+    );
     await vi.waitFor(() => expect(window.Module?.ra2WolStart).toBeTypeOf("function"));
     const module = window.Module!;
     try {
@@ -163,26 +230,43 @@ describe("startGame", () => {
         constructor(readonly url: string) {
           super();
           sockets.push(this);
-          queueMicrotask(() => { this.readyState = 1; this.dispatchEvent(new Event("open")); });
+          queueMicrotask(() => {
+            this.readyState = 1;
+            this.dispatchEvent(new Event("open"));
+          });
         }
         send(data: string) {
           this.sent.push(data.trim());
-          const reply = data.startsWith("cvers ") ? ":wol 700 * :ok"
-            : data.startsWith("setlocale ") ? ":wol 310 * :ok"
-            : data.startsWith("session ") ? ":wol 376 test :done"
-            : data.startsWith("ticket ") ? "ok 10.1.2.3" : null;
+          const reply = data.startsWith("cvers ")
+            ? ":wol 700 * :ok"
+            : data.startsWith("setlocale ")
+              ? ":wol 310 * :ok"
+              : data.startsWith("session ")
+                ? ":wol 376 test :done"
+                : data.startsWith("ticket ")
+                  ? "ok 10.1.2.3"
+                  : null;
           if (reply) queueMicrotask(() => this.receive(reply));
         }
-        receive(data: string) { this.dispatchEvent(new MessageEvent("message", { data })); }
-        close() { this.readyState = 3; this.dispatchEvent(new Event("close")); }
+        receive(data: string) {
+          this.dispatchEvent(new MessageEvent("message", { data }));
+        }
+        close() {
+          this.readyState = 3;
+          this.dispatchEvent(new Event("close"));
+        }
       }
       vi.stubGlobal("WebSocket", Socket);
-      vi.stubGlobal("fetch", (_url: unknown, init?: RequestInit) => init?.method === "HEAD"
-        ? answer(true, "text/javascript") : Promise.resolve(new Response(JSON.stringify({ sessionToken: "token" }))));
+      vi.stubGlobal(
+        "fetch",
+        await runtimeFetch(() =>
+          Promise.resolve(new Response(JSON.stringify({ sessionToken: "token" }))),
+        ),
+      );
       const startup = startGame({ files: { kind: "already-there" }, store: new GameStore() });
       await vi.waitFor(() => expect(window.Module?.onRuntimeInitialized).toBeTypeOf("function"));
       const module = window.Module!;
-      module.FS = { readdir: () => [] } as never;
+      module.FS = testFs();
       module.cwrap = (() => () => 0) as never;
       module.callMain = vi.fn();
       module.HEAPU8 = new Uint8Array(2048);
@@ -212,12 +296,14 @@ describe("startGame", () => {
 
   it("does not deliver a cancelled WOL login result back into the game", async () => {
     let answerLogin!: (response: Response) => void;
-    vi.stubGlobal("fetch", (_input: unknown, init?: RequestInit) =>
-      init?.method === "HEAD"
-        ? answer(true, "text/javascript")
-        : new Promise<Response>((resolve) => {
+    vi.stubGlobal(
+      "fetch",
+      await runtimeFetch(
+        () =>
+          new Promise<Response>((resolve) => {
             answerLogin = resolve;
           }),
+      ),
     );
     const startup = startGame({ files: { kind: "already-there" }, store: new GameStore() }).catch(
       () => {},
@@ -239,7 +325,7 @@ describe("startGame", () => {
   });
 
   it("rejects an aborted startup so leaving the page cannot wait forever", async () => {
-    vi.stubGlobal("fetch", () => answer(true, "text/javascript"));
+    vi.stubGlobal("fetch", await runtimeFetch());
     const outcome = startGame({ files: { kind: "already-there" }, store: new GameStore() }).then(
       () => "resolved",
       (error: Error) => error.message,
@@ -254,7 +340,7 @@ describe("startGame", () => {
     ).toContain("bad wasm");
   });
   it("holds main() until the runtime is up and the files are in place, then starts it itself", async () => {
-    vi.stubGlobal("fetch", () => answer(true, "text/javascript"));
+    vi.stubGlobal("fetch", await runtimeFetch());
     const startup = startGame({ files: { kind: "already-there" }, store: new GameStore() });
     await vi.waitFor(() => expect(window.Module?.onRuntimeInitialized).toBeTypeOf("function"));
     const module = window.Module as Record<string, unknown> & typeof window.Module;
@@ -263,11 +349,14 @@ describe("startGame", () => {
     expect(module).not.toHaveProperty("preRun");
     const callMain = vi.fn();
     module!.callMain = callMain;
-    module!.FS = { readdir: () => [] } as never;
+    const staged = new Map<string, Uint8Array>();
+    module!.FS = testFs(staged);
     module!.cwrap = (() => () => 0) as never;
     module!.onRuntimeInitialized!();
     const handle = await startup;
     expect(callMain).toHaveBeenCalledWith(["--run", "--game", "/game"]);
+    expect(staged.get("/game/gamemd.exe")).toEqual(runtimeExe);
+    expect(staged.get("/game/Blowfish.dll")).toEqual(runtimeBlowfish);
     expect(handle.saves).toBeNull();
   });
   it("says the game isn't built when there is no ra2.js", async () => {

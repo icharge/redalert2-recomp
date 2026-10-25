@@ -16,15 +16,6 @@ const build: BuildInfo = {
   },
 };
 
-/** A Windows exe's first bytes with this PE timestamp (install.ts: readExeStamp). */
-function exeBytes(stamp: number): Uint8Array {
-  const bytes = new Uint8Array(0x100);
-  const view = new DataView(bytes.buffer);
-  view.setUint32(0x3c, 0x80, true);
-  view.setUint32(0x80 + 8, stamp, true);
-  return bytes;
-}
-
 /** The parts of a File the manager uses; jsdom's File has no stream(). */
 function upload(name: string, content: string | Uint8Array, lastModified = 9000): File {
   const bytes = typeof content === "string" ? new TextEncoder().encode(content) : content;
@@ -89,8 +80,8 @@ const plan = (...names: string[]): PlannedFile[] =>
     needs: /md/i.test(name) ? ["ra2md"] : ["ra2", "ra2md"],
   }));
 
-const YR_FILES = ["gamemd.exe", "Blowfish.dll", "ra2.mix", "RA2MD.INI", "rulesmd.ini"];
-const RA2_FILES = ["game.exe", "Blowfish.dll", "ra2.mix"];
+const YR_FILES = ["ra2.mix", "maps01.mix", "multi.mix", "ra2md.mix", "RA2MD.INI", "rulesmd.ini"];
+const RA2_FILES = ["ra2.mix", "maps01.mix", "multi.mix"];
 
 /** An installation (slot 1) of the editions asked for, its files in OPFS as an import leaves them. */
 async function setup(editions: GameId[] = ["ra2md"]) {
@@ -134,10 +125,11 @@ describe("managed installation files: listing", () => {
       locked: true,
     });
     expect(names(root.filter((entry) => entry.type === "file"))).toEqual([
-      "Blowfish.dll",
       "RA2MD.INI",
-      "gamemd.exe",
+      "maps01.mix",
+      "multi.mix",
       "ra2.mix",
+      "ra2md.mix",
       "rulesmd.ini",
     ]);
   });
@@ -145,11 +137,11 @@ describe("managed installation files: listing", () => {
   it("lists the files of both editions together, a shared one once", async () => {
     const { source } = await setup(["ra2md", "ra2"]);
     expect(names((await source.list("")).filter((entry) => entry.type === "file"))).toEqual([
-      "Blowfish.dll",
       "RA2MD.INI",
-      "game.exe",
-      "gamemd.exe",
+      "maps01.mix",
+      "multi.mix",
       "ra2.mix",
+      "ra2md.mix",
       "rulesmd.ini",
     ]);
   });
@@ -201,7 +193,7 @@ describe("managed installation files: upload", () => {
       done: true,
       home: "slot-1",
     });
-    expect(record.bytes).toBe(4 * 10 + 20);
+    expect(record.bytes).toBe(5 * 10 + 20);
     expect(changes()).toBeGreaterThan(0);
     expect((await source.list("")).find((e) => e.name === "rulesmd.ini")?.size).toBe(20);
   });
@@ -250,58 +242,18 @@ describe("managed installation files: upload", () => {
       expect((await manifest.getGame(id, 1))!.files["ra2.mix"]?.size).toBe(19);
   });
 
-  it("takes an exe of this edition's build and refuses another build", async () => {
+  it("does not accept bundled runtime executables as imported game content", async () => {
     const { source } = await setup();
-    const good = await manage(source).upload("", [upload("gamemd.exe", exeBytes(YR_STAMP))]);
-    expect(good.problems).toEqual([]);
-    expect(good.replaced).toEqual(["gamemd.exe"]);
-    const bad = await manage(source).upload("", [upload("gamemd.exe", exeBytes(1))]);
-    expect(bad.problems.join(" ")).toMatch(/not the build/);
-    expect(bad.replaced).toEqual([]);
+    const good = await manage(source).upload("", [upload("gamemd.exe", "runtime")]);
+    expect(good.problems.join(" ")).toMatch(/does not read/);
+    expect(good.added).toEqual([]);
   });
 
-  it("adds Red Alert 2 to an installation that has only Yuri's Revenge, sharing its files", async () => {
-    const { source, manifest, memory, changes } = await setup(["ra2md"]);
-    const report = await manage(source).upload("", [upload("game.exe", exeBytes(RA2_STAMP))]);
-    expect(report.problems).toEqual([]);
-    expect(report.added).toEqual(["game.exe"]);
-    expect(report.notes.join(" ")).toMatch(/Added Red Alert 2/);
-    const ra2 = (await manifest.getGame("ra2", 1))!;
-    expect(ra2).toMatchObject({
-      title: "Red Alert 2",
-      exeStamp: RA2_STAMP,
-      storage: "slot-1-ra2",
-      complete: true,
-    });
-    // what it reads of the files already here is listed, in the same place; what only Yuri reads is not
-    expect(Object.keys(ra2.files).sort()).toEqual(["Blowfish.dll", "game.exe", "ra2.mix"]);
-    expect(ra2.files["ra2.mix"]?.home).toBe("slot-1");
-    expect(memory.files.has("game/slot-1/game.exe")).toBe(true);
-    expect((await manifest.getInstallation(1))!.editions).toEqual(["ra2md", "ra2"]);
-    expect(changes()).toBeGreaterThan(0);
-    // the browser now lists the new game's saves in a folder of its own
-    expect(names(await source.list(SAVES_DIR))).toEqual(["Red Alert 2", "Yuri's Revenge"]);
-  });
-
-  it("refuses an exe of an edition this installation lacks when it is not that build", async () => {
-    const { source, manifest } = await setup(["ra2md"]);
-    const report = await manage(source).upload("", [upload("game.exe", exeBytes(YR_STAMP))]);
-    expect(report.problems.join(" ")).toMatch(/not the build/);
-    expect(await manifest.getGame("ra2", 1)).toBeUndefined();
-  });
-
-  it("says a game's files need that game's exe first", async () => {
+  it("adds Yuri's Revenge from edition-specific game data and reports its additions", async () => {
     const { source, manifest } = await setup(["ra2"]);
-    const report = await manage(source).upload("", [upload("rulesmd.ini", "x")]);
-    expect(report.problems.join(" ")).toMatch(/Upload that game's exe/);
-    expect((await manifest.getGame("ra2", 1))!.files["rulesmd.ini"]).toBeUndefined();
-  });
-
-  it("adds Yuri's Revenge to a Red Alert 2 installation and says what it still needs", async () => {
-    const { source, manifest } = await setup(["ra2"]);
-    const report = await manage(source).upload("", [upload("gamemd.exe", exeBytes(YR_STAMP))]);
-    expect(report.added).toEqual(["gamemd.exe"]);
-    expect(report.notes.join(" ")).toMatch(/rulesmd\.ini/);
+    const report = await manage(source).upload("", [upload("expandmd99.mix", "x")]);
+    expect(report.added).toEqual(["expandmd99.mix"]);
+    expect(report.notes.join(" ")).toMatch(/Added Yuri's Revenge/);
     expect((await manifest.getGame("ra2md", 1))!.files["ra2.mix"]).toBeDefined();
   });
 
@@ -354,7 +306,7 @@ describe("managed installation files: delete", () => {
     expect(memory.files.has("game/slot-1/rulesmd.ini")).toBe(false);
     const record = (await manifest.getGame("ra2md", 1))!;
     expect(record.files["rulesmd.ini"]).toBeUndefined();
-    expect(record.bytes).toBe(4 * 10);
+    expect(record.bytes).toBe(5 * 10);
     expect((await source.list("")).some((entry) => entry.name === "rulesmd.ini")).toBe(false);
   });
 
@@ -384,10 +336,9 @@ describe("managed installation files: delete", () => {
     expect(memory.files.has("game/slot-1/rulesmd.ini")).toBe(true);
   });
 
-  it("warns most about the files the game cannot start without", async () => {
+  it("warns that deleted game content may affect startup", async () => {
     const { source } = await setup();
-    expect(manage(source).removeWarning(["GameMD.exe"])).toMatch(/cannot start/);
-    expect(manage(source).removeWarning(["Blowfish.dll"])).toMatch(/cannot start/);
+    expect(manage(source).removeWarning(["multi.mix"])).toMatch(/may not start/);
     expect(manage(source).removeWarning(["rulesmd.ini"])).toMatch(/may not start/);
     expect(manage(source).removeWarning([`${SAVES_DIR}/SAVE0001.sav`])).toMatch(
       /cannot be brought back/,

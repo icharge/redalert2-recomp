@@ -282,8 +282,8 @@ export class Manifest {
   }
 
   /**
-   * Adds an edition to an installation that lacks it, with the files it reads: the player uploaded its exe
-   * from the Library. Files the installation already keeps are listed by the new edition as they are, in
+   * Adds an edition to an installation that lacks it, with the files it reads: the player uploaded an
+   * edition-specific data file from the Library. Files the installation already keeps are listed by the new edition as they are, in
    * the same `home`, so both editions share them.
    */
   async addEdition(

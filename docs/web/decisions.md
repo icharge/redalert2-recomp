@@ -196,8 +196,10 @@ and its cache need a measure), or the game needs a file layer feature WasmFS lac
 
 **Also found.** The game stops at start ("Failed to initialize") if `MOVMD03.MIX` is missing, though it
 takes an empty archive in its place: the import writes a 12-byte empty one for each movie archive the
-player leaves out. And it needs `Blowfish.dll` in its folder (the host reads the archive key from it),
-so the import copies it and refuses a folder without one.
+player leaves out. The host also needs `Blowfish.dll` to initialize archive decryption. Stage 14
+supersedes the earlier choice below: the local web build now bundles its matching executable and
+`Blowfish.dll`, and the player imports game content only. These derived files remain local and are
+not committed or published.
 
 ## D12. Preserve the in-game WOL menu with a browser-side compatibility layer
 
@@ -234,8 +236,8 @@ relay. Browsers cannot send raw UDP, and WOL-advertised peer IPs are not browser
 
 **Do not conflate the DLLs.** The current host's registration-free COM support is for `Blowfish.dll`,
 the game's WOL cipher, not `WOLAPI.dll` ([bring-up note](../bringup.md#2-the-string-manager-box-is-really-a-com-check),
-[`host.c`](../../src/runtime/host.c)). Keep the player-supplied `Blowfish.dll` requirement; it is
-separate from implementing the browser lobby client.
+[`host.c`](../../src/runtime/host.c)). Stage 14 bundles `Blowfish.dll` with the local runtime; it
+remains separate from implementing the browser lobby client.
 
 **Required WOL surface.** The reverse-engineered [`IChat` interface](https://github.com/hifi-unmaintained/wolapi/blob/master/inc/IChat.h)
 describes server discovery/connection, channel and user lists, channel create/join/leave, chat, game

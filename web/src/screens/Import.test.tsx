@@ -11,7 +11,16 @@ import { Import, type ImportDeps } from "./Import";
 
 const STAMP = 0x3bdf544e;
 const build: BuildInfo = {
-  games: { ra2md: { title: "Yuri's Revenge", exe: "gamemd.exe", ini: "RA2MD.INI", stamp: STAMP } },
+  games: {
+    ra2md: {
+      title: "Yuri's Revenge",
+      exe: "gamemd.exe",
+      ini: "RA2MD.INI",
+      stamp: STAMP,
+      build: "test",
+      runtime: { edition: "ra2md", build: "test", exeSha256: "a", blowfishSha256: "b" },
+    },
+  },
 };
 
 function exe(stamp: number): Uint8Array {
@@ -45,7 +54,10 @@ const folder = (stamp = STAMP): FolderSource => ({
     file("Blowfish.dll", 10),
     file("binkw32.dll", 10),
     file("ra2.mix", 4000),
-    file("movmd01.mix", 5000),
+    file("ra2md.mix", 3000),
+    file("maps01.mix", 2000),
+    file("multi.mix", 1000),
+    file("movmd03.mix", 5000),
     file("Saved Games/a.sav", 5),
     file("readme.txt", 1),
   ],
@@ -99,7 +111,7 @@ describe("Import", () => {
     await setup(folder());
     expect(screen.getByText("Bring your game")).toBeInTheDocument();
     expect(screen.getByText(/Red Alert 2 or Yuri's Revenge/)).toBeInTheDocument();
-    expect(screen.getByText(/nothing is uploaded/)).toBeInTheDocument();
+    expect(screen.getByText(/nothing is uploaded/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Choose folder…" })).toBeInTheDocument();
   });
 
@@ -113,7 +125,10 @@ describe("Import", () => {
     // the movies are off by default, so only their empty stand-in is copied
     await user.click(screen.getByRole("button", { name: /^Import / }));
     await waitFor(() => expect(onDone).toHaveBeenCalled());
-    expect(target.files.get("game/slot-1/movmd01.mix")).toBe(12);
+    expect(target.files.get("game/slot-1/movies01.mix")).toBe(12);
+    expect(target.files.get("game/slot-1/movmd03.mix")).toBe(12);
+    expect(target.files.has("game/slot-1/gamemd.exe")).toBe(false);
+    expect(target.files.has("game/slot-1/Blowfish.dll")).toBe(false);
     expect(target.files.get("game/slot-1/ra2.mix")).toBe(4000);
     expect(target.files.has("game/slot-1/readme.txt")).toBe(false);
     expect((await manifest.getGame("ra2md"))?.complete).toBe(true);
@@ -126,14 +141,14 @@ describe("Import", () => {
     await user.click(screen.getByRole("checkbox", { name: /Include the movies/ }));
     await user.click(await screen.findByRole("button", { name: /^Import / }));
     await waitFor(() => expect(onDone).toHaveBeenCalled());
-    expect(target.files.get("game/slot-1/movmd01.mix")).toBe(5000);
+    expect(target.files.get("game/slot-1/movmd03.mix")).toBe(5000);
   });
 
-  it("refuses another build of the game", async () => {
+  it("does not require a matching user executable when importing content", async () => {
     const { user } = await setup(folder(0x11111111));
     await user.click(screen.getByRole("button", { name: "Choose folder…" }));
-    expect(await screen.findByText(/not the build the game was lifted from/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^Import / })).toBeDisabled();
+    expect(await screen.findByText(/Found Yuri's Revenge in RA2/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Import / })).toBeEnabled();
   });
 
   it("says when the browser has too little room", async () => {

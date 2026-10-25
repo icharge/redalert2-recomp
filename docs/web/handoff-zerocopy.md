@@ -33,7 +33,8 @@ spike's results are in "Background" and in [decisions.md](decisions.md), D11.
 1. **Red Alert 2 was rebuilt from a copy of `../pcrecomp`.** `../pcrecomp/runtime/win32hle/user32.c`
    line 1781 holds another session's `[dbg-move]` debug `fprintf` (marked `/* TEMP */`) whose string is
    split over two lines, so the sibling does not compile. It was left alone: the build used a scratch copy
-   with that one line joined (`PCRECOMP=<copy>`; 10:09 build, now published in `web/public/game/ra2/`).
+   with that one line joined (`PCRECOMP=<copy>`; 10:09 build, published in the then-current
+   `web/public/game/ra2/` layout before the flat edition-named module layout).
    Once the sibling is fixed, a normal build gives the same result.
 2. Optional: serve `ra2.wasm` so the browser keeps its compiled code (cache headers on the deploy), and
    look at the first-load cost above.
@@ -43,7 +44,7 @@ spike's results are in "Background" and in [decisions.md](decisions.md), D11.
 
 ## Builds and files
 
-- **Published state right now:** `web/public/game/ra2.js` and `.wasm` are a release `-O3` build of
+- **Published state at handoff (before the flat filename change):** `web/public/game/ra2.js` and `.wasm` were a release `-O3` build of
   Yuri's Revenge with everything above (09:48). `web/public/game/ra2/` (Red Alert 2) is the same, built at
   10:09 from the scratch copy of pcrecomp (see above).
 - Build commands (PowerShell, repo root): `$env:CMAKE_ARGS='-DWEB_LINK_OPT=-O1'; cmd /c .uild-web.cmd`

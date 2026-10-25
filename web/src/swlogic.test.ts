@@ -11,23 +11,27 @@ import {
 describe("isGameBuildFile", () => {
   it("matches only build assets inside its own deployment base", () => {
     expect(isGameBuildFile("/emu/game/ra2.wasm", "/emu/")).toBe(true);
-    expect(isGameBuildFile("/emu/game/ra2/ra2.js", "/emu/")).toBe(true);
+    expect(isGameBuildFile("/emu/game/ra2md.wasm", "/emu/")).toBe(true);
     expect(isGameBuildFile("/game/ra2.wasm", "/emu/")).toBe(false);
     expect(isGameBuildFile("/emulator/game/ra2.wasm", "/emu/")).toBe(false);
     expect(isGameBuildFile("/emu/game/1", "/emu/")).toBe(false);
-    expect(staleGameCaches(["ra2-game-old00000", "ra2-scope-%2Femu%2F-game-old00000"], "abc12345", "/emu/")).toEqual(["ra2-scope-%2Femu%2F-game-old00000"]);
+    expect(
+      staleGameCaches(
+        ["ra2-game-old00000", "ra2-scope-%2Femu%2F-game-old00000"],
+        "abc12345",
+        "/emu/",
+      ),
+    ).toEqual(["ra2-scope-%2Femu%2F-game-old00000"]);
   });
-  it("is the three files of a build, and nothing else of the game", () => {
-    for (const name of ["ra2.js", "ra2.wasm", "ra2.data"])
+  it("matches both flat edition bundles, and nothing else of the game", () => {
+    for (const name of ["ra2.js", "ra2.wasm", "ra2.data", "ra2md.js", "ra2md.wasm", "ra2md.data"])
       expect(isGameBuildFile(`/game/${name}`)).toBe(true);
-    for (const name of ["ra2.js", "ra2.wasm", "ra2.data"])
-      expect(isGameBuildFile(`/game/ra2/${name}`)).toBe(true);
     for (const name of [
       "/game/build.json",
       "/game/ra2.wasm.map",
       "/ra2.wasm",
       "/game/sub/ra2.js",
-      "/game/ra2/sub/ra2.js",
+      "/game/ra2/ra2.js",
       "/assets/index.js",
     ])
       expect(isGameBuildFile(name), name).toBe(false);

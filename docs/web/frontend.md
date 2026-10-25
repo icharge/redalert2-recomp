@@ -33,7 +33,7 @@ web/
   e2e/                      local end-to-end checks in a real Chrome (testing.md)
   fonts/                    Liberation Sans (OFL), preloaded into the game's file system
   public/
-    game/                   ra2.js, ra2.wasm, ra2.data (from build-web.sh, not committed)
+    game/                   ra2.js/.wasm/.data (RA2) and ra2md.js/.wasm/.data (Yuri; local build output)
     icons/, manifest.webmanifest
   src/
     main.tsx                mounts <App>, registers the service worker
@@ -51,7 +51,7 @@ web/
       CrashReport.tsx
       BrowserCheck.tsx      what this browser lacks, and what that means
     game/
-      loader.ts             sets window.Module, loads ra2.js, puts the game's files in /game
+      loader.ts             sets window.Module, loads the selected edition module, puts game files in /game
       store.ts              the game's state, from its events (protocol.md)
       protocol.ts           the types of every message, export and shared-memory word
       presenter.ts          draws the game's shared picture and cursor on the canvas

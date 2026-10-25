@@ -4,7 +4,7 @@
 
 The page (HTML, JS, CSS, icons) is ours and can be published anywhere.
 
-`ra2.wasm` is compiled from the lifted C, which is generated from
+`ra2.wasm` and `ra2md.wasm` are compiled from the lifted C, which is generated from
 `gamemd.exe`. The project's rule is that nothing generated from the game is
 distributed ([CONTRIBUTING.md](../../CONTRIBUTING.md), ROADMAP "Out of
 scope"). So publishing a built `ra2.wasm` on a public site is out, the same
@@ -15,7 +15,7 @@ as publishing the lifted C. That leaves two ways to use the browser build:
    `localhost` with the right headers. The browser is the platform, and the
    machine is still theirs. This is the supported way.
 2. **A hosted page, local wasm.** The page is published, and the player's
-   own build of `ra2.wasm` is picked like the game folder and stored in
+   own build of the edition's Wasm module is picked like the game folder and stored in
    OPFS beside it. Then nothing generated from the game ever leaves the
    player's machine. This is possible later. It's a decision for the
    project, not something these docs settle.
@@ -61,6 +61,78 @@ initial deep link still requires this server rewrite before a service
 worker has been installed. Once installed, the worker supplies a
 base-relative navigation fallback offline, caching build metadata and
 isolating its build-cache cleanup from other deployment bases.
+
+## Precompressed WebAssembly
+
+Each local Emscripten web build writes `.br` (Brotli quality 9) and `.gz`
+(gzip level 9) sidecars beside each module. Both edition bundles live directly
+under `/game/`: Red Alert 2 uses `ra2.js`, `ra2.wasm`, and `ra2.data`; Yuri's
+Revenge uses `ra2md.js`, `ra2md.wasm`, and `ra2md.data`. The page requests
+`/game/ra2.wasm` or `/game/ra2md.wasm` as appropriate. Vite dev and preview select the best
+acceptable available representation in the order given by `Accept-Encoding`,
+preferring Brotli for equal quality, then gzip, then the original Wasm. A
+missing sidecar falls back to the next available representation.
+
+For a compressed response, send:
+
+```http
+Content-Type: application/wasm
+Content-Encoding: br
+Vary: Accept-Encoding
+```
+
+Use `Content-Encoding: gzip` for gzip. The identity response keeps
+`Content-Type: application/wasm` and also varies by `Accept-Encoding`. This
+preserves streaming compilation at the original URL. The `Vary` header lets
+shared caches keep each representation separate. The service worker caches
+the normal module URL under the existing build ID; `build.json` continues to
+identify the original JavaScript, Wasm, and data files.
+
+### Nginx static hosting
+
+The sample Nginx block below applies only when Nginx serves a self-hosted local
+web build. It serves Brotli sidecars for Brotli clients, uses Nginx's gzip
+filter for gzip-only clients, and leaves the original file for clients that
+accept neither encoding:
+
+```nginx
+location ~ \.wasm$ {
+    types { application/wasm wasm; }
+    default_type application/wasm;
+
+    brotli_static on;
+    brotli on;
+    brotli_types application/wasm;
+
+    gzip on;
+    gzip_types application/wasm;
+    gzip_vary on;
+}
+```
+
+This requires the Nginx Brotli static and filter modules. Nginx's built-in
+`gzip_static` module is not built by default. Avoid turning on both
+`gzip_static` and `brotli_static` without testing their precedence: the
+upstream Brotli module documents cases where gzip static wins even when a
+client accepts both. The block above uses Brotli static delivery and dynamic
+gzip fallback; the `.gz` sidecar is used by Vite and other hosts with an
+encoding selector. [Nginx gzip static module](https://nginx.org/en/docs/http/ngx_http_gzip_static_module.html),
+[Nginx Brotli module](https://github.com/google/ngx_brotli).
+
+Check the selected response and payload with:
+
+```sh
+nginx -t
+curl -sS -D - -o /dev/null -H 'Accept-Encoding: br, gzip' https://example.test/game/ra2md.wasm
+curl -sS -D - -o /dev/null -H 'Accept-Encoding: gzip' https://example.test/game/ra2.wasm
+curl -sS -D - -o /dev/null -H 'Accept-Encoding: identity' https://example.test/game/ra2.wasm
+```
+
+The current `../ra2web/server/nginx.conf` is the WOL API reverse proxy; it
+does not serve this app's static files. It does not need a change for this
+feature. If the app is placed behind a different Nginx static host, apply the
+block there and keep generated game modules out of any public deployment, as
+the project policy requires.
 
 ## WOL server endpoints
 
@@ -119,14 +191,15 @@ Also served:
 
 - `.wasm` as `application/wasm`, so `instantiateStreaming` compiles it while
   it downloads.
-- Brotli (`.wasm.br`, `.js.br`) where the server supports it.
+- Brotli and gzip negotiated from precompressed `.wasm.br` / `.wasm.gz` files
+  in local builds; identity remains available as fallback.
 
 ## The service worker
 
 Made by `vite-plugin-pwa` (Workbox), registered in `main.tsx`:
 
 - Precaches the page's assets (hashed names, so a new build replaces them).
-- Caches `ra2.wasm` and `ra2.js` cache-first, keyed by the build's hash in
+- Caches the selected edition's `.wasm` and `.js` assets cache-first, keyed by the build's hash in
   `build.json`. A new build is fetched in the background, and the page
   offers "update available, reload".
 - Adds the COOP/COEP headers where the host doesn't.
@@ -137,16 +210,16 @@ It never caches anything from OPFS. The game files are already local.
 
 ## Browser support
 
-| Needs | Chromium (Chrome, Edge) | Firefox | Safari |
-|---|---|---|---|
-| `SharedArrayBuffer` (cross-origin isolated) | yes | yes | yes (15.2+) |
-| WebGL2 | yes | yes | yes |
-| OPFS with sync access handles in workers | yes | yes | yes (17+) |
-| `showDirectoryPicker` | yes | no: drag and drop | no: drag and drop |
-| OffscreenCanvas with WebGL in workers | yes | yes | yes (17+) |
-| Audio worklets | yes | yes | yes |
-| `navigator.keyboard.lock()` | yes | no | no |
-| Typical OPFS quota | a share of free disk, often tens of GB | similar | smaller and may prompt |
+| Needs                                       | Chromium (Chrome, Edge)                | Firefox           | Safari                 |
+| ------------------------------------------- | -------------------------------------- | ----------------- | ---------------------- |
+| `SharedArrayBuffer` (cross-origin isolated) | yes                                    | yes               | yes (15.2+)            |
+| WebGL2                                      | yes                                    | yes               | yes                    |
+| OPFS with sync access handles in workers    | yes                                    | yes               | yes (17+)              |
+| `showDirectoryPicker`                       | yes                                    | no: drag and drop | no: drag and drop      |
+| OffscreenCanvas with WebGL in workers       | yes                                    | yes               | yes (17+)              |
+| Audio worklets                              | yes                                    | yes               | yes                    |
+| `navigator.keyboard.lock()`                 | yes                                    | no                | no                     |
+| Typical OPFS quota                          | a share of free disk, often tens of GB | similar           | smaller and may prompt |
 
 Chromium is the first target. Firefox and Safari are tested from stage 6,
 and the Browser check screen ([frontend.md](frontend.md)) says what's missing.

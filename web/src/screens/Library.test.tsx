@@ -3,6 +3,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GameRecord } from "../storage/manifest";
+import type { BuildInfo } from "../storage/install";
 import { Library } from "./Library";
 
 const game = (over: Partial<GameRecord> = {}): GameRecord => ({
@@ -38,6 +39,26 @@ function show(games: GameRecord[], over: Partial<Parameters<typeof Library>[0]> 
 }
 
 describe("Library", () => {
+  it("reports missing content independently of the bundled runtime", () => {
+    const build: BuildInfo = {
+      games: {
+        ra2md: {
+          title: "Yuri's Revenge",
+          exe: "gamemd.exe",
+          ini: "RA2MD.INI",
+          stamp: 1,
+          build: "same",
+          runtime: { edition: "ra2md", build: "same", exeSha256: "a", blowfishSha256: "b" },
+        },
+      },
+    };
+    show([game()], { build });
+    expect(
+      screen.getByText(/Missing required content: ra2\.mix, ra2md\.mix, maps01\.mix, multi\.mix/),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Play" })).toBeDisabled();
+  });
+
   it("lists the game with its size and plays it", async () => {
     const { props, user } = show([game()]);
     expect(screen.getByText("Yuri's Revenge")).toBeInTheDocument();

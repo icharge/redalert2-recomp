@@ -106,8 +106,8 @@ try {
     return keys.map((r) => new URL(r.url).pathname).sort();
   });
   check(
-    ["/game/ra2.data", "/game/ra2.js", "/game/ra2.wasm"].every((p) => cached.includes(p)),
-    `the game's three files are kept, by build (${cached.join(", ")})`,
+    ["/game/ra2md.data", "/game/ra2md.js", "/game/ra2md.wasm"].every((p) => cached.includes(p)),
+    `Yuri's edition-named files are kept, by build (${cached.join(", ")})`,
   );
 
   // ---- a new build: the worker and build.json change on the server ---------------------------------------------

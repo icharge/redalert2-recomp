@@ -27,7 +27,7 @@ import {
   type FolderSource,
   type Prepared,
 } from "../storage/importer";
-import type { BuildInfo, ImportOptions } from "../storage/install";
+import { GAME_TITLE, type BuildInfo, type GameId, type ImportOptions } from "../storage/install";
 import type { Manifest } from "../storage/manifest";
 import { CopyCancelled, type CopyProgress, type CopyTarget } from "../storage/opfs";
 import styles from "./Import.module.css";
@@ -78,7 +78,15 @@ type Stage =
 
 const FIRST: ImportOptions = { movies: false, saves: true };
 
-export function Import({ deps, onDone, slot }: { deps: ImportDeps; onDone: () => void; slot?: number }) {
+export function Import({
+  deps,
+  onDone,
+  slot,
+}: {
+  deps: ImportDeps;
+  onDone: () => void;
+  slot?: number;
+}) {
   const [stage, setStage] = useState<Stage>({ name: "choose" });
   const abort = useRef<AbortController | null>(null);
   const [over, setOver] = useState(false);
@@ -124,7 +132,8 @@ export function Import({ deps, onDone, slot }: { deps: ImportDeps; onDone: () =>
       if (error instanceof CopyCancelled)
         setStage({
           name: "choose",
-          message: "Cancelled. What was copied is kept. Use Resume import in the launcher to carry on.",
+          message:
+            "Cancelled. What was copied is kept. Use Resume import in the launcher to carry on.",
         });
       else setStage({ name: "failed", message: errorText(error) });
     }
@@ -142,9 +151,9 @@ export function Import({ deps, onDone, slot }: { deps: ImportDeps; onDone: () =>
         <Flex direction="column" gap="4">
           <Heading size="6">Bring your game</Heading>
           <Text color="gray">
-            Pick the folder Red Alert 2 or Yuri&apos;s Revenge is installed in. If it contains both,
-            they can share files. The files are copied into this browser and stay there; nothing is
-            uploaded.
+            Pick a folder with Red Alert 2 or Yuri&apos;s Revenge game data. This build supplies the
+            game runtime files; your MIX archives and other game data are copied into this browser
+            and stay there. Nothing is uploaded.
           </Text>
 
           {stage.name === "choose" && (
@@ -275,6 +284,12 @@ function Review({
   const { plan } = prepared;
   const stopped = blocker(prepared);
   const saveCount = plan.copy.filter((file) => file.kind === "save").length;
+  const titleById = Object.fromEntries(
+    Object.keys(plan.readiness).map((id) => [
+      id,
+      titles[plan.games.indexOf(id as GameId)] ?? GAME_TITLE[id as GameId] ?? id,
+    ]),
+  );
   return (
     <>
       {stopped ? (
@@ -300,6 +315,23 @@ function Review({
           {warning}
         </Text>
       ))}
+      {Object.entries(plan.readiness).map(([id, readiness]) => {
+        if (!readiness) return null;
+        return (
+          <Callout.Root key={id} color={readiness.status === "ready" ? "green" : "amber"}>
+            <Callout.Text>
+              <strong>{titleById[id] ?? id}:</strong>{" "}
+              {readiness.status === "runtime-not-built"
+                ? "Runtime not built for this edition."
+                : readiness.status === "missing-content"
+                  ? `Missing required content: ${readiness.missing.join(", ")}.`
+                  : "Ready to run with the bundled runtime."}
+              {readiness.moviesMissing &&
+                " Optional movie archives are missing; cutscenes will be skipped."}
+            </Callout.Text>
+          </Callout.Root>
+        );
+      })}
       <Flex direction="column" gap="2">
         <Text as="label" size="2">
           <Flex gap="2" align="center">

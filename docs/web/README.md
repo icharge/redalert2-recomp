@@ -15,12 +15,11 @@ answer the open questions.
 
 ## The one rule, in the browser
 
-Nothing from the game is served, uploaded or sent anywhere. The site serves
-only our wasm and our page. The player's files go from their disk into their
-own browser's storage (OPFS) and stay there. The lifted C is compiled on the
-developer's machine like every other build, and the `.wasm` it makes is
-generated from `gamemd.exe`, so it is not committed or published either. See
-[deploy.md](deploy.md) for what that means for hosting.
+Game content archives are imported into the user's own browser storage
+(OPFS) and stay there. A local build also stages the matching executable and
+Blowfish DLL from that user's licensed install for runtime use. Neither those
+files nor the generated `.wasm` are committed or published by this project.
+See [deploy.md](deploy.md) for the hosting constraint.
 
 ## Pages
 
@@ -28,6 +27,7 @@ generated from `gamemd.exe`, so it is not committed or published either. See
 |---|---|
 | [plan.md](plan.md) | The stages, from a first `emcc` compile to both games in a tab, each with its check |
 | [tasks.md](tasks.md) | The stages broken into tasks: repo, dependencies, size, and when each is done |
+| [runtime-bundle.md](runtime-bundle.md) | Planned local runtime bundles and per-edition content readiness checks |
 | [architecture.md](architecture.md) | Threads, rendering, audio, input, files and crashes: how the native Linux build maps onto a browser |
 | [memory.md](memory.md) | The guest's address space in wasm linear memory: the pcrecomp change, which is the first risk |
 | [toolchain.md](toolchain.md) | Emscripten, `build-web.sh`, `cmake/emscripten.cmake`, the link flags and why |

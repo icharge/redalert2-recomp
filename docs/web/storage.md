@@ -1,9 +1,10 @@
 # Files and storage
 
-The player's install goes from their disk into their browser's
-origin-private file system (OPFS), once. The game reads it from there
-through WasmFS. Nothing is uploaded, and nothing from the game is served by
-the site.
+The player's game content goes from disk into their browser's origin-private
+file system (OPFS), once. The game reads it from there through WasmFS. The
+local web build supplies its runtime binaries separately; they are generated
+from that user's licensed install and are not committed or published by this
+project.
 
 ## Getting the files in
 
@@ -23,12 +24,11 @@ level:
 
 | Kind | Files |
 |---|---|
-| Exe | `gamemd.exe` (Yuri's Revenge), `game.exe` (Red Alert 2) |
-| Libraries | `Blowfish.dll` (the host reads the archive key from it: without it the game stops at start, so the import refuses a folder that lacks it) and `binkw32.dll` (a warning if missing) |
-| Archives | `*.mix` (but not `*.mix.bak`) |
+| User game content | `*.mix` (but not `*.mix.bak`), sound banks, INI and map/data files |
+| Local runtime bundle | The web build's matching `game.exe` or `gamemd.exe`, plus `Blowfish.dll`; neither is imported into OPFS |
 | Sound | `audio.bag`, `audio.idx`, `audiomd.bag`, `audiomd.idx` |
 | Data | `*.ini`, `*.csf`, `*.fnt`, `*.mmx`, `*.map`, `*.mpr`, `*.yrm` |
-| Movies | `movies*.mix`, `movmd*.mix`: optional, but the game stops at start if a file is missing, so a skipped archive is replaced with an empty 12-byte archive. Without the real archives, video cutscenes show as black; static loading-screen images are separate game assets. The Import screen shows their size and lets the player skip them; the menu's own movies are in `ra2md.mix`. |
+| Movies | `movies*.mix`, `movmd*.mix`: optional. If the source has no `MOVIES01.MIX` or `MOVMD03.MIX`, Import creates an empty 12-byte startup placeholder; when movies are skipped, available movie packs are replaced with empty archives. Without the real archives, video cutscenes are skipped; static loading-screen images are separate game assets. The Import screen shows their size and lets the player skip them; the menu's own movies are in `ra2md.mix`. |
 | Saves | `*.sav` at the top level (the game writes `SAVE0001.sav` beside its exe), and `Saved Games/*` of an older layout, if present: offered as "bring your saves" |
 
 A loose `game.fnt` placed at the top of the selected game folder is imported and
@@ -44,22 +44,25 @@ separate identities without changing the user's install or sharing a key between
 
 ## The checks, before copying
 
-1. **Which game.** `gamemd.exe` means Yuri's Revenge, and `game.exe` means
-   Red Alert 2. An install with both imports both, sharing their common
-   `.mix` files (the expansion needs the base game's).
-2. **The right build.** The PE timestamp at `e_lfanew + 8` must match the
-   lift's (`RA2_EXE_STAMP`), the same check as `exe_stamp()` in
-   `src/linux/main.c`. The page reads it in TypeScript from the first 4 KB of
-   the exe. A mismatch is a clear message ("this is not the build the game
-   was lifted from") before anything is copied. The expected stamps come
-   from the build (`web/public/game/build.json`, written by
-   `build-web.sh`).
+1. **Which game.** Matching game data identifies the edition when the user
+   does not import an executable. An installation with both editions' data
+   can launch both and share common `.mix` files.
+2. **The right runtime.** The local build supplies its matching PE image and
+   `Blowfish.dll` at launch. The page verifies each SHA-256 hash from
+   `build.json`, checks the PE timestamp, and stages them in the in-memory
+   `/game` folder. Neither file is written to OPFS.
 3. **Space.** `navigator.storage.estimate()` against the sum of the
    allowlisted files. If it won't fit, the page says how much is needed and
    suggests skipping the movies. The page asks for
    `navigator.storage.persist()`, so the browser doesn't evict the copy
    under storage pressure. If the browser refuses, the page says the copy
    may be cleared and would then need importing again.
+4. **Content readiness.** Import and Library compare each edition's core loose
+   archives with the startup requirements traced in
+   [runtime-bundle.md](runtime-bundle.md). Movie packs are reported separately;
+   placeholders keep startup archive probes satisfied when their video content
+   is omitted. A filename match does not verify archive integrity or guarantee
+   a successful skirmish.
 
 ## The copy
 
@@ -157,12 +160,11 @@ Mods are separate (`game/<storage>/mods/`, "Mods…") and are not in this browse
   Imported files must be ones the import would take (`classify`, top level only): files the game does
   not read, and `.sav` files outside `Saves`, are refused with the reason. A file goes to every game
   that reads it and is stored once. `Saves/<game>` takes `.sav` files only.
-- **Add a game** by uploading its exe (`game.exe`, `gamemd.exe`) to an installation that lacks it. The
-  exe must be the build the game was lifted from. The new game shares every file already there that it
-  reads, and the page says what else it needs (Yuri's Revenge reads files with `md` in their names).
-  An exe of a game the installation has is checked against that game's own record.
+- **Add a game** by uploading one of its edition-specific data files to an installation that lacks it.
+  The local runtime already supplies the matching executable and Blowfish DLL. The new edition shares
+  every file already there that it reads, and the page calls out Yuri's Revenge data still to add.
 - **Delete** files, or a folder with everything in it, after a confirmation that says what it
-  means (the game cannot start without its exe, `Blowfish.dll` and archives). A file leaves every
+  means (the game may not start without required game data). A file leaves every
   game's record and leaves OPFS once no game lists it. The `Saves` folders themselves stay.
 
 An imported file is written to `game/<home>/<name>` and each game's record that lists it gets its new

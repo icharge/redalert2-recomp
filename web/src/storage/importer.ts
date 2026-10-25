@@ -3,12 +3,9 @@
 // folder sources that feed them. The screen (screens/Import.tsx) only shows what these report.
 
 import {
-  checkExe,
   checkSpace,
   planImport,
   type BuildInfo,
-  type Check,
-  type GameId,
   type ImportOptions,
   type ImportPlan,
   type SpaceCheck,
@@ -112,14 +109,12 @@ function bytesStream(data: Uint8Array): ReadableStream<Uint8Array> {
 export interface Prepared {
   name: string;
   plan: ImportPlan;
-  /** each game's exe against the lifted build: ok, or what is wrong */
-  exes: Partial<Record<GameId, Check>>;
   space: SpaceCheck;
   /** the folder's files, by path, for the copy */
   files: Map<string, SourceFile>;
 }
 
-/** Looks at a folder: what would be copied, whether the exe is the right build, whether it fits. */
+/** Looks at a folder: what game data would be copied and whether it fits. Runtime inputs come from this build. */
 export async function prepareImport(
   source: FolderSource,
   build: BuildInfo,
@@ -134,16 +129,9 @@ export async function prepareImport(
   });
   const files = new Map(list.map((file) => [file.path, file]));
   const plan = planImport(list, build, options);
-  const exes: Prepared["exes"] = {};
-  for (const id of plan.games) {
-    const game = build.games[id];
-    const exe = list.find((file) => file.path.toLowerCase() === game?.exe.toLowerCase());
-    if (game && exe) exes[id] = checkExe(await exe.head(4096), game.stamp, game.exe);
-  }
   return {
     name: source.name,
     plan,
-    exes,
     space: checkSpace(estimate, plan.bytes, plan.movieBytes),
     files,
   };
@@ -152,7 +140,6 @@ export async function prepareImport(
 /** Why this folder cannot be imported, or null if it can. */
 export function blocker(prepared: Prepared): string | null {
   if (prepared.plan.error) return prepared.plan.error;
-  for (const check of Object.values(prepared.exes)) if (!check.ok) return check.message;
   if (!prepared.space.fits)
     return `There is not enough room in the browser's storage (${Math.ceil(prepared.space.short / 1048576)} MB short). ${prepared.space.advice ?? ""}`.trim();
   return null;
@@ -186,10 +173,14 @@ export async function runImport(options: RunOptions): Promise<number> {
   const slot = installation.slot;
   const existing = await manifest.listGames(slot);
   const expected = installation.editions ?? existing.map((game) => game.id);
-  if (existing.length && expected.every((id) => existing.some((game) => game.id === id && game.complete)))
+  if (
+    existing.length &&
+    expected.every((id) => existing.some((game) => game.id === id && game.complete))
+  )
     throw new Error("That installation is already complete. Import it into a new slot instead.");
   if (
-    expected.some((id) => !prepared.plan.games.includes(id)) || existing.some(
+    expected.some((id) => !prepared.plan.games.includes(id)) ||
+    existing.some(
       (game) =>
         !prepared.plan.games.includes(game.id) || build.games[game.id]?.stamp !== game.exeStamp,
     )
@@ -222,13 +213,13 @@ export async function runImport(options: RunOptions): Promise<number> {
     }
     const jobs: CopyJob[] = resume.todo.map((file) => {
       const source = prepared.files.get(file.name);
-      if (!source) throw new Error(`${file.name} is no longer in the folder.`);
       counted.add(file.name);
       const stub = prepared.plan.copy.find((entry) => entry.path === file.name)?.stub;
+      if (!source && !stub) throw new Error(`${file.name} is no longer in the folder.`);
       return {
         ...file,
         home: record.files[file.name]?.home ?? id,
-        open: () => (stub ? bytesStream(EMPTY_ARCHIVE) : source.stream()),
+        open: () => (stub ? bytesStream(EMPTY_ARCHIVE) : source!.stream()),
       };
     });
     const before = { bytes: doneBytes, files: doneFiles };

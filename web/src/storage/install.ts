@@ -1,18 +1,37 @@
 // What the import copies, and the checks made before it does (docs/web/storage.md).
 
 export type GameId = "ra2md" | "ra2";
+export const GAME_TITLE: Record<GameId, string> = {
+  ra2: "Red Alert 2",
+  ra2md: "Yuri's Revenge",
+};
 
 /** The expected exes, from the build (web/public/game/build.json, written by CMake). */
 export interface BuildInfo {
   games: Partial<
     Record<
       GameId,
-      { title: string; exe: string; ini: string; script?: string; build?: string; /** the PE timestamp lifted */ stamp: number }
+      {
+        title: string;
+        exe: string;
+        ini: string;
+        script?: string;
+        build?: string;
+        /** the PE timestamp lifted */
+        stamp: number;
+        /** Locally generated inputs the browser stages at /game before starting the host. */
+        runtime?: {
+          edition: GameId;
+          build: string;
+          exeSha256: string;
+          blowfishSha256: string;
+        };
+      }
     >
   >;
 }
 
-export type FileKind = "exe" | "library" | "archive" | "movie" | "sound" | "data" | "save";
+export type FileKind = "archive" | "movie" | "sound" | "data" | "save";
 
 export interface InstallFile {
   /** relative to the install folder, `/` or `\` between parts */
@@ -28,8 +47,8 @@ export interface Classified {
 
 const BOTH: GameId[] = ["ra2", "ra2md"];
 
-/** DLLs the host reads from the game's folder: Blowfish.dll holds the archive key, binkw32.dll names the movie decoder. */
-const LIBRARIES = ["blowfish.dll", "binkw32.dll"];
+/** Built locally and staged by the launcher; these are not imported from the player's content folder. */
+const RUNTIME_INPUTS = new Set(["game.exe", "gamemd.exe", "blowfish.dll", "binkw32.dll"]);
 
 /** Where an older layout's `Saved Games/...` starts, as a path with `/`. */
 const SAVES = "saved games/";
@@ -40,7 +59,8 @@ function normalise(path: string): string {
 
 /**
  * What a file of the install folder is to the import, or null for what is not copied. Files at the
- * folder's top level only, matched without regard to case, except `Saved Games/`. A name with
+ * folder's top level only, matched without regard to case, except `Saved Games/`. Runtime binaries
+ * are supplied by the local build. A name with
  * `md` in it is Yuri's Revenge's own (`expandmd01.mix`, `rulesmd.ini`, `audiomd.bag`); the rest are
  * the base game's, which the expansion reads too.
  */
@@ -50,9 +70,7 @@ export function classify(path: string): Classified | null {
   if (name.includes("/")) return null;
   // the game writes `SAVE0001.sav` beside its exe (SAVE%04lX.%3s), not in a folder
   if (name.endsWith(".sav")) return { kind: "save", needs: BOTH };
-  if (name === "gamemd.exe") return { kind: "exe", needs: ["ra2md"] };
-  if (name === "game.exe") return { kind: "exe", needs: ["ra2"] };
-  if (LIBRARIES.includes(name)) return { kind: "library", needs: BOTH };
+  if (RUNTIME_INPUTS.has(name)) return null;
   const md: GameId[] = name.includes("md") ? ["ra2md"] : BOTH;
   if (/^(movies|movmd)[^/]*\.mix$/.test(name)) return { kind: "movie", needs: md };
   if (name.endsWith(".mix")) return { kind: "archive", needs: md };
@@ -75,7 +93,7 @@ export interface ImportOptions {
 export const EMPTY_ARCHIVE = new Uint8Array(12);
 
 export interface ImportPlan {
-  /** the games whose exe is in the folder and that this build can run */
+  /** the editions identified by game data and supported by this build */
   games: GameId[];
   /** `stub`: not the folder's file but an empty archive of 12 bytes in its place (`size` is that) */
   copy: (InstallFile & Classified & { stub?: boolean })[];
@@ -89,6 +107,48 @@ export interface ImportPlan {
   warnings: string[];
   /** why nothing can be imported, if so */
   error: string | null;
+  /** per-edition result based on the user's content and this page's runtime bundles */
+  readiness: Partial<Record<GameId, EditionReadiness>>;
+}
+
+export interface EditionReadiness {
+  status: "ready" | "missing-content" | "runtime-not-built";
+  missing: string[];
+  moviesMissing: boolean;
+}
+
+/** Hard-failure content traced in the lifted startup paths; movies are handled separately. */
+export const REQUIRED_CONTENT: Record<GameId, readonly string[]> = {
+  ra2: ["ra2.mix", "maps01.mix", "multi.mix"],
+  ra2md: ["ra2.mix", "ra2md.mix", "maps01.mix", "multi.mix"],
+};
+
+/** Startup probes these movie archives even when the player opts out of the actual videos. */
+export const REQUIRED_MOVIE_ARCHIVES: Record<GameId, readonly string[]> = {
+  ra2: ["movies01.mix"],
+  ra2md: ["movies01.mix", "movmd03.mix"],
+};
+
+/** Movie packs have an empty-archive fallback and do not determine core readiness. */
+const MOVIE_ARCHIVE = /^(?:movies|movmd)[^/]*\.mix$/i;
+
+export function assessEditionReadiness(
+  id: GameId,
+  build: BuildInfo,
+  names: Iterable<string>,
+): EditionReadiness {
+  const game = build.games[id];
+  if (
+    !game?.runtime ||
+    game.runtime.edition !== id ||
+    !game.build ||
+    game.runtime.build !== game.build
+  )
+    return { status: "runtime-not-built", missing: [], moviesMissing: false };
+  const present = new Set([...names].map((name) => normalise(name)));
+  const missing = REQUIRED_CONTENT[id].filter((name) => !present.has(name));
+  const moviesMissing = REQUIRED_MOVIE_ARCHIVES[id].some((name) => !present.has(name));
+  return { status: missing.length ? "missing-content" : "ready", missing, moviesMissing };
 }
 
 export function planImport(
@@ -96,10 +156,30 @@ export function planImport(
   build: BuildInfo,
   options: ImportOptions,
 ): ImportPlan {
-  const names = new Set(files.map((file) => normalise(file.path)));
-  const games = (Object.keys(build.games) as GameId[]).filter((id) =>
-    names.has((build.games[id]?.exe ?? "").toLowerCase()),
-  );
+  const hasBaseData = files.some((file) => {
+    const classified = classify(file.path);
+    return (
+      !!classified &&
+      classified.kind !== "save" &&
+      classified.kind !== "movie" &&
+      classified.needs.includes("ra2")
+    );
+  });
+  const hasYuriData = files.some((file) => {
+    const classified = classify(file.path);
+    return (
+      !!classified &&
+      classified.kind !== "save" &&
+      classified.kind !== "movie" &&
+      classified.needs.length === 1 &&
+      classified.needs[0] === "ra2md"
+    );
+  });
+  const detected = new Set<GameId>();
+  if (hasBaseData) detected.add("ra2");
+  if (hasYuriData) detected.add("ra2md");
+  const detectedGames = [...detected];
+  const games = (Object.keys(build.games) as GameId[]).filter((id) => detected.has(id));
   const plan: ImportPlan = {
     games,
     copy: [],
@@ -108,17 +188,23 @@ export function planImport(
     movieBytes: 0,
     warnings: [],
     error: null,
+    readiness: {},
   };
+  if (detectedGames.length === 0) {
+    plan.error = "No Red Alert 2 game data was found at the top of this folder.";
+    return plan;
+  }
+  for (const id of detectedGames) {
+    plan.readiness[id] = assessEditionReadiness(
+      id,
+      build,
+      files
+        .filter((file) => options.movies || !MOVIE_ARCHIVE.test(normalise(file.path)))
+        .map((file) => file.path),
+    );
+  }
   if (games.length === 0) {
-    const wanted = Object.values(build.games)
-      .map((game) => game?.exe)
-      .filter(Boolean)
-      .join(" or ");
-    const hint =
-      names.has("gamemd.exe") || names.has("game.exe")
-        ? "this build runs a different game than the one in the folder"
-        : "pick the folder the game is installed in";
-    plan.error = `There is no ${wanted} at the top of this folder (${hint}).`;
+    plan.error = `This build does not include the ${detectedGames.map((id) => GAME_TITLE[id]).join(" or ")} runtime.`;
     return plan;
   }
   for (const file of files) {
@@ -140,11 +226,16 @@ export function planImport(
       plan.bytes += file.size;
     }
   }
-  if (!names.has("blowfish.dll"))
-    plan.error =
-      "Blowfish.dll is missing from this folder: the game cannot open its archives without it.";
-  if (!names.has("binkw32.dll"))
-    plan.warnings.push("binkw32.dll is missing: this may not be a full install.");
+  const sourceNames = new Set(files.map((file) => normalise(file.path)));
+  for (const id of games) {
+    for (const path of REQUIRED_MOVIE_ARCHIVES[id]) {
+      if (sourceNames.has(path)) continue;
+      const needs: GameId[] = path.startsWith("movmd") ? ["ra2md"] : ["ra2", "ra2md"];
+      if (!needs.some((edition) => games.includes(edition))) continue;
+      plan.copy.push({ path, size: EMPTY_ARCHIVE.length, kind: "movie", needs, stub: true });
+      plan.bytes += EMPTY_ARCHIVE.length;
+    }
+  }
   return plan;
 }
 
@@ -205,7 +296,9 @@ export function checkSpace(
 
 /** The build's list of games: web/public/game/build.json. */
 export async function loadBuildInfo(fetcher: typeof fetch = fetch): Promise<BuildInfo> {
-  const response = await fetcher(`${import.meta.env.BASE_URL}game/build.json`);
+  const response = await fetcher(`${import.meta.env.BASE_URL}game/build.json`, {
+    cache: "no-store",
+  });
   if (!response.ok) throw new Error("The game is not built (no build.json).");
   const value = (await response.json()) as BuildInfo;
   if (typeof value !== "object" || value === null || typeof value.games !== "object")

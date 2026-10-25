@@ -2,6 +2,7 @@ import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 import { defineConfig } from "vitest/config";
 import { devGame } from "./vite.dev-game";
+import { precompressedWasm } from "./vite.precompressed-wasm";
 
 // The game uses threads, so the page must be cross-origin isolated
 // (docs/web/deploy.md). A host that cannot send these headers gets them from the
@@ -16,6 +17,7 @@ export default defineConfig({
   plugins: [
     react(),
     devGame(),
+    precompressedWasm(),
     // The service worker is src/sw.ts (docs/web/deploy.md). It is built for `pnpm build` only: the dev
     // server has none, so a reload there is always the files on disk. The game's own files (public/game)
     // are not in its list: it keeps those itself, by build.
@@ -35,7 +37,8 @@ export default defineConfig({
       manifest: {
         name: "Red Alert 2 in the browser",
         short_name: "Red Alert 2",
-        description: "Command & Conquer: Red Alert 2 and Yuri's Revenge, from your own game files, in the browser.",
+        description:
+          "Command & Conquer: Red Alert 2 and Yuri's Revenge, from your own game files, in the browser.",
         display: "standalone",
         start_url: "./",
         scope: "./",
