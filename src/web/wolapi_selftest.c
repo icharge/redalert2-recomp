@@ -81,6 +81,11 @@ static uint32_t invoke(uint32_t object, unsigned slot, int count, const uint32_t
     if (count) memcpy(values + 1, args, count * sizeof *args);
     return hle_call_guest(MEM32(MEM32(object) + slot * 4), count + 1, values);
 }
+/* Lines wait in a queue until the game pumps messages. */
+static void receive_pumped(const char *line) {
+    ra2_wolapi_receive_line(line);
+    assert(invoke(g_chat.chat, 3, 0, NULL) == S_OK);
+}
 
 int main(void) {
     /* Canonical Windows COM identities, independent of the implementation. */
@@ -223,6 +228,49 @@ int main(void) {
     assert((g_users[0].flags & 0x8001) == 0x8001);
     (void)user_for_name("other");
     assert(strcmp(g_users[0].name, "testuser") == 0);
+    /* The game's NetUtil GetAvgPing sums our RA2Web round trip and the peer's.
+     * Events queued by these lines are drained and forgotten: later checks count them. */
+    uint32_t events_before_pings = test_event_count;
+    receive_pumped(":wol 353 testuser = #Lob_41_0 :@testuser,0,40,1 other,0,35,1 late,0,0,1");
+    int32_t avg = 7;
+    uint32_t other_ip = virtual_ip("other"), late_ip = virtual_ip("late"), stranger_ip = virtual_ip("stranger");
+    uint32_t ask_other[] = { other_ip, (uint32_t)(uintptr_t)&avg };
+    assert(invoke(g_channel.chat, 8, 2, ask_other) == S_OK && avg == 75);
+    /* A peer that RA2Web has not measured yet, or a stranger, has no path ping. */
+    uint32_t ask_late[] = { late_ip, (uint32_t)(uintptr_t)&avg };
+    assert(invoke(g_channel.chat, 8, 2, ask_late) == E_FAIL && avg == -1);
+    avg = 7;
+    uint32_t ask_stranger[] = { stranger_ip, (uint32_t)(uintptr_t)&avg };
+    assert(invoke(g_channel.chat, 8, 2, ask_stranger) == E_FAIL && avg == -1);
+    uint32_t ask_null[] = { other_ip, 0 };
+    assert(invoke(g_channel.chat, 8, 2, ask_null) == E_POINTER);
+    /* The game treats 1000 as "no answer": never report it. */
+    receive_pumped(":wol 353 testuser = #Lob_41_0 :@testuser,0,1,1 other,0,999,1");
+    assert(invoke(g_channel.chat, 8, 2, ask_other) == S_OK && avg == 1001);
+    /* Our own ping unknown, or a roster entry without metadata, also fails. */
+    receive_pumped(":wol 353 testuser = #Lob_41_0 :@testuser,0,0,1 other,0,10,1 bare");
+    avg = 7;
+    assert(invoke(g_channel.chat, 8, 2, ask_other) == E_FAIL && avg == -1);
+    uint32_t ask_bare[] = { virtual_ip("bare"), (uint32_t)(uintptr_t)&avg };
+    receive_pumped(":wol 353 testuser = #Lob_41_0 :@testuser,0,5,1 other,0,10,1 bare");
+    avg = 7;
+    assert(invoke(g_channel.chat, 8, 2, ask_bare) == E_FAIL && avg == -1);
+    assert(invoke(g_channel.chat, 8, 2, ask_other) == S_OK && avg == 17); /* 5 + 10 is below the 17 ms floor */
+    /* JOIN and JOINGAME carry the newcomer's ping too. */
+    receive_pumped(":third!local JOINGAME 0 0 0 0 0 20 0 :#Lob_41_0");
+    uint32_t ask_third[] = { virtual_ip("third"), (uint32_t)(uintptr_t)&avg };
+    assert(invoke(g_channel.chat, 8, 2, ask_third) == S_OK && avg == 25);
+    receive_pumped(":joiner!local JOIN :0,30,0,1 #Lob_41_0");
+    uint32_t ask_joiner[] = { virtual_ip("joiner"), (uint32_t)(uintptr_t)&avg };
+    assert(invoke(g_channel.chat, 8, 2, ask_joiner) == S_OK && avg == 35);
+    receive_pumped(":joiner!local JOIN :0,0,0,1 #Lob_41_0");
+    assert(invoke(g_channel.chat, 8, 2, ask_joiner) == E_FAIL && avg == -1);
+    /* A path faster than the game's 1 tick of IPX timing reports the floor, never 0 ticks. */
+    receive_pumped(":wol 353 testuser = #Lob_41_0 :@testuser,0,1,1 other,0,1,1");
+    assert(invoke(g_channel.chat, 8, 2, ask_other) == S_OK && avg == 17);
+    receive_pumped(":wol 353 testuser = #Lob_41_0 :@testuser,0,1,1 other,0,0,1");
+    test_event_count = events_before_pings;
+    assert(g_user_count == 2 && strcmp(g_users[1].name, "other") == 0);
     assert(invoke(g_chat.chat, 9, 0, NULL) == S_OK);
     snprintf(lobby_line, sizeof lobby_line, ":testuser!local PART %s", lobby_channel);
     ra2_wolapi_receive_line(lobby_line);
@@ -401,6 +449,70 @@ int main(void) {
     ra2_wolapi_receive_line(":wol 353 testuser = #testuser :@testuser,0,1,1 other,0,1,1");
     assert(invoke(g_chat.chat, 3, 0, NULL) == S_OK);
     assert(g_user_count == 2 && test_event_count == match_events + 3);
+    {   /* request_ping_completes_on_pump: NetUtil RequestPing answers on NetUtil's own
+         * PumpMessages through INetUtilEvent::OnPing(hr, time, ip, handle), slot 3. */
+        receive_pumped(":wol 353 testuser = #testuser :@testuser,0,40,1 other,0,35,1");
+        uint32_t net_sink[3] = { (uint32_t)(uintptr_t)sink_vt }, net_cookie = 0;
+        uint32_t net_advise[] = { (uint32_t)(uintptr_t)net_sink, (uint32_t)(uintptr_t)&net_cookie };
+        assert(invoke(g_channel.point, 5, 2, net_advise) == S_OK);
+        uint32_t before_ping = test_event_count, other_ip = virtual_ip("other"), stranger_ip = virtual_ip("stranger");
+        /* The type library's RequestPing takes the host as a dotted quad string. */
+        char other_host[16], stranger_host[16];
+        const uint8_t *other_octets = (const uint8_t *)&other_ip, *stranger_octets = (const uint8_t *)&stranger_ip;
+        snprintf(other_host, sizeof other_host, "%u.%u.%u.%u",
+                 other_octets[0], other_octets[1], other_octets[2], other_octets[3]);
+        snprintf(stranger_host, sizeof stranger_host, "%u.%u.%u.%u",
+                 stranger_octets[0], stranger_octets[1], stranger_octets[2], stranger_octets[3]);
+        int32_t handle = 0;
+        uint32_t ping_other[] = { (uint32_t)(uintptr_t)other_host, 1000, (uint32_t)(uintptr_t)&handle };
+        assert(invoke(g_channel.chat, 6, 3, ping_other) == S_OK && handle == 1);
+        assert(test_event_count == before_ping);
+        assert(invoke(g_channel.chat, 7, 0, NULL) == S_OK);
+        assert(test_event_count == before_ping + 1 && test_event_method[before_ping] == 0x10003);
+        const uint32_t pong_other[] = { (uint32_t)(uintptr_t)net_sink, S_OK, 75, other_ip, 1 };
+        assert(memcmp(test_event_args[before_ping], pong_other, sizeof pong_other) == 0);
+        /* Someone outside the roster has no path ping. */
+        uint32_t ping_stranger[] = { (uint32_t)(uintptr_t)stranger_host, 1000, (uint32_t)(uintptr_t)&handle };
+        assert(invoke(g_channel.chat, 6, 3, ping_stranger) == S_OK && handle == 2);
+        assert(invoke(g_channel.chat, 7, 0, NULL) == S_OK);
+        assert(test_event_count == before_ping + 2 && test_event_method[before_ping + 1] == 0x10003);
+        const uint32_t pong_stranger[] = { (uint32_t)(uintptr_t)net_sink, E_FAIL, (uint32_t)-1, stranger_ip, 2 };
+        assert(memcmp(test_event_args[before_ping + 1], pong_stranger, sizeof pong_stranger) == 0);
+        /* Several requests complete in one pump, in order, and only once. */
+        assert(invoke(g_channel.chat, 6, 3, ping_stranger) == S_OK && handle == 3);
+        assert(invoke(g_channel.chat, 6, 3, ping_other) == S_OK && handle == 4);
+        assert(invoke(g_channel.chat, 7, 0, NULL) == S_OK);
+        assert(invoke(g_channel.chat, 7, 0, NULL) == S_OK);
+        assert(test_event_count == before_ping + 4);
+        assert(test_event_args[before_ping + 2][4] == 3 && test_event_args[before_ping + 3][4] == 4);
+        assert(test_event_args[before_ping + 3][2] == 75);
+        /* A host that is not a dotted quad still gets a handle, then fails with ip 0. */
+        const char *bad_hosts[] = { "not-an-ip", "10.1.2", "10.1.2.3x", "10.1.2.256", "10..2.3", "10.1.2.0003" };
+        for (unsigned i = 0; i < sizeof bad_hosts / sizeof bad_hosts[0]; i++) {
+            uint32_t ping_bad[] = { (uint32_t)(uintptr_t)bad_hosts[i], 1000, (uint32_t)(uintptr_t)&handle };
+            assert(invoke(g_channel.chat, 6, 3, ping_bad) == S_OK && handle == (int32_t)(5 + i));
+            assert(invoke(g_channel.chat, 7, 0, NULL) == S_OK && test_event_count == before_ping + 5);
+            const uint32_t pong_bad[] = { (uint32_t)(uintptr_t)net_sink, E_FAIL, (uint32_t)-1, 0, 5 + i };
+            assert(memcmp(test_event_args[before_ping + 4], pong_bad, sizeof pong_bad) == 0);
+            test_event_count = before_ping + 4;
+        }
+        /* A NULL host or handle pointer is refused: no handle, nothing queued. */
+        handle = 0;
+        uint32_t ping_null_host[] = { 0, 1000, (uint32_t)(uintptr_t)&handle };
+        uint32_t ping_null_handle[] = { (uint32_t)(uintptr_t)other_host, 1000, 0 };
+        assert(invoke(g_channel.chat, 6, 3, ping_null_host) == E_POINTER && handle == 0);
+        assert(invoke(g_channel.chat, 6, 3, ping_null_handle) == E_POINTER);
+        assert(invoke(g_channel.chat, 7, 0, NULL) == S_OK && test_event_count == before_ping + 4);
+        /* Without a sink the results are dropped. */
+        uint32_t net_unadvise[] = { net_cookie };
+        assert(invoke(g_channel.point, 6, 1, net_unadvise) == S_OK);
+        assert(invoke(g_channel.chat, 6, 3, ping_other) == S_OK && handle == 11);
+        assert(invoke(g_channel.chat, 7, 0, NULL) == S_OK && test_event_count == before_ping + 4);
+        assert(invoke(g_channel.point, 5, 2, net_advise) == S_OK);
+        assert(invoke(g_channel.chat, 7, 0, NULL) == S_OK && test_event_count == before_ping + 4);
+        assert(invoke(g_channel.point, 6, 1, net_unadvise) == S_OK);
+        test_event_count = match_events + 3;
+    }
     /* The MOTD is held until the connection event, then passed as OnConnection's motd text. */
     uint32_t events_before_motd = test_event_count;
     ra2_wolapi_receive_line(":wol-ra2web 375 testuser :- wol-ra2web MOTD");

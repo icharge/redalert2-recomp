@@ -76,6 +76,8 @@ static wol_server g_server_entry;
 static wol_channel g_channels[64];
 static wol_channel g_lobby, g_active_channel;
 static wol_user g_users[32];
+/* RA2Web's round trip to each member in ms, parallel to g_users (wol_user's layout is fixed); -1 = not measured. */
+static int32_t g_user_ping[32];
 static wol_user g_locale_user;
 static uint32_t g_channel_count, g_user_count, g_channel_type = WOL_LOBBY_TYPE;
 /* True while g_channels holds the answer to a type-0 (lobby) channel list. */
@@ -456,6 +458,17 @@ static void parse_room_line(const char *line) {
 
 static uint32_t virtual_ip(const char *name);
 
+/* The index'th number of a list separated by `separator`; RA2Web sends 0 for "not
+ * measured yet", and anything missing or malformed counts the same. */
+static int32_t parse_ping(const char *text, char separator, unsigned index) {
+    for (; index && text; index--) {
+        text = strchr(text, separator);
+        if (text) text++;
+    }
+    if (!text || *text < '0' || *text > '9') return -1;
+    long ping = strtol(text, NULL, 10);
+    return ping > 0 ? (int32_t)ping : -1;
+}
 static void parse_roster(const char *line) {
     char channel[48];
     if (sscanf(line, ":%*s 353 %*s %*s %47s", channel) != 1 || strcmp(channel, g_current_channel)) return;
@@ -474,6 +487,7 @@ static void parse_roster(const char *line) {
         char *metadata = strchr(name, ',');
         if (metadata) *metadata = '\0';
         if (!*name) continue;
+        g_user_ping[g_user_count] = metadata ? parse_ping(metadata + 1, ',', 1) : -1;
         wol_user *user = &g_users[g_user_count++];
         memset(user, 0, sizeof *user);
         copy_text(user->name, sizeof user->name, name);
@@ -509,6 +523,7 @@ static wol_user *user_for_name(const char *name) {
     for (uint32_t i = 0; i < g_user_count; i++)
         if (strcmp(g_users[i].name, name) == 0) return &g_users[i];
     if (g_user_count >= sizeof g_users / sizeof g_users[0]) return NULL;
+    g_user_ping[g_user_count] = -1;
     wol_user *user = &g_users[g_user_count++];
     memset(user, 0, sizeof *user);
     copy_text(user->name, sizeof user->name, name);
@@ -683,6 +698,7 @@ static void handle_line(const char *line) {
     if (strstr(line, " JOINGAME ")) {
         const char *name = strrchr(line, ':');
         wol_user *user = sender_user(line);
+        if (user) g_user_ping[user - g_users] = parse_ping(strstr(line, " JOINGAME ") + 10, ' ', 5);
         if (name && user && (user->flags & 0x8000u)) {
             copy_text(g_current_channel, sizeof g_current_channel, name + 1);
             g_joining_channel = 0;
@@ -712,6 +728,10 @@ static void handle_line(const char *line) {
         memcpy(user_name, nick, length); user_name[length] = '\0';
         wol_channel *channel = current_channel();
         wol_user *user = user_for_name(user_name);
+        if (user) {
+            const char *metadata = strstr(line, " JOIN ") + 6;
+            g_user_ping[user - g_users] = parse_ping(metadata + (*metadata == ':'), ',', 1);
+        }
         if (user && (user->flags & 0x8000u)) g_joining_channel = 0;
         uint32_t values[] = { S_OK, (uint32_t)(uintptr_t)channel, (uint32_t)(uintptr_t)user };
         event_call(7, 3, values); /* IChatEvent::OnChannelJoin */
@@ -1153,10 +1173,77 @@ static void m_chat_set_channel_ex_info(void) {
     RET(S_OK, 2);
 }
 
+/* The game turns a ping into IPX timing as ping * 60 / 1000 ticks, which must be at least 1. */
+#define WOL_MIN_PATH_PING_MS 17
+
+/* The game's estimate of the path to a peer: our round trip to RA2Web plus theirs.
+ * -1 when either is not measured yet or the peer is not in the roster. The game
+ * reads 1000 as "no answer", so a real 1000 ms is reported as 1001. */
+static int32_t path_ping_ms(uint32_t ip) {
+    int32_t own = -1, peer = -1;
+    for (uint32_t i = 0; i < g_user_count; i++) {
+        if (g_users[i].flags & 0x8000u) own = g_user_ping[i];
+        if (g_users[i].ipaddr == ip) peer = g_user_ping[i];
+    }
+    if (own < 0 || peer < 0) return -1;
+    int32_t total = own + peer;
+    return total < WOL_MIN_PATH_PING_MS ? WOL_MIN_PATH_PING_MS : total == 1000 ? 1001 : total;
+}
+
 static void m_net_get_avg_ping(void) {
     if (!A32(2)) RET(E_POINTER, 3);
-    MEM32(A32(2)) = 0xffffffffu; /* No native UDP measurement is available in this browser adapter. */
-    RET(E_FAIL, 3);
+    int32_t ping = path_ping_ms(A32(1));
+    MEM32(A32(2)) = (uint32_t)ping;
+    RET(ping < 0 ? E_FAIL : S_OK, 3);
+}
+
+/* RequestPing results wait for NetUtil's own PumpMessages, which reports each one
+ * through INetUtilEvent::OnPing (slot 3). The answer is the path ping at pump time. */
+static struct { uint32_t ip, handle; } g_pings[32];
+static uint32_t g_ping_count, g_ping_handle;
+
+/* A dotted IPv4 quad in network byte order, the order of wol_user.ipaddr; 0 if malformed. */
+static uint32_t parse_host_ip(const char *host) {
+    uint8_t octets[4];
+    for (unsigned i = 0; i < 4; i++) {
+        if (i && *host++ != '.') return 0;
+        unsigned value = 0, digits = 0;
+        for (; *host >= '0' && *host <= '9' && digits < 4; host++, digits++)
+            value = value * 10u + (unsigned)(*host - '0');
+        if (!digits || digits > 3 || value > 255) return 0;
+        octets[i] = (uint8_t)value;
+    }
+    if (*host) return 0;
+    uint32_t ip;
+    memcpy(&ip, octets, sizeof ip);
+    return ip;
+}
+
+/* RequestPing(host, timeout, int *handle): the type library's host is a string. */
+static void m_net_request_ping(void) {
+    if (!ASTR(1) || !A32(3)) RET(E_POINTER, 4);
+    if (g_ping_count >= sizeof g_pings / sizeof g_pings[0]) RET(E_FAIL, 4);
+    g_ping_handle = g_ping_handle % 0x7fffffffu + 1u; /* a positive int: 1, 2, ... */
+    g_pings[g_ping_count].ip = parse_host_ip(ASTR(1));
+    g_pings[g_ping_count++].handle = g_ping_handle;
+    MEM32(A32(3)) = g_ping_handle;
+    RET(S_OK, 4);
+}
+
+static void m_net_pump(void) {
+    /* OnPing may ask for another ping; that one waits for the next pump. */
+    uint32_t count = g_ping_count;
+    struct { uint32_t ip, handle; } pings[sizeof g_pings / sizeof g_pings[0]];
+    memcpy(pings, g_pings, count * sizeof pings[0]);
+    g_ping_count = 0;
+    for (uint32_t i = 0; i < count; i++) {
+        uint32_t sink = g_channel.sink;
+        if (!sink) continue;
+        int32_t time = pings[i].ip ? path_ping_ms(pings[i].ip) : -1; /* 0: the host did not parse */
+        uint32_t args[] = { sink, time < 0 ? E_FAIL : S_OK, (uint32_t)time, pings[i].ip, pings[i].handle };
+        hle_call_guest(MEM32(MEM32(sink) + 3u * 4u), 5, args); /* INetUtilEvent::OnPing */
+    }
+    RET(S_OK, 1);
 }
 
 /* IChat is IUnknown followed by the 64 methods from the embedded type library. */
@@ -1304,7 +1391,7 @@ static uint32_t create_channel(const uint8_t *iid, uint32_t *out) {
     static const win32hle_shim methods[] = {
         { "WolChannel::QueryInterface", m_query_interface }, { "WolChannel::AddRef", m_add_ref }, { "WolChannel::Release", m_release },
         { "WolChannel::RequestGameresSend", m_net_gameres_send }, { "WolChannel::RequestLadderSearch", m_stub_10 },
-        { "WolChannel::RequestLadderList", m_stub_8 }, { "WolChannel::RequestPing", m_stub_4 },
+        { "WolChannel::RequestLadderList", m_stub_8 }, { "WolChannel::RequestPing", m_net_request_ping },
         { "WolChannel::PumpMessages", m_net_pump },
         { "WolChannel::GetAvgPing", m_net_get_avg_ping }, { "WolChannel::RequestNewNick", m_stub_7 },
         { "WolChannel::RequestAgeCheck", m_stub_5 }, { "WolChannel::RequestWDTState", m_stub_4 },
