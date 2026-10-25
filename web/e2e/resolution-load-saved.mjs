@@ -62,7 +62,10 @@ try {
   await card.waitFor({ timeout: 30_000 });
   console.log("    importing the campaign save...");
   await card.locator('input[aria-label="Saves for Red Alert 2"]').setInputFiles(saveZip);
-  await page.getByRole("status").filter({ hasText: /saved game.*brought in/i }).waitFor({ timeout: 30_000 });
+  await page
+    .getByRole("status")
+    .filter({ hasText: /saved game.*brought in/i })
+    .waitFor({ timeout: 30_000 });
   console.log("    opening launcher settings...");
   const settings = async () => {
     await card.getByRole("button", { name: "Settings for Red Alert 2" }).click();
@@ -73,8 +76,8 @@ try {
   await page.getByRole("combobox", { name: "Red Alert 2 resolution" }).click();
   await page.getByRole("option", { name: `${target.w} × ${target.h}` }).click();
   await page.getByRole("button", { name: "Done" }).click();
-  const preference = await page.evaluate(() =>
-    Object.entries(localStorage).find(([key]) => key.startsWith("ra2.video.")) ?? null,
+  const preference = await page.evaluate(
+    () => Object.entries(localStorage).find(([key]) => key.startsWith("ra2.video.")) ?? null,
   );
   check(Boolean(preference), "the launcher stores the selected 1280x720 size");
 
@@ -85,14 +88,21 @@ try {
   await page.waitForURL(/\/game\/1(?:\?|$)/, { timeout: 30_000 });
   const gameUrl = new URL(page.url());
   const gameArgs = [
-    "--press", "0xE2:1667@1",
-    "--press", "0x100:1673@2",
-    "--select", "0xB7:1317=0@3",
-    "--press", "0xB7:1039@4",
-    "--waitlog", "Capture_Mouse@5",
+    "--press",
+    "0xE2:1667@1",
+    "--press",
+    "0x100:1673@2",
+    "--select",
+    "0xB7:1317=0@3",
+    "--press",
+    "0xB7:1039@4",
+    "--waitlog",
+    "Capture_Mouse@5",
     // The page's own Escape only releases the pointer; the guest key opens the game menu.
-    "--waitlog", "- Complete@6",
-    "--key", "0x1B@12",
+    "--waitlog",
+    "- Complete@6",
+    "--key",
+    "0x1B@12",
   ];
   for (const arg of gameArgs) gameUrl.searchParams.append("arg", arg);
   await page.goto(gameUrl.toString());
@@ -110,9 +120,14 @@ try {
   await page.screenshot({ path: path.join(base.shots, "loaded-game.png") });
   const loaded = await page.evaluate(() => ({
     size: window.ra2Store?.getSnapshot().size,
-    log: (window.ra2Store?.getLog() ?? []).filter((line) => /Toggle display mode|SetDisplayMode/.test(line)),
+    log: (window.ra2Store?.getLog() ?? []).filter((line) =>
+      /Toggle display mode|SetDisplayMode/.test(line),
+    ),
   }));
-  check(loaded.size?.w === target.w && loaded.size?.h === target.h, "loading the saved game switches to 1280x720");
+  check(
+    loaded.size?.w === target.w && loaded.size?.h === target.h,
+    "loading the saved game switches to 1280x720",
+  );
   check(
     loaded.log.some((line) => /1280 ?X ?720|1280x720/i.test(line)),
     "the game log confirms the target display mode",
@@ -123,13 +138,22 @@ try {
 } catch (error) {
   console.error(error);
   if (page) {
-    console.error("page:", (await page.locator("body").innerText().catch(() => "<unavailable>")).slice(-2000));
+    console.error(
+      "page:",
+      (
+        await page
+          .locator("body")
+          .innerText()
+          .catch(() => "<unavailable>")
+      ).slice(-2000),
+    );
     await page.screenshot({ path: path.join(base.shots, "failure.png") }).catch(() => {});
   }
   failed = true;
 } finally {
   await context.close();
-  if (!persistentProfile && !argv.includes("--keep-profile")) rmSync(profile, { recursive: true, force: true });
+  if (!persistentProfile && !argv.includes("--keep-profile"))
+    rmSync(profile, { recursive: true, force: true });
 }
 
 if (failed) process.exit(1);

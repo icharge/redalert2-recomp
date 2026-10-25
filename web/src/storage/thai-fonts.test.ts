@@ -18,8 +18,11 @@ function validThaiFont(): Uint8Array {
   view.setUint32(12, 16, true);
   view.setUint32(20, glyphCount, true);
   view.setUint32(24, stride, true);
-  for (const code of [...Array.from({ length: 0xDA - 0xA1 + 1 }, (_, i) => 0xA1 + i), 0xDF,
-    ...Array.from({ length: 0xFB - 0xE0 + 1 }, (_, i) => 0xE0 + i)]) {
+  for (const code of [
+    ...Array.from({ length: 0xda - 0xa1 + 1 }, (_, i) => 0xa1 + i),
+    0xdf,
+    ...Array.from({ length: 0xfb - 0xe0 + 1 }, (_, i) => 0xe0 + i),
+  ]) {
     view.setUint16(28 + code * 2, 1, true);
   }
   return bytes;
@@ -28,7 +31,9 @@ function validThaiFont(): Uint8Array {
 describe("Thai font storage validation", () => {
   it("lists only the bundled fonts", () => {
     const choices = listThaiFonts();
-    expect(choices.map(({ id }) => id)).toEqual(expect.arrayContaining(BUILT_IN_THAI_FONTS.map(({ id }) => id)));
+    expect(choices.map(({ id }) => id)).toEqual(
+      expect.arrayContaining(BUILT_IN_THAI_FONTS.map(({ id }) => id)),
+    );
     expect(choices).toHaveLength(7);
   });
 
@@ -39,7 +44,9 @@ describe("Thai font storage validation", () => {
     try {
       const choice = BUILT_IN_THAI_FONTS[0]!;
       await expect(readThaiFont(choice.id)).resolves.toEqual(font);
-      expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining(`/thai-fonts/${choice.asset}.fnt`));
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining(`/thai-fonts/${choice.asset}.fnt`),
+      );
     } finally {
       vi.unstubAllGlobals();
     }
@@ -59,7 +66,7 @@ describe("Thai font storage validation", () => {
   it("rejects non-FNT data and fonts missing a required Thai glyph", () => {
     expect(validateThaiGameFont(new Uint8Array([1, 2, 3, 4]))).toContain("not a Red Alert 2");
     const font = validThaiFont();
-    new DataView(font.buffer).setUint16(28 + 0xE8 * 2, 0, true);
+    new DataView(font.buffer).setUint16(28 + 0xe8 * 2, 0, true);
     expect(validateThaiGameFont(font)).toContain("0xE8");
   });
 
@@ -70,7 +77,13 @@ describe("Thai font storage validation", () => {
       setItem: (key: string, value: string) => values.set(key, value),
     };
     writeThaiFontPreference("slot-2-ra2", { enabled: false, fontId: "builtin-default" }, storage);
-    expect(readThaiFontPreference("slot-2-ra2", storage)).toEqual({ enabled: false, fontId: "builtin-default" });
-    expect(readThaiFontPreference("slot-3-ra2", storage)).toEqual({ enabled: true, fontId: "builtin-westwood-improved" });
+    expect(readThaiFontPreference("slot-2-ra2", storage)).toEqual({
+      enabled: false,
+      fontId: "builtin-default",
+    });
+    expect(readThaiFontPreference("slot-3-ra2", storage)).toEqual({
+      enabled: true,
+      fontId: "builtin-westwood-improved",
+    });
   });
 });

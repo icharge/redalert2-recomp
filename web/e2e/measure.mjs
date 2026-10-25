@@ -89,11 +89,15 @@ const phase = async (name, action) => {
 await phase("idle");
 // W9.3: compare the same running skirmish with the real HD voxel compositor
 // off and on. This also records the game's and presenter's frame times.
-await t.page.evaluate(() => window.Module.cwrap("ra2_setting", null, ["number", "number", "number"])(2, 1, 0));
+await t.page.evaluate(() =>
+  window.Module.cwrap("ra2_setting", null, ["number", "number", "number"])(2, 1, 0),
+);
 await t.page.waitForFunction(() => window.ra2Store?.getSnapshot().settings?.hd === true);
 await t.page.waitForTimeout(2000);
 await phase("HD idle");
-await t.page.evaluate(() => window.Module.cwrap("ra2_setting", null, ["number", "number", "number"])(2, 0, 0));
+await t.page.evaluate(() =>
+  window.Module.cwrap("ra2_setting", null, ["number", "number", "number"])(2, 0, 0),
+);
 await t.page.waitForFunction(() => window.ra2Store?.getSnapshot().settings?.hd === false);
 await t.page.waitForTimeout(1000);
 const size = (await sample()).size ?? { w: 800, h: 600 };

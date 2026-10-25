@@ -1,11 +1,7 @@
 // One tools/playtest.py case against the built page. Game files are fulfilled only
 // inside this isolated browser context; the web server never hosts the install.
 import { chromium } from "playwright-core";
-import {
-  createWriteStream,
-  existsSync,
-  readFileSync,
-} from "node:fs";
+import { createWriteStream, existsSync, readFileSync } from "node:fs";
 import { serveGame } from "./files-server.mjs";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -86,7 +82,9 @@ try {
       name: config.target === "game" ? "Red Alert 2" : "Yuri's Revenge",
     });
     if (await edition.count()) await edition.click();
-    const card = installation.locator(`[data-game-id="${config.target === "game" ? "ra2" : "yr"}"]`);
+    const card = installation.locator(
+      `[data-game-id="${config.target === "game" ? "ra2" : "yr"}"]`,
+    );
     await card.getByRole("button", { name: "Play" }).click();
     await page.waitForURL(/\/game\/1(?:\?|$)/, { timeout: 30_000 });
     url = new URL(page.url());

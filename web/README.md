@@ -24,14 +24,14 @@ names another folder.
 
 ## Commands
 
-| | |
-|---|---|
-| `pnpm dev` | the dev server, with the cross-origin headers the game's threads need |
-| `pnpm build` | typecheck and a production build into `dist/` |
-| `pnpm test` | Vitest: the protocol, the store, input mapping, the presenter, the loader, the screens |
-| `pnpm lint`, `pnpm typecheck`, `pnpm format:check` | ESLint, `tsc`, Prettier |
-| `node e2e/smoke.mjs` | with `pnpm dev` running: waits for the main menu in a real Chrome |
-| `node e2e/drive.mjs --step "click 719,221@4" ...` | clicks and keys through the menus, with screenshots ([docs/web/testing.md](../docs/web/testing.md)) |
+|                                                    |                                                                                                     |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `pnpm dev`                                         | the dev server, with the cross-origin headers the game's threads need                               |
+| `pnpm build`                                       | typecheck and a production build into `dist/`                                                       |
+| `pnpm test`                                        | Vitest: the protocol, the store, input mapping, the presenter, the loader, the screens              |
+| `pnpm lint`, `pnpm typecheck`, `pnpm format:check` | ESLint, `tsc`, Prettier                                                                             |
+| `node e2e/smoke.mjs`                               | with `pnpm dev` running: waits for the main menu in a real Chrome                                   |
+| `node e2e/drive.mjs --step "click 719,221@4" ...`  | clicks and keys through the menus, with screenshots ([docs/web/testing.md](../docs/web/testing.md)) |
 
 `CHROME_PATH` names the browser the `e2e/` scripts use. Nothing from the game is part of
 `dist/` or the repository.

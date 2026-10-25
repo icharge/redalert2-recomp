@@ -3,3 +3,6 @@ node_modules
 public/game
 fonts
 pnpm-lock.yaml
+# third-party files, kept as their authors wrote them
+public/vendor
+public/thai-fonts/LICENSE.md

@@ -83,7 +83,14 @@ describe("loadMods", () => {
     vi.stubGlobal("indexedDB", factory);
     const manifest = await Manifest.open(factory);
     await manifest.setSetting("mods:slot-1-ra2md", [
-      { name: "Big", files: [{ name: "big.mix", size: 5_000_000 }, { name: "rulesmd.ini", size: 4 }], bytes: 5_000_004 },
+      {
+        name: "Big",
+        files: [
+          { name: "big.mix", size: 5_000_000 },
+          { name: "rulesmd.ini", size: 4 },
+        ],
+        bytes: 5_000_004,
+      },
     ]);
     manifest.close();
     const made: string[] = [];
@@ -98,7 +105,9 @@ describe("loadMods", () => {
       symlink: (target: string, path: string) => void links.push([target, path]),
     };
     // the small file's bytes come from OPFS, which this test has no files in
-    await loadMods(fs, "slot-1-ra2md", { inPlace: true }).catch(() => {}).finally(() => vi.unstubAllGlobals());
+    await loadMods(fs, "slot-1-ra2md", { inPlace: true })
+      .catch(() => {})
+      .finally(() => vi.unstubAllGlobals());
     expect(links).toEqual([["/opfs/game/slot-1-ra2md/mods/Big/big.mix", "/game/mods/Big/big.mix"]]);
     expect(written).not.toContain("/game/mods/Big/big.mix");
   });

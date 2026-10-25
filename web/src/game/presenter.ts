@@ -183,7 +183,11 @@ export class Presenter {
     if (this.cursorOverlay) this.cursorOverlay.style.display = "none";
     // Pointer Lock hides CSS cursors. Release it when a dialog asks for the
     // Windows cursor; pause draws a positioned image over the game/sidebar.
-    if (kind !== CursorKind.None && kind !== CursorKind.Overlay && document.pointerLockElement === this.canvas) {
+    if (
+      kind !== CursorKind.None &&
+      kind !== CursorKind.Overlay &&
+      document.pointerLockElement === this.canvas
+    ) {
       document.exitPointerLock();
     }
     if (kind === CursorKind.None) {

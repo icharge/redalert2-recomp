@@ -15,12 +15,17 @@ function setup() {
     document.dispatchEvent(new Event("pointerlockchange"));
   });
   Object.defineProperty(document, "exitPointerLock", { configurable: true, value: exit });
-  const request = vi.fn(() => { grant(); return Promise.resolve(); });
+  const request = vi.fn(() => {
+    grant();
+    return Promise.resolve();
+  });
   Object.defineProperty(canvas, "requestPointerLock", { configurable: true, value: request });
   return { canvas, grant, request, exit, control: autoLockPointer(canvas) };
 }
 
-const settle = async () => { for (let i = 0; i < 6; i++) await Promise.resolve(); };
+const settle = async () => {
+  for (let i = 0; i < 6; i++) await Promise.resolve();
+};
 
 afterEach(() => {
   document.body.replaceChildren();

@@ -177,8 +177,13 @@ export class Manifest {
     }
     const tx = this.db.transaction([GAMES, INSTALLATIONS], "readwrite");
     const store = tx.objectStore(GAMES);
-    const installation = await request(tx.objectStore(INSTALLATIONS).get(slot)) as InstallationRecord;
-    if (!installation) { tx.abort(); throw new Error("That installation does not exist."); }
+    const installation = (await request(
+      tx.objectStore(INSTALLATIONS).get(slot),
+    )) as InstallationRecord;
+    if (!installation) {
+      tx.abort();
+      throw new Error("That installation does not exist.");
+    }
     if (!installation.editions?.includes(id)) {
       installation.editions = [...(installation.editions ?? []), id];
       tx.objectStore(INSTALLATIONS).put(installation);

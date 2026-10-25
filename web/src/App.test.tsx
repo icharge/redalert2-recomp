@@ -49,7 +49,10 @@ describe("App", () => {
     window.history.replaceState({}, "", "/game/1");
     render(<App />);
     expect(await screen.findByText(/import did not finish/)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Resume import" })).toHaveAttribute("href", "/import?resume=1");
+    expect(screen.getByRole("link", { name: "Resume import" })).toHaveAttribute(
+      "href",
+      "/import?resume=1",
+    );
     m.close();
   });
   it("refreshes incomplete installations when returning from Import", async () => {
@@ -62,7 +65,13 @@ describe("App", () => {
     await screen.findByText("Bring your game");
     const m = await Manifest.open();
     const installation = await m.createInstallation("Interrupted import");
-    await m.beginImport("ra2md", "Yuri's Revenge", 1, [{ name: "ra2.mix", size: 1, lastModified: 1, needs: ["ra2md"] }], installation.slot);
+    await m.beginImport(
+      "ra2md",
+      "Yuri's Revenge",
+      1,
+      [{ name: "ra2.mix", size: 1, lastModified: 1, needs: ["ra2md"] }],
+      installation.slot,
+    );
     await userEvent.setup().click(screen.getByRole("link", { name: "Back to launcher" }));
     expect(await screen.findByRole("heading", { name: "Yuri's Revenge" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Resume import" })).toBeInTheDocument();

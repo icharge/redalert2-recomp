@@ -171,7 +171,10 @@ describe("Presenter", () => {
     const oldPointerLock = Object.getOwnPropertyDescriptor(document, "pointerLockElement");
     const oldExitPointerLock = Object.getOwnPropertyDescriptor(document, "exitPointerLock");
     Object.defineProperty(document, "pointerLockElement", { configurable: true, value: canvas });
-    Object.defineProperty(document, "exitPointerLock", { configurable: true, value: exitPointerLock });
+    Object.defineProperty(document, "exitPointerLock", {
+      configurable: true,
+      value: exitPointerLock,
+    });
     word(Shared.cursorKind, CursorKind.Arrow);
     word(Shared.cursorSeq, 1);
 
@@ -183,7 +186,8 @@ describe("Presenter", () => {
     } finally {
       if (oldPointerLock) Object.defineProperty(document, "pointerLockElement", oldPointerLock);
       else Reflect.deleteProperty(document, "pointerLockElement");
-      if (oldExitPointerLock) Object.defineProperty(document, "exitPointerLock", oldExitPointerLock);
+      if (oldExitPointerLock)
+        Object.defineProperty(document, "exitPointerLock", oldExitPointerLock);
       else Reflect.deleteProperty(document, "exitPointerLock");
     }
   });
@@ -216,7 +220,9 @@ describe("Presenter", () => {
 
   it("draws the pause cursor over the full game and sidebar at game coordinates", () => {
     const { presenter, word, canvas, cursor } = setup({ width: 400, height: 300 });
-    vi.spyOn(HTMLCanvasElement.prototype, "toDataURL").mockReturnValue("data:image/png;base64,AAAA");
+    vi.spyOn(HTMLCanvasElement.prototype, "toDataURL").mockReturnValue(
+      "data:image/png;base64,AAAA",
+    );
     word(Shared.cursorKind, CursorKind.Overlay);
     word(Shared.cursorSeq, 1);
     word(Shared.cursorHotX, 3);
@@ -239,7 +245,9 @@ describe("Presenter", () => {
 
   it("keeps a pause cursor inside the sidebar when the full game is letterboxed", () => {
     const { presenter, word, cursor } = setup({ width: 1280, height: 720 });
-    vi.spyOn(HTMLCanvasElement.prototype, "toDataURL").mockReturnValue("data:image/png;base64,AAAA");
+    vi.spyOn(HTMLCanvasElement.prototype, "toDataURL").mockReturnValue(
+      "data:image/png;base64,AAAA",
+    );
     word(Shared.cursorKind, CursorKind.Overlay);
     word(Shared.cursorSeq, 1);
     word(Shared.gameW, 2580);

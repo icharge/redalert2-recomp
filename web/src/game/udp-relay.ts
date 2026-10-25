@@ -117,7 +117,9 @@ export class UdpRelay {
   private describe(direction: string, packet: Uint8Array): string {
     const view = new DataView(packet.buffer, packet.byteOffset, packet.byteLength);
     const ip = Array.from(packet.subarray(0, 4)).join(".");
-    const hex = Array.from(packet.subarray(8, 8 + 96), (byte) => byte.toString(16).padStart(2, "0")).join("");
+    const hex = Array.from(packet.subarray(8, 8 + 96), (byte) =>
+      byte.toString(16).padStart(2, "0"),
+    ).join("");
     return `${direction} ${ip} ports ${view.getUint16(4)}->${view.getUint16(6)} ${packet.byteLength - 8} bytes ${hex}`;
   }
 

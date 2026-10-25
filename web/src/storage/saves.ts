@@ -123,8 +123,12 @@ export interface SavedFile {
 }
 
 /** Puts the saved files back over the game's own, before the game starts. */
-export async function restoreSaves(fs: FsLike, store: SaveStore, game: string,
-  accept: (path: string) => boolean = () => true): Promise<number> {
+export async function restoreSaves(
+  fs: FsLike,
+  store: SaveStore,
+  game: string,
+  accept: (path: string) => boolean = () => true,
+): Promise<number> {
   const files = (await store.list(game)).filter((file) => accept(file.path));
   for (const file of files) {
     const parts = file.path.split("/");

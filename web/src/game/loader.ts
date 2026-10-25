@@ -608,7 +608,10 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
             module.ra2WolReceiveLine?.(`@wolapi gameres ${requestId} 0`);
         },
         (error: unknown) => {
-          console.warn("Native result submission failed:", error instanceof Error ? error.message : String(error));
+          console.warn(
+            "Native result submission failed:",
+            error instanceof Error ? error.message : String(error),
+          );
           if (wolClient === client && latestResultGame === gameId)
             module.ra2WolReceiveLine?.(`@wolapi gameres ${requestId} ${0x80004005}`);
         },

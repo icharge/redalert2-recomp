@@ -181,9 +181,10 @@ export function managedInstallationSource(
       const editions = records.filter((record) => kind.needs.includes(record.id));
       let adding: GameId | null = null;
       if (!editions.length) {
-        adding = kind.needs.find(
-          (id) => deps.build.games[id] && !records.some((record) => record.id === id),
-        ) ?? null;
+        adding =
+          kind.needs.find(
+            (id) => deps.build.games[id] && !records.some((record) => record.id === id),
+          ) ?? null;
         if (!adding) {
           report.problems.push(`${name}: no game in this installation reads it.`);
           continue;

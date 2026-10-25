@@ -7,7 +7,7 @@
 export function wolLineBytes(line: string): Uint8Array {
   // Chat is Unicode text; GAMEOPT and other native strings remain opaque bytes.
   if (/^:[^ ]+ PRIVMSG [^ ]+ :/i.test(line)) return new TextEncoder().encode(`${line}\0`);
-  return Uint8Array.from(`${line}\0`, character => character.charCodeAt(0));
+  return Uint8Array.from(`${line}\0`, (character) => character.charCodeAt(0));
 }
 
 /** Keep the native firewall probe out of the browser's WebSocket connection.
@@ -15,7 +15,7 @@ export function wolLineBytes(line: string): Uint8Array {
  * the retired Westwood UDP mangler. Preserve the INI's original byte encoding.
  */
 export function withBrowserWolPort(bytes: Uint8Array): Uint8Array {
-  const text = Array.from(bytes, byte => String.fromCharCode(byte)).join("");
+  const text = Array.from(bytes, (byte) => String.fromCharCode(byte)).join("");
   const eol = text.includes("\r\n") ? "\r\n" : "\n";
   const lines = text.split(/\r?\n/);
   let inMultiplayer = false;
@@ -38,7 +38,7 @@ export function withBrowserWolPort(bytes: Uint8Array): Uint8Array {
     if (sectionAt >= 0) lines.splice(sectionAt + 1, 0, "PortNumberOverride=1234");
     else lines.push("[MultiPlayer]", "PortNumberOverride=1234");
   }
-  return Uint8Array.from(lines.join(eol), character => character.charCodeAt(0));
+  return Uint8Array.from(lines.join(eol), (character) => character.charCodeAt(0));
 }
 
 export interface WolRoom {
@@ -67,8 +67,7 @@ export function parseWolRoom(line: string): WolRoom | null {
   const players = Number(fields[4]);
   const channelType = Number(fields[6]);
   const modeTopic = fields[10]?.indexOf("::") ?? -1;
-  if (![players, channelType].every(Number.isInteger) || players < 0 || modeTopic < 0)
-    return null;
+  if (![players, channelType].every(Number.isInteger) || players < 0 || modeTopic < 0) return null;
   return {
     channel: fields[3]!,
     players,
@@ -107,14 +106,20 @@ async function sessionToken(
     headers: { "Content-Type": "application/json" },
     body,
   });
-  let result = (await response.json().catch(() => ({}))) as { sessionToken?: unknown; error?: unknown };
+  let result = (await response.json().catch(() => ({}))) as {
+    sessionToken?: unknown;
+    error?: unknown;
+  };
   if (typeof result.sessionToken !== "string") {
     response = await fetcher(new URL("login", ensureSlash(server)), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body,
     });
-    result = (await response.json().catch(() => ({}))) as { sessionToken?: unknown; error?: unknown };
+    result = (await response.json().catch(() => ({}))) as {
+      sessionToken?: unknown;
+      error?: unknown;
+    };
   }
   if (!response.ok || typeof result.sessionToken !== "string") {
     throw new Error(typeof result.error === "string" ? result.error : "WOL register/login failed.");
@@ -176,7 +181,9 @@ export class WolClient {
     const generation = ++this.generation;
     try {
       const httpUrl = typeof this.server === "string" ? this.server : this.server.httpUrl;
-      const socketUrl = toWolSocketUrl(typeof this.server === "string" ? this.server : this.server.socketUrl);
+      const socketUrl = toWolSocketUrl(
+        typeof this.server === "string" ? this.server : this.server.socketUrl,
+      );
       const token = await sessionToken(httpUrl, this.username, this.password, this.fetcher);
       if (generation !== this.generation) throw new Error("WOL connection closed.");
       this.authToken = token;
@@ -205,7 +212,10 @@ export class WolClient {
   async joinLobby(): Promise<void> {
     const lobby = "#Lob_45_0";
     this.send(`join ${lobby} zotclot9`);
-    await this.waitFor((line) => line.includes(" JOIN ") && line.endsWith(` ${lobby}`), "lobby join");
+    await this.waitFor(
+      (line) => line.includes(" JOIN ") && line.endsWith(` ${lobby}`),
+      "lobby join",
+    );
     await this.waitFor((line) => /\s353\s/.test(line) && line.includes(lobby), "lobby roster");
     await this.waitFor((line) => /\s366\s/.test(line) && line.includes(lobby), "lobby roster end");
   }
@@ -225,17 +235,26 @@ export class WolClient {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
-      const response = await this.fetcher(new URL(`native-results/${gameId}`, ensureSlash(server)), {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/octet-stream" },
-        body: new Uint8Array(packet),
-        signal: controller.signal,
-      });
+      const response = await this.fetcher(
+        new URL(`native-results/${gameId}`, ensureSlash(server)),
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/octet-stream" },
+          body: new Uint8Array(packet),
+          signal: controller.signal,
+        },
+      );
       if (!response.ok) throw new Error(`Native result submission failed (${response.status}).`);
-      const accepted = await response.json() as { stored?: boolean; gameId?: string; ranked?: boolean };
+      const accepted = (await response.json()) as {
+        stored?: boolean;
+        gameId?: string;
+        ranked?: boolean;
+      };
       if (accepted.stored !== true || accepted.gameId !== gameId || accepted.ranked !== false)
         throw new Error("Invalid native result storage acknowledgement.");
-    } finally { clearTimeout(timeout); }
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   async listGames(channelType = 45): Promise<WolRoom[]> {
@@ -254,11 +273,20 @@ export class WolClient {
   }
 
   async createGame(name: string, slots: number, channelType = 45): Promise<string> {
-    if (!Number.isInteger(slots) || slots < 2 || slots > 8) throw new Error("Player slots must be 2–8.");
-    const slug = name.trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-|-$/g, "").slice(0, 24);
+    if (!Number.isInteger(slots) || slots < 2 || slots > 8)
+      throw new Error("Player slots must be 2–8.");
+    const slug = name
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9-]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 24);
     const channel = `#${this.username}-${slug || "custom-game"}`;
     this.send(`joingame ${channel} 1 ${slots} ${channelType} 0 0 0 0`);
-    await this.waitFor((line) => line.includes("JOINGAME ") && line.endsWith(`:${channel}`), "game creation");
+    await this.waitFor(
+      (line) => line.includes("JOINGAME ") && line.endsWith(`:${channel}`),
+      "game creation",
+    );
     await this.waitFor((line) => /\s353\s/.test(line) && line.includes(channel), "game roster");
     this.send(`gameopt ${channel} :A1`);
     return channel;
@@ -266,13 +294,19 @@ export class WolClient {
 
   async joinGame(channel: string): Promise<void> {
     this.send(`joingame ${channel} 0`);
-    await this.waitFor((line) => line.includes("JOINGAME ") && line.endsWith(`:${channel}`), "game join");
+    await this.waitFor(
+      (line) => line.includes("JOINGAME ") && line.endsWith(`:${channel}`),
+      "game join",
+    );
     await this.waitFor((line) => /\s353\s/.test(line) && line.includes(channel), "game roster");
   }
 
   async startGame(channel: string): Promise<string> {
     this.send(`startg ${channel} ${this.username}`);
-    return this.waitFor((line) => line.includes(" STARTG ") && line.includes(channel), "game start");
+    return this.waitFor(
+      (line) => line.includes(" STARTG ") && line.includes(channel),
+      "game start",
+    );
   }
 
   leave(channel: string): void {
@@ -309,11 +343,20 @@ export class WolClient {
         socket.removeEventListener("close", closed);
         this.cancelOpen = null;
       };
-      const fail = (reason: Error) => { cleanup(); reject(reason); };
-      const open = () => { cleanup(); resolve(); };
+      const fail = (reason: Error) => {
+        cleanup();
+        reject(reason);
+      };
+      const open = () => {
+        cleanup();
+        resolve();
+      };
       const error = () => fail(new Error("WOL WebSocket connection failed."));
       const closed = () => fail(new Error("WOL connection closed."));
-      const timer = setTimeout(() => fail(new Error("Timed out opening WOL WebSocket.")), this.timeoutMs);
+      const timer = setTimeout(
+        () => fail(new Error("Timed out opening WOL WebSocket.")),
+        this.timeoutMs,
+      );
       this.cancelOpen = fail;
       if (socket.readyState > OPEN) {
         closed();
@@ -373,7 +416,7 @@ export class WolClient {
     this.failPending(new Error("WOL server closed the connection."));
     this.buffered.length = 0;
     // A failed handshake is reported by connect(). Intentional close detaches us.
-    if (!this.connecting) this.disconnectListeners.forEach(listener => listener());
+    if (!this.connecting) this.disconnectListeners.forEach((listener) => listener());
   };
 
   private failPending(error: Error): void {

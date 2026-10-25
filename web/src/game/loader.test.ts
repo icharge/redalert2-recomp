@@ -194,60 +194,95 @@ describe("readBody", () => {
 });
 
 describe("startGame", () => {
-  it.each(["lobby", "next-match", "new-login", "failed-post"])("keeps result identity through %s and isolates stale completions", async (next) => {
-    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const sockets: Socket[] = [];
-    class Socket extends EventTarget {
-      readyState = 1;
-      constructor() { super(); sockets.push(this); }
-      send(data: string): void {
-        const reply = data.startsWith("cvers ") ? ":wol 700 * :ok" : data.startsWith("setlocale ") ? ":wol 310 * :ok" : data.startsWith("session ") ? ":wol 376 test :done" : null;
-        if (reply) queueMicrotask(() => this.receive(reply));
+  it.each(["lobby", "next-match", "new-login", "failed-post"])(
+    "keeps result identity through %s and isolates stale completions",
+    async (next) => {
+      const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const sockets: Socket[] = [];
+      class Socket extends EventTarget {
+        readyState = 1;
+        constructor() {
+          super();
+          sockets.push(this);
+        }
+        send(data: string): void {
+          const reply = data.startsWith("cvers ")
+            ? ":wol 700 * :ok"
+            : data.startsWith("setlocale ")
+              ? ":wol 310 * :ok"
+              : data.startsWith("session ")
+                ? ":wol 376 test :done"
+                : null;
+          if (reply) queueMicrotask(() => this.receive(reply));
+        }
+        receive(data: string): void {
+          this.dispatchEvent(new MessageEvent("message", { data }));
+        }
+        close(): void {
+          this.readyState = 3;
+          this.dispatchEvent(new Event("close"));
+        }
       }
-      receive(data: string): void { this.dispatchEvent(new MessageEvent("message", { data })); }
-      close(): void { this.readyState = 3; this.dispatchEvent(new Event("close")); }
-    }
-    vi.stubGlobal("WebSocket", Socket);
-    let finish!: (response: Response) => void;
-    let sentPacket: Uint8Array | undefined;
-    let sentUrl = "";
-    vi.stubGlobal("fetch", await runtimeFetch((input, init) => {
-      if (String(input).includes("native-results")) {
-        sentUrl = String(input); sentPacket = init?.body as Uint8Array;
-        return new Promise<Response>(resolve => { finish = resolve; });
+      vi.stubGlobal("WebSocket", Socket);
+      let finish!: (response: Response) => void;
+      let sentPacket: Uint8Array | undefined;
+      let sentUrl = "";
+      vi.stubGlobal(
+        "fetch",
+        await runtimeFetch((input, init) => {
+          if (String(input).includes("native-results")) {
+            sentUrl = String(input);
+            sentPacket = init?.body as Uint8Array;
+            return new Promise<Response>((resolve) => {
+              finish = resolve;
+            });
+          }
+          return Promise.resolve(new Response(JSON.stringify({ sessionToken: "token" })));
+        }),
+      );
+      const startup = startGame({ files: { kind: "already-there" }, store: new GameStore() });
+      await vi.waitFor(() => expect(window.Module?.onRuntimeInitialized).toBeTypeOf("function"));
+      const module = window.Module!;
+      module.FS = testFs();
+      module.cwrap = (() => () => 0) as never;
+      module.callMain = vi.fn();
+      module.HEAPU8 = new Uint8Array(2048);
+      module.onRuntimeInitialized!();
+      await startup;
+      const receive = vi.fn();
+      module.ra2WolReceiveLine = receive;
+      try {
+        module.ra2WolStart!("test", "password");
+        await vi.waitFor(() => expect(receive).toHaveBeenCalledWith("@wolapi connected"));
+        sockets[0]!.receive(":wol STARTG #room :ws://127.0.0.1:19090/gserv :g1-old 1 ticket");
+        module.ra2WolSend!("part #room");
+        module.ra2WolSend!("join #Lob_41_0 zotclot9");
+        const packet = new Uint8Array([0, 255, 128]);
+        module.ra2WolReport!(41, 1, packet);
+        packet.fill(0);
+        expect(sentUrl).toBe("http://127.0.0.1:19090/native-results/g1-old");
+        expect(sentPacket).toEqual(new Uint8Array([0, 255, 128]));
+        if (next === "next-match")
+          sockets[0]!.receive(":wol STARTG #next :ws://127.0.0.1:19090/gserv :g2-new 2 ticket");
+        if (next === "new-login") module.ra2WolStart!("other", "password");
+        finish(
+          new Response(JSON.stringify({ stored: true, gameId: "g1-old", ranked: false }), {
+            status: next === "failed-post" ? 503 : 200,
+          }),
+        );
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        if (next === "lobby") expect(receive).toHaveBeenCalledWith("@wolapi gameres 41 0");
+        else expect(receive).not.toHaveBeenCalledWith("@wolapi gameres 41 0");
+        if (next === "failed-post") {
+          expect(receive).toHaveBeenCalledWith(`@wolapi gameres 41 ${0x80004005}`);
+          expect(warning).toHaveBeenCalled();
+        }
+      } finally {
+        module.ra2WolStop!();
+        warning.mockRestore();
       }
-      return Promise.resolve(new Response(JSON.stringify({ sessionToken: "token" })));
-    }));
-    const startup = startGame({ files: { kind: "already-there" }, store: new GameStore() });
-    await vi.waitFor(() => expect(window.Module?.onRuntimeInitialized).toBeTypeOf("function"));
-    const module = window.Module!;
-    module.FS = testFs(); module.cwrap = (() => () => 0) as never;
-    module.callMain = vi.fn(); module.HEAPU8 = new Uint8Array(2048);
-    module.onRuntimeInitialized!(); await startup;
-    const receive = vi.fn(); module.ra2WolReceiveLine = receive;
-    try {
-      module.ra2WolStart!("test", "password");
-      await vi.waitFor(() => expect(receive).toHaveBeenCalledWith("@wolapi connected"));
-      sockets[0]!.receive(":wol STARTG #room :ws://127.0.0.1:19090/gserv :g1-old 1 ticket");
-      module.ra2WolSend!("part #room");
-      module.ra2WolSend!("join #Lob_41_0 zotclot9");
-      const packet = new Uint8Array([0, 255, 128]);
-      module.ra2WolReport!(41, 1, packet);
-      packet.fill(0);
-      expect(sentUrl).toBe("http://127.0.0.1:19090/native-results/g1-old");
-      expect(sentPacket).toEqual(new Uint8Array([0, 255, 128]));
-      if (next === "next-match") sockets[0]!.receive(":wol STARTG #next :ws://127.0.0.1:19090/gserv :g2-new 2 ticket");
-      if (next === "new-login") module.ra2WolStart!("other", "password");
-      finish(new Response(JSON.stringify({ stored: true, gameId: "g1-old", ranked: false }), { status: next === "failed-post" ? 503 : 200 }));
-      await new Promise(resolve => setTimeout(resolve, 0));
-      if (next === "lobby") expect(receive).toHaveBeenCalledWith("@wolapi gameres 41 0");
-      else expect(receive).not.toHaveBeenCalledWith("@wolapi gameres 41 0");
-      if (next === "failed-post") {
-        expect(receive).toHaveBeenCalledWith(`@wolapi gameres 41 ${0x80004005}`);
-        expect(warning).toHaveBeenCalled();
-      }
-    } finally { module.ra2WolStop!(); warning.mockRestore(); }
-  });
+    },
+  );
   it("uses the operator's build setting for WOL authentication", async () => {
     vi.stubEnv("VITE_WOL_HTTP_URL", "https://wol.test/service/");
     vi.stubEnv("VITE_WOL_SOCKET_URL", "wss://wol.test/service/wol");

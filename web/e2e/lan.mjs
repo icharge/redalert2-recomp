@@ -41,12 +41,18 @@ try {
     host.waitFor("host main menu", (state) => state?.phase === "running"),
     guest.waitFor("guest main menu", (state) => state?.phase === "running"),
   ]);
-  const keys = await Promise.all([host, guest].map((run) => run.page.evaluate(() => {
-    const bytes = window.Module?.FS?.readFile("/game/woldata.key");
-    return bytes ? Array.from(bytes) : null;
-  })));
-  assert.ok(keys.every((key) => key?.length === 128 && key.every((byte) => byte >= 0x30 && byte <= 0x39)),
-    "each HLE client must stage a 128-digit WOL key");
+  const keys = await Promise.all(
+    [host, guest].map((run) =>
+      run.page.evaluate(() => {
+        const bytes = window.Module?.FS?.readFile("/game/woldata.key");
+        return bytes ? Array.from(bytes) : null;
+      }),
+    ),
+  );
+  assert.ok(
+    keys.every((key) => key?.length === 128 && key.every((byte) => byte >= 0x30 && byte <= 0x39)),
+    "each HLE client must stage a 128-digit WOL key",
+  );
   assert.notDeepEqual(keys[0], keys[1], "LAN clients must receive distinct WOL keys");
 
   await Promise.all([openLan(host), openLan(guest)]);

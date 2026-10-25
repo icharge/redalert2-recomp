@@ -61,7 +61,11 @@ async function routeBuild(context) {
       const size = statSync(file).size;
       response.writeHead(200, {
         "Content-Length": size,
-        "Content-Type": name.endsWith(".js") ? "text/javascript" : name.endsWith(".wasm") ? "application/wasm" : "application/octet-stream",
+        "Content-Type": name.endsWith(".js")
+          ? "text/javascript"
+          : name.endsWith(".wasm")
+            ? "application/wasm"
+            : "application/octet-stream",
         "Access-Control-Allow-Origin": "*",
         "Cross-Origin-Resource-Policy": "cross-origin",
         "Cross-Origin-Embedder-Policy": "require-corp",
@@ -129,7 +133,9 @@ check(
   "the Library lists Yuri's Revenge",
 );
 // two games in one installation: a picker chooses which one the card shows and starts
-const editionPicker = page.locator('[data-slot-id="1"]').getByRole("radio", { name: "Red Alert 2" });
+const editionPicker = page
+  .locator('[data-slot-id="1"]')
+  .getByRole("radio", { name: "Red Alert 2" });
 const hasRa2 = (await editionPicker.count()) > 0;
 if (argv.includes("--both")) check(hasRa2, "the Library offers both games from one import");
 const opfsGameFiles = async () =>
@@ -179,7 +185,9 @@ async function browseText(card, name, what, managed = false) {
   check(
     (await page.locator(".fe_fileexplorer_folder_tools button").count()) === (managed ? 1 : 0) &&
       (await page.getByRole("button", { name: "Upload files…" }).count()) === (managed ? 1 : 0),
-    managed ? `${what} browser can only upload and delete` : `${what} browser has no write or export tools`,
+    managed
+      ? `${what} browser can only upload and delete`
+      : `${what} browser has no write or export tools`,
   );
   await page.getByText(name, { exact: true }).first().dblclick();
   const reader = page.getByRole("region", { name: `Text file ${name}` });
@@ -203,8 +211,11 @@ await page
   .getByRole("button", { name: "Play" })
   .click();
 await running(page);
-console.log(`    game reached the main menu in ${((Date.now() - bootStarted) / 1000).toFixed(1)} s`);
-if (base.gameBuild) console.log(`    isolated game assets served: ${servedBuildFiles().join(", ") || "none"}`);
+console.log(
+  `    game reached the main menu in ${((Date.now() - bootStarted) / 1000).toFixed(1)} s`,
+);
+if (base.gameBuild)
+  console.log(`    isolated game assets served: ${servedBuildFiles().join(", ") || "none"}`);
 const runtimeMemory = await page.evaluate(() => {
   const mib = (bytes) => (bytes == null ? null : +(bytes / (1024 * 1024)).toFixed(1));
   return {
@@ -231,7 +242,10 @@ await browseText(page.locator("body"), "RA2MD.INI", "live /game VFS");
 
 // something the game writes: a saved game, beside the exe as the game names it (SAVE%04lX.sav)
 await page.evaluate(() => {
-  window.Module.FS.writeFile("/game/SAVE0001.sav", new TextEncoder().encode("a save from the e2e check"));
+  window.Module.FS.writeFile(
+    "/game/SAVE0001.sav",
+    new TextEncoder().encode("a save from the e2e check"),
+  );
 });
 await page.waitForTimeout(7000); // the page copies it to OPFS within a few seconds
 await context.close();
@@ -296,7 +310,10 @@ await context.close();
 context = await launch();
 page = context.pages()[0] ?? (await context.newPage());
 await page.goto(address);
-await page.locator('[data-slot-id="2"] [data-game-id="ra2md"]').getByRole("button", { name: "Play" }).click();
+await page
+  .locator('[data-slot-id="2"] [data-game-id="ra2md"]')
+  .getByRole("button", { name: "Play" })
+  .click();
 await running(page);
 const otherSave = await page.evaluate(() => {
   try {
@@ -311,7 +328,10 @@ check(oldWorkers.size > 0, "the game has workers before browser Back");
 for (const worker of oldWorkers) worker.on("close", () => oldWorkers.delete(worker));
 await page.goBack();
 await page.getByText("Your games").waitFor({ timeout: 30_000 });
-check(await page.evaluate(() => !window.Module && !window.ra2Session), "browser Back unloads the runtime before showing the launcher");
+check(
+  await page.evaluate(() => !window.Module && !window.ra2Session),
+  "browser Back unloads the runtime before showing the launcher",
+);
 check(oldWorkers.size === 0, "browser Back closes the old game's workers");
 const removeSlot = async (slot) => {
   const card = page.locator(`[data-slot-id="${slot}"]`);

@@ -5,12 +5,23 @@ class FakeSocket extends EventTarget implements UdpRelaySocket {
   readyState = 0;
   binaryType = "blob";
   sent: Array<string | ArrayBufferLike | ArrayBufferView> = [];
-  send(data: string | ArrayBufferLike | ArrayBufferView) { this.sent.push(data); }
-  close() { this.readyState = 3; }
-  open() { this.readyState = 1; this.dispatchEvent(new Event("open")); }
-  text(data: string) { this.dispatchEvent(Object.assign(new Event("message"), { data })); }
+  send(data: string | ArrayBufferLike | ArrayBufferView) {
+    this.sent.push(data);
+  }
+  close() {
+    this.readyState = 3;
+  }
+  open() {
+    this.readyState = 1;
+    this.dispatchEvent(new Event("open"));
+  }
+  text(data: string) {
+    this.dispatchEvent(Object.assign(new Event("message"), { data }));
+  }
   binary(bytes: number[]) {
-    this.dispatchEvent(Object.assign(new Event("message"), { data: Uint8Array.from(bytes).buffer }));
+    this.dispatchEvent(
+      Object.assign(new Event("message"), { data: Uint8Array.from(bytes).buffer }),
+    );
   }
 }
 
@@ -26,11 +37,21 @@ function setup() {
       heap.set(packet, 100);
       return packet.length;
     },
-    ra2_udp_push: (length: number) => { pushed.push(Array.from(heap.slice(100, 100 + length))); return 0; },
+    ra2_udp_push: (length: number) => {
+      pushed.push(Array.from(heap.slice(100, 100 + length)));
+      return 0;
+    },
   };
   const socket = new FakeSocket();
   const urls: string[] = [];
-  const relay = new UdpRelay(exports, () => heap, (url) => { urls.push(url); return socket; });
+  const relay = new UdpRelay(
+    exports,
+    () => heap,
+    (url) => {
+      urls.push(url);
+      return socket;
+    },
+  );
   return { relay, socket, queue, pushed, urls };
 }
 
@@ -38,8 +59,16 @@ const handoff = { channel: "#c", gservUrl: "ws://h:1/gserv", gameId: "g1-a", tic
 
 describe("parseStartHandoff", () => {
   it("reads the gserv url and ticket from a STARTG line", () => {
-    expect(parseStartHandoff(":srv STARTG #woltst1's_game :ws://127.0.0.1:19090/gserv :g12-abc 1700000000 deadbeef\r\n"))
-      .toEqual({ channel: "#woltst1's_game", gservUrl: "ws://127.0.0.1:19090/gserv", gameId: "g12-abc", ticket: "deadbeef" });
+    expect(
+      parseStartHandoff(
+        ":srv STARTG #woltst1's_game :ws://127.0.0.1:19090/gserv :g12-abc 1700000000 deadbeef\r\n",
+      ),
+    ).toEqual({
+      channel: "#woltst1's_game",
+      gservUrl: "ws://127.0.0.1:19090/gserv",
+      gameId: "g12-abc",
+      ticket: "deadbeef",
+    });
   });
   it("ignores other lines and non-websocket urls", () => {
     expect(parseStartHandoff(":srv JOIN #c")).toBeNull();
@@ -97,7 +126,9 @@ describe("UdpRelay", () => {
     const socket = new FakeSocket();
     const relay = new UdpRelay(
       { ra2_udp_buffer: () => 0, ra2_udp_pop: () => 0, ra2_udp_push: () => 0 },
-      () => heap, () => socket, (m) => errors.push(m),
+      () => heap,
+      () => socket,
+      (m) => errors.push(m),
     );
     relay.start(handoff);
     socket.open();

@@ -23,7 +23,10 @@ export async function importMod(
   progress?: (done: number, total: number) => void,
 ): Promise<ModRecord> {
   const name = source.name.trim();
-  if (!/^[\p{L}\p{N}][\p{L}\p{N} _.-]{0,63}$/u.test(name) || new TextEncoder().encode(name).length >= 128)
+  if (
+    !/^[\p{L}\p{N}][\p{L}\p{N} _.-]{0,63}$/u.test(name) ||
+    new TextEncoder().encode(name).length >= 128
+  )
     throw new Error(
       "Use a mod folder name of 1–64 letters, numbers, spaces, dots, underscores or dashes.",
     );

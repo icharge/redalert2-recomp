@@ -204,7 +204,9 @@ describe("exportSaves and importSaves", () => {
     const { readZip } = await import("./zip");
     const files = await readZip(zip!);
     expect(files.map((file) => file.path).sort()).toEqual(["SAVE0001.sav", "SAVE0002.sav"]);
-    expect(new TextDecoder().decode(files.find((f) => f.path === "SAVE0001.sav")!.data)).toBe("newer");
+    expect(new TextDecoder().decode(files.find((f) => f.path === "SAVE0001.sav")!.data)).toBe(
+      "newer",
+    );
   });
 
   it("knows a saved game by its name", () => {
@@ -236,7 +238,8 @@ function linkedFs() {
   const S_IFDIR = 0o040000;
   const S_IFLNK = 0o120000;
   const fs: FsLike = {
-    readdir: () => [".", "..", ...links.keys(), ...files.keys()].map((p) => p.replace("/game/", "")),
+    readdir: () =>
+      [".", "..", ...links.keys(), ...files.keys()].map((p) => p.replace("/game/", "")),
     stat(path) {
       if (links.has(path)) {
         calls.push(`stat ${path}`);
@@ -299,7 +302,9 @@ describe("a game folder whose big files are links into the import", () => {
 
     game.links.set("/game/ra2md.ini", "/opfs/game/slot-1/ra2md.ini");
     const store: SaveStore = {
-      list: async () => [{ path: "ra2md.ini", read: async () => new TextEncoder().encode("saved") }],
+      list: async () => [
+        { path: "ra2md.ini", read: async () => new TextEncoder().encode("saved") },
+      ],
     };
     await restoreSaves(game.fs, store, "slot-1-ra2md");
     expect(game.calls).toEqual([]);

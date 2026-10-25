@@ -69,14 +69,27 @@ export function autoLockPointer(canvas: HTMLCanvasElement) {
     if (document.pointerLockElement === canvas) document.exitPointerLock();
   };
   const request = () => {
-    if (disposed || !active || escaped || requesting || document.pointerLockElement ||
-        document.visibilityState === "hidden" || !canvas.requestPointerLock) return;
+    if (
+      disposed ||
+      !active ||
+      escaped ||
+      requesting ||
+      document.pointerLockElement ||
+      document.visibilityState === "hidden" ||
+      !canvas.requestPointerLock
+    )
+      return;
     requesting = true;
-    void lockPointer(canvas).then(() => {
-      if (disposed || !active || escaped) release();
-    }).catch(() => {
-      // A transition after loading may lack user activation. The next click retries.
-    }).finally(() => { requesting = false; });
+    void lockPointer(canvas)
+      .then(() => {
+        if (disposed || !active || escaped) release();
+      })
+      .catch(() => {
+        // A transition after loading may lack user activation. The next click retries.
+      })
+      .finally(() => {
+        requesting = false;
+      });
   };
   const clicked = () => {
     escaped = false;
@@ -93,8 +106,10 @@ export function autoLockPointer(canvas: HTMLCanvasElement) {
     update(next: boolean) {
       if (disposed || next === active) return;
       active = next;
-      if (active) { escaped = false; request(); }
-      else release();
+      if (active) {
+        escaped = false;
+        request();
+      } else release();
     },
     dispose() {
       disposed = true;

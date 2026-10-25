@@ -33,7 +33,10 @@ describe("parseEventLine", () => {
       pacing: { worstMs: 24, late: 2, published: 58, publishMs: 3.25 },
     });
     expect(parseEventLine('@ra2 {"e":"exit","code":0}')).toEqual({ e: "exit", code: 0 });
-    expect(parseEventLine('@ra2 {"e":"exitConfirm","request":123}')).toEqual({ e: "exitConfirm", request: 123 });
+    expect(parseEventLine('@ra2 {"e":"exitConfirm","request":123}')).toEqual({
+      e: "exitConfirm",
+      request: 123,
+    });
     expect(parseEventLine('@ra2 {"e":"error","message":"no gamemd.exe in /game"}')).toEqual({
       e: "error",
       message: "no gamemd.exe in /game",
