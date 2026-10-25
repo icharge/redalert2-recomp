@@ -108,6 +108,22 @@ export function LanPanel({ game }: { game: GameHandle }) {
     }
   };
 
+  const pasteFromClipboard = async () => {
+    setError("");
+    try {
+      const text = await navigator.clipboard.readText();
+      if (!text.trim()) {
+        setError("The clipboard is empty. Copy the invitation or answer first.");
+        return;
+      }
+      setIncoming(text);
+    } catch {
+      setError(
+        "Clipboard access was blocked. Click the field and press Ctrl+V, or paste the text manually.",
+      );
+    }
+  };
+
   const disconnect = () => {
     peer.close();
     setMode("none");
@@ -126,10 +142,15 @@ export function LanPanel({ game }: { game: GameHandle }) {
       <Dialog.Content maxWidth="680px">
         <Dialog.Title>LAN multiplayer</Dialog.Title>
         <Dialog.Description mb="3">
-          Pair two browser clients on the same local network. The host creates an invitation; the
-          other player joins and sends the answer back. No relay or online service is used.
+          Pair two browser clients on the same local network. No relay or online service is used.
         </Dialog.Description>
         <Flex direction="column" gap="3">
+          <Callout.Root>
+            <Callout.Text>
+              Host: create and copy an invitation. Joiner: paste it, join, then copy and send the
+              answer back. Host: paste the answer and connect.
+            </Callout.Text>
+          </Callout.Root>
           <Text size="2" role="status" aria-live="polite">
             {statusText[status]}
           </Text>
@@ -139,9 +160,12 @@ export function LanPanel({ game }: { game: GameHandle }) {
             </Callout.Root>
           )}
           {outgoing && (
-            <label className={styles.field}>
-              <Text size="2">{mode === "offer" ? "Invitation to send" : "Answer to send"}</Text>
+            <div className={styles.field}>
+              <Text as="label" htmlFor="lan-outgoing" size="2">
+                {mode === "offer" ? "Invitation to send" : "Answer to send"}
+              </Text>
               <TextArea
+                id="lan-outgoing"
                 className={styles.textarea}
                 aria-label={mode === "offer" ? "LAN invitation" : "LAN answer"}
                 readOnly
@@ -149,16 +173,17 @@ export function LanPanel({ game }: { game: GameHandle }) {
                 rows={7}
               />
               <Button type="button" variant="soft" onClick={() => void copyOutgoing()}>
-                Copy text
+                Copy {mode === "offer" ? "invitation" : "answer"}
               </Button>
-            </label>
+            </div>
           )}
           {(mode === "none" || mode === "offer") && (
-            <label className={styles.field}>
-              <Text size="2">
+            <div className={styles.field}>
+              <Text as="label" htmlFor="lan-incoming" size="2">
                 {mode === "offer" ? "Paste the other player's answer" : "Paste an invitation"}
               </Text>
               <TextArea
+                id="lan-incoming"
                 className={styles.textarea}
                 aria-label={mode === "offer" ? "LAN answer to connect" : "LAN invitation to join"}
                 value={incoming}
@@ -166,7 +191,10 @@ export function LanPanel({ game }: { game: GameHandle }) {
                 rows={6}
                 spellCheck={false}
               />
-            </label>
+              <Button type="button" variant="soft" onClick={() => void pasteFromClipboard()}>
+                Paste from clipboard
+              </Button>
+            </div>
           )}
           <Flex justify="between" gap="2" wrap="wrap">
             <Flex gap="2" wrap="wrap">

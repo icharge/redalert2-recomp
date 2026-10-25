@@ -9,15 +9,12 @@ const opts = options(process.argv.slice(2));
 opts.pageArgs.push("--mute", "--debuglog", "--env", "HLE_NETTRACE=1");
 const namedGame = (name) => {
   const ini = readFileSync(path.resolve(opts.testGame, "RA2MD.INI"), "utf8");
-  const serial = Buffer.from(readFileSync(path.resolve(opts.testGame, "woldata.key")));
-  if (name === "BrowserHost") serial[0] = serial[0] === 0x39 ? 0x38 : serial[0] + 1;
   const handle = [...name].map((character) => character.charCodeAt(0).toString(16)).join(",");
   const lanIni = ini.replace(/(\[LAN\][^[]*?\bScenIndex=)\d+/i, (_match, prefix) => `${prefix}0`);
   return {
     ...opts,
     gameFileOverrides: {
       "RA2MD.INI": Buffer.from(lanIni.replace(/^Handle=.*$/m, `Handle=${handle},`)),
-      "woldata.key": serial,
     },
   };
 };
@@ -44,6 +41,13 @@ try {
     host.waitFor("host main menu", (state) => state?.phase === "running"),
     guest.waitFor("guest main menu", (state) => state?.phase === "running"),
   ]);
+  const keys = await Promise.all([host, guest].map((run) => run.page.evaluate(() => {
+    const bytes = window.Module?.FS?.readFile("/game/woldata.key");
+    return bytes ? Array.from(bytes) : null;
+  })));
+  assert.ok(keys.every((key) => key?.length === 128 && key.every((byte) => byte >= 0x30 && byte <= 0x39)),
+    "each HLE client must stage a 128-digit WOL key");
+  assert.notDeepEqual(keys[0], keys[1], "LAN clients must receive distinct WOL keys");
 
   await Promise.all([openLan(host), openLan(guest)]);
   await host.page.getByRole("button", { name: "Create invitation" }).click();
