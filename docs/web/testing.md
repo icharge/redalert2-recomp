@@ -429,11 +429,13 @@ holds the pure summary and comparison (`node --test e2e/perf-report.test.mjs` in
   `samples/`. `--baseline <run.json>` prints each measure against that run with its pass-bar verdict.
 - **CPU** is the Chrome processes' CPU time read by the OS once a second (a PowerShell loop filtered by the
   profile's path), as a percentage of one core, so a figure above 100 means more than one core busy.
-- **The busy moment and the soak are blocked.** The design's busy case is a skirmish with many units,
-  loaded from a save made by `e2e/make-busy-save.mjs`, which sets up an eight-player Team Alliance match (the
-  human with three allied AIs against four) at Game Speed 6. No save was made. A match ends when the human's side
-  loses (1:39 in Free For All, 8:08 in Team Alliance, both with the human idle), and the game then freezes on its
-  Skirmish Score screen, where the save step hangs. The attempt to keep the human alive by deploying the MCV
-  (select it on the middle pad, then D, with `--debuglog`) was not logged as a DEPLOY order. Until that works,
-  `perf.mjs` rejects `--moments busy`, `--save` and `--soak-minutes`. Resolution is a launcher setting for the
-  next launch, not a switch in a running game, so a soak would use the presenter's scale-mode switches instead.
+- **The busy moment and the soak are blocked.** The design's busy case is a skirmish with many units, loaded from
+  a save made by `e2e/make-busy-save.mjs`: an eight-player Team Alliance match (the human with three allied AIs
+  against four) at game speed 5, saved through the game's own Save Game menu after about four minutes of play.
+  The battle ran with the human alive, but no save was made in two attempts. Attempt one opened the in-game menu
+  at 800x600 and the save clicks missed. Attempt two clicked the 800x600 positions while the menu was at 1280x720
+  (a mistake of the script's, not of the game): the positions that worked earlier at 1280x720 are Save Game
+  (1194, 289), the first slot (560, 200), Save (1194, 239), then the box's OK. The screenshots are in the
+  scratchpad's `busy-shots5` and `busy-shots6` folders. Until a save is made, `perf.mjs` rejects `--moments busy`
+  and `--soak-minutes` (`loadBusySave` stops with an error). Resolution is a launcher setting for the next launch,
+  not a switch in a running game, so a soak would use the presenter's scale-mode switches instead.

@@ -50,7 +50,8 @@ export const at = {
   // Skirmish Game: the first "None" row's dropdown arrow; a row's dropdown lists None, Easy, Medium
   // and Brutal, Brutal being the item 92 game pixels below the arrow
   shortGameToggle: [80, 296],
-  gameSpeedEnd: [478, 296],
+  gameSpeedLeft: [406, 296], // the slider's left end: 0
+  gameSpeedFive: [462, 296], // the handle at 5, the game's normal speed (the setup screen's default)
 };
 
 /** The 8 player rows' dropdown arrows, rows 3 to 8 (rows 1 and 2 are the human and the Brutal AI). */
@@ -101,11 +102,21 @@ export async function setUpBusySkirmish(t, { log = console.log } = {}) {
   }
   await t.clickGame(...at.shortGameToggle);
   await t.page.waitForTimeout(800);
-  await t.clickGame(...at.gameSpeedEnd);
-  await t.page.waitForTimeout(800);
+  await setGameSpeedFive(t);
   log(
-    "skirmish set: Team Alliance, Territorial Imperative (2-8), 7 Brutal AIs (human + 3 on team A), game speed to the end, Short Game off",
+    "skirmish set: Team Alliance, Territorial Imperative (2-8), 7 Brutal AIs (human + 3 on team A), game speed 5, Short Game off",
   );
+}
+
+/**
+ * The game speed set to 5 on the Skirmish Game screen: the slider goes to 0 at its left end, then a click at
+ * the handle's 5 position sets 5. The early skirmish and the busy save both use this, so no setting carries over.
+ */
+export async function setGameSpeedFive(t) {
+  await t.clickGame(...at.gameSpeedLeft);
+  await t.page.waitForTimeout(800);
+  await t.clickGame(...at.gameSpeedFive);
+  await t.page.waitForTimeout(800);
 }
 
 /** From the Skirmish Game screen to the battle. */
@@ -113,4 +124,15 @@ export async function startBattle(t) {
   await t.clickGame(...at.startGame);
   await t.waitFor("the battle", (s) => (s?.fps ?? 0) > 0, 240);
   await t.page.waitForTimeout(5000); // the load's own frames are over
+}
+
+/**
+ * The busy save's load (Single Player, Load Saved Game, the save, Load). Not available: no save could be made
+ * (docs/web/testing.md, "The frame benchmark"), so this stops rather than guessing the load screen.
+ */
+export async function loadBusySave(t, savePath) {
+  await t.browser.close().catch(() => {});
+  throw new Error(
+    `the busy save cannot be loaded yet: no save was made (${savePath}); see the task report`,
+  );
 }

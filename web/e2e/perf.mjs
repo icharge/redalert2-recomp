@@ -1,18 +1,22 @@
 // The browser performance benchmark (docs/superpowers/specs/2026-10-26-web-frame-performance-design.md,
 // section 1). Samples the game once a second in Chrome and writes one run.json per run.
 //
-//   node e2e/perf.mjs [--sizes 1280x720,1920x1080,2560x1440] [--hd off,on] [--moments early,menu]
-//                     [--seconds 60] [--out work/perf/<date>] [--baseline <run.json>] [--append]
+//   node e2e/perf.mjs [--sizes 1280x720,1920x1080,2560x1440,3840x2160] [--hd off,on]
+//                     [--moments early,busy,menu] [--repeats 2] [--seconds 60] [--save work/perf/busy.sav]
+//                     [--soak-minutes 0] [--out work/perf/<date>] [--baseline <run.json>] [--append]
 //                     [--profile work/perf/profile] [--game game] [--headed]
 //
 // The defaults are early skirmishes and the main menu at 720p, 1080p and 1440p, HD vehicles off and on
-// (60 s each: 30 s untouched, then 30 s of right-button panning), and the main menu untouched for 30 s.
-// Cases are keyed "WxH/hd-on|hd-off/early" and "menu/idle". `--append` merges this run's cases into the
-// run.json at --out (for the same build only), so the matrix can run in chunks. Relative paths are the repo
-// root's. Each command must finish within 10 minutes: run longer ones in the background.
-//
-// The busy save (--moments busy, --save, --soak-minutes) is not available: make-busy-save.mjs cannot make
-// a save yet (docs/web/testing.md). Unknown arguments are an error.
+// (60 s each: 30 s untouched, then 30 s of right-button panning), the main menu untouched for 30 s. Each
+// early case is run --repeats times (default 2, each a new launch); run.json holds the last run, and the
+// first run's summary is kept beside it as firstRun. Every skirmish sets game speed 5 on the setup screen,
+// and each case records the speed and the picture size the game reported.
+// --moments busy loads --save (made by make-busy-save.mjs) at each size, 4K included, with each HD state.
+// --soak-minutes N runs the busy save at 2560x1440 for N minutes with HD vehicles off and on and the
+// presenter's scale mode switched, reloading the save if the match ends. Cases are keyed
+// "WxH/hd-on|hd-off/early|busy", "menu/idle" and "soak/2560x1440/hd-on/busy". --append merges this run's
+// cases into the run.json at --out (for the same build only). Relative paths are the repo root's. Each
+// command must finish within 10 minutes: run longer ones in the background.
 //
 // The first run imports ../game into --profile (a persistent Chrome profile under work/, git-ignored)
 // through the Import screen; later runs reuse it. Games are opened from the profile, not from a folder:
@@ -25,7 +29,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { options, startPage } from "./lib.mjs";
 import { compare, summarize } from "./perf-report.mjs";
-import { at, openGame, settle } from "./perf-nav.mjs";
+import { at, gameUrl, loadBusySave, openGame, setGameSpeedFive, settle } from "./perf-nav.mjs";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const argv = process.argv.slice(2);
@@ -37,6 +41,7 @@ const VALUE_FLAGS = new Set([
   "--moments",
   "--seconds",
   "--soak-minutes",
+  "--repeats",
   "--save",
   "--out",
   "--baseline",
@@ -71,6 +76,8 @@ const hdStates = list("--hd", "off,on");
 const moments = list("--moments", "early,menu");
 const seconds = Number(flag("--seconds", 60));
 const soakMinutes = Number(flag("--soak-minutes", 0));
+const repeats = Number(flag("--repeats", 2));
+const savePath = path.resolve(repo, flag("--save", "work/perf/busy.sav"));
 const today = new Date().toLocaleDateString("en-CA"); // the local date, YYYY-MM-DD
 const outDir = path.resolve(repo, flag("--out", `work/perf/${today}`));
 const profile = path.resolve(repo, flag("--profile", "work/perf/profile"));
@@ -83,12 +90,14 @@ for (const m of moments)
     throw new Error(`--moments ${m}: use early, busy or menu`);
 for (const h of hdStates)
   if (!["off", "on"].includes(h)) throw new Error(`--hd ${h}: use off or on`);
-// The busy save is blocked: make-busy-save.mjs cannot deploy the MCV, so no save is made (see the task
-// report, and docs/web/testing.md). Its moments fail here rather than running half-wired code.
-if (moments.includes("busy") || soakMinutes > 0 || argv.includes("--save"))
-  throw new Error(
-    "the busy save is not available yet: make-busy-save.mjs cannot make a save (docs/web/testing.md)",
-  );
+for (const m of moments)
+  if (!["early", "busy", "menu"].includes(m))
+    throw new Error(`--moments ${m}: use early, busy or menu`);
+for (const h of hdStates)
+  if (!["off", "on"].includes(h)) throw new Error(`--hd ${h}: use off or on`);
+if (!(repeats >= 1)) throw new Error(`--repeats ${repeats}: use 1 or more`);
+if ((moments.includes("busy") || soakMinutes > 0) && !existsSync(savePath))
+  throw new Error(`no save at ${savePath}: make it with e2e/make-busy-save.mjs`);
 
 // --game is the import folder here, so lib.mjs must not read it as a test folder
 const base = {
@@ -226,28 +235,62 @@ function startPanning(t, size) {
   };
 }
 
-/** Samples once a second for `total` seconds. Panning starts at second `pan` (null: never). */
-async function sample(t, { total, pan = null }) {
-  const cdp = await t.page.context().newCDPSession(t.page);
+/**
+ * Samples once a second for `total` seconds. Panning starts at second `pan` (null: never). `actions` run once
+ * each, when their second comes: [{ at, run }]. With `reload` (the soak), five seconds with no game frames
+ * (the match has ended) call it to reload the save; the next sample is marked reloaded.
+ */
+async function sample(t, { total, pan = null, actions = [], reload = null }) {
+  let cdp = await t.page.context().newCDPSession(t.page);
   const size = (await t.state())?.size ?? { w: 1280, h: 720 };
   const rows = [];
   let last = { cpu: sampler.latest(), counters: null };
   let stopPanning = null;
+  let zeroFrames = 0;
+  let reloaded = false;
+  const pending = [...actions].sort((a, b) => a.at - b.at);
   const begin = Date.now();
   for (let s = 0; s < total; s++) {
     const elapsed = (Date.now() - begin) / 1000;
+    while (pending.length && pending[0].at <= elapsed) await pending.shift().run();
     if (pan !== null && !stopPanning && elapsed >= pan) stopPanning = startPanning(t, size);
     if (stopPanning?.failure()) throw stopPanning.failure();
     await t.page.waitForTimeout(1000);
     const row = await readSample(t, cdp, last);
+    if (reloaded) {
+      row.reloaded = true;
+      reloaded = false;
+    }
     last = { cpu: row.cpu, counters: row.counters };
     delete row.cpu;
     delete row.counters;
     rows.push(row);
+    zeroFrames = row.fps === 0 ? zeroFrames + 1 : 0;
+    if (reload && zeroFrames >= 5) {
+      log("the match has ended (no game frames for 5 s): reloading the save");
+      if (stopPanning) await stopPanning.stop();
+      stopPanning = null;
+      await cdp.detach();
+      await reload();
+      cdp = await t.page.context().newCDPSession(t.page);
+      last = { cpu: sampler.latest(), counters: null };
+      zeroFrames = 0;
+      reloaded = true;
+      if (pan !== null) stopPanning = startPanning(t, size);
+    }
   }
   if (stopPanning) await stopPanning.stop();
   await cdp.detach();
   return rows;
+}
+
+/** The presenter's scale mode (Play.tsx cycles the same setting): the page's own mode switch. */
+async function setScaleMode(t, mode) {
+  await t.page.evaluate(
+    (m) => window.Module.cwrap("ra2_setting", null, ["number", "number", "number"])(0, m, 0),
+    mode,
+  );
+  await t.page.waitForTimeout(1500);
 }
 
 /** Turns the HD vehicles setting on or off, as measure.mjs does, and waits for the game to show it. */
@@ -270,9 +313,17 @@ async function openEarly(video) {
   await t.page.waitForTimeout(4000);
   await t.clickGame(...at.skirmish);
   await t.page.waitForTimeout(4000);
+  await setGameSpeedFive(t);
   await t.clickGame(...at.startGame);
   await t.waitFor("the battle", (s) => (s?.fps ?? 0) > 0, 240);
   await t.page.waitForTimeout(5000); // the load's own frames are over
+  return t;
+}
+
+/** The busy save at a picture size: the game's own Load Saved Game, then the battle. */
+async function openBusy(video) {
+  const t = await openGame(base, { video });
+  await loadBusySave(t, savePath);
   return t;
 }
 
@@ -286,21 +337,34 @@ async function withGame(open, body) {
   }
 }
 
-/** One moment at one size, with each HD state in turn: one case each. */
-async function runMoment(size, hdList) {
-  const cases = {};
-  await withGame(
-    () => openEarly(size),
-    async (t) => {
-      for (const hd of hdList) {
-        await setHd(t, hd === "on");
-        const key = `${size}/hd-${hd}/early`;
-        log(`case ${key}: ${seconds} s`);
-        cases[key] = await sample(t, { total: seconds, pan: seconds / 2 });
-      }
-    },
-  );
-  return cases;
+/**
+ * One size of a moment, with each HD state in turn in one launch. Early cases run `repeats` times, a new
+ * launch each. Result: { [key]: { runs: [rows, ...], gameSpeed, size } }, the size as the game reported it.
+ */
+async function runMoment(moment, size, hdList) {
+  const results = {};
+  const runs = moment === "early" ? repeats : 1;
+  for (let r = 1; r <= runs; r++) {
+    await withGame(
+      () => (moment === "busy" ? openBusy(size) : openEarly(size)),
+      async (t) => {
+        const reported = (await t.state())?.size ?? null;
+        for (const hd of hdList) {
+          await setHd(t, hd === "on");
+          const key = `${size}/hd-${hd}/${moment}`;
+          log(`case ${key}, run ${r} of ${runs}: ${seconds} s`);
+          const rows = await sample(t, { total: seconds, pan: seconds / 2 });
+          results[key] ??= {
+            runs: [],
+            gameSpeed: moment === "busy" ? "5 (in the save)" : 5,
+            size: reported,
+          };
+          results[key].runs.push(rows);
+        }
+      },
+    );
+  }
+  return results;
 }
 
 async function runMenu() {
@@ -308,13 +372,86 @@ async function runMenu() {
     () => openGame(base, { video: "1280x720" }),
     async (t) => {
       log("case menu/idle: 30 s untouched");
-      return { "menu/idle": await sample(t, { total: 30 }) };
+      const rows = await sample(t, { total: 30 });
+      return {
+        "menu/idle": { runs: [rows], gameSpeed: null, size: (await t.state())?.size ?? null },
+      };
     },
   );
 }
 
-/** Writes run.json: this run's cases, merged into the file's when --append. Samples go beside it. */
-function writeRun(cases) {
+/**
+ * The soak: N minutes of the busy save at 2560x1440. HD vehicles on; off at 20% and on again at 40%; the
+ * scale mode switched to 1 at 60% and to 2 at 80%. The save is reloaded if the match ends (five seconds with
+ * no game frames), with the HD and scale settings put back.
+ */
+async function runSoak(minutes) {
+  const total = minutes * 60;
+  const key = "soak/2560x1440/hd-on/busy";
+  return withGame(
+    () => openBusy("2560x1440"),
+    async (t) => {
+      let hd = true;
+      let scale = 0;
+      await setHd(t, true);
+      log(`case ${key}: ${minutes} min`);
+      const rows = await sample(t, {
+        total,
+        pan: 0,
+        actions: [
+          {
+            at: total * 0.2,
+            run: async () => {
+              hd = false;
+              await setHd(t, false);
+            },
+          },
+          {
+            at: total * 0.4,
+            run: async () => {
+              hd = true;
+              await setHd(t, true);
+            },
+          },
+          {
+            at: total * 0.6,
+            run: async () => {
+              scale = 1;
+              await setScaleMode(t, 1);
+            },
+          },
+          {
+            at: total * 0.8,
+            run: async () => {
+              scale = 2;
+              await setScaleMode(t, 2);
+            },
+          },
+        ],
+        reload: async () => {
+          await t.page.goto(gameUrl(base, "2560x1440"));
+          await t.waitFor("the main menu", (s) => s?.phase === "running", 300);
+          await loadBusySave(t, savePath);
+          await setHd(t, hd);
+          await setScaleMode(t, scale);
+        },
+      });
+      return {
+        [key]: {
+          runs: [rows],
+          gameSpeed: "5 (in the save)",
+          size: (await t.state())?.size ?? null,
+        },
+      };
+    },
+  );
+}
+
+/**
+ * Writes run.json: each case's last run, with the first run's summary kept as firstRun when there were two,
+ * and its gameSpeed and size; merged into the file's cases when --append. Samples go beside it, one file per run.
+ */
+function writeRun(results) {
   const { id, buildType } = build();
   const runPath = path.join(outDir, "run.json");
   const run = { date: today, build: id, buildType, cases: {} };
@@ -327,12 +464,19 @@ function writeRun(cases) {
     run.date = old.date;
     run.cases = { ...old.cases };
   }
-  for (const [key, rows] of Object.entries(cases)) {
-    run.cases[key] = summarize(rows);
-    writeFileSync(
-      path.join(outDir, "samples", `${key.replaceAll("/", "_")}.json`),
-      JSON.stringify(rows, null, 1),
-    );
+  for (const [key, result] of Object.entries(results)) {
+    const last = result.runs.at(-1);
+    run.cases[key] = {
+      ...summarize(last),
+      gameSpeed: result.gameSpeed,
+      size: result.size,
+      ...(result.runs.length > 1 ? { firstRun: summarize(result.runs[0]) } : {}),
+    };
+    const stem = key.replaceAll("/", "_");
+    result.runs.forEach((rows, i) => {
+      const name = result.runs.length > 1 ? `${stem}_run${i + 1}` : stem;
+      writeFileSync(path.join(outDir, "samples", `${name}.json`), JSON.stringify(rows, null, 1));
+    });
   }
   writeFileSync(runPath, JSON.stringify(run, null, 2));
   return run;
@@ -376,18 +520,16 @@ let exitCode = 0;
 sampler = startCpuSampler();
 try {
   await ensureImported();
-  let cases = {};
-  if (moments.includes("early")) {
-    for (const size of sizes) {
-      cases = { ...cases, ...(await runMoment(size, hdStates)) };
-      writeRun(cases);
-    }
-  }
-  if (moments.includes("menu")) {
-    cases = { ...cases, ...(await runMenu()) };
-    writeRun(cases);
-  }
-  const run = writeRun(cases);
+  let results = {};
+  if (moments.includes("early"))
+    for (const size of sizes)
+      results = { ...results, ...(await runMoment("early", size, hdStates)) };
+  if (moments.includes("busy"))
+    for (const size of sizes)
+      results = { ...results, ...(await runMoment("busy", size, hdStates)) };
+  if (moments.includes("menu")) results = { ...results, ...(await runMenu()) };
+  if (soakMinutes > 0) results = { ...results, ...(await runSoak(soakMinutes)) };
+  const run = writeRun(results);
   log(`wrote ${path.join(outDir, "run.json")}: ${Object.keys(run.cases).length} cases`);
   if (baselinePath) printCompare(run, JSON.parse(readFileSync(path.resolve(baselinePath), "utf8")));
 } catch (error) {

@@ -42,28 +42,30 @@ there is nothing to do and less memory for the picture.
   with HD on; publish cost 0.33 ms off, 1.59 ms on. Nothing was measured at
   1080p, 1440p or 4K, in a busy match, or for CPU and memory.
 - **Baseline, 26 October 2026** (`perf.mjs`, the release build `ef2b94fc673f9950`, Yuri's Revenge build
-  `53959836c46852af`, build type Release, headed Chrome on the developer's Windows machine, one 60 s sample a case:
-  30 s untouched, then 30 s of panning; `work/perf/baseline/run.json`). The "early" skirmish is the default one:
-  one Brutal AI. **Not measured:** the busy matrix and the 10-minute soak. The busy save is blocked (see
-  `docs/web/testing.md`, "The frame benchmark"). Medians of the samples; late frames are the sum; memory is
-  the wasm heap at its peak.
-  Caution: an earlier run of the same cases (same build, before the presenter-counter and OS-CPU fixes) gave
-  62 fps for 720p HD off where this one gives 85, and the 1% lows and worst gaps swing widely. The machine was
-  shared with other sessions' Chrome and dev servers while these ran, so re-run before comparing small changes.
+  `53959836c46852af`, build type Release, headed Chrome on the developer's Windows machine). Each early case ran
+  twice, each run a new launch, 60 s a sample: 30 s untouched, then 30 s of panning. Every skirmish set game speed 5
+  on the setup screen (the setup screen's normal speed, the value it starts at). `work/perf/baseline/run.json` holds
+  the second run and each case's `firstRun`. The early skirmish is the default one: one Brutal AI.
+  **Not measured:** the busy matrix (1280x720 to 3840x2160) and the 10-minute soak. The busy save was not made: two
+  attempts failed (see `docs/web/testing.md`, "The frame benchmark").
+  **Caveats:** the two runs of an HD-on case differ by more than 5 fps (the table shows both); the picture the game
+  reported differs from the requested size for the 1920x1080 and 2560x1440 cases (it reported 1280x720 and 1920x1080),
+  so those rows are not at the size their names say; the machine was shared with other sessions' Chrome and dev
+  servers while these ran.
 
-  | Case | fps | 1% low fps | worst gap ms | late | publish ms | draw ms | CPU % | wasm MiB |
-  |---|---|---|---|---|---|---|---|---|
-  | 1280x720, HD off, early | 85 | 14 | 253 | 319 | 0.41 | 0.22 | 245 | 531 |
-  | 1280x720, HD on, early | 41 | 27 | 117 | 835 | 1.76 | 0.59 | 259 | 531 |
-  | 1920x1080, HD off, early | 62 | 56 | 73 | 38 | 0.44 | 0.24 | 249 | 481 |
-  | 1920x1080, HD on, early | 29 | 19 | 96 | 1563 | 2.38 | 0.49 | 235 | 481 |
-  | 2560x1440, HD off, early | 58 | 35 | 64 | 293 | 1.03 | 0.49 | 242 | 724 |
-  | 2560x1440, HD on, early | 26 | 14 | 130 | 1444 | 4.73 | 1.24 | 264 | 724 |
-  | main menu, idle (30 s) | - | - | - | - | 0.91 | 0.44 | 259 | 454 |
+  | Case (early skirmish, speed 5) | game picture reported | fps median, run 2 (run 1) | 1% low fps, run 2 (run 1) | worst gap ms | late | publish ms | draw ms | CPU % | wasm MiB |
+  |---|---|---|---|---|---|---|---|---|---|
+  | 1280x720, HD off | 1280x720 | 62 (62) | 59 (57) | 70 | 6 | 0.35 | 0.22 | 266 | 545 |
+  | 1280x720, HD on | 1280x720 | 48 (60) | 37 (35) | 53 | 361 | 1.69 | 0.73 | 263 | 545 |
+  | 1920x1080, HD off | 1280x720 | 62 (62) | 61 (62) | 32 | 9 | 0.88 | 0.50 | 264 | 710 |
+  | 1920x1080, HD on | 1280x720 | 25 (42) | 20 (36) | 75 | 1494 | 4.09 | 0.94 | 260 | 710 |
+  | 2560x1440, HD off | 1920x1080 | 62 (62) | 62 (61) | 25 | 1 | 0.20 | 0.13 | 259 | 768 |
+  | 2560x1440, HD on | 1920x1080 | 60 (31) | 51 (22) | 48 | 46 | 1.01 | 0.41 | 260 | 768 |
+  | main menu, idle (30 s, one run) | 800x600 | - | - | - | - | 1.04 | 0.48 | 263 | 568 |
 
-  The CPU column is the Chrome processes' CPU time over the sample, as a percentage of one core, so 245 means
-  about 2.5 cores busy. The menu is idle yet uses about 2.6 cores; the spin described below is the likely cause,
-  not yet confirmed by the probes in section 3. With HD vehicles on, the game falls to 26 to 41 fps; the target is 60.
+  The CPU column is the Chrome processes' CPU time over the sample, as a percentage of one core. The menu is idle yet
+  uses about 2.6 cores; the spin described below is the likely cause, not yet confirmed by the probes in section 3.
+  With HD vehicles on, fps is 25 to 60 in these runs; the target is 60 at 720p to 1440p.
 
 - **CPU spin, on purpose.** pcrecomp's web `wait_ms` spins out any `Sleep` under
   20 ms and the last 16 ms of a longer one (`kernel32.c`, around line 299),
