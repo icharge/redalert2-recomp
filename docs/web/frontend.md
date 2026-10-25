@@ -19,7 +19,7 @@ browser needs from the player. The game draws and plays on its own thread
 | Routing | none: four screens, chosen by state |
 | Build | Vite, with `vite-plugin-pwa` for the service worker |
 | Package manager | pnpm, lockfile committed |
-| Lint and format | ESLint (typescript-eslint, react-hooks), Prettier |
+| Lint and format | ESLint (typescript-eslint, react-hooks), Prettier. CI runs both; a pre-commit hook (`.githooks/`, set up by `pnpm install`) formats and lints the staged files with lint-staged |
 | Tests | Vitest and Testing Library for the page, Playwright for the game ([testing.md](testing.md)) |
 
 ## Layout

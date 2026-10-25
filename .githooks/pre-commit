@@ -1,0 +1,10 @@
+#!/bin/sh
+# Formats (Prettier) and lints (ESLint) the staged files under web/, through
+# lint-staged; its config is in web/package.json. `pnpm install` in web/ points
+# git at this folder (the "prepare" script).
+git diff --cached --name-only --diff-filter=ACMR -- web/ | grep -q . || exit 0
+if ! command -v pnpm >/dev/null 2>&1; then
+  echo "pre-commit: pnpm not found, skipping the web/ checks" >&2
+  exit 0
+fi
+cd web && exec pnpm exec lint-staged
