@@ -1,0 +1,440 @@
+# Browser Frame Performance Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** The browser build holds 60 game fps from 1280x720 to 2560x1440 with HD vehicles on in a busy match, with less idle CPU and less memory for the picture.
+
+**Architecture:** A benchmark records a baseline first. The game thread then publishes the raw screen (16-bit, 8-bit + palette, or 32-bit) into three buffers, and the HD vehicles as two persistent layers plus a list of changed rectangles. A WebGL2 presenter on the page uploads them from shared memory and one shader converts, composites, draws the blurred bars and scales. The 2D presenter stays as a fallback. Then pcrecomp's web waits stop spinning where measurement allows, and buffer lifetimes and memory limits are fixed.
+
+**Tech Stack:** C (Emscripten 32-bit wasm, pthreads), pcrecomp `win32hle` (`../pcrecomp`), TypeScript + React + Vitest (`web/`), WebGL2 / GLSL ES 3.00, Node e2e with `playwright-core` and the Chrome DevTools Protocol (`web/e2e/`), Python checks (`tools/`).
+
+**Spec:** [docs/superpowers/specs/2026-10-26-web-frame-performance-design.md](../specs/2026-10-26-web-frame-performance-design.md)
+
+## Global Constraints
+
+- Browser build only. Native Windows and Linux builds keep their behaviour; pcrecomp changes stay under `#ifdef __EMSCRIPTEN__`, and `hdvox_compose` stays for the native builds and the 2D fallback.
+- Both editions build and pass: Yuri's Revenge (default) and Red Alert 2 (`$env:RA2_TARGET='game'`).
+- Measure release links only (`-DWEB_LINK_OPT=` empty, `-O3`); an `-O1` link is not a measure of the release. Headed Chrome, browser in front.
+- Pass bar, verbatim from the spec: game fps median ≥ 60 and 1% low ≥ 55 (720p–1440p, HD on, busy); worst frame gap ≤ 33 ms in a 60 s sample; main-thread time per animation frame ≤ 4 ms; idle main-menu CPU at least 40% below the baseline; in-match CPU no higher than the baseline at the same fps; wasm memory no growth after the first minute of a 10-minute busy run at 1440p HD with mode switches; 3840x2160 runs, recorded, no target.
+- Every CPU change (Tasks 8–10) is kept only if the benchmark shows median fps, 1% low and worst gap no worse than before it.
+- Shared struct changes go after `pointer_y` in `ra2_shared_t`, with `_Static_assert`s on their offsets; `RA2_WEB_PROTOCOL` goes from 7 to 8 in `src/web/web_api.h` and `web/src/game/protocol.ts` together.
+- Preserve other sessions' uncommitted work here and in `../pcrecomp`: stage only this plan's hunks (`git add -p`). Agree before publishing to `web/public/game/`.
+- The game's data and the busy save game are not committed; fixtures live outside version control.
+- Networking is out of scope (it is [the WOL latency plan](2026-10-25-wol-latency.md)).
+
+## Review Focus
+
+1. **The screen size changes mid-run** (the 800x600 menu shell to the match size, a resolution change in Settings, HD toggled with F10): buffers must be reallocated, the old ones freed only once the page has let go, and the textures resized, with no stale-size picture or crash. Tests: Task 3 `resize_frees_only_after_release`, Task 4 `reallocates textures when the size changes`, Task 11's mode-switch soak.
+2. **Wasm memory grows while the page holds views** (the game allocates, `HEAPU8.buffer` is replaced): the presenter must take fresh views every frame, never cache one. Test: Task 4 `takes fresh memory views each frame`.
+3. **More unit records than the rectangle list holds** (a big battle, 256+ records): the page must upload the whole layers, not drop rectangles. Tests: Task 5 `overflow_marks_whole_layer` and `uploads whole layers when the list overflowed`.
+4. **WebGL context lost** (GPU reset, the tab backgrounded on some drivers): the last picture stays, and on restore the textures come back and a republish is asked for. Test: Task 4 `asks for a republish after the context is restored`.
+5. **The page reads a buffer while the game would write it** (a slow animation frame): with three buffers the game never picks the one in `read_index`. Test: Task 3 `pick_skips_reading_and_newest`.
+
+---
+
+## File map
+
+| File | Status | Responsibility |
+|---|---|---|
+| `web/e2e/perf.mjs` | create | the benchmark matrix runner (CLI) |
+| `web/e2e/perf-report.mjs` | create | pure: summarise samples, compare with a baseline |
+| `web/e2e/perf-report.test.mjs` | create | `node:test` for the above |
+| `web/e2e/wait-probe.mjs` + `web/e2e/wait-probe.html` | create | worker wait-precision probe |
+| `src/web/frame_buffers.c/.h` | create | the three picture buffers: pick, publish, release, free |
+| `src/web/frame_buffers_selftest.c` | create | emcc + Node selftest |
+| `src/web/hd_layers.c/.h` | create | the two HD layers and the changed-rectangle list |
+| `src/web/hd_layers_selftest.c` | create | emcc + Node selftest |
+| `src/runtime/hdvox.c/.h` | modify | add `hdvox_visit_published` (records read-only, under the publish lock) |
+| `src/web/presenter.c` | modify | raw publish through `frame_buffers`, HD layers, `presentMode`, clock stats |
+| `src/web/web_api.h` | modify | protocol 8 fields |
+| `src/web/main.c` | modify | `--clockstats`, clock damper |
+| `web/src/game/protocol.ts` | modify | protocol 8 words, `PixelFormat` |
+| `web/src/game/presenter.ts` | modify | becomes `Presenter2d`, implements `GamePresenter` |
+| `web/src/game/gl-presenter.ts` | create | the WebGL2 presenter |
+| `web/src/game/gl-shaders.ts` | create | GLSL sources and the scale-mode numbering |
+| `web/src/game/choose-presenter.ts` | create | WebGL2 or 2D |
+| `web/src/game/gl-presenter.test.ts`, `choose-presenter.test.ts` | create | Vitest with a recording fake `WebGL2RenderingContext` |
+| `web/e2e/gl-pixels.mjs` | create | browser check: `capture()` against CPU reference conversions |
+| `web/src/screens/Play.tsx`, `web/e2e/lib.mjs`, `lobby.mjs`, `movies.mjs` | modify | presenter choice, backdrop removal, `capture()` in tests |
+| `../pcrecomp/runtime/win32hle/kernel32.c` | modify | `wait_ms` margin, critical-section futex |
+| `CMakeLists.txt`, `tools/test_web_memory_budget.py` | modify | new sources; memory limits from measured peaks |
+| `docs/web/{testing,protocol,architecture,progress}.md` | modify | as each task says |
+
+---
+
+### Task 1: Benchmark and baseline
+
+**Files:**
+- Create: `web/e2e/perf-report.mjs`, `web/e2e/perf-report.test.mjs`, `web/e2e/perf.mjs`
+- Modify: `docs/web/testing.md` (a "Performance" section: how to make the busy save, how to run, where results go)
+
+**Interfaces:**
+- Produces: `summarize(samples: Sample[]): CaseSummary` and `compare(run: Run, baseline: Run): Row[]` in `perf-report.mjs`.
+  - `Sample = { fps: number, worstMs: number|null, late: number|null, publishMs: number|null, drawMs: number|null, cpuPct: number|null, wasmBytes: number, jsHeapBytes: number|null, textureBytes: number|null }`
+  - `CaseSummary = { fpsMedian, fps1Low, worstGapMs, late, publishMsMedian, drawMsMedian, cpuPctMedian, wasmPeakBytes, wasmGrowthAfter60s, jsHeapGrowthBytes }`
+  - `Run = { date, build, cases: Record<string /* "1920x1080/hd/busy" */, CaseSummary> }`
+  - `Row = { case, measure, baseline, now, change /* fraction */, pass: boolean|null }`, where `pass` applies the pass bar from Global Constraints and is null for measures without one.
+- Produces: CLI `node e2e/perf.mjs [--sizes 1280x720,1920x1080,2560x1440] [--hd off,on] [--moments early,busy] [--seconds 60] [--save <path to the busy save>] [--out work/perf/<date>] [--baseline <run.json>] [--soak-minutes 10]`, which writes `run.json` and prints the `compare` table when `--baseline` is given.
+
+- [ ] **Step 1: Write the failing tests** in `perf-report.test.mjs` (`node:test`, `node:assert/strict`):
+  - `fps1Low is the 1st percentile`: samples with fps 1..100 → `fps1Low === 1`, `fpsMedian === 50`.
+  - `worst gap is the max of worstMs`: worstMs `[10, 40, 12]` → `worstGapMs === 40`.
+  - `wasm growth counts only after the first 60 samples`: wasmBytes 100 for samples 0–59, then 100, 100, 120 → `wasmGrowthAfter60s === 20`.
+  - `compare marks the fps bar`: an HD/busy case with `fpsMedian 59` → that row `pass === false`; with `60` and `fps1Low 55` → `true`.
+  - `compare marks idle CPU at -40%`: baseline menu `cpuPctMedian 100`, now `61` → `pass === false`; `60` → `true`.
+  - `null-valued samples are ignored in medians`.
+- [ ] **Step 2: Run** `cd web; node --test e2e/perf-report.test.mjs`. Expected: FAIL, module not found.
+- [ ] **Step 3: Implement `summarize` and `compare`** in `perf-report.mjs`. Pure functions, no I/O.
+- [ ] **Step 4: Run** the same command. Expected: PASS.
+- [ ] **Step 5: Implement `perf.mjs`.** Reuse `startPage`, `clickGame` and `rdrag` from `lib.mjs`, and `measure.mjs`'s menu path (Single Player > Skirmish > Start Game) for `early`. For `busy`, load the save the way `e2e/save.mjs` does. Sample once a second:
+  - `fps`, `pacing` from `ra2Store.getSnapshot()`;
+  - `drawMs` from `presenter.counters()` (exposed on `window.ra2Presenter` in Task 4; null until then);
+  - `cpuPct` from the CDP session (`page.context().newCDPSession(page)`, `SystemInfo.getProcessInfo`; the sum of `cpuTime` deltas over one second, as a percentage of one core);
+  - `wasmBytes = Module.HEAPU8.buffer.byteLength`;
+  - `jsHeapBytes` from CDP `Runtime.getHeapUsage`;
+  - `textureBytes` from `window.ra2Presenter?.textureBytes?.()`.
+  Also add one `menu/idle` case: 30 s in the main menu, untouched. Set the resolution with `?video=WxH`, HD with `ra2_setting(2, on, 0)` as `measure.mjs` does. `--soak-minutes N` runs the busy case for N minutes, switching resolution twice and HD off and on once, and keeps every sample.
+- [ ] **Step 6: Make the busy save** in a release build: a 7-AI skirmish at Fastest, played to about 10 minutes with many units on screen, saved. Write its location and how to make it in `docs/web/testing.md`. It is not committed.
+- [ ] **Step 7: Record the baseline** with the current release build (Yuri's Revenge): `node e2e/perf.mjs --save <busy save> --soak-minutes 10 --out work/perf/baseline`. Expected: `run.json` with all 15 cases (3 sizes × 2 HD × 2 moments, plus 4K × 2 HD × busy, plus `menu/idle`); `cpuPct`, `wasmBytes` and `fps` are non-null. Copy the headline numbers (fps per case, menu CPU, wasm peak) into the spec's "What is there today" as a dated "Baseline" table.
+- [ ] **Step 8: Commit**
+
+```bash
+git add web/e2e/perf.mjs web/e2e/perf-report.mjs web/e2e/perf-report.test.mjs docs/web/testing.md docs/superpowers/specs/2026-10-26-web-frame-performance-design.md
+git commit -m "Add the browser performance benchmark and record its baseline"
+```
+
+### Task 2: Probes: wait precision and clock calls
+
+**Files:**
+- Create: `web/e2e/wait-probe.html`, `web/e2e/wait-probe.mjs`
+- Modify: `src/web/main.c` (`--clockstats`), `docs/web/testing.md`
+- Modify: this plan's "Probe results" section at the end
+
+**Interfaces:**
+- Produces: the event `{"e":"clock","qpc":N,"tgt":N,"gtc":N,"sleep":N,"sleep0":N}` once a second while `--clockstats` is on (counts in that second). `web/src/game/protocol.ts` ignores unknown events, so no page change is needed. Tasks 8 and 9 read these numbers.
+- Produces: the wait margin `M` (ms), written in "Probe results" and used by Task 8.
+
+- [ ] **Step 1: Write `wait-probe.html`.** A dedicated Worker loops 200 times for each target of 1, 2, 4, 8 and 16 ms: `Atomics.wait` on a `SharedArrayBuffer` with that timeout (the primitive Emscripten's `usleep` uses in a worker), recording `performance.now()` lateness. It posts `{ target, p50, p95, p99, max }` for each target. The page needs COOP/COEP; serve it from the Vite dev server, which already sends them.
+- [ ] **Step 2: Write `wait-probe.mjs`**, which opens the page in headed Chrome (`lib.mjs`'s launcher), prints the table and writes `work/perf/wait-probe.json`.
+- [ ] **Step 3: Run** `cd web; node e2e/wait-probe.mjs`. Expected: five rows. Record them in "Probe results" and set **M = the smallest of 1, 2, 4, 8, 16 whose p99 lateness is ≤ 1 ms, plus 1**, or 16 (today's value) if none is.
+- [ ] **Step 4: Add `--clockstats` in `main.c`.** Counters are incremented in `ra2_QueryPerformanceCounter` and in new shims for `timeGetTime` and `GetTickCount` added to `g_ra2_shims[]`. They call the HLE's own implementation (look up the HLE's original by name, as the existing shims chain to it) and count. `Sleep` is counted in the same table: `Sleep(0)` as `sleep0`, others as `sleep`. `web_presenter_pump` prints the event once a second when the flag is on. Counting costs one increment; with the flag off, the shims are not installed.
+- [ ] **Step 5: Build** (an `-O1` link is fine for counting) and **run** a menu and a skirmish with `?arg=--clockstats`. Record in "Probe results": calls per second in the main menu and in a match, and whether there is a run of ≥ 1000 clock reads in a second with `sleep` + `sleep0` = 0 (a spin). Task 9 runs only if there is one.
+- [ ] **Step 6: Commit**
+
+```bash
+git add web/e2e/wait-probe.html web/e2e/wait-probe.mjs src/web/main.c docs/web/testing.md docs/superpowers/plans/2026-10-26-web-frame-performance.md
+git commit -m "Probe worker wait precision and the game's clock calls"
+```
+
+### Task 3: Raw publish, three buffers, protocol 8
+
+**Files:**
+- Create: `src/web/frame_buffers.h`, `src/web/frame_buffers.c`, `src/web/frame_buffers_selftest.c`
+- Modify: `src/web/web_api.h`, `src/web/presenter.c`, `CMakeLists.txt:70` (add `src/web/frame_buffers.c`), `web/src/game/protocol.ts`, `docs/web/protocol.md`, `docs/web/testing.md` (the selftest command, beside the WOLAPI one)
+
+**Interfaces:**
+- Produces (C, `frame_buffers.h`):
+  - `typedef struct { uint32_t *ptr[3]; size_t cap[3]; int newest; } frame_bufs_t;`
+  - `int frame_pick(int newest, int reading)`: the index that is neither; `newest`/`reading` may be -1.
+  - `uint8_t *frame_acquire(frame_bufs_t *b, int reading, size_t bytes)`: picks with `frame_pick`, makes sure it holds `bytes`, returns it.
+  - `void frame_publish(frame_bufs_t *b, int index)`: marks it newest.
+  - `void frame_collect(frame_bufs_t *b, int reading)`: frees buffers that are smaller than the current size and neither newest nor `reading` (called at each publish).
+  - The current-size rule: `frame_acquire` with a larger `bytes` than a buffer holds allocates a new one for that slot and queues the old pointer; the old pointer is freed by `frame_collect` once it is neither `reading`'s pointer nor newest.
+- Produces (shared struct, protocol 8, words after `pointerY` = 1043):
+  - `format` 1044 (`RA2_FMT_RGBA = 0`, `RA2_FMT_RGB565 = 1`, `RA2_FMT_PAL8 = 2`, `RA2_FMT_BGRX = 3`)
+  - `framePitch` 1045 (bytes)
+  - `palettePtr` 1046 (256 × `uint32` r|g<<8|b<<16, valid for PAL8)
+  - `readIndex` 1047 (written by the page: the buffer index it is reading, -1 for none)
+  - `frameIndex` 1048 (the index of `framePtr`)
+  - `hdLayer1x` 1049, `hdLayer2x` 1050, `hdRects` 1051, `hdRectCount` 1052, `hdSeq` 1053 (filled in Task 5; 0 until then)
+  - `republish` 1054 (the page sets it to 1 to ask for a full republish; the game clears it)
+  - `presentMode` 1055 (written by the page, read by the game at each publish: 0 = RGBA as today, the default, so today's page keeps working; 1 = raw)
+- Produces (page): `export const PixelFormat = { Rgba: 0, Rgb565: 1, Pal8: 2, Bgrx: 3 } as const` and the new `Shared` words above in `protocol.ts`; `RA2_WEB_PROTOCOL = 8`.
+
+- [ ] **Step 1: Write the failing selftest** `frame_buffers_selftest.c` (plain `main`, `assert`, prints `frame_buffers selftest: ok`):
+  - `pick_skips_reading_and_newest`: `frame_pick(0, 1) == 2`, `frame_pick(2, 0) == 1`, `frame_pick(1, 1)` is 0 or 2, `frame_pick(-1, -1)` is in 0..2.
+  - `acquire_never_returns_the_read_buffer`: publish 0, reading 0, acquire → not `ptr[0]`; publish that, reading 0, acquire → not `ptr[0]` and not the newest.
+  - `resize_frees_only_after_release`: publish at 100 bytes in all three slots, reading 1, acquire 400 bytes three times with publishes. The old `ptr[1]` must still be allocated (check it is still listed as pending) until `frame_collect(b, -1)`; afterwards there is no pending pointer. Count frees with a test `free` hook (`frame_bufs_set_free_hook(void (*)(void *))`, compiled only under `FRAME_BUFFERS_SELFTEST`).
+- [ ] **Step 2: Build and run it**, failing:
+
+```powershell
+& ../emsdk/upstream/emscripten/emcc.exe src/web/frame_buffers_selftest.c src/web/frame_buffers.c -DFRAME_BUFFERS_SELFTEST -sENVIRONMENT=node -sEXIT_RUNTIME=1 -o build-web/frame-buffers-selftest.js
+node build-web/frame-buffers-selftest.js
+```
+Expected: compile error (no `frame_buffers.c`).
+- [ ] **Step 3: Implement `frame_buffers.c`.**
+- [ ] **Step 4: Run** the same commands. Expected: `frame_buffers selftest: ok`.
+- [ ] **Step 5: Change `publish()` in `presenter.c`.** In raw mode (`present_mode == 1`) it copies the surface rows unconverted into `frame_acquire(&bufs, g_sh.read_index, pitch_out * h)`, with `pitch_out = w * bytes per pixel` (2 for RGB565, 1 for PAL8 plus the palette copied into a 1 KiB static that `palette_ptr` points at, 4 for BGRX). It sets `format`, `frame_pitch`, `frame_index`, `frame_ptr`, `frame_w/h`, `game_w/h` (= `frame_w/h` in raw mode: HD no longer doubles the frame), then `frame_publish`, `frame_collect` and the `frame_seq` increment. RGBA mode keeps today's conversion and the `hdvox_compose` path, but through `frame_bufs_t` too, so the leak is fixed in both modes. Remove `g_buf`, `g_cap` and `g_front`. In `present_now`, a set `republish` word does what `g_republish` does, then clears it.
+- [ ] **Step 6: Add the protocol fields** to `ra2_shared_t` with `_Static_assert(offsetof(ra2_shared_t, format) == 1044 * 4, ...)` and one for `republish`, set `RA2_WEB_PROTOCOL 8`, and mirror the words in `protocol.ts`. Update `docs/web/protocol.md`'s struct table.
+- [ ] **Step 7: Run the page tests**: `cd web; pnpm test; pnpm typecheck`. Expected: PASS (`store.test.ts` reads `RA2_WEB_PROTOCOL` from `protocol.ts`, so it follows).
+- [ ] **Step 8: Build Yuri's Revenge and Red Alert 2** (`-O1` link) and run the existing browser smoke (`node e2e/smoke.mjs`). Expected: menu reached and picture lit in both, with the 2D presenter in RGBA mode.
+- [ ] **Step 9: Commit**
+
+```bash
+git add src/web/frame_buffers.* src/web/presenter.c src/web/web_api.h src/web/main.c CMakeLists.txt web/src/game/protocol.ts docs/web/protocol.md docs/web/testing.md
+git commit -m "Publish the screen raw into three buffers, freed once the page lets go"
+```
+
+### Task 4: WebGL2 presenter, HD off
+
+**Files:**
+- Create: `web/src/game/gl-presenter.ts`, `web/src/game/gl-shaders.ts`, `web/src/game/choose-presenter.ts`, `web/src/game/gl-presenter.test.ts`, `web/src/game/choose-presenter.test.ts`, `web/e2e/gl-pixels.mjs`
+- Modify: `web/src/game/presenter.ts` (class renamed `Presenter2d`, implements `GamePresenter`), `web/src/game/presenter.test.ts` (follows the rename), `web/src/screens/Play.tsx:100-105,175-205`, `web/e2e/lib.mjs:187-199`, `web/e2e/lobby.mjs:22-29`, `web/e2e/movies.mjs:22-29`
+
+**Interfaces:**
+- Consumes: Task 3's `Shared` words (including `presentMode`) and `PixelFormat`.
+- Produces (`presenter.ts`):
+
+```ts
+export interface GamePresenter {
+  start(): void;
+  stop(): void;
+  draw(): void;
+  configure(scale: Scale, bars: boolean): void;
+  redraw(): void;
+  counters(): PresenterCounters;
+  gameSize(): { width: number; height: number };
+  cursorWarp(): { seq: number; x: number; y: number };
+  /** the game-sized picture as RGBA, as the game sees it (HD composite included, no bars, no scaling) */
+  /** hd: render at 2w x 2h with the HD layers, for Task 5's check */
+  capture(options?: { hd?: boolean }): Promise<{ width: number; height: number; data: Uint8Array }>;
+  /** bytes held in textures; 0 for the 2D presenter */
+  textureBytes(): number;
+}
+```
+- Produces (`choose-presenter.ts`): `presenterKind(search: URLSearchParams, hasWebGl2: boolean): "gl" | "2d"` (`?presenter=2d` forces 2D).
+- Produces (`gl-presenter.ts`): `new GlPresenter(canvas, memory, shared, cursorOverlay, capturePointer, onFallback: (why: "format" | "context") => void)`. `start()` writes `presentMode = 1`; `Presenter2d.start()` writes `presentMode = 0`.
+- Produces (`gl-shaders.ts`): `SCALE_MODE: Record<Scale, number>` = `{ nearest: 0, smooth: 1, sharp: 2, integer: 3, crt: 4 }`, and `VERTEX_SOURCE` / `FRAGMENT_SOURCE` strings. In this task the fragment shader does format conversion and nearest/smooth only; Task 6 adds the rest.
+- Produces (page): `window.ra2Presenter` = the active presenter, set where `ra2Store` is exposed (tests only).
+
+- [ ] **Step 1: Write the failing tests** in `choose-presenter.test.ts`: `presenterKind(new URLSearchParams(""), true) === "gl"`; `("presenter=2d", true) === "2d"`; `("", false) === "2d"`.
+- [ ] **Step 2: Write the failing tests** in `gl-presenter.test.ts`, with a recording fake `WebGL2RenderingContext` (an object whose methods push `[name, ...args]` onto a list, returning stub objects from `create*`; `getContext("webgl2")` mocked as `presenter.test.ts` mocks `"2d"`):
+  - `uploads a 565 picture with texSubImage2D as RGB565 / UNSIGNED_SHORT_5_6_5`: format word 1, frame 4x2 → a `texSubImage2D` call with those enums, width 4, height 2, and a `Uint16Array` whose `byteOffset` is the frame pointer.
+  - `uploads PAL8 as R8 plus a 256x1 palette texture`.
+  - `does not upload when frameSeq has not moved`: two `draw()`s → one `texSubImage2D`.
+  - `writes readIndex before uploading and -1 after`: `Atomics.store` order seen through the shared words.
+  - `reallocates textures when the size changes`: 4x2 then 8x4 → a second `texImage2D` with 8x4.
+  - `takes fresh memory views each frame`: the `memory()` callback is called once per `draw()`, and a replaced buffer is used on the next draw.
+  - `asks for a republish after the context is restored`: dispatch `webglcontextlost` then `webglcontextrestored` on the canvas → textures recreated, `Shared.republish` word = 1, no `texSubImage2D` while lost.
+  - `falls back on an unknown format`: format word 9 → no upload, `onFallback("format")` called once, and an error line logged once.
+  - `falls back when no WebGL2 context is given`: `getContext("webgl2")` returns null → `onFallback("context")`.
+  - `start writes presentMode 1`.
+  - `sizes the backing store to CSS size × devicePixelRatio`: a `ResizeObserver` entry 400x300 with dpr 2 → `canvas.width === 800`, `height === 600`.
+- [ ] **Step 3: Run** `cd web; pnpm vitest run src/game/gl-presenter.test.ts src/game/choose-presenter.test.ts`. Expected: FAIL, modules not found.
+- [ ] **Step 4: Implement `choose-presenter.ts`, `gl-shaders.ts` and `GlPresenter` in `gl-presenter.ts`.** Context options `{ alpha: false, antialias: false, desynchronized: true, preserveDrawingBuffer: false, powerPreference: "high-performance" }`. Upload from `new Uint16Array(HEAPU8.buffer, ptr, pitch / 2 * h)` with `UNPACK_ROW_LENGTH = pitch / bytesPerPixel`; textures `RGB565` (16-bit), `R8` + 256x1 `RGBA8` palette (PAL8), `RGBA8` (BGRX and RGBA, swizzled in the shader by a `format` uniform). Before the upload, `Atomics.store(readIndex, frameIndex)`; after it, `-1`. The draw is one full-canvas triangle; the letterbox rectangle is computed with the same "contain" math as `input.ts`'s pointer mapping (`Math.min(box.w / pic.w, box.h / pic.h)`, centred), passed as a uniform. `capture()` renders the picture at game size with nearest into a framebuffer and reads it with `readPixels` (flipped to top-down). The cursor code (`setCursor`, `drawCursorOverlay`) moves into a shared helper used by both presenters, unchanged in behaviour.
+- [ ] **Step 5: Run** the same command. Expected: PASS. Then `pnpm test` (the renamed `Presenter2d` tests still pass) and `pnpm typecheck`.
+- [ ] **Step 6: Wire it in.** `Play.tsx` builds `GlPresenter` or `Presenter2d` from `presenterKind(location search, !!document.createElement("canvas").getContext("webgl2"))`; `onFallback` stops the GL presenter and starts a `Presenter2d` on a fresh canvas element (a canvas that had a WebGL context cannot give a 2D one), which writes `presentMode = 0`. `configure(settings.scale, settings.bars)` replaces `configure(settings.scale)`. The 2D presenter also writes `readIndex`, so both modes use the three-buffer guarantee. Expose `window.ra2Presenter` beside `ra2Store`.
+- [ ] **Step 7: Switch the tests' pixel reads to `capture()`.** `lib.mjs`'s `picture(page)` and the checksums in `lobby.mjs` and `movies.mjs` call `await window.ra2Presenter.capture()` instead of `getContext("2d").getImageData`, and take `w`/`h` from its result.
+- [ ] **Step 8: Write and run `e2e/gl-pixels.mjs`.** For the main menu (16-bit), a movie frame (PAL8 if the game uses it; otherwise skip with a note) and a skirmish frame, with the game paused on a still frame, it reads the raw buffer through `Module.HEAPU8` at `framePtr`, converts it on the CPU with the same expansion `presenter.c` uses (`r << 3 | r >> 2`, `g << 2 | g >> 4`), and compares with `capture()`. Run: `node e2e/gl-pixels.mjs`. Expected: `0 differing pixels` for each.
+- [ ] **Step 9: Run the browser suite on both presenters**: `node e2e/playtest.mjs` and `node e2e/playtest.mjs --url "<page>?presenter=2d"` (the `lib.mjs` `--url` option). Expected: the same pass count as before this task.
+- [ ] **Step 10: Commit**
+
+```bash
+git add web/src/game/gl-presenter.ts web/src/game/gl-shaders.ts web/src/game/choose-presenter.ts web/src/game/*.test.ts web/src/game/presenter.ts web/src/game/loader.ts web/src/screens/Play.tsx web/e2e/lib.mjs web/e2e/lobby.mjs web/e2e/movies.mjs web/e2e/gl-pixels.mjs
+git commit -m "Draw the game with WebGL2 from its raw screen, the 2D canvas as fallback"
+```
+
+### Task 5: HD vehicles as two layers
+
+**Files:**
+- Create: `src/web/hd_layers.h`, `src/web/hd_layers.c`, `src/web/hd_layers_selftest.c`
+- Modify: `src/runtime/hdvox.h`, `src/runtime/hdvox.c` (add the visitor next to `hdvox_compose`), `src/web/presenter.c`, `CMakeLists.txt:70`, `web/src/game/gl-presenter.ts`, `web/src/game/gl-shaders.ts`, `web/src/game/gl-presenter.test.ts`, `web/e2e/gl-pixels.mjs`
+
+**Interfaces:**
+- Produces (`hdvox.h`):
+  - `typedef void (*hdvox_visit_fn)(void *ctx, int x, int y, int w, int h, const uint16_t *expected, const uint16_t *hd4, const uint8_t *mask);` (`hd4` is four 565 pixels per 1x pixel: top-left, top-right, bottom-left, bottom-right, the order `hdvox_compose` reads)
+  - `int hdvox_visit_published(hdvox_visit_fn fn, void *ctx);` visits the published record set under `g_pub_lock` and returns the number of records, or -1 when HD is not live.
+  - `unsigned hdvox_published_frames(void);` (the existing `g_published_frames`), so a caller can tell a new set from the same one.
+- Produces (`hd_layers.h`):
+  - `#define HD_RECTS_MAX 256`
+  - `typedef struct { int16_t x, y, w, h; } hd_rect_t;` (1x pixels)
+  - `typedef struct { int w, h; uint32_t *layer1x; uint16_t *layer2x; hd_rect_t rects[HD_RECTS_MAX]; int rect_count; /* -1 = whole layer */ hd_rect_t prev[HD_RECTS_MAX]; int prev_count; } hd_layers_t;`
+  - `layer1x` packs each 1x pixel as `expected565 | mask << 16`; `layer2x` is 2w × 2h 565.
+  - `int hd_layers_resize(hd_layers_t *l, int w, int h);` (frees and reallocates both; 0 on allocation failure)
+  - `void hd_layers_begin(hd_layers_t *l);` clears the 1x mask over `prev` and starts a new rectangle list with those cleared rectangles in it.
+  - `void hd_layers_add(void *ctx /* hd_layers_t* */, int x, int y, int w, int h, const uint16_t *expected, const uint16_t *hd4, const uint8_t *mask);` is an `hdvox_visit_fn`: it writes the clipped record into both layers and appends its rectangle; past `HD_RECTS_MAX` it sets `rect_count = -1`.
+  - `void hd_layers_end(hd_layers_t *l);` makes this set's own rectangles the next `prev`.
+  - `void hd_layers_compose_ref(const hd_layers_t *l, const uint16_t *frame, int pitch_px, uint32_t *out_bgrx);` is the CPU reference of the shader rule, for the selftest only (`HD_LAYERS_SELFTEST`).
+- Produces (shared words, from Task 3): `hdLayer1x`, `hdLayer2x` (pointers), `hdRects` (pointer to `rects`), `hdRectCount` (-1 = whole layer), `hdSeq` (moves when the layers change).
+- The page rule (shader): at output pixel `p`, with 1x texel `t = floor(p / 2)` in game pixels: if `layer1x[t] >> 16 != 0` and `layer1x[t] & 0xFFFF == frame[t]`, show `layer2x[p]`; otherwise `frame[t]`.
+
+- [ ] **Step 1: Write the failing selftest** `hd_layers_selftest.c`:
+  - `one_record_matches_hdvox_rule`: a 4x4 frame of colour A; one 2x2 record at (1,1) with expected A, mask all 1, hd4 = B, C, D, E. `hd_layers_compose_ref` → the 8x8 output has B C / D E at each of those four 1x pixels, and A elsewhere.
+  - `drawn_over_keeps_1x`: same, but frame pixel (1,1) is F ≠ A → output at (2..3, 2..3) is F four times.
+  - `begin_clears_previous_masks`: add a record, `end`, `begin`, add nothing → `compose_ref` gives the plain 2x upscale, and `rect_count == 1` (the cleared rectangle).
+  - `clips_records_at_edges`: a record at (-1, 3) of 3x3 on a 4x4 frame writes only the inside pixels, and its rectangle is clipped.
+  - `overflow_marks_whole_layer`: 257 records → `rect_count == -1`.
+- [ ] **Step 2: Build and run it**, failing (same `emcc` form as Task 3 with `src/web/hd_layers.c` and `-DHD_LAYERS_SELFTEST`). Expected: compile error.
+- [ ] **Step 3: Implement `hd_layers.c`**, and `hdvox_visit_published` in `hdvox.c`. The visitor walks the arena exactly as `hdvox_compose`'s record loop does (`rec_t`, `E`, `O`, `m`, the 8-byte rounding) and only reads.
+- [ ] **Step 4: Run** the selftest. Expected: `hd_layers selftest: ok`.
+- [ ] **Step 5: Use it in `presenter.c`.** In `raw` mode with `ra2_vox_hd_on && ra2_vox_hd_show`, each publish whose `hdvox_published_frames()` moved runs `hd_layers_resize` (on a size change), `hd_layers_begin`, `hdvox_visit_published(hd_layers_add, &layers)`, `hd_layers_end`, then sets the HD words and bumps `hdSeq`. HD off: `hdLayer1x = 0`. The time this takes is added to `g_pub_ms` so the `fps` event's `pubms` includes it.
+- [ ] **Step 6: Write the failing page tests** in `gl-presenter.test.ts`:
+  - `uploads only the listed rectangles of both layers`: `hdRectCount 2` with rectangles (1,1,2,2) and (5,0,1,1) → four `texSubImage2D` calls: two on the 1x layer at those rectangles, two on the 2x layer at the doubled rectangles (UNPACK_SKIP_PIXELS/ROWS set to match).
+  - `uploads whole layers when the list overflowed`: `hdRectCount -1` → one full upload of each layer.
+  - `skips HD uploads when hdSeq has not moved`.
+- [ ] **Step 7: Implement them** in `gl-presenter.ts`: a 1x `R32UI` texture (`RED_INTEGER`, `UNSIGNED_INT`) and a 2x `RGB565` texture, both created at the frame's size when `hdLayer1x` is non-zero. Add the composite rule to `FRAGMENT_SOURCE` (`usampler2D` for the 1x layer, `texelFetch` for both). Run `pnpm vitest run src/game/gl-presenter.test.ts`. Expected: PASS.
+- [ ] **Step 8: Add an HD check to `gl-pixels.mjs`.** In a skirmish with HD on and the game paused, call a debug export `ra2_debug_compose_reference()` (added to `presenter.c`, used only in raw mode: it runs `hdvox_compose` on the current picture into a scratch buffer and returns its pointer; the size is 2w × 2h BGRX). Then compare it with a 2x `capture()` (`capture({ hd: true })` renders at 2w × 2h). Run `node e2e/gl-pixels.mjs --hd`. Expected: `0 differing pixels`.
+- [ ] **Step 9: Run the HD playtests** (`node e2e/playtest.mjs --hd` as `docs/web/testing.md` gives it) on both editions. Expected: same pass count as before.
+- [ ] **Step 10: Commit**
+
+```bash
+git add src/web/hd_layers.* src/runtime/hdvox.c src/runtime/hdvox.h src/web/presenter.c CMakeLists.txt web/src/game/gl-presenter.ts web/src/game/gl-shaders.ts web/src/game/gl-presenter.test.ts web/e2e/gl-pixels.mjs
+git commit -m "Composite HD vehicles on the GPU from two layers and their changed rectangles"
+```
+
+### Task 6: Scaling modes and the blurred bars in the shader
+
+**Files:**
+- Modify: `web/src/game/gl-shaders.ts`, `web/src/game/gl-presenter.ts`, `web/src/game/gl-presenter.test.ts`, `web/src/screens/Play.tsx` (remove the backdrop canvas at lines 63, 179, 317-319 and its CSS class), `web/src/screens/Play.module.css` (the `.backdrop` rule)
+
+**Interfaces:**
+- Consumes: `SCALE_MODE`, `GamePresenter.configure(scale, bars)`.
+- The modes, matching `docs/presenter.md`:
+  - **nearest**: `texelFetch` at `floor(uv * size)`.
+  - **smooth**: hardware bilinear (`LINEAR` filter).
+  - **sharp** (sharp-bilinear): integer prescale `k = max(1, floor(min(scaleX, scaleY)))`, then bilinear from the prescaled position: `uv = (floor(p) + clamp((fract(p) - 0.5) * k + 0.5, 0, 1)) / size`, with `p = uv * size`.
+  - **integer**: the letterbox rectangle shrinks to `floor(scale)` × picture size, then nearest.
+  - **crt**: nearest, then rows darkened by 22% on every third output row of the picture (the 2D presenter's `rgba(0,0,0,0.22)` every 3rd row), in picture pixels.
+- **Bars**: with `bars` on, outside the letterbox rectangle the shader samples the picture texture at mip level 5 (`textureLod`, mipmaps regenerated with `generateMipmap` once per new picture, only when bars are on and there is space beside the picture), stretched to fill the canvas, times 0.5. With `bars` off, black.
+
+- [ ] **Step 1: Write the failing tests** in `gl-presenter.test.ts`:
+  - `configure sets the mode uniform`: each of the five scales → `uniform1i(modeLocation, SCALE_MODE[scale])`.
+  - `integer shrinks the letterbox to a whole multiple`: picture 800x600, box 2000x1300 → rectangle uniform 1600x1200, centred.
+  - `regenerates mipmaps only when bars are on and visible`: bars off → no `generateMipmap`; bars on with a box of the picture's aspect → none; bars on and a wider box → one per new picture.
+- [ ] **Step 2: Run** `pnpm vitest run src/game/gl-presenter.test.ts`. Expected: FAIL on the three new tests.
+- [ ] **Step 3: Implement** the uniforms, the letterbox rule and the mipmap rule in `gl-presenter.ts`, and the five modes plus bars in `FRAGMENT_SOURCE`.
+- [ ] **Step 4: Run** the same command. Expected: PASS.
+- [ ] **Step 5: Remove the backdrop canvas** from `Play.tsx` and its CSS; `configure` receives `settings.bars`. The 2D presenter keeps its own backdrop behaviour by drawing its 64x48 blur into its own canvas's surroundings; if that would need the removed element, `Presenter2d` creates a backdrop canvas itself, so `Play.tsx` holds none.
+- [ ] **Step 6: Check visually** in headed Chrome at 1920x1080 in the main menu (800x600 in a wide window): each of the five modes from Settings, bars on and off. Save a screenshot of each in `work/perf/scales/`. Expected: the picture looks as the 2D presenter's does for nearest, smooth and CRT; sharp is crisp with soft pixel edges; integer has a whole-multiple picture with wider bars; bars on shows a dark blur of the picture.
+- [ ] **Step 7: Run** `pnpm test`, `pnpm typecheck`, `pnpm lint`, and `node e2e/remaster.mjs` (it switches scales and bars). Expected: PASS.
+- [ ] **Step 8: Commit**
+
+```bash
+git add web/src/game/gl-shaders.ts web/src/game/gl-presenter.ts web/src/game/gl-presenter.test.ts web/src/game/presenter.ts web/src/screens/Play.tsx web/src/screens/Play.module.css
+git commit -m "Scale the picture and draw the blurred bars in the WebGL2 shader"
+```
+
+### Task 7: Rendering checkpoint
+
+**Files:**
+- Modify: this plan's "Results" section
+
+- [ ] **Step 1: Release-link both editions** (`$env:CMAKE_ARGS='-DWEB_LINK_OPT='; cmd /c build-web.cmd`, then the same with `$env:RA2_TARGET='game'`).
+- [ ] **Step 2: Run the benchmark** against the baseline: `node e2e/perf.mjs --save <busy save> --out work/perf/after-render --baseline work/perf/baseline/run.json`. Expected: the HD-on rows show higher fps than the baseline at every size, and main-thread time per frame ≤ 4 ms. Record the table in "Results".
+- [ ] **Step 3: Decide.** If any 720p–1440p HD busy case is below a 60 fps median, profile it in Chrome DevTools (Performance panel, the game's worker thread) and record the three heaviest functions in "Results". If the page's main thread is the bottleneck, record that as the case for the spec's approach B (render worker) and tell the user; do not start it in this plan. Continue with Task 8 either way: CPU and memory work is independent of the remaining gap.
+- [ ] **Step 4: Commit** the plan's updated "Results".
+
+### Task 8: `Sleep` sleeps all but a margin (pcrecomp)
+
+**Files:**
+- Modify: `../pcrecomp/runtime/win32hle/kernel32.c:299-318` (`wait_ms`)
+- Test: `../pcrecomp/runtime/win32hle/kernel32_ext_selftest.c`
+
+**Interfaces:**
+- Consumes: margin `M` from Task 2's "Probe results".
+- Produces: `#define HLE_WAIT_SPIN_MS M` (web only) and `static void wait_ms(uint32_t ms)` with the rule: if `ms > HLE_WAIT_SPIN_MS`, `usleep((ms - HLE_WAIT_SPIN_MS) * 1000)`; then spin with `sched_yield()` until the deadline. When `M == 16`, the behaviour is today's except for 17–19 ms waits, so skip this task and record "no change: waits are not precise enough" in "Results".
+
+- [ ] **Step 1: Write the failing test** in `kernel32_ext_selftest.c` under `__EMSCRIPTEN__`: `sleep_is_not_early`: 50 calls of `Sleep(5)` through the HLE entry; each takes ≥ 5.0 ms. `sleep_mostly_sleeps`: over those 50, the summed thread CPU time (`clock_gettime(CLOCK_THREAD_CPUTIME_ID)` if Emscripten provides it, else the count of spin iterations exposed by a selftest-only counter `hle_wait_spins`) is below 50% of the wall time.
+- [ ] **Step 2: Run** `python3 build_selftests_web.py` in `../pcrecomp/runtime/win32hle` (as `docs/web/testing.md` gives it). Expected: `sleep_mostly_sleeps` FAILS (today a 5 ms wait is spun entirely).
+- [ ] **Step 3: Implement** the margin in `wait_ms`.
+- [ ] **Step 4: Run** the selftests. Expected: PASS, the others unchanged.
+- [ ] **Step 5: Benchmark.** Rebuild (release link), run `perf.mjs` with `--baseline work/perf/after-render/run.json`. Expected: `menu/idle` CPU lower, and median fps, 1% low and worst gap no worse in every case. If any is worse, revert, record the numbers and "reverted" in "Results", and continue.
+- [ ] **Step 6: Commit** in pcrecomp (stage only this hunk):
+
+```bash
+git -C ../pcrecomp add -p runtime/win32hle/kernel32.c runtime/win32hle/kernel32_ext_selftest.c
+git -C ../pcrecomp commit -m "web: sleep all but the last few milliseconds of a wait"
+```
+
+### Task 9: Clock damper (only if Task 2 found a spin)
+
+**Files:**
+- Modify: `src/web/main.c` (`ra2_QueryPerformanceCounter` and the `timeGetTime`/`GetTickCount` shims from Task 2)
+
+**Interfaces:**
+- Produces: `#define DAMP_READS 1000` and `#define DAMP_SLEEP_US 1000`. After the menu has opened once (`web_menu_seen`), when `DAMP_READS` clock reads arrive in a row with no other HLE call between them, the next read `usleep(DAMP_SLEEP_US)` inside `hle_block_begin`/`hle_block_end`, and the run counter resets. "No other HLE call" is a counter that every clock shim increments, and that `hle_block_begin` (called by every blocking HLE call) clears; check `win32hle.h` for a cheaper existing per-call hook first and use it if there is one. `--intro` and the splash skip are unchanged. Skip this task (record "no spin found") if Task 2 found none.
+
+- [ ] **Step 1: Run** a menu and a skirmish with `?arg=--clockstats` and record the reads per second (the "before").
+- [ ] **Step 2: Implement** the damper.
+- [ ] **Step 3: Run** the same and record the "after". Expected: fewer clock reads per second in the menu.
+- [ ] **Step 4: Benchmark** as in Task 8, Step 5, with the same keep-or-revert rule.
+- [ ] **Step 5: Run the timing-sensitive checks**: `node e2e/audio.mjs --skirmish --minutes 5` (zero underruns) and `node e2e/playtest.mjs`. Expected: PASS.
+- [ ] **Step 6: Commit** `git add -p src/web/main.c`, message "Give up a millisecond when the game spins on the clock".
+
+### Task 10: Critical sections wait on a futex; mixer and page per-frame work
+
+**Files:**
+- Modify: `../pcrecomp/runtime/win32hle/kernel32.c:341-373` (`hle_enter_cs`, `hle_leave_cs`, `k_TryEnterCriticalSection`)
+- Test: `../pcrecomp/runtime/win32hle/kernel32_ext_selftest.c`
+- Modify: `web/src/game/presenter.ts` / the shared cursor helper from Task 4 (the overlay's `getBoundingClientRect` moves to a `ResizeObserver`), `web/src/screens/FrameStats.tsx` and `web/src/game/store.ts` only if Step 6 finds per-frame React updates
+
+**Interfaces:**
+- Produces (web only): the owner word is taken with `__atomic_compare_exchange_n(&CS_OWNER(cs), &zero, me, ...)`. A waiter calls `emscripten_futex_wait(&CS_OWNER(cs), owner_seen, 1.0 /* ms */)` between `hle_block_begin`/`hle_block_end`, and `hle_leave_cs` calls `emscripten_futex_wake(&CS_OWNER(cs), 1)` when the owner becomes 0. The 1 ms timeout bounds any missed wake. Recursion count and `LockCount` (`cs + 4`) keep their meanings.
+
+- [ ] **Step 1: Write the failing tests** in `kernel32_ext_selftest.c`:
+  - `cs_mutual_exclusion`: 4 pthreads × 100,000 enter/increment/leave on one guest `CRITICAL_SECTION` → the counter is exactly 400,000.
+  - `cs_recursion`: enter twice, leave once, a second thread's `TryEnterCriticalSection` fails; leave again, and it succeeds.
+  - `cs_waiter_wakes_fast`: thread A holds for 10 ms while thread B waits to enter; B's enter returns ≤ 2 ms after A's leave (both times from `emscripten_get_now()`), in each of 20 rounds.
+- [ ] **Step 2: Run** the web selftests. Expected: `cs_mutual_exclusion` may already pass; `cs_waiter_wakes_fast` fails or is flaky with today's 50 µs sleep loop, and must pass after. If all three pass before the change, keep the tests and still make the change only if Step 4's benchmark shows a CPU drop.
+- [ ] **Step 3: Implement** the futex wait.
+- [ ] **Step 4: Run** the selftests (PASS), rebuild, and benchmark with the keep-or-revert rule from Task 8.
+- [ ] **Step 5: Mixer.** In a DevTools profile of the busy case, read the mixer thread's share of CPU (the worker running `dsound.c`'s 5 ms loop, line 263). If it is above 5% of one core, change the wake to 10 ms, run `node e2e/audio.mjs --skirmish --minutes 5`, and keep it only with 0 underruns. Record the share and the decision in "Results".
+- [ ] **Step 6: Page per-frame work.** Record a 10 s DevTools Performance profile of the main thread in the busy case. Move the cursor overlay's `getBoundingClientRect` to a `ResizeObserver` (test in `presenter.test.ts` or `gl-presenter.test.ts`: `does not read layout during draw`, a spy on `getBoundingClientRect` called 0 times across 10 `draw()`s after the first). Any React component re-rendering every animation frame (seen in the profile) is changed to update only when its shown value changes.
+- [ ] **Step 7: Run** `pnpm test`, `pnpm typecheck`, and the benchmark. Expected: main-thread time per frame ≤ 4 ms in every case.
+- [ ] **Step 8: Commit** pcrecomp's hunks (`git -C ../pcrecomp add -p ...`, "web: wait for a critical section on a futex") and this repository's (`git add -p ...`, "Keep layout reads and React updates out of the frame loop").
+
+### Task 11: Memory: bounded caches and limits from measured peaks
+
+**Files:**
+- Modify: `src/web/read_cache.c`, `src/runtime/hdvox.c` (the memo, `memo_t`, around line 142), `CMakeLists.txt:98`, `tools/test_web_memory_budget.py`, `docs/web/memory.md`
+
+**Interfaces:**
+- Produces: documented upper bounds, one line each in `docs/web/memory.md` ("Bounded caches"): `read_cache.c` blocks (count × 1 MiB), the HD record arenas (2 × 24 MiB, `ARENA` in `hdvox.c`), the 2x image memo (entries × typical size), the picture buffers (3 × w × h × bytes per pixel), the HD layers (w × h × 4 + 4w × h × 2).
+- Produces: `INITIAL_MEMORY` and `MAXIMUM_MEMORY` set from Step 4.
+
+- [ ] **Step 1: Read** each cache's growth rule. For any with no upper bound, add one and write the test that pins it: `read_cache.c` in a new `read_cache_selftest.c` (`cache_stays_bounded`: 1000 distinct 1 MiB reads → block count ≤ the bound); the memo in `hdvox.c` gets an entry limit with eviction of the oldest, checked by its counter in the `[hdvox]` log line during the soak.
+- [ ] **Step 2: Build and run** the new selftests (same `emcc` form as Task 3). Expected: PASS.
+- [ ] **Step 3: Run the soak**: `node e2e/perf.mjs --sizes 2560x1440 --hd on --moments busy --soak-minutes 10 --save <busy save> --baseline work/perf/baseline/run.json`, and the same at 3840x2160 for the record. Expected: `wasmGrowthAfter60s === 0` at 1440p; the peak is recorded.
+- [ ] **Step 4: Set the limits.** `INITIAL_MEMORY` = the main menu's measured wasm size rounded up to the next 16 MB; `MAXIMUM_MEMORY` = the larger of 768 MB and the 4K soak peak + 25%, rounded up to 64 MB, and no more than 1 GB unless the 4K peak needs it (then record why in `docs/web/memory.md`). Update `tools/test_web_memory_budget.py`'s expected values to match.
+- [ ] **Step 5: Run** `python tools/test_web_memory_budget.py`. Expected: PASS.
+- [ ] **Step 6: Commit**
+
+```bash
+git add -p src/web/read_cache.c src/runtime/hdvox.c CMakeLists.txt tools/test_web_memory_budget.py docs/web/memory.md
+git commit -m "Bound the web build's caches and size its memory from measured peaks"
+```
+
+### Task 12: Final benchmark and docs
+
+**Files:**
+- Modify: `docs/web/progress.md`, `docs/web/architecture.md` ("Rendering"), `docs/web/protocol.md` (final check), `docs/web/tasks.md` (a row per finished task under a new "Frame performance" heading), this plan's "Results"
+
+- [ ] **Step 1: Release-link both editions** and run the full matrix with the soak against the baseline: `node e2e/perf.mjs --save <busy save> --soak-minutes 10 --out work/perf/final --baseline work/perf/baseline/run.json`, then the same for Red Alert 2 with its own busy save.
+- [ ] **Step 2: Check every row of the pass bar.** Expected: every `pass` is `true` (4K rows have `pass: null`). Any `false` is reported to the user with its numbers, not hidden.
+- [ ] **Step 3: Run the whole browser suite** on the WebGL2 presenter and with `?presenter=2d`, HD off and on, for both editions, and `pnpm test`, `pnpm typecheck`, `pnpm lint`. Expected: all pass.
+- [ ] **Step 4: Update the docs.** `architecture.md`'s "Rendering" describes the raw publish, the three buffers, the HD layers and the WebGL2 presenter, with the 2D presenter as the fallback. `progress.md` gets the before/after table. `tasks.md` gets the rows.
+- [ ] **Step 5: Commit**
+
+```bash
+git add docs/web/progress.md docs/web/architecture.md docs/web/protocol.md docs/web/tasks.md docs/superpowers/plans/2026-10-26-web-frame-performance.md
+git commit -m "Record the frame performance results and the new rendering path"
+```
+
+---
+
+## Probe results
+
+(Filled in by Task 2.)
+
+| Target wait | p50 late | p95 late | p99 late | max late |
+|---|---|---|---|---|
+
+Margin `M`: 
+
+Clock calls per second, main menu / match: 
+
+Spin found: 
+
+## Results
+
+(Filled in by Tasks 1, 7–12.)

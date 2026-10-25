@@ -170,8 +170,9 @@ A compare mode prints each measure against a chosen baseline file.
 
 ### Fallbacks and errors
 
-- **No WebGL2, or `?presenter=2d`:** the page tells the game at start-up to
-  publish RGBA, and today's 2D presenter runs unchanged (the game thread's RGBA
+- **No WebGL2, or `?presenter=2d`:** the page tells the game to publish RGBA
+  (a `presentMode` word in `ra2_shared_t`, read at each publish, so the switch
+  can also happen mid-run), and today's 2D presenter runs unchanged (the game thread's RGBA
   conversion and `hdvox_compose` stay compiled in for this case).
 - **Context lost:** the presenter stops uploading, keeps the last picture, and
   on `webglcontextrestored` recreates its textures and asks the game for a full
