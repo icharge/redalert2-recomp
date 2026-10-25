@@ -1,0 +1,159 @@
+// Summaries and comparisons for perf.mjs's runs (docs/superpowers/specs/2026-10-26-web-frame-performance-design.md,
+// section 1). Pure functions: no I/O, no browser.
+//
+//   import { summarize, compare } from "./perf-report.mjs";
+//
+// A case is keyed "WxH/hd-on|hd-off/early|busy", "menu/idle", or "soak/WxH/hd-on/busy".
+
+/** The samples are one a second; the first minute is the warm-up for the memory measures. */
+const WARM_SAMPLES = 60;
+
+/** Numbers only: null, undefined and NaN are left out. */
+const numbers = (values) => values.filter((v) => typeof v === "number" && Number.isFinite(v));
+
+/**
+ * The median, taking the lower of the two middle values for an even count (so the median of
+ * 1..100 is 50). null when there is nothing to take it from.
+ */
+function median(values) {
+  const sorted = numbers(values).sort((a, b) => a - b);
+  return sorted.length ? sorted[Math.floor((sorted.length - 1) / 2)] : null;
+}
+
+/** Nearest-rank percentile: the value at or below which p percent of the samples lie. */
+function percentile(values, p) {
+  const sorted = numbers(values).sort((a, b) => a - b);
+  if (!sorted.length) return null;
+  const rank = Math.max(1, Math.ceil((p / 100) * sorted.length));
+  return sorted[rank - 1];
+}
+
+const max = (values) => {
+  const n = numbers(values);
+  return n.length ? Math.max(...n) : null;
+};
+
+const sum = (values) => {
+  const n = numbers(values);
+  return n.length ? n.reduce((a, b) => a + b, 0) : null;
+};
+
+/**
+ * One case's measures, from its per-second samples.
+ *
+ * @param {Array<{fps:number, worstMs:number|null, late:number|null, publishMs:number|null,
+ *   drawMs:number|null, cpuPct:number|null, wasmBytes:number, jsHeapBytes:number|null,
+ *   textureBytes:number|null}>} samples
+ */
+export function summarize(samples) {
+  const f = (key) => samples.map((s) => s[key]);
+  const wasm = numbers(f("wasmBytes"));
+  // growth is measured from the first minute's end; memory in wasm never shrinks, so the peak is what counts
+  let wasmGrowthAfter60s = null;
+  let jsHeapGrowthBytes = null;
+  if (samples.length > WARM_SAMPLES) {
+    const base = samples[WARM_SAMPLES - 1];
+    const later = samples.slice(WARM_SAMPLES);
+    const peak = max(later.map((s) => s.wasmBytes));
+    if (base && typeof base.wasmBytes === "number" && peak !== null)
+      wasmGrowthAfter60s = Math.max(0, peak - base.wasmBytes);
+    const heapLater = numbers(later.map((s) => s.jsHeapBytes));
+    const heapBase = base?.jsHeapBytes;
+    if (heapLater.length && typeof heapBase === "number")
+      jsHeapGrowthBytes = heapLater[heapLater.length - 1] - heapBase;
+  }
+  return {
+    fpsMedian: median(f("fps")),
+    fps1Low: percentile(f("fps"), 1),
+    worstGapMs: max(f("worstMs")),
+    late: sum(f("late")),
+    publishMsMedian: median(f("publishMs")),
+    drawMsMedian: median(f("drawMs")),
+    cpuPctMedian: median(f("cpuPct")),
+    wasmPeakBytes: wasm.length ? Math.max(...wasm) : null,
+    wasmGrowthAfter60s,
+    jsHeapGrowthBytes,
+  };
+}
+
+/** The measures, in the order they are printed. */
+export const MEASURES = [
+  "fpsMedian",
+  "fps1Low",
+  "worstGapMs",
+  "late",
+  "publishMsMedian",
+  "drawMsMedian",
+  "cpuPctMedian",
+  "wasmPeakBytes",
+  "wasmGrowthAfter60s",
+  "jsHeapGrowthBytes",
+];
+
+/** The sizes the pass bar covers (720p to 1440p); 4K is recorded with no target. */
+const TARGET_SIZES = new Set(["1280x720", "1920x1080", "2560x1440"]);
+
+/**
+ * The pass bar for one measure of one case, or null when the bar does not cover it (or there is
+ * no baseline to hold it against). `now` is the case's value in this run, `base` the baseline's.
+ */
+function bar(key, measure, now, base) {
+  const isMenu = key === "menu/idle";
+  const isSoak = key.startsWith("soak/");
+  const [size, hd, moment] = (isSoak ? key.slice("soak/".length) : key).split("/");
+  const target = TARGET_SIZES.has(size) && !isSoak;
+  const busyHd = target && hd === "hd-on" && moment === "busy";
+  switch (measure) {
+    case "fpsMedian":
+      return busyHd ? now >= 60 : null;
+    case "fps1Low":
+      return busyHd ? now >= 55 : null;
+    case "worstGapMs":
+      return target ? now <= 33 : null;
+    case "drawMsMedian":
+      return target ? now <= 4 : null;
+    case "cpuPctMedian":
+      if (base === null) return null;
+      // idle in the menu: at least 40% below the baseline; in a match: no higher than the baseline
+      if (isMenu) return now <= base * 0.6 + 1e-9;
+      return isSoak ? null : now <= base;
+    case "wasmGrowthAfter60s":
+      return isSoak ? now <= 0 : null;
+    default:
+      return null;
+  }
+}
+
+/**
+ * Rows comparing each case of `run` with the same case of `baseline`, one row per measure.
+ * `change` is (now - baseline) / baseline, null when either side is missing or the baseline is 0.
+ * `pass` is the pass bar's verdict, null where the bar does not cover the measure.
+ *
+ * @returns {Array<{case:string, measure:string, baseline:number|null, now:number|null,
+ *   change:number|null, pass:boolean|null}>}
+ */
+export function compare(run, baseline) {
+  const rows = [];
+  for (const key of Object.keys(run.cases)) {
+    const now = run.cases[key];
+    const base = baseline.cases[key];
+    for (const measure of MEASURES) {
+      const nowValue = now?.[measure] ?? null;
+      const baseValue = base?.[measure] ?? null;
+      const change =
+        nowValue !== null && baseValue !== null && baseValue !== 0
+          ? (nowValue - baseValue) / baseValue
+          : null;
+      const verdict = nowValue !== null ? bar(key, measure, nowValue, baseValue) : null;
+      rows.push({
+        case: key,
+        measure,
+        baseline: baseValue,
+        now: nowValue,
+        change,
+        pass: verdict,
+      });
+    }
+  }
+  return rows;
+}

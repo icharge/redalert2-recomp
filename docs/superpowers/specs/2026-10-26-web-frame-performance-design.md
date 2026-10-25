@@ -41,6 +41,28 @@ there is nothing to do and less memory for the picture.
   `docs/web/progress.md`): 62 game fps and 16 ms with HD off, 47 fps and 21 ms
   with HD on; publish cost 0.33 ms off, 1.59 ms on. Nothing was measured at
   1080p, 1440p or 4K, in a busy match, or for CPU and memory.
+- **Baseline, 26 October 2026** (`perf.mjs`, the release build `ef2b94fc673f9950`, Yuri's
+  Revenge build `53959836c46852af`, headed Chrome on the developer's Windows machine, one
+  60 s sample a case: 30 s untouched, then 30 s of panning; `work/perf/baseline/run.json`).
+  The "early" skirmish is the default one: one Brutal AI. Not measured yet: the busy
+  matrix and the 10-minute soak (`docs/web/testing.md`, "The frame benchmark"). Medians of
+  the 60 samples; late frames are the sum; memory is the wasm heap at its peak.
+
+  | Case | fps | 1% low fps | worst gap ms | late | publish ms | draw ms | CPU % | wasm MiB |
+  |---|---|---|---|---|---|---|---|---|
+  | 1280x720, HD off, early | 62 | 53 | 58 | 21 | 0.37 | 0.22 | 265 | 256 |
+  | 1280x720, HD on, early | 39 | 24 | 105 | 1078 | 1.91 | 0.50 | 256 | 307 |
+  | 1920x1080, HD off, early | 62 | 55 | 104 | 36 | 0.38 | 0.24 | 262 | 369 |
+  | 1920x1080, HD on, early | 42 | 31 | 69 | 671 | 2.03 | 0.68 | 256 | 369 |
+  | 2560x1440, HD off, early | 62 | 55 | 40 | 25 | 1.47 | 0.75 | 275 | 531 |
+  | 2560x1440, HD on, early | 19 | 14 | 98 | 1173 | 7.56 | 1.34 | 270 | 531 |
+  | main menu, idle (30 s) | - | - | - | - | 1.01 | 0.47 | 261 | 256 |
+
+  The CPU column is the Chrome processes' CPU time over the sample, as a percentage of one
+  core, so 265 means about 2.7 cores busy. The menu is idle yet uses about 2.6 cores; the
+  spin described below is the likely cause, not yet confirmed by the probes in section 3.
+  With HD vehicles on, the game falls to 19 to 42 fps; the target is 60.
+
 - **CPU spin, on purpose.** pcrecomp's web `wait_ms` spins out any `Sleep` under
   20 ms and the last 16 ms of a longer one (`kernel32.c`, around line 299),
   because a worker's timed wait on Windows woke on the 15.6 ms system tick and

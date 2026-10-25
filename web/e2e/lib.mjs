@@ -19,20 +19,32 @@ export function options(argv) {
     pageArgs: argv.filter((a, i) => argv[i - 1] === "--arg"),
     testGame: option("--game", null),
     gameBuild: option("--build", null),
+    // a persistent Chrome profile: an import (OPFS) survives between runs (perf.mjs)
+    profile: option("--profile", null),
   };
 }
 
 export async function startPage(opts) {
   mkdirSync(opts.shots, { recursive: true });
-  const browser = await chromium.launch({
-    executablePath: opts.chrome,
-    headless: !opts.headed,
-    args: ["--no-sandbox"],
-  });
-  const context = await browser.newContext({
-    viewport: { width: 1280, height: 960 },
-    serviceWorkers: "block",
-  });
+  const launch = { executablePath: opts.chrome, headless: !opts.headed, args: ["--no-sandbox"] };
+  const viewport = { width: 1280, height: 960 };
+  // with --profile the context is persistent, so OPFS (the imported game) is kept between runs
+  const persistent = opts.profile
+    ? await chromium.launchPersistentContext(path.resolve(opts.profile), {
+        ...launch,
+        viewport,
+        serviceWorkers: "block",
+      })
+    : null;
+  const browser = persistent
+    ? {
+        close: () => persistent.close(),
+        on: (event, fn) => {
+          if (event === "disconnected") persistent.on("close", fn);
+        },
+      }
+    : await chromium.launch(launch);
+  const context = persistent ?? (await browser.newContext({ viewport, serviceWorkers: "block" }));
   // Pin a test's module without overwriting another developer's published build.
   if (opts.gameBuild) {
     // Stream the large debug WASM over HTTP; CDP fulfill bodies exceed Chrome's

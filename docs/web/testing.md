@@ -404,3 +404,36 @@ The host publish cost was 0.33 ms per frame off and 1.59 ms on. Page canvas
 draw time rose from 0.17 ms to 0.52 ms. This short idle-battle measurement
 was collected on 23 October 2026; the headless page rate is not a monitor's
 refresh rate.
+
+### The frame benchmark: `e2e/perf.mjs`
+
+The benchmark of [the browser frame performance design](superpowers/specs/2026-10-26-web-frame-performance-design.md)
+(section 1) samples the game once a second in Chrome and writes one `run.json` per run. `e2e/perf-report.mjs`
+holds the pure summary and comparison (`node --test e2e/perf-report.test.mjs` in `web/`).
+
+- **Game.** The build the page serves: `web/public/game/` (the release build; `build.json` names the
+  Yuri's Revenge build). The first run imports `../game` through the page's Import screen into a
+  persistent Chrome profile, `work/perf/profile` (git-ignored, as is all of `work/`), and later runs open
+  the game from that profile, where its large files are read in place. The dev and test folders copy every
+  file into memory, which Yuri's Revenge does not fit in the 768 MB limit.
+- **Server.** `--url` defaults to `http://127.0.0.1:5173/`. `pnpm dev` binds only `::1` on Windows, so start
+  Vite bound to the IPv4 loopback: `cd web && node node_modules/vite/bin/vite.js --host 127.0.0.1`.
+- **Run.** `node e2e/perf.mjs --headed --out work/perf/<name>` measures the matrix: 1280x720, 1920x1080 and
+  2560x1440, the skirmish early in the match, with HD vehicles off then on (60 s each: 30 s untouched, then 30 s
+  of right-button panning), and the main menu untouched for 30 s. Cases are keyed `WxH/hd-off|hd-on/early` and
+  `menu/idle`. Pass `--sizes`, `--hd`, `--moments` (`early`, `menu`) and `--seconds` to run a part of it. Every
+  command must finish within 10 minutes, so add the rest with `--append` (the same build only):
+  `node e2e/perf.mjs --sizes 1920x1080 --moments early --append --out work/perf/<name>`.
+- **Results.** `run.json` holds one summary per case (median and 1% low fps, worst frame gap, late frames,
+  publish and draw time, process CPU, wasm memory peak and growth, JS heap growth). The raw samples are in
+  `samples/`. `--baseline <run.json>` prints each measure against that run with its pass-bar verdict.
+- **CPU** is the Chrome processes' CPU time read by the OS once a second (a PowerShell loop filtered by the
+  profile's path), as a percentage of one core, so a figure above 100 means more than one core busy.
+- **Not measured yet: the busy moment and the soak.** The design's busy case is a skirmish with many units,
+  loaded from a save made by `e2e/make-busy-save.mjs`. That script sets up an eight-player Team Alliance match
+  (the human with three allied AIs against four AIs) at Game Speed 6, and plays it. The save was not produced: a
+  match ends when the human's side loses, after 1:39 (Free For All) and 8:08 (Team Alliance) of game time, and the
+  game then freezes on its Skirmish Score screen, where the script's save step hangs. The load path
+  (Single Player, Load Saved Game) is also not yet written into `perf.mjs`, so `--moments busy` and `--soak-minutes`
+  are not in it. Resolution is a launcher setting for the next launch, not a switch in a running game, so the
+  soak's planned resolution switches would have been the presenter's scale-mode switches instead.
