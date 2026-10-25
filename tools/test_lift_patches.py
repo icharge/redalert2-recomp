@@ -236,7 +236,8 @@ class RA2OnlinePatchTests(unittest.TestCase):
         patches = ra2_online_patches(self.image(), 0)
         body = '    goto L_00745895; /* 0x007457CC: jmp 0x745895 */\n'
         result = apply_patches(body, {0x007457CC: patches[0x007457CC]})
-        self.assertIn('if ((int32_t)MEM32(0x008523E0) <= (int32_t)ebx) goto L_00745895;', result)
+        self.assertIn('MEM8(0x00A40D0B) ? MEM32(0x00A40B38) : MEM32(0x008523E0)', result)
+        self.assertIn('if ((int32_t)_w <= (int32_t)ebx) goto L_00745895;', result)
         # The shipping jump makes the old clamp unreachable from this function;
         # the lifter emits that block in a separate function, so a C goto is invalid.
         self.assertNotIn('goto L_0074582A;', result)

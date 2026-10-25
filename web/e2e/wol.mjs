@@ -61,8 +61,9 @@ async function verifyPlaying(host, guest) {
   // --expect-size 1920x1080: the online resolution clamp (docs/ra2-resolution-plan.md, step 3)
   const expectAt = process.argv.indexOf('--expect-size');
   if (expectAt > 0) {
-    const [w, h] = process.argv[expectAt + 1].split('x').map(Number);
-    assert.deepEqual(sizes, [{ w, h }, { w, h }], `both clients play at ${w}x${h}`);
+    // "WxH" for both clients, or "WxH,WxH" for the host then the guest
+    const wanted = process.argv[expectAt + 1].split(',').map(size => { const [w, h] = size.split('x').map(Number); return { w, h }; });
+    assert.deepEqual(sizes, wanted.length === 1 ? [wanted[0], wanted[0]] : wanted, `clients play at ${process.argv[expectAt + 1]}`);
   }
   await dump('host', 'playing');
   await dump('guest', 'playing');
@@ -195,6 +196,20 @@ async function open(name, username) {
 
 try {
   const host = await open('host', 'woltst1');
+  // --room-flags 0x200: the host's room is published with the resolution flag (0x200 = limited
+  // to 1024x768, 0x400 = 1920x1080 under the remaster's range; docs/ra2-resolution-plan.md),
+  // as the server relays it to the guest: the first WOLAPI2 number, the game's room flags at
+  // [room + 0x20] (the join check reads them there). The game itself only sets these bits from
+  // its own shell mode, which is 800x600 here, so the test sets them on the wire.
+  const flagsAt = process.argv.indexOf('--room-flags');
+  if (flagsAt > 0) {
+    const flags = Number(process.argv[flagsAt + 1]);
+    await host.page.evaluate(flags => {
+      const send = window.Module.ra2WolSend;
+      window.Module.ra2WolSend = line => send(line.replace(/WOLAPI2:(\d+),(\d+),(\d+),(\d+);/,
+        (all, a, b, c, d) => `WOLAPI2:${((Number(a) & ~0x600) | flags) >>> 0},${b},${c},${d};`));
+    }, flags);
+  }
   if (process.argv.includes('--disconnect')) {
     const after = host.all.length;
     await host.page.evaluate(() => window.wolTestSocket.close());
@@ -263,6 +278,11 @@ try {
     const expectedChannel = metadata.slice(1).map(Number);
     if (roomPassword) expectedChannel[3] |= 384; // Password/private LIST mode comes from the server.
     assert.deepEqual(nativeChannel, expectedChannel, 'native join preserves room flags, resolution and capacity');
+    if (ra2) {
+      // The size the game will open the match at (RA2.INI's, or what the join check clamped it to).
+      const matchSize = run => run.page.evaluate(() => [window.Module.HEAPU32[0xA40B38 / 4], window.Module.HEAPU32[0xA40B3C / 4]]);
+      console.log('MATCH SIZE after join', JSON.stringify({ host: await matchSize(host), guest: await matchSize(guest) }));
+    }
     await dump('guest', 'join-result');
     await dump('host', 'two-players');
     if (process.argv.includes('--chat')) {

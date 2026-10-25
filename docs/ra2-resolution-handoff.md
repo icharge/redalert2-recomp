@@ -33,9 +33,9 @@ the Options list, the in-game menu alignment, the return to 800x600 (native and 
 and the browser `--web` cases (5 of 5 on a private 1 GB / 4 GB-cap build, run with
 `playtest.py --web --web-url http://localhost:<port>/`; `skirmish-start`, `res-1280x720`,
 `res-1920x1080`, `options-pick-size`, `res-pause-menu-1280x720`). The published build's
-768 MB cap still cannot run that suite (zero-copy work). Left: the online clamp in a real
-lobby with the 0x200 flag (below; the unflagged upper and lower clamps ran live) and nothing
-else: `skirmish-build` now passes (below).
+768 MB cap still cannot run that suite (zero-copy work). The online clamp ran in real
+two-player lobbies (unflagged, 0x200, 0x400; below) and `skirmish-build` now passes (below).
+Nothing is left open except what is under "Remaining verification".
 
 ## Online clamp in a real two-player lobby (run 2026-10-25)
 
@@ -52,12 +52,20 @@ node e2e/wol.mjs --url 'http://localhost:5173/?target=game' --build <private bui
 - Both clients with `RA2.INI` 2560x1440, an unflagged room: the lobby, STARTG handoff and
   FRAMESYNC all worked, and both clients played at 1920x1080 (host and guest `size`
   1920x1080 at frame ~540; their settings still said 2560x1440). The upper clamp holds live.
-- Not run in a lobby: the room flag 0x200 (1024 limit) join path, since the test's host
-  creates an unflagged room; the flag bits are covered by the WOLAPI self-test and the unit
-  tests.
 - Both clients with `RA2.INI` 640x480 (`--expect-size 1024x768`): both played at 1024x768
   (frame ~540, FRAMESYNC), so the lower bound holds live too.
-- `RA2.INI` in `game/` was changed for these runs and restored from `work/RA2.INI.bak`.
+- Room flag 0x200, `--room-flags 0x200 --expect-size 1920x1080,1024x768` (RA2.INI 2560x1440 on
+  both): the host's room is published with the flag (the first WOLAPI2 number, the game's
+  `[room + 0x20]`; the test rewrites the host's topic line, since the game only sets it from
+  its own shell mode), the guest's join check clamped its stored size to 1024x768 and the
+  match ran with the host at 1920x1080 and the guest at 1024x768. Flag 0x400: both clients at
+  1920x1080. The unflagged room is the first run above.
+- **Bug found by this run and fixed**: the join check compared the room's limit with the
+  *current display width* (`[0x8523E0]`), which under the toggle is the 800-wide shell, so no
+  limit was ever exceeded and the guest was never clamped at join. It now compares the match
+  size (`[0xA40B38]`) when the toggle is on (`ra2_online_patches`, `jmp_check`; unit test
+  updated). Before the fix the guest played at 1920x1080 in the 0x200 room.
+- `RA2.INI` in `game/` was changed for these runs and restored.
 
 ## `skirmish-build` (fixed 2026-10-25)
 
@@ -71,11 +79,12 @@ which is not a regression of this work.
 
 ## Remaining verification
 
-The online clamp has not been exercised in a real two-player lobby. Patch unit
-tests and WOLAPI flag round-trip tests pass, but those do not prove the live
-join clamp or match-start minimum. The RA2Web server passes room topic metadata
-through; server-side enforcement of the resolution range is also not verified.
-See the online section in the plan for the intended limits.
+The online clamp has been exercised in real two-player lobbies (section above): both
+clamps at match start and at join, with unflagged, 0x200 and 0x400 rooms. Not verified: the
+RA2Web server passes the room topic metadata through unchanged, but it does not enforce the
+resolution range itself (a client that skipped the check would not be stopped), and the
+published browser build must be rebuilt for the join fix (the `--build` runs used a private
+build with the same patches).
 
 The browser saved-game resolution fix is implemented and covered by the web
 tests, but still needs this runtime check:

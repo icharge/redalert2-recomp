@@ -1,7 +1,7 @@
 # Plan: Red Alert 2 (`game.exe`) menu and resolution, like Yuri's Revenge
 
-Status: implemented 2026-10-24; browser saved-game/layout and no-launcher-size
-runtime checks plus the online clamp in a real lobby remain (below). Written from a static reading of the lifted code
+Status: implemented 2026-10-24; the browser saved-game, layout, no-launcher-size and
+online-lobby checks ran 2026-10-25 (see the handoff). Written from a static reading of the lifted code
 (`src/recomp/gen_game`, `src/recomp/gen`), the host and pcrecomp sources, and
 headless runs (`work/tests-game/`).
 
@@ -21,8 +21,10 @@ Done and how it was checked:
   `res-1280x720 --web` passes against a fresh Vite preview; the earlier
   `Error: unwind` run was caused by a stale/broken preview and is superseded.
 - Step 3: `ra2_online_patches` and the `wolapi` flag round trip (RA2 and YR
-  self-tests, run by the Codex session). **Not run in a real lobby**: the clamp
-  and match-start minimum have unit tests on the lifted patch text only.
+  self-tests, run by the Codex session). Run in real two-player
+  lobbies on 2026-10-25 (`web/e2e/wol.mjs --expect-size`, `--room-flags`): the unflagged,
+  0x200 and 0x400 rooms clamp as intended; see the handoff. The run found that the join check
+  compared the 800-wide shell width, fixed in `ra2_online_patches`.
 - Step 4: playtest cases, `tools/test_lift_patches.py` (29 tests),
   `docs/hires.md` (new section), `docs/presenter.md`, README.
 - Host (not in the plan): this Windows would not start the ~480 MB host image at

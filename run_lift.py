@@ -562,7 +562,8 @@ RA2_HIRES_SITE = (0x005D8DF3, '884629')            # mov byte ptr [esi + 0x29], 
 # at 640, neither at 1024. The plan's new range: 0x400 and neither allow 1920
 # (1920x1080), 0x200 allows 1024 (1024x768). The shipping exe skips the check with
 # an unconditional jump (0x007457CC); the real check replaces it, and a width over
-# the limit is clamped quietly: the size is stored for the next game (the live
+# the limit is clamped quietly (the width compared is the match size, 0xA40B38, when the
+# mode toggle is on: the shell is always 800 wide, which no limit would ever catch): the size is stored for the next game (the live
 # switch is not run), and the join is accepted. At match start an online game's
 # size is held to 1024x768 .. 1920x1080 (0x0065BF98; session type 4 is the online
 # lobby, read by sub_00755CD0).
@@ -622,7 +623,8 @@ def ra2_online_patches(code, cs):
         # The shipping jump makes the old clamp unreachable here, so the lifter
         # puts it in another C function. Keep the quiet stores and INI save inline
         # instead of jumping to that function's label (or its dialog cleanup).
-        sites['jmp_check'][0]: ('@replace:if ((int32_t)MEM32(0x008523E0) <= (int32_t)ebx) goto L_%08X; '
+        sites['jmp_check'][0]: ('@replace:{ uint32_t _w = MEM8(0x00A40D0B) ? MEM32(0x00A40B38) : MEM32(0x008523E0); '
+                                'if ((int32_t)_w <= (int32_t)ebx) goto L_%08X; } '
                                 '{ esi = (ebx == 0x400u) ? 0x400u : 0x780u; '
                                 'edi = (esi == 0x400u) ? 0x300u : 0x438u; '
                                 'MEM32(0x00A40B38) = esi; MEM32(0x00A40B3C) = edi; '
