@@ -109,15 +109,75 @@ describe("UdpRelay", () => {
     socket.open();
     expect(socket.sent).toEqual(["ticket tk"]);
     queue.push([10, 1, 2, 3, 4, 210, 4, 210, 7]);
-    vi.advanceTimersByTime(20);
+    vi.advanceTimersByTime(60);
     expect(socket.sent).toHaveLength(1); // held until the relay accepts the player
     socket.text("ok 10.1.2.4");
-    vi.advanceTimersByTime(20);
+    vi.advanceTimersByTime(60);
     expect(Array.from(socket.sent[1] as Uint8Array)).toEqual([10, 1, 2, 3, 4, 210, 4, 210, 7]);
     socket.binary([10, 5, 6, 7, 4, 210, 4, 210, 42]);
     expect(pushed).toEqual([[10, 5, 6, 7, 4, 210, 4, 210, 42]]);
     relay.stop();
     vi.useRealTimers();
+  });
+
+  it("sends what the game queued during the handshake as soon as the relay accepts", () => {
+    vi.useFakeTimers();
+    const { relay, socket, queue } = setup();
+    try {
+      relay.start(handoff);
+      socket.open();
+      queue.push([10, 1, 2, 3, 4, 210, 4, 210, 7]);
+      expect(socket.sent).toEqual(["ticket tk"]);
+      socket.text("ok 10.1.2.4"); // no timer advance
+      expect(socket.sent).toHaveLength(2);
+      expect(Array.from(socket.sent[1] as Uint8Array)).toEqual([10, 1, 2, 3, 4, 210, 4, 210, 7]);
+      expect(queue).toHaveLength(0);
+    } finally {
+      relay.stop();
+      vi.useRealTimers();
+    }
+  });
+
+  it("wake sends queued packets without waiting for the timer", () => {
+    vi.useFakeTimers();
+    const { relay, socket, queue } = setup();
+    try {
+      relay.start(handoff);
+      socket.open();
+      socket.text("ok 10.1.2.4");
+      queue.push([10, 1, 2, 3, 4, 210, 4, 210, 7]);
+      relay.wake();
+      expect(socket.sent).toHaveLength(2);
+      expect(Array.from(socket.sent[1] as Uint8Array)).toEqual([10, 1, 2, 3, 4, 210, 4, 210, 7]);
+      relay.wake();
+      expect(socket.sent).toHaveLength(2);
+    } finally {
+      relay.stop();
+      vi.useRealTimers();
+    }
+  });
+
+  it("wake before the relay accepts the player, or after stop, sends nothing", () => {
+    vi.useFakeTimers();
+    const { relay, socket, queue } = setup();
+    try {
+      relay.wake();
+      relay.start(handoff);
+      socket.open();
+      queue.push([10, 1, 2, 3, 4, 210, 4, 210, 7]);
+      relay.wake();
+      expect(socket.sent).toEqual(["ticket tk"]);
+      socket.text("ok 10.1.2.4"); // flushes the packet queued before the accept
+      expect(socket.sent).toHaveLength(2);
+      queue.push([10, 1, 2, 3, 4, 210, 4, 210, 8]);
+      relay.stop();
+      relay.wake();
+      expect(socket.sent).toHaveLength(2);
+      expect(queue).toHaveLength(1);
+    } finally {
+      relay.stop();
+      vi.useRealTimers();
+    }
   });
 
   it("reports a refused login and a lost connection", () => {

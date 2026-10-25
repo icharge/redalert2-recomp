@@ -22,6 +22,7 @@
 #include <dirent.h>
 #include <strings.h>
 #include <pthread.h>
+#include <stdatomic.h>
 #include <emscripten.h>
 #include <emscripten/wasmfs.h>
 
@@ -74,6 +75,17 @@ EMSCRIPTEN_KEEPALIVE int ra2_udp_pop(int capacity) {
     if ((uint32_t)capacity > sizeof g_ra2_udp_packet) capacity = sizeof g_ra2_udp_packet;
     return hle_ws_udp_pop(g_ra2_udp_packet, (uint32_t)capacity);
 }
+/* Tell the page the game queued a datagram, so it sends at once instead of at its next
+ * timer tick (a hidden tab throttles that timer to a second or more). One wake is in
+ * flight at a time: the page clears the flag before it drains, and a datagram queued
+ * after that posts the next wake. */
+static _Atomic int g_udp_wake_pending;
+static void ra2_udp_wake(void) {
+    int expected = 0;
+    if (!atomic_compare_exchange_strong(&g_udp_wake_pending, &expected, 1)) return;
+    MAIN_THREAD_ASYNC_EM_ASM({ Module.ra2UdpWake && Module.ra2UdpWake(); });
+}
+EMSCRIPTEN_KEEPALIVE void ra2_udp_wake_done(void) { atomic_store(&g_udp_wake_pending, 0); }
 /* The page turns Winsock tracing (stderr "[net]" lines) on with ?udptrace. */
 EMSCRIPTEN_KEEPALIVE void ra2_net_trace(int on) { hle_ws_set_trace(on); }
 EMSCRIPTEN_KEEPALIVE int ra2_udp_push(int length) {
@@ -740,6 +752,7 @@ int main(int argc, char **argv) {
     }
 
     if (g_clockstats) ra2_clockstats_install();
+    hle_ws_udp_on_queue = ra2_udp_wake;
     win32hle_register(g_ra2_shims);    /* first: the game's own answers win */
     recomp_host_init();
 #ifndef RA2_TARGET_GAME

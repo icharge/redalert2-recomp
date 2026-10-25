@@ -173,6 +173,10 @@ interface Ra2Module extends Partial<WasmMemory> {
   ra2WolStop?(): void;
   ra2WolReceiveLine?(line: string): void;
   ra2WolReport?(requestId: number, gameNumber: number, packet: Uint8Array): void;
+  /** Cached World Domination packet for the request's cycle, or null before the fetch lands. */
+  ra2WdtState?(cycle: "current" | "previous"): Uint8Array | null;
+  /** The game thread calls this (through the main thread) when it queues a UDP datagram. */
+  ra2UdpWake?(): void;
 }
 
 declare global {
@@ -752,6 +756,13 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
           ra2_udp_push: module.cwrap("ra2_udp_push", "number", ["number"]) as (
             length: number,
           ) => number,
+        };
+        // Clear the game's wake flag first, so a datagram queued while this pump runs
+        // posts a wake of its own; the relay may be gone by now, the flag still clears.
+        const udpWakeDone = module.cwrap("ra2_udp_wake_done", null, []) as () => void;
+        module.ra2UdpWake = () => {
+          udpWakeDone();
+          udpRelay?.wake();
         };
         // ?udptrace logs Winsock calls and the relay's datagrams. The router drops the
         // query later, so read it now.

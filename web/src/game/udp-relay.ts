@@ -30,7 +30,8 @@ export interface WolStartHandoff {
 
 const OPEN = 1;
 const PACKET_MAX = 8 + 1500;
-const POLL_MS = 8;
+/** The game wakes the relay (wake) as it queues a datagram; this is only the fallback. */
+const POLL_MS = 50;
 const MAX_PACKETS_PER_POLL = 64;
 
 /** `:server STARTG #chan :ws://host/gserv :g1-abc 1700000000 ticket` */
@@ -85,8 +86,10 @@ export class UdpRelay {
       if (this.socket !== socket) return;
       if (typeof event.data === "string") {
         this.trace(`relay says: ${event.data}`);
-        if (event.data.startsWith("ok ")) this.ready = true;
-        else this.onError(`Internet play relay refused the connection: ${event.data}`);
+        if (event.data.startsWith("ok ")) {
+          this.ready = true;
+          this.pump(); // what the game queued during the handshake goes out now
+        } else this.onError(`Internet play relay refused the connection: ${event.data}`);
         return;
       }
       this.receive(new Uint8Array(event.data as ArrayBuffer));
@@ -108,6 +111,11 @@ export class UdpRelay {
     this.socket = null;
     this.ready = false;
     socket?.close();
+  }
+
+  /** Send what the game has queued now, instead of at the next timer tick. */
+  wake(): void {
+    this.pump();
   }
 
   private trace(message: string): void {
