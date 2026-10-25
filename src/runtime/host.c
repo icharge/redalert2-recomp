@@ -274,6 +274,15 @@ static void shim_SetCursorPos(void) {
     g_esp += 4 + 2 * 4;
 }
 
+/* The game confines the cursor to its window while it holds the mouse (Capture_Mouse,
+ * ClipCursor). Headless the window is virtual, so the real cursor would be locked into
+ * a rectangle of the player's desktop for no reason. The presenter's shims leave this
+ * one out: a real window may confine the cursor. */
+static void shim_ClipCursor(void) {
+    g_eax = TRUE;
+    g_esp += 4 + 1 * 4;
+}
+
 /* The cursor. The menus are Win32 dialogs and use the Windows cursor: the
  * game loads its own arrow (resource 0x68) and sets it. In a battle the mouse
  * is captured (Capture_Mouse, its +0x10 byte) and the game draws the cursor
@@ -1192,6 +1201,7 @@ static native32_shim_t g_headless_shims[] = {
     { "MoveWindow", shim_MoveWindow },
     { "SetWindowPos", shim_SetWindowPos },
     { "SetCursorPos", shim_SetCursorPos },
+    { "ClipCursor", shim_ClipCursor },
     { "SetCursor", shim_SetCursor },
     { "SetForegroundWindow", shim_SetForegroundWindow },
     { "BringWindowToTop", shim_BringWindowToTop },
@@ -1516,7 +1526,7 @@ int main(int argc, char** argv) {
         int n = 0;
         for (int k = 0; k < nshims; k++)
             if (strcmp(shims[k].name, "MessageBoxA") && strcmp(shims[k].name, "CreateMutexA") &&
-                strcmp(shims[k].name, "OpenMutexA"))
+                strcmp(shims[k].name, "OpenMutexA") && strcmp(shims[k].name, "ClipCursor"))
                 live[n++] = shims[k];
         shims = live, nshims = n;
     }
