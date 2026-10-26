@@ -10,7 +10,7 @@ Detailed ledger (rulings, review findings): `.superpowers/sdd/2026-10-26-web-fra
 | Task | State | Commits |
 |---|---|---|
 | 1. Benchmark and baseline | **done**, review clean after 5 fix rounds | aa8bb15..1981765 |
-| 2. Probes: wait precision, clock calls | **fix round 1** (review: commit the clock-probe script, 6 small fixes). M = 16 ms; no clock spin | d288344, 47ab13b |
+| 2. Probes: wait precision, clock calls | **fix round 1 in re-review** (clock-probe script committed, 6 small fixes; both editions build). M = 16 ms; no clock spin | d288344, 47ab13b, dba7145 |
 | 2b. Profile the busy game, HD off (new) | pending, next after Task 2 | |
 | 3. Raw publish, three buffers, protocol 8 | pending | |
 | 4. WebGL2 presenter | pending | |
