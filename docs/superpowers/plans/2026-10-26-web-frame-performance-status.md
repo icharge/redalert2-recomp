@@ -10,14 +10,14 @@ Detailed ledger (rulings, review findings): `.superpowers/sdd/2026-10-26-web-fra
 | Task | State | Commits |
 |---|---|---|
 | 1. Benchmark and baseline | **done**, review clean after 5 fix rounds | aa8bb15..1981765 |
-| 2. Probes: wait precision, clock calls | **running**: probe build done; clock probe re-running after a fix to how its script reads game events (Haiku implementer; from 1981765) | — |
+| 2. Probes: wait precision, clock calls | **in review** (Haiku reviewer). Wait margin M = 16 ms; no clock spin found | d288344, 47ab13b |
 | 3. Raw publish, three buffers, protocol 8 | pending | |
 | 4. WebGL2 presenter | pending | |
 | 5. HD layers on the GPU | pending | |
 | 6. Scaling modes and bars | pending | |
 | 7. Rendering checkpoint | pending | |
 | 8. Sleep margin (pcrecomp) | pending | |
-| 9. Clock damper (if Task 2 finds a spin) | pending | |
+| 9. Clock damper (if Task 2 finds a spin) | **skipped**: no spin found | |
 | 10. Critical-section futex, mixer, page frame loop | pending | |
 | 11. Memory bounds and limits | pending | |
 | 12. Final benchmark and docs | pending | |
@@ -26,7 +26,7 @@ Detailed ledger (rulings, review findings): `.superpowers/sdd/2026-10-26-web-fra
 ## To resume after an interruption
 
 1. `git log --oneline 1981765..HEAD` shows what landed since Task 1.
-2. If Task 2 has a commit "Probe worker wait precision and the game's clock calls" and the plan's "Probe results" section is filled, it needs its task review; otherwise re-dispatch Task 2 from its brief (`.superpowers/sdd/2026-10-26-web-frame-performance/task-2-brief.md`).
+2. Task 2 is committed (d288344, 47ab13b); if no "Task 2: complete" line is in the ledger, re-run its review from `review-1981765..47ab13b.diff`. Otherwise resume at the first task without a complete line.
 3. Builds for tests go in their own BUILD_DIR with `-DWEB_OUT` outside `web/public/game` (CLAUDE.md); e2e loads them with `--build`. Benchmark profile: `work/perf/profile-fresh`; busy save: `work/perf/busy.sav`; baseline: `work/perf/baseline/run.json`.
 
 ## Baseline (Task 1, published Release build ef2b94fc673f9950, headed Chrome)
@@ -48,3 +48,9 @@ Detailed ledger (rulings, review findings): `.superpowers/sdd/2026-10-26-web-fra
 
 - The OPFS profile's RA2MD.INI gains a repeated `[Video]` section per run (a loader INI-rewrite bug).
 - `?dev=1` / `?test=1` game folders copy the whole install into wasm memory and crash at the 768 MiB cap.
+
+## Probe results (Task 2)
+
+- Worker waits: p99 lateness 7–15 ms at every target from 1 to 16 ms, so the wait margin stays M = 16 ms (today's value). Task 8 may have little to change.
+- Clock calls per second: main menu about 59,000 high-precision clock reads and 93 Sleeps; in a match about 2,000 timeGetTime, 700 clock reads and 667 Sleeps.
+- No spin: every second had 91+ Sleep calls, so Task 9 is skipped.
