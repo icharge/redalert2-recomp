@@ -13,7 +13,7 @@ Detailed ledger (rulings, review findings): `.superpowers/sdd/2026-10-26-web-fra
 | 2. Probes: wait precision, clock calls | **done**, review clean after 1 fix round. M = 16 ms; no clock spin | d288344, 47ab13b, dba7145, ebee1fa |
 | 2b. Profile the busy game, HD off (new) | **done**, review clean after 1 fix round | 5fccff2, 006fcef |
 | 2c. Test the Thai-font wrapper's cost (new) | **done**, review clean after 2 fix rounds. Busy 720p HD off: 26.5 fps with the wrapper, **62** (1% low 55–56, the speed-5 cap) without; work per frame 34 ms vs 12–13 ms | 483d5d7, 5887904, 95ed1b2 |
-| 2d. Thai-off path as a plain call | **in review**; macro changes reverted (585ef08): they didn't matter. It found the real cause: **the app turns the Thai font fix on by default**, and with it off the busy save already runs at 62 fps (720p). Fix off: 1080p 49–50, 1440p 33 | 533d330, 585ef08 |
+| 2d. Thai-off path as a plain call | **fix round 1** (frame counter, labels, wording); macro changes reverted (585ef08): they didn't matter. It found the real cause: **the app turns the Thai font fix on by default**, and with it off the busy save already runs at 62 fps (720p). Fix off: 1080p 49–50, 1440p 33 | 533d330, 585ef08 |
 | 2e. The Thai fix without full-font rewrites (new) | pending, after 2d's review; in the plan (e39a7d9) | |
 | 3. Raw publish, three buffers, protocol 8 | pending | |
 | 4. WebGL2 presenter | pending | |
