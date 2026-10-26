@@ -14,7 +14,8 @@ Detailed ledger (rulings, review findings): `.superpowers/sdd/2026-10-26-web-fra
 | 2b. Profile the busy game, HD off (new) | **done**, review clean after 1 fix round | 5fccff2, 006fcef |
 | 2c. Test the Thai-font wrapper's cost (new) | **done**, review clean after 2 fix rounds. Busy 720p HD off: 26.5 fps with the wrapper, **62** (1% low 55–56, the speed-5 cap) without; work per frame 34 ms vs 12–13 ms | 483d5d7, 5887904, 95ed1b2 |
 | 2d. Thai-off path as a plain call | **done** (review clean after 1 fix round); its macro changes were reverted (585ef08): they didn't matter. It found the real cause: **the app turns the Thai font fix on by default**; with it off the busy save already runs at 62 fps (720p). Fix off: 1080p 49–50, 1440p 33 | 533d330, 585ef08, 4c6da57 |
-| 2e. The Thai fix without full-font rewrites (new) | **fix round 1 in re-review**: rejected fonts are remembered with the reason, re-checked on each use; screenshots identical to the old build. Busy, HD off, Thai on (the default): 720p **61 fps** (1% low 54–55) vs 23–29 before; 1080p 49, 1440p 34 | 30f984d, 4303eaf, cb64513 |
+| 2e. The Thai fix without full-font rewrites (new) | **done** (review clean after 1 fix round; one measurement question parked). Rejected fonts are remembered, with the reason re-checked on each use; screenshots identical to the old build. Busy, HD off, Thai on (the default): 720p **61 fps** (1% low 54–55) vs 23–29 before; 1080p 49, 1440p 34. The Thai shaping itself stays inactive for this font | 30f984d, 4303eaf, cb64513 |
+| 2f. Profile the busy game at 1440p, Thai on (new) | next (plan 6429677): where the game's extra work at 1440p goes, before the picture tasks | |
 | 3. Raw publish, three buffers, protocol 8 | pending | |
 | 4. WebGL2 presenter | pending | |
 | 5. HD layers on the GPU | **deferred** to a later HD project | |
@@ -29,11 +30,11 @@ Detailed ledger (rulings, review findings): `.superpowers/sdd/2026-10-26-web-fra
 
 ## Change of target (26 October)
 
-The user asked to focus on the game with HD off (HD vehicles are experimental and flicker). The pass bar is now 60 fps median, 55 1% low, 720p–1440p, busy, **HD off**, with the app's defaults (so the Thai font fix on); HD on is recorded with no target. New Task 2b profiles the busy save first, since it runs at 18–23 fps at every size (the picture isn't the limit). Order: 2b, 2c, 2d, 2e, 3, 4, 6, 7, 8, 10, 11, 12.
+The user asked to focus on the game with HD off (HD vehicles are experimental and flicker). The pass bar is now 60 fps median, 55 1% low, 720p–1440p, busy, **HD off**, with the app's defaults (so the Thai font fix on); HD on is recorded with no target. New Task 2b profiles the busy save first, since it runs at 18–23 fps at every size (the picture isn't the limit). Order: 2b, 2c, 2d, 2e, 2f, 3, 4, 6, 7, 8, 10, 11, 12.
 
 ## What limits the busy game (Tasks 2b–2d)
 
-- **The Thai font fix.** The web app turns it on by default. With it on, every text call tries to set up the Thai state for the font, and for the busy save's font that fails (glyph 29996 is 207 pixels wide, over the check's 16; `thai_font.c:223`) after copying 1.67 MB and scanning 34,151 glyphs. That is the 52% of the game thread the profile showed under `recomp_thai_call`. (An earlier note here blamed the width rewrites; Task 2e's counts showed they never run.) So the Thai shaping itself is inactive for this font: a separate question for the user. Busy save, 720p, HD off: 26 fps with the fix on, 62 (the speed-5 cap) with it off. Task 2e makes the fix cheap and keeps it on by default.
+- **The Thai font fix.** The web app turns it on by default. With it on, every text call tries to set up the Thai state for the font, and for the busy save's font that fails (glyph 29996 is 207 pixels wide, over the check's 16; `thai_font.c:223`) after copying 1.67 MB and scanning 34,151 glyphs. That is the 52% of the game thread the profile showed under `recomp_thai_call`. (An earlier note here blamed the width rewrites; Task 2e's counts showed they never run.) So the Thai shaping itself is inactive for this font: a separate question for the user. Busy save, 720p, HD off: 26 fps with the fix on, 62 (the speed-5 cap) with it off. Task 2e removed that cost (the rejection is remembered) and the fix stays on by default; the Thai shaping itself is still inactive for this font.
 - **Bigger screens cost more game work.** With the fix off: 1080p 49–50 fps, 1440p 33 fps; at 1440p the profiling script measured 21.5 ms of game work a frame (60 fps allows 16), but that script's fps differs from the benchmark's, so treat the figure as rough. Profile at 1440p after Task 2e.
 - The picture code (presenter) is under 1% of the game thread at 720p; waiting is 16%.
 - Separate CPU cost: pcrecomp's `wait_ms` busy-polls the clock on another worker (about 81% of that worker's time in clock reads).
@@ -42,7 +43,7 @@ The user asked to focus on the game with HD off (HD vehicles are experimental an
 ## To resume after an interruption
 
 1. `git log --oneline 1981765..HEAD` shows what landed since Task 1.
-2. Tasks 2–2d are done; 2e is in review (BASE 466d0a4, package `review-466d0a4..4303eaf.diff`). Next is a 1080p/1440p busy profile (Thai on), then Task 3.
+2. Tasks 2–2e are done. If Task 2f has a commit adding a "Task 2f" Results subsection, it needs its review (BASE 6429677); otherwise dispatch it from `.superpowers/sdd/2026-10-26-web-frame-performance/task-2f-brief.md`.
 3. Builds for tests go in their own BUILD_DIR with `-DWEB_OUT` outside `web/public/game` (CLAUDE.md); e2e loads them with `--build`. Benchmark profile: `work/perf/profile-fresh`; busy save: `work/perf/busy.sav`; baseline: `work/perf/baseline/run.json`.
 
 ## Baseline (Task 1, published Release build ef2b94fc673f9950, headed Chrome)
