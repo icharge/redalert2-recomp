@@ -142,6 +142,7 @@ export function parseEventLine(line: string): GameEvent | null {
 /** Word indexes into the struct, as an Int32Array over the wasm memory sees it. */
 export const Shared = {
   protocol: 0,
+  /** A seqlock: odd while the game publishes a picture, even when it is whole. Take a picture only at an even value that did not change while reading (docs/web/protocol.md). */
   frameSeq: 1,
   framePtr: 2,
   frameW: 3,

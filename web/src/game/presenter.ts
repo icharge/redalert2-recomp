@@ -100,8 +100,9 @@ export class Presenter {
     const base = this.shared >> 2;
     const word = (index: number) => Atomics.load(HEAP32, base + index);
 
+    // frame_seq is a seqlock: an odd value means the game is publishing, so only even values are pictures
     const seq = word(Shared.frameSeq);
-    if (seq !== this.frameSeq) {
+    if ((seq & 1) === 0 && seq !== this.frameSeq) {
       const width = word(Shared.frameW);
       const height = word(Shared.frameH);
       const pointer = word(Shared.framePtr) >>> 0;

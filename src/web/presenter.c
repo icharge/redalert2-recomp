@@ -96,8 +96,9 @@ EMSCRIPTEN_KEEPALIVE ra2_shared_t *ra2_shared(void) { return &g_sh; }
 /* The primary surface, into the buffer the page is not reading: RGBA bytes (R lowest) with presentMode 0, the
  * game's own format unconverted with presentMode 1. Raw mode publishes the 1x frame even with HD vehicles on:
  * the HD layers are not composed here (the GPU path, Task 5, will fill hd_* and draw them).
- * With presentMode 0 the page does not announce readIndex yet, so frame_collect frees nothing there and a
- * resized-away buffer leaks once per resize (frame_buffers.h); Task 4 makes the 2D presenter set it. */
+ * With presentMode 0 the page does not announce readIndex yet, so frame_collect frees nothing there and each
+ * resize leaks one buffer for the rest of the session (frame_buffers.h); the old code leaked the same way.
+ * Task 4 makes the 2D presenter set readIndex, and then presentMode 0 can free too. */
 static void publish(const uint8_t *px, int w, int h, int pitch, int bpp, const uint32_t *pal) {
     static uint32_t last_w, last_h;
     double began = emscripten_get_now();
@@ -116,10 +117,6 @@ static void publish(const uint8_t *px, int w, int h, int pitch, int bpp, const u
         out = frame_acquire(&g_frames, reading, (size_t)row * (size_t)h);
         if (!out) return;
         for (int y = 0; y < h; y++) memcpy(out + (size_t)y * row, px + (size_t)y * (size_t)pitch, row);
-        if (bpp == 8) {
-            memcpy(g_palette, pal, sizeof g_palette);
-            g_sh.palette_ptr = (uint32_t)(uintptr_t)g_palette;
-        }
     } else {
         if (hd) { w *= 2; h *= 2; }
         format = RA2_FMT_RGBA;
@@ -156,18 +153,28 @@ static void publish(const uint8_t *px, int w, int h, int pitch, int bpp, const u
             }
         }
     }
-    /* The page's order (protocol.md): the pixels are written; then frame_ptr and frame_index; then frame_seq. */
+    /* The seqlock (protocol.md): the pixels above are not page-visible yet. frame_seq goes odd before any published
+     * word is written and even when the whole picture is written, so a page that reads an even frame_seq before
+     * and after reading the words sees one picture. Every published word is an atomic store, so none moves above
+     * the odd store, and the fence keeps the palette copy below it. */
+    uint32_t seq = __atomic_load_n(&g_sh.frame_seq, __ATOMIC_SEQ_CST);
+    __atomic_store_n(&g_sh.frame_seq, seq + 1, __ATOMIC_SEQ_CST);
+    __atomic_thread_fence(__ATOMIC_SEQ_CST);
+    if (raw && bpp == 8) {
+        memcpy(g_palette, pal, sizeof g_palette);
+        __atomic_store_n(&g_sh.palette_ptr, (uint32_t)(uintptr_t)g_palette, __ATOMIC_SEQ_CST);
+    }
     int index = frame_index_of(&g_frames, out);
-    g_sh.format = format;
-    g_sh.frame_pitch = row;
-    g_sh.frame_w = (uint32_t)w;
-    g_sh.frame_h = (uint32_t)h;
-    g_sh.game_w = (uint32_t)game_w;
-    g_sh.game_h = (uint32_t)game_h;
+    __atomic_store_n(&g_sh.format, format, __ATOMIC_SEQ_CST);
+    __atomic_store_n(&g_sh.frame_pitch, row, __ATOMIC_SEQ_CST);
+    __atomic_store_n(&g_sh.frame_w, (uint32_t)w, __ATOMIC_SEQ_CST);
+    __atomic_store_n(&g_sh.frame_h, (uint32_t)h, __ATOMIC_SEQ_CST);
+    __atomic_store_n(&g_sh.game_w, (uint32_t)game_w, __ATOMIC_SEQ_CST);
+    __atomic_store_n(&g_sh.game_h, (uint32_t)game_h, __ATOMIC_SEQ_CST);
     frame_publish(&g_frames, index);
     __atomic_store_n(&g_sh.frame_ptr, (uint32_t)(uintptr_t)out, __ATOMIC_SEQ_CST);
     __atomic_store_n(&g_sh.frame_index, index, __ATOMIC_SEQ_CST);
-    __atomic_add_fetch(&g_sh.frame_seq, 1, __ATOMIC_SEQ_CST);
+    __atomic_store_n(&g_sh.frame_seq, seq + 2, __ATOMIC_SEQ_CST);
     g_pub_ms += emscripten_get_now() - began, g_pub_n++;
     if ((uint32_t)game_w != last_w || (uint32_t)game_h != last_h) {
         char line[64];
@@ -242,7 +249,9 @@ static void present_now(void) {
     unsigned seq;
     if (!hle_dd_frame(&px, &w, &h, &pitch, &bpp, &pal, &seq)) return;
     uint32_t now = hle_ticks_ms();
-    if (__atomic_exchange_n(&g_sh.republish, 0, __ATOMIC_SEQ_CST)) {   /* the page came back: a new picture now */
+    /* the page came back: a new picture now. A plain load first, so the common path makes no locked write */
+    if (__atomic_load_n(&g_sh.republish, __ATOMIC_SEQ_CST) &&
+        __atomic_exchange_n(&g_sh.republish, 0, __ATOMIC_SEQ_CST)) {
         shown_seq = ~0u;
         last = now - 15;
     }
@@ -432,8 +441,13 @@ static void drain_input(void) {
              * blur still lets go of keys, buttons and the pointer (input.ts). Coming back, every
              * showing window paints in full and a new picture goes out at once. */
             if (h) hle_post_message(h, WM_ACTIVATEAPP, 1, 0);
-            if (e.a) redraw_whole_screen(), hle_invalidate_all(), __atomic_store_n(&g_sh.republish, 1, __ATOMIC_SEQ_CST);
-            else web_presenter_pause();                      /* leaving a match: it is paused when they come back */
+            if (e.a) {
+                redraw_whole_screen();
+                hle_invalidate_all();
+                __atomic_store_n(&g_sh.republish, 1, __ATOMIC_SEQ_CST);
+            } else {
+                web_presenter_pause();
+            }                      /* leaving a match: it is paused when they come back */
             break;
         }
         }

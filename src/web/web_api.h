@@ -14,12 +14,14 @@
 /* The picture and the cursor, published by the game thread and read by the
  * page in wasm's shared memory (ra2_shared() says where). Every field up to
  * cursor_rgba is one 32-bit word, so the page reads it as an Int32Array. A
- * frame is w*h*4 bytes of RGBA at frame_ptr; frame_seq goes up after each
- * one is written, and the page redraws when it changes. With presentMode 0 (the
- * default) that is RGBA; with 1 the words from format on are the picture. */
+ * frame is w*h*4 bytes of RGBA at frame_ptr. frame_seq is a seqlock: odd while a
+ * picture is being published, even when it is whole; the page takes a picture
+ * only at an even value that did not change while it read (protocol.md). With
+ * presentMode 0 (the default) that is RGBA; with 1 the words from format on are
+ * the picture. */
 typedef struct ra2_shared {
     uint32_t protocol;               /* RA2_WEB_PROTOCOL */
-    volatile uint32_t frame_seq;
+    volatile uint32_t frame_seq;     /* seqlock: odd while a picture is published (see above) */
     volatile uint32_t frame_ptr;
     volatile uint32_t frame_w, frame_h;
     volatile uint32_t cursor_seq;    /* up whenever the cursor below changes */

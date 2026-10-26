@@ -48,7 +48,7 @@ and the page reads it each animation frame.
 | Word | Field | Meaning |
 |---|---|---|
 | 0 | `protocol` | `RA2_WEB_PROTOCOL` |
-| 1 | `frame_seq` | goes up after each frame is written; redraw when it moves |
+| 1 | `frame_seq` | a seqlock: odd while the game publishes a picture, even when it is whole. The 2D page (`presenter.ts`) takes a picture only at an even value that changed since its last one. A raw page follows the read order at 1047 |
 | 2 | `frame_ptr` | address of the picture: `frame_w * frame_h * 4` bytes of RGBA with `presentMode` 0 (the default), or `frame_h` rows of `framePitch` bytes in `format` with 1 |
 | 3, 4 | `frame_w`, `frame_h` | the picture's size, which is the game's display mode |
 | 5 | `cursor_seq` | goes up whenever the cursor changes |
@@ -60,20 +60,22 @@ and the page reads it each animation frame.
 | 1044 | `format` | raw picture: `PixelFormat` (0 RGBA, 1 RGB565, 2 PAL8, 3 BGRX as the game's 32-bit screen stores them) |
 | 1045 | `framePitch` | raw picture: bytes per row |
 | 1046 | `palettePtr` | PAL8: 256 words, `r \| g << 8 \| b << 16` |
-| 1047 | `readIndex` | written by the page with `Atomics.store`: the buffer (0 to 2) it is reading, -1 for none. The page reads like this: read `frameIndex` and `framePtr`; store `readIndex` = that index; re-read `frameIndex` and `framePtr` and retry if either changed; only then read the pixels; store -1 when done. The game never writes the buffer `readIndex` names. Set to -1 at start-up. The game uses sequentially consistent atomics on it. In presentMode 0 the 2D page does not set it yet (Task 4), so the game frees no replaced buffer there |
-| 1048 | `frameIndex` | the buffer `frame_ptr` is in (0 to 2), -1 before the first picture. The game stores it after `framePtr` and before `frame_seq`; the page reads it with `Atomics.load` |
+| 1047 | `readIndex` | written by the page with `Atomics.store`: the buffer (0 to 2) it is reading, -1 for none. The page's read: read `frame_seq` s1 and retry while it is odd; read the metadata, `frame_ptr` and `frameIndex`; `Atomics.store` `readIndex` = `frameIndex`; read `frame_seq` s2 and retry if s2 != s1; only then read the pixels; store -1 (or the next index) when done. The game never writes the buffer `readIndex` names. Set to -1 at start-up. In presentMode 0 the 2D page does not set it yet (Task 4), so the game frees no replaced buffer there |
+| 1048 | `frameIndex` | the buffer `frame_ptr` is in (0 to 2), -1 before the first picture. The game stores it between the odd and even `frame_seq` stores; the page reads it with `Atomics.load` |
 | 1049, 1050 | `hdLayer1x`, `hdLayer2x` | the HD vehicle layers; filled by the GPU path, 0 until then |
 | 1051, 1052 | `hdRects`, `hdRectCount` | the HD layers' rectangles; the same |
 | 1053 | `hdSeq` | goes up when the HD layers change; the same |
 | 1054 | `republish` | the page sets 1 (`Atomics.store`) to ask for a full picture; the game takes it with an exchange to 0 |
-| 1055 | `presentMode` | written by the page with `Atomics.store`: 0 publishes RGBA as before (the default), 1 publishes the game's format unconverted. Read at each publish. With 1 and HD vehicles on, the 1x frame goes out and the HD layers stay 0. Replaced buffers are freed only with 1, where the page announces `readIndex`; with 0 they are not freed (one leak per resize) until Task 4 has both presenters set `readIndex` |
+| 1055 | `presentMode` | written by the page with `Atomics.store`: 0 publishes RGBA as before (the default), 1 publishes the game's format unconverted. Read at each publish. The page finishes any picture read before it stores `presentMode`. With 1 and HD vehicles on, the 1x frame goes out and the HD layers stay 0. Replaced buffers are freed only with 1, where the page announces `readIndex`; with 0 each resize leaks one buffer for the rest of the session (the old code did the same) until Task 4 has both presenters set `readIndex` |
 
 The game keeps three buffers for the picture. It writes into the one that is
 neither the newest published nor `readIndex`. A buffer it has outgrown is freed once no slot
 reads or publishes it, but only when the page announces its reads (`presentMode` 1); with
-`presentMode` 0 it is not freed, one leak per resize, until Task 4 makes both presenters set
-`readIndex` (`src/web/frame_buffers.c`). The publish order is: the pixels; `framePtr` and
-`frameIndex`; `frame_seq`.
+`presentMode` 0 it is never freed: each resize leaks one buffer for the rest of the session, as
+the old code did, until Task 4 makes both presenters set `readIndex` (`src/web/frame_buffers.c`).
+The publish order is the seqlock: the pixels go into a buffer no page reads; `frame_seq` goes odd;
+the published words (`format`, `framePitch`, the frame and game sizes, `palettePtr`), then
+`framePtr` and `frameIndex` are stored, each with an atomic store; `frame_seq` goes even.
 
 ## Page to game: exported functions
 

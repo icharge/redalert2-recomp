@@ -19,7 +19,8 @@ uint8_t *frame_acquire(frame_bufs_t *b, int reading, size_t bytes) {
     int i = frame_pick(b->newest, reading);
     if (b->cap[i] >= bytes) return b->ptr[i];
     /* The replaced buffer waits in old[i] for frame_collect. If one still waits here, frame_collect freed nothing
-     * (presentMode 0) and it is overwritten, which leaks it: the one leak per resize the ruling allows. */
+     * (presentMode 0) and it is overwritten, which leaks it: the leak the ruling allows, one buffer per resize
+     * for the session. */
     b->old[i] = b->ptr[i];
     b->ptr[i] = malloc(bytes);
     b->cap[i] = b->ptr[i] ? bytes : 0;

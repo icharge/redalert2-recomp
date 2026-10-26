@@ -56,7 +56,7 @@ describe("Presenter", () => {
     word(Shared.frameW, 2);
     word(Shared.frameH, 2);
     word(Shared.framePtr, FRAME);
-    word(Shared.frameSeq, 1);
+    word(Shared.frameSeq, 2);
     presenter.draw();
     presenter.draw();
     expect(drawn).toHaveLength(1);
@@ -98,7 +98,7 @@ describe("Presenter", () => {
     word(Shared.frameW, 2);
     word(Shared.frameH, 1);
     word(Shared.framePtr, FRAME);
-    word(Shared.frameSeq, 1);
+    word(Shared.frameSeq, 2);
     presenter.draw();
     expect(canvas.width).toBe(2);
     expect(canvas.height).toBe(1);
@@ -111,13 +111,27 @@ describe("Presenter", () => {
     word(Shared.frameW, 1);
     word(Shared.frameH, 1);
     word(Shared.framePtr, FRAME);
-    word(Shared.frameSeq, 1);
+    word(Shared.frameSeq, 2);
     presenter.draw();
     presenter.draw();
     expect(drawn).toHaveLength(1);
-    word(Shared.frameSeq, 2);
+    word(Shared.frameSeq, 4);
     presenter.draw();
     expect(drawn).toHaveLength(2);
+  });
+
+  it("does not draw while the game is publishing (an odd frame_seq), and draws the picture once it is whole", () => {
+    const { presenter, word, drawn } = setup();
+    word(Shared.frameW, 1);
+    word(Shared.frameH, 1);
+    word(Shared.framePtr, FRAME);
+    word(Shared.frameSeq, 3);
+    presenter.draw();
+    expect(drawn).toHaveLength(0);
+    word(Shared.frameSeq, 4);
+    presenter.draw();
+    presenter.draw();
+    expect(drawn).toHaveLength(1);
   });
 
   it("keeps the game's frame size when it exceeds the viewport", () => {
@@ -126,7 +140,7 @@ describe("Presenter", () => {
     word(Shared.frameW, 2);
     word(Shared.frameH, 1);
     word(Shared.framePtr, FRAME);
-    word(Shared.frameSeq, 1);
+    word(Shared.frameSeq, 2);
 
     presenter.draw();
 
@@ -143,7 +157,7 @@ describe("Presenter", () => {
     word(Shared.frameW, 4);
     word(Shared.frameH, 2);
     word(Shared.framePtr, FRAME);
-    word(Shared.frameSeq, 1);
+    word(Shared.frameSeq, 2);
 
     presenter.draw();
 

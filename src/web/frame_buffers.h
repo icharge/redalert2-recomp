@@ -4,19 +4,25 @@
  * the game writes the one that is neither the newest published nor the one the
  * page says it is reading (ra2_shared_t readIndex).
  *
- * The page's reads, which Task 4 implements (protocol.md, words 1047 and 1048):
- * read frameIndex and framePtr; Atomics.store readIndex = that index; re-read
- * frameIndex and framePtr and retry if either changed; only then read the
- * pixels; store -1 when done. The page uses Atomics.load and Atomics.store on
- * these words. The game uses __ATOMIC_SEQ_CST on them and publishes in this
- * order: the pixels, then frame_ptr and frame_index, then frame_seq.
+ * The seqlock (protocol.md): frame_seq is odd while the game publishes a
+ * picture and even when it is whole. The game writes the pixels into a buffer
+ * no page reads, then frame_seq goes odd, then the published words (format,
+ * pitch, sizes, palette_ptr, framePtr, frameIndex), then frame_seq goes even.
+ * The page's reads, which Task 4 implements (protocol.md): read frame_seq s1
+ * and retry while it is odd; read the metadata, framePtr and frameIndex; store
+ * readIndex = frameIndex (Atomics.store); read frame_seq s2 and retry if
+ * s2 != s1; only then read the pixels; store -1 (or the next index) when done.
+ * The page finishes any picture read before it stores presentMode, and uses
+ * Atomics.load and Atomics.store on these words. The game uses sequentially
+ * consistent atomics on them.
  *
  * Replaced buffers. A resize moves a slot to a bigger buffer and keeps the old
  * one in old[] until frame_collect frees it. frame_collect frees only when the
  * page announces its reads (presentMode 1). In presentMode 0 the page does not
  * set readIndex yet (the 2D presenter, Task 4), so a replaced buffer may still
- * be read: it is never freed, one leak per resize, as before this change. Task
- * 4 makes both presenters set readIndex; then presentMode 0 can free too.
+ * be read: it is never freed. Each resize leaks one buffer for the rest of the
+ * session, as the old code did. Task 4 makes both presenters set readIndex;
+ * then presentMode 0 can free too.
  *
  * frame_acquire never frees. The game calls frame_collect before frame_acquire
  * at each publish, with the same reading, so a slot it picks has nothing pending
