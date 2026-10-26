@@ -14,7 +14,7 @@ Detailed ledger (rulings, review findings): `.superpowers/sdd/2026-10-26-web-fra
 | 2b. Profile the busy game, HD off (new) | **done**, review clean after 1 fix round | 5fccff2, 006fcef |
 | 2c. Test the Thai-font wrapper's cost (new) | **done**, review clean after 2 fix rounds. Busy 720p HD off: 26.5 fps with the wrapper, **62** (1% low 55–56, the speed-5 cap) without; work per frame 34 ms vs 12–13 ms | 483d5d7, 5887904, 95ed1b2 |
 | 2d. Thai-off path as a plain call | **done** (review clean after 1 fix round); its macro changes were reverted (585ef08): they didn't matter. It found the real cause: **the app turns the Thai font fix on by default**; with it off the busy save already runs at 62 fps (720p). Fix off: 1080p 49–50, 1440p 33 | 533d330, 585ef08, 4c6da57 |
-| 2e. The Thai fix without full-font rewrites (new) | **running** (Haiku implementer; from 466d0a4): count the rewrites, a pixel-identical screenshot check against build A, then the fix and fps with Thai on and off | |
+| 2e. The Thai fix without full-font rewrites (new) | **running, redirected**: the cost is not the width rewrites. The Thai fix rejects the busy save's font on every text call, after copying 1.67 MB and checking 34,151 glyphs each time; so Thai shaping never runs. Fix: remember rejected fonts (picture unchanged) | 30f984d |
 | 3. Raw publish, three buffers, protocol 8 | pending | |
 | 4. WebGL2 presenter | pending | |
 | 5. HD layers on the GPU | **deferred** to a later HD project | |
@@ -33,7 +33,7 @@ The user asked to focus on the game with HD off (HD vehicles are experimental an
 
 ## What limits the busy game (Tasks 2b–2d)
 
-- **The Thai font fix.** The web app turns it on by default. With it on, each text call rewrites the width of every glyph in the font twice (`apply_metrics` / `restore_metrics` in `src/runtime/thai_font.c`). That is the 52% of the game thread the profile showed under `recomp_thai_call`. Busy save, 720p, HD off: 26 fps with the fix on, 62 (the speed-5 cap) with it off. Task 2e makes the fix cheap and keeps it on by default.
+- **The Thai font fix.** The web app turns it on by default. With it on, every text call tries to set up the Thai state for the font, and for the busy save's font that fails (glyph 29996 is 207 pixels wide, over the check's 16; `thai_font.c:223`) after copying 1.67 MB and scanning 34,151 glyphs. That is the 52% of the game thread the profile showed under `recomp_thai_call`. (An earlier note here blamed the width rewrites; Task 2e's counts showed they never run.) So the Thai shaping itself is inactive for this font: a separate question for the user. Busy save, 720p, HD off: 26 fps with the fix on, 62 (the speed-5 cap) with it off. Task 2e makes the fix cheap and keeps it on by default.
 - **Bigger screens cost more game work.** With the fix off: 1080p 49–50 fps, 1440p 33 fps; at 1440p the profiling script measured 21.5 ms of game work a frame (60 fps allows 16), but that script's fps differs from the benchmark's, so treat the figure as rough. Profile at 1440p after Task 2e.
 - The picture code (presenter) is under 1% of the game thread at 720p; waiting is 16%.
 - Separate CPU cost: pcrecomp's `wait_ms` busy-polls the clock on another worker (about 81% of that worker's time in clock reads).
@@ -73,6 +73,8 @@ The user asked to focus on the game with HD off (HD vehicles are experimental an
 - No spin: every second had 91+ Sleep calls, so Task 9 is skipped.
 
 ## Ideas raised during the run (separate projects)
+
+- The Thai font fix rejects the busy save's font (a glyph wider than 16 pixels), so it never shapes Thai text there. Decide whether it should accept such fonts (changes the picture).
 
 - HD vehicles flicker when on (reported by the user): fix in the HD project.
 - HD buildings and infantry (SHP sprites, not voxels): either a pixel-art scaler in the shader, or pre-upscaled 2x sprites recorded like the HD voxels. Task 5's 2x layer + mask design leaves room for it. To design after this plan.
