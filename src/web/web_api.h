@@ -68,3 +68,5 @@ void web_modern_pointer(uint32_t message, int x, int y);
 /* the game thread's side (presenter.c) */
 void web_presenter_start(int (*menus_use_windows_cursor)(void));
 void web_presenter_pump(void);       /* from the pump hook: input in, the cursor out, fps */
+int  ra2_clockstats_on(void);        /* --clockstats */
+void ra2_clockstats_take(uint32_t out[5]);   /* qpc, timeGetTime, GetTickCount, Sleep(n), Sleep(0) since the last take */

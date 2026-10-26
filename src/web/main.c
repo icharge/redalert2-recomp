@@ -170,8 +170,43 @@ static void ra2_BinkOpen(void) {
 #define SPIN_WINDOW_US 20000u
 #define SPIN_JUMP_US 1000000u
 static uint64_t g_clock_skew_us;
+
+/* --clockstats: how often the game reads the clock and sleeps, counted in the second (the "clock" event,
+ * presenter.c). The QPC count is one branch in its shim; the timeGetTime, GetTickCount and Sleep shims
+ * are installed only with the flag, and each calls the HLE's own implementation. */
+static int g_clockstats;
+static struct { uint32_t qpc, tgt, gtc, sleep, sleep0; } g_clock;
+int ra2_clockstats_on(void) { return g_clockstats; }
+void ra2_clockstats_take(uint32_t out[5]) {
+    out[0] = g_clock.qpc, out[1] = g_clock.tgt, out[2] = g_clock.gtc, out[3] = g_clock.sleep, out[4] = g_clock.sleep0;
+    memset(&g_clock, 0, sizeof g_clock);
+}
+static recomp_func_t hle_original(const win32hle_shim *table, const char *name) {
+    for (const win32hle_shim *s = table; s->name; s++)
+        if (!strcmp(s->name, name)) return s->fn;
+    return NULL;
+}
+static recomp_func_t real_timeGetTime, real_GetTickCount, real_Sleep;
+static void ra2_timeGetTime(void) { g_clock.tgt++; real_timeGetTime(); }
+static void ra2_GetTickCount(void) { g_clock.gtc++; real_GetTickCount(); }
+static void ra2_Sleep(void) { if (A32(0)) g_clock.sleep++; else g_clock.sleep0++; real_Sleep(); }
+static const win32hle_shim g_clock_shims[] = {
+    { "timeGetTime", ra2_timeGetTime },
+    { "GetTickCount", ra2_GetTickCount },
+    { "Sleep", ra2_Sleep },
+    { 0, 0 }
+};
+/* Registered before the host's own tables, so these answer first (hle_resolve takes the first match). */
+static void ra2_clockstats_install(void) {
+    real_timeGetTime = hle_original(win32hle_winmm, "timeGetTime");
+    real_GetTickCount = hle_original(win32hle_kernel32, "GetTickCount");
+    real_Sleep = hle_original(win32hle_kernel32, "Sleep");
+    win32hle_register(g_clock_shims);
+}
+
 static void ra2_QueryPerformanceCounter(void) {
     struct timespec ts;
+    if (g_clockstats) g_clock.qpc++;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     uint64_t us = (uint64_t)ts.tv_sec * 1000000u + (uint64_t)ts.tv_nsec / 1000u;
     if (!g_play_intro && !web_menu_seen) {
@@ -620,6 +655,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--memfs")) g_memfs = 1;
         else if (!strcmp(argv[i], "--intro")) g_play_intro = 1;
         else if (!strcmp(argv[i], "--windows")) g_dump_windows = 1;
+        else if (!strcmp(argv[i], "--clockstats")) g_clockstats = 1;
         else if (!strcmp(argv[i], "--msgtrace") && i + 1 < argc) setenv("HLE_MSGTRACE", argv[++i], 1);
         else if (!strcmp(argv[i], "--env") && i + 1 < argc) putenv(strdup(argv[++i]));   /* --env NAME=VALUE: a debugging switch for the host or win32hle */
         else if (!strcmp(argv[i], "--heartbeat") && i + 1 < argc) g_heartbeat_s = (unsigned)strtoul(argv[++i], NULL, 0);
@@ -639,7 +675,7 @@ int main(int argc, char **argv) {
             g_dump_dir = dir;                /* the run chdirs into the game folder */
         }
         else {
-            printf("usage: ra2 [--run] [--headless | --fullscreen] [--scale sharp|smooth|crt|nearest|integer] [--game DIR] [--mod NAME|none] [--thai-font-fix --thai-font-id ID] [--debuglog] [--mute] [--trace] [--heartbeat S] [--memfs] [--intro] [--trap N] [--dump-frames DIR] [--hd-voxels] [--hd-voxels-dump DIR]\n"
+            printf("usage: ra2 [--run] [--headless | --fullscreen] [--scale sharp|smooth|crt|nearest|integer] [--game DIR] [--mod NAME|none] [--thai-font-fix --thai-font-id ID] [--debuglog] [--mute] [--trace] [--heartbeat S] [--memfs] [--intro] [--trap N] [--dump-frames DIR] [--hd-voxels] [--hd-voxels-dump DIR] [--clockstats]\n"
                    "           [--press DLG:CTRL@s] [--select DLG:CTRL=N@s] [--waitlog TEXT@s] [--move|--click x,y@s]\n"
                    "           [--key [c][s][a]+vk@s] [--wait VA@s] [--drag x1,y1,x2,y2@s]\n");
             return !strcmp(argv[i], "--help") || !strcmp(argv[i], "-h") ? 0 : 1;
@@ -658,6 +694,7 @@ int main(int argc, char **argv) {
                     "Lift and build from the Steam release's " RA2_EXE_NAME " (README, Getting Started).", exe_host, stamp, RA2_EXE_STAMP);
     }
 
+    if (g_clockstats) ra2_clockstats_install();
     win32hle_register(g_ra2_shims);    /* first: the game's own answers win */
     recomp_host_init();
     hle_com_register_class(CLSID_Blowfish, ra2_blowfish_create);

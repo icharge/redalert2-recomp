@@ -483,3 +483,22 @@ holds the pure summary and comparison (`node --test e2e/perf-report.test.mjs` in
   (`pacing.published` 0) and lists them as `pictureFrozen`. With the busy save at 2560x1440 and HD vehicles on, the
   wasm memory is at its 768 MiB cap and no picture is published at all (the screen keeps the last one); the case's
   fps and CPU are then the game's, not what a player would see.
+
+### Probes: wait precision and the game's clock
+
+Two probes of the frame loop's timing, for the wait margin and the spin question in the frame performance
+plan (Task 2). Run them with the Vite dev server up, bound to IPv4 (see "The frame benchmark").
+
+- **Wait precision.** `node e2e/wait-probe.mjs --headed` (in `web/`) opens `e2e/wait-probe.html` in Chrome. A
+  worker waits 200 times at each of 1, 2, 4, 8 and 16 ms with `Atomics.wait` on a `SharedArrayBuffer` (what
+  Emscripten's `usleep` does in a worker) and reports how late each wait woke. It prints the table, the margin
+  M (the smallest target whose p99 lateness is at most 1 ms, plus 1; 16 if none is) and writes
+  `work/perf/wait-probe.json`. Run it with the machine otherwise idle.
+- **The clock calls.** Start the page with `--arg --clockstats` (`?arg=--clockstats`). The game counts its
+  `QueryPerformanceCounter`, `timeGetTime`, `GetTickCount` and `Sleep` calls, and the page gets one event a
+  second: `{"e":"clock","qpc":N,"tgt":N,"gtc":N,"sleep":N,"sleep0":N}` (`sleep0` is `Sleep(0)`). With the flag
+  off, only the QPC branch is there; the other three shims are not installed. A spin is a second with a
+  thousand or more clock reads and no `Sleep` at all.
+
+`--build <dir>` takes a build directory holding `ra2.js`, `ra2.wasm` and `ra2.data` (CMake's own names), and
+the e2e scripts serve them for the page's `ra2md.*` (Yuri's Revenge) or `ra2.*` (Red Alert 2) requests.

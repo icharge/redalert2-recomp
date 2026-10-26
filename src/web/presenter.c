@@ -456,6 +456,15 @@ void web_presenter_pump(void) {
                      "{\"e\":\"fps\",\"fps\":%u,\"ms\":%u,\"worst\":%u,\"late\":%u,\"pub\":%u,\"pubms\":%.2f}", fps,
                      fps ? 1000u / fps : 0, (unsigned)(g_worst_gap + 0.5), g_late, g_pub_n, g_pub_n ? g_pub_ms / g_pub_n : 0.0);
             web_event_json(line);
+            if (ra2_clockstats_on()) {
+                uint32_t c[5];
+                char clock[160];
+                ra2_clockstats_take(c);
+                snprintf(clock, sizeof clock,
+                         "{\"e\":\"clock\",\"qpc\":%u,\"tgt\":%u,\"gtc\":%u,\"sleep\":%u,\"sleep0\":%u}",
+                         c[0], c[1], c[2], c[3], c[4]);
+                web_event_json(clock);
+            }
             g_worst_gap = 0, g_late = 0, g_pub_ms = 0, g_pub_n = 0;
         }
         last_frames = frames;

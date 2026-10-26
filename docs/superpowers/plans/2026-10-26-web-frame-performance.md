@@ -424,17 +424,18 @@ git commit -m "Record the frame performance results and the new rendering path"
 
 ## Probe results
 
-(Filled in by Task 2.)
-
 | Target wait | p50 late | p95 late | p99 late | max late |
 |---|---|---|---|---|
+| 1 ms | 1.00 | 11.66 | 14.67 | 14.83 |
+| 2 ms | 0.52 | 2.91 | 13.41 | 14.93 |
+| 4 ms | 0.52 | 2.00 | 11.16 | 14.60 |
+| 8 ms | 0.50 | 1.42 | 7.04 | 12.34 |
+| 16 ms | 0.52 | 1.38 | 7.17 | 13.18 |
 
-Margin `M`: 
+(Late = the wait's real duration less its target, in ms; 200 waits per target, in a worker in headed Chrome on this Windows machine, `e2e/wait-probe.mjs`, the second of two runs (`work/perf/wait-probe.json`). The first run's p99 was 15.12, 10.49, 6.34, 12.19 and 10.49 ms for 1 to 16 ms; both runs give M = 16.)
 
-Clock calls per second, main menu / match: 
+Margin `M`: 16 ms. No target has a p99 of 1 ms or less, so M is today's 16: the wake is quantised to the system timer tick (about 15.6 ms) from 1 ms up.
 
-Spin found: 
+Clock calls per second, main menu / match: main menu (25 s, median per second): QueryPerformanceCounter 58,933, GetTickCount 22, timeGetTime 0; Sleep(n) 93, Sleep(0) 0. Match (skirmish, 36 s of battle after the setup and load, median per second): QueryPerformanceCounter 704, timeGetTime 2,035, GetTickCount 0; Sleep(n) 667, Sleep(0) 0. During the skirmish's setup and load, up to about 125,000 QueryPerformanceCounter reads a second, with about 100 Sleep(n) in each.
 
-## Results
-
-(Filled in by Tasks 1, 7–12.)
+Spin found: no. No second had 1,000 or more clock reads with no Sleep: every second of the menu and the battle had 91 or more Sleep(n) calls, so Task 9 does not run. (Measured with the -O1 probe build, headed Chrome, the profile work/perf/profile-fresh, the default skirmish; the driver is a scratch script, not committed.)

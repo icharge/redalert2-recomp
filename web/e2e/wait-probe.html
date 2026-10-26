@@ -1,0 +1,43 @@
+<!doctype html>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Wait probe</title>
+<!-- How late a worker's timed Atomics.wait wakes (docs/web/testing.md, "Performance"). Served by the Vite dev
+     server, which sends COOP/COEP, so SharedArrayBuffer and Atomics.wait are available. wait-probe.mjs reads
+     window.waitProbe: one row per target, once all five are done. -->
+<h1>Wait probe</h1>
+<pre id="out">running</pre>
+<script>
+  // The worker runs the same loop as Emscripten's usleep in a worker: Atomics.wait with a timeout on a cell
+  // nobody notifies, so each wait ends by its timeout. Lateness is the time it took less the target.
+  const workerSource = `
+    const RUNS = 200;
+    self.onmessage = () => {
+      const cell = new Int32Array(new SharedArrayBuffer(4));
+      for (const target of [1, 2, 4, 8, 16]) {
+        const late = [];
+        for (let i = 0; i < RUNS; i++) {
+          const t0 = performance.now();
+          Atomics.wait(cell, 0, 0, target);
+          late.push(performance.now() - t0 - target);
+        }
+        late.sort((a, b) => a - b);
+        const at = (p) => late[Math.min(late.length - 1, Math.ceil(p * late.length) - 1)];
+        postMessage({ target, p50: at(0.5), p95: at(0.95), p99: at(0.99), max: late[late.length - 1] });
+      }
+      postMessage({ done: true });
+    };
+  `;
+  window.waitProbe = [];
+  const url = URL.createObjectURL(new Blob([workerSource], { type: "text/javascript" }));
+  const worker = new Worker(url);
+  worker.onmessage = ({ data }) => {
+    if (data.done) {
+      document.getElementById("out").textContent = JSON.stringify(window.waitProbe, null, 1);
+      window.waitProbeDone = true;
+      return;
+    }
+    window.waitProbe.push(data);
+  };
+  worker.postMessage(null);
+</script>
