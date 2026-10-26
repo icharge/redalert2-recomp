@@ -12,7 +12,7 @@ Detailed ledger (rulings, review findings): `.superpowers/sdd/2026-10-26-web-fra
 | 1. Benchmark and baseline | **done**, review clean after 5 fix rounds | aa8bb15..1981765 |
 | 2. Probes: wait precision, clock calls | **done**, review clean after 1 fix round. M = 16 ms; no clock spin | d288344, 47ab13b, dba7145, ebee1fa |
 | 2b. Profile the busy game, HD off (new) | **done**, review clean after 1 fix round | 5fccff2, 006fcef |
-| 2c. Test the Thai-font wrapper's cost (new) | **running** (Haiku implementer; from 45dfeb4): release build without the wrapper, busy fps A/B | |
+| 2c. Test the Thai-font wrapper's cost (new) | **running** (Haiku implementer; from ce94c2e): release build without the wrapper, busy fps A/B | |
 | 3. Raw publish, three buffers, protocol 8 | pending | |
 | 4. WebGL2 presenter | pending | |
 | 5. HD layers on the GPU | **deferred** to a later HD project | |
