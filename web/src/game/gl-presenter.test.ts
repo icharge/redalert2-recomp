@@ -9,6 +9,7 @@ const FRAME = 4096;
 function setup() {
   const buffer = new ArrayBuffer(1 << 17);
   let memory: WasmMemory = { HEAPU8: new Uint8Array(buffer), HEAP32: new Int32Array(buffer) };
+  let memorySource = () => memory;
   const words = new Int32Array(buffer);
   const word = (index: number, value: number) => (words[(SHARED >> 2) + index] = value);
   const calls: [string, ...unknown[]][] = [];
@@ -73,7 +74,14 @@ function setup() {
     kind === "webgl2" ? gl : null,
   );
   const canvas = document.createElement("canvas");
-  const presenter = new GlPresenter(canvas, () => memory, SHARED, null, undefined, fallback);
+  const presenter = new GlPresenter(
+    canvas,
+    () => memorySource(),
+    SHARED,
+    null,
+    undefined,
+    fallback,
+  );
   const frame = (format: number, width: number, height: number, pitch: number) => {
     word(Shared.format, format);
     word(Shared.frameW, width);
@@ -92,6 +100,9 @@ function setup() {
     memory: () => memory,
     replaceMemory: (m: WasmMemory) => {
       memory = m;
+    },
+    setMemorySource: (source: () => WasmMemory) => {
+      memorySource = source;
     },
     presenter,
     word,
@@ -213,6 +224,27 @@ describe("GlPresenter", () => {
     first.replaceMemory(next);
     first.presenter.draw();
     expect(first.calls.filter((c) => c[0] === "texSubImage2D")).toHaveLength(2);
+  });
+
+  it("uses the grown wasm heap view when memory grows between reading metadata and upload", () => {
+    const state = setup();
+    state.frame(PixelFormat.Rgb565, 800, 600, 1600);
+    const oldMemory = state.memory();
+    const grownBuffer = new ArrayBuffer(2 << 20);
+    const grownWords = new Int32Array(grownBuffer);
+    grownWords.set(oldMemory.HEAP32);
+    const grownMemory: WasmMemory = {
+      HEAPU8: new Uint8Array(grownBuffer),
+      HEAP32: grownWords,
+    };
+    let reads = 0;
+    state.setMemorySource(() => (reads++ === 0 ? oldMemory : grownMemory));
+
+    expect(() => state.presenter.draw()).not.toThrow();
+    const upload = state.calls.find((call) => call[0] === "texSubImage2D");
+    expect(upload?.at(-1)).toBeInstanceOf(Uint16Array);
+    expect((upload?.at(-1) as Uint16Array).buffer).toBe(grownBuffer);
+    expect(state.words[(SHARED >> 2) + Shared.readIndex]).toBe(-1);
   });
 
   it("falls back to the 2D presenter when the WebGL context is lost", () => {

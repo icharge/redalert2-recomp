@@ -190,24 +190,29 @@ export class GlPresenter implements GamePresenter {
           this.drawMemory = null;
           return;
         }
-        this.upload(
-          mem,
-          ptr,
-          w,
-          h,
-          pitch || w * (fmt === PixelFormat.Rgb565 ? 2 : fmt === PixelFormat.Pal8 ? 1 : 4),
-          fmt,
-        );
-        // readIndex keeps this buffer immutable through the upload. Even if the
-        // game publishes another frame concurrently, the texture now contains
-        // this sequence and capture() must report that sequence for its pixels.
-        this.uploadedSeq = seq;
-        if (word(Shared.frameSeq) === seq) {
-          this.frameSeq = seq;
-          this.paint(w, h, fmt);
-          this.pictures++;
+        try {
+          if (
+            this.upload(
+              ptr,
+              w,
+              h,
+              pitch || w * (fmt === PixelFormat.Rgb565 ? 2 : fmt === PixelFormat.Pal8 ? 1 : 4),
+              fmt,
+            )
+          ) {
+            // readIndex keeps this buffer immutable through the upload. Even if the
+            // game publishes another frame concurrently, the texture now contains
+            // this sequence and capture() must report that sequence for its pixels.
+            this.uploadedSeq = seq;
+            if (word(Shared.frameSeq) === seq) {
+              this.frameSeq = seq;
+              this.paint(w, h, fmt);
+              this.pictures++;
+            }
+          }
+        } finally {
+          Atomics.store(words, base + Shared.readIndex, -1);
         }
-        Atomics.store(words, base + Shared.readIndex, -1);
       } else if (![0, 1, 2, 3].includes(fmt)) {
         if (!this.errorReported) {
           this.errorReported = true;
@@ -231,14 +236,24 @@ export class GlPresenter implements GamePresenter {
     this.drawMemory = null;
   }
 
-  private upload(
-    mem: WasmMemory,
-    ptr: number,
-    w: number,
-    h: number,
-    pitch: number,
-    fmt: number,
-  ): void {
+  private upload(ptr: number, w: number, h: number, pitch: number, fmt: number): boolean {
+    // A game-thread memory.grow() can publish a frame into the enlarged heap
+    // before Emscripten refreshes the page thread's HEAP views. Re-fetch them at
+    // the upload boundary; if that view is still stale, leave the frame for the
+    // next animation tick instead of constructing an out-of-bounds typed array.
+    const uploadMemory = this.memory();
+    this.drawMemory = uploadMemory;
+    const bytesPerPixel = fmt === PixelFormat.Rgb565 ? 2 : fmt === PixelFormat.Pal8 ? 1 : 4;
+    const needed = pitch * h;
+    if (
+      !Number.isSafeInteger(ptr) ||
+      !Number.isSafeInteger(needed) ||
+      ptr < 0 ||
+      needed < 0 ||
+      ptr + needed > uploadMemory.HEAPU8.byteLength
+    )
+      return false;
+
     const gl = this.gl;
     gl.bindTexture(gl.TEXTURE_2D, this.texture);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
@@ -253,16 +268,15 @@ export class GlPresenter implements GamePresenter {
       this.texFormat = fmt;
       gl.texImage2D(gl.TEXTURE_2D, 0, internal, w, h, 0, format, type, null);
     }
-    const bpp = fmt === PixelFormat.Rgb565 ? 2 : fmt === PixelFormat.Pal8 ? 1 : 4;
-    gl.pixelStorei(gl.UNPACK_ROW_LENGTH, pitch / bpp);
+    gl.pixelStorei(gl.UNPACK_ROW_LENGTH, pitch / bytesPerPixel);
     const pixels =
       fmt === PixelFormat.Rgb565
-        ? new Uint16Array(mem.HEAPU8.buffer, ptr, (pitch / 2) * h)
-        : mem.HEAPU8.subarray(ptr, ptr + pitch * h);
+        ? new Uint16Array(uploadMemory.HEAPU8.buffer, ptr, (pitch / 2) * h)
+        : uploadMemory.HEAPU8.subarray(ptr, ptr + needed);
     gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, w, h, format, type, pixels);
     gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 0);
     if (fmt === PixelFormat.Pal8) {
-      const palette = wordFrom(mem.HEAP32, this.shared, Shared.palettePtr) >>> 0;
+      const palette = wordFrom(uploadMemory.HEAP32, this.shared, Shared.palettePtr) >>> 0;
       gl.bindTexture(gl.TEXTURE_2D, this.paletteTexture);
       gl.texImage2D(
         gl.TEXTURE_2D,
@@ -273,9 +287,10 @@ export class GlPresenter implements GamePresenter {
         0,
         gl.RGBA,
         gl.UNSIGNED_BYTE,
-        new Uint8Array(mem.HEAPU8.buffer, palette, 256 * 4),
+        new Uint8Array(uploadMemory.HEAPU8.buffer, palette, 256 * 4),
       );
     }
+    return true;
   }
   private texW = 0;
   private texH = 0;
