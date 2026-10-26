@@ -12,7 +12,7 @@ Detailed ledger (rulings, review findings): `.superpowers/sdd/2026-10-26-web-fra
 | 1. Benchmark and baseline | **done**, review clean after 5 fix rounds | aa8bb15..1981765 |
 | 2. Probes: wait precision, clock calls | **done**, review clean after 1 fix round. M = 16 ms; no clock spin | d288344, 47ab13b, dba7145, ebee1fa |
 | 2b. Profile the busy game, HD off (new) | **done**, review clean after 1 fix round | 5fccff2, 006fcef |
-| 2c. Test the Thai-font wrapper's cost (new) | **fix round 2** (wording: the cause of the gain is not yet known; 62 is the speed-5 frame cap). Confirmed: busy 720p HD off is 26.5 fps with the wrapper, **62** (1% low 55–56) without it | 483d5d7, 5887904 |
+| 2c. Test the Thai-font wrapper's cost (new) | **fix round 2 in re-review**. Busy 720p HD off: 26.5 fps with the wrapper, **62** (1% low 55–56, the speed-5 cap) without; game-thread work per frame about 34 ms vs 12–13 ms | 483d5d7, 5887904, 95ed1b2 |
 | 2d. Thai-off path as a plain call (the fix) | pending, after 2c; in the plan (1022509) | |
 | 3. Raw publish, three buffers, protocol 8 | pending | |
 | 4. WebGL2 presenter | pending | |
