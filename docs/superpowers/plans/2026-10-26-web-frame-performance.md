@@ -46,6 +46,8 @@ Task 2b's profile puts 52% of the busy game thread's samples in `recomp_thai_cal
 
 ### Task 2d: The Thai-off path is a plain call
 
+> **Superseded.** Both versions of this task's macro change were measured and reverted (585ef08): with the Thai fix on (the app default) neither moved fps, and with it off build A already reaches the cap. What remains is `profile-game.mjs --size` and the frame count, and the measurements in "Results". Task 2e fixes the cost.
+
 Task 2c measured the busy save at 1280x720, HD off: 26.5 fps median (1% low 21–22) with the Thai-font wrapper, 62 (55–56) without it. With the Thai fix off (the default), the wrapper only calls the original, so this task makes the off path skip it. Why the wrapper costs so much is not known; with the fix on, the wrapper runs as today.
 
 **Files:**
