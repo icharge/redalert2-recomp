@@ -11,7 +11,7 @@ Detailed ledger (rulings, review findings): `.superpowers/sdd/2026-10-26-web-fra
 |---|---|---|
 | 1. Benchmark and baseline | **done**, review clean after 5 fix rounds | aa8bb15..1981765 |
 | 2. Probes: wait precision, clock calls | **done**, review clean after 1 fix round. M = 16 ms; no clock spin | d288344, 47ab13b, dba7145, ebee1fa |
-| 2b. Profile the busy game, HD off (new) | **running** (Haiku implementer; from ebee1fa; release link with function names first, about 10 min) | |
+| 2b. Profile the busy game, HD off (new) | **in review** (Haiku reviewer). Busy fps 25: the picture is under 1%, waiting 16%, and about 45% is the game drawing text on the battlefield | 5fccff2 |
 | 3. Raw publish, three buffers, protocol 8 | pending | |
 | 4. WebGL2 presenter | pending | |
 | 5. HD layers on the GPU | **deferred** to a later HD project | |
@@ -28,10 +28,17 @@ Detailed ledger (rulings, review findings): `.superpowers/sdd/2026-10-26-web-fra
 
 The user asked to focus on the game with HD off (HD vehicles are experimental and flicker). The pass bar is now 60 fps median, 55 1% low, 720p–1440p, busy, **HD off**; HD on is recorded with no target. New Task 2b profiles the busy save first, since it runs at 18–23 fps at every size (the picture isn't the limit). Order: 2b, 3, 4, 6, 7, 8, 10, 11, 12.
 
+## Busy profile, HD off (Task 2b)
+
+- The game thread is about 85% busy at 25 fps (about 34 ms of work a frame; 60 fps allows 16).
+- The picture code is 0.8%, so Tasks 3, 4 and 6 can't raise busy fps; waiting is 16%.
+- About 45–52% is one game function, the text drawing at 0x00434500, reached from the battlefield's render. (The profile names it `recomp_thai_call`, the Thai font wrapper it was folded into; the Thai fix itself is off.) Finding out which text is drawn every frame, and why it is so slow, is the main lever for HD-off busy fps.
+- Separate CPU cost: pcrecomp's `wait_ms` busy-polls the clock on pool threads (about 1.4 cores), which the clock probe's spin rule missed.
+
 ## To resume after an interruption
 
 1. `git log --oneline 1981765..HEAD` shows what landed since Task 1.
-2. Task 2 is done. If Task 2b has a commit adding `web/e2e/profile-game.mjs`, it needs its task review (BASE ebee1fa); otherwise re-dispatch it from `.superpowers/sdd/2026-10-26-web-frame-performance/task-2b-brief.md`.
+2. Task 2 is done. Task 2b is committed (5fccff2): if the ledger has no "Task 2b: complete", re-run its review from `review-ebee1fa..5fccff2.diff` (include the text-drawing finding).
 3. Builds for tests go in their own BUILD_DIR with `-DWEB_OUT` outside `web/public/game` (CLAUDE.md); e2e loads them with `--build`. Benchmark profile: `work/perf/profile-fresh`; busy save: `work/perf/busy.sav`; baseline: `work/perf/baseline/run.json`.
 
 ## Baseline (Task 1, published Release build ef2b94fc673f9950, headed Chrome)
