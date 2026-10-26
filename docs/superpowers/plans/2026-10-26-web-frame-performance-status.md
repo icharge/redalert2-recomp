@@ -14,7 +14,7 @@ Detailed ledger (rulings, review findings): `.superpowers/sdd/2026-10-26-web-fra
 | 2b. Profile the busy game, HD off (new) | **done**, review clean after 1 fix round | 5fccff2, 006fcef |
 | 2c. Test the Thai-font wrapper's cost (new) | **done**, review clean after 2 fix rounds. Busy 720p HD off: 26.5 fps with the wrapper, **62** (1% low 55–56, the speed-5 cap) without; work per frame 34 ms vs 12–13 ms | 483d5d7, 5887904, 95ed1b2 |
 | 2d. Thai-off path as a plain call | **done** (review clean after 1 fix round); its macro changes were reverted (585ef08): they didn't matter. It found the real cause: **the app turns the Thai font fix on by default**; with it off the busy save already runs at 62 fps (720p). Fix off: 1080p 49–50, 1440p 33 | 533d330, 585ef08, 4c6da57 |
-| 2e. The Thai fix without full-font rewrites (new) | **running, results in** (not committed yet): rejected fonts are now remembered. Busy, HD off, Thai on (the default): 720p **59–61 fps** (1% low 42–55) vs the old build's 26–29; 1080p 49, 1440p 34 (the same as Thai off) | 30f984d |
+| 2e. The Thai fix without full-font rewrites (new) | **in review**: rejected fonts are remembered; screenshots identical to the old build. Busy, HD off, Thai on (the default): 720p **59–61 fps** (1% low 42–55) vs 26–29 before; 1080p 49, 1440p 34 (same as Thai off) | 30f984d, 4303eaf |
 | 3. Raw publish, three buffers, protocol 8 | pending | |
 | 4. WebGL2 presenter | pending | |
 | 5. HD layers on the GPU | **deferred** to a later HD project | |
@@ -42,7 +42,7 @@ The user asked to focus on the game with HD off (HD vehicles are experimental an
 ## To resume after an interruption
 
 1. `git log --oneline 1981765..HEAD` shows what landed since Task 1.
-2. Tasks 2–2d are done. If Task 2e has a commit changing `src/runtime/thai_font.c`, it needs its task review (BASE 466d0a4); otherwise re-dispatch it from `.superpowers/sdd/2026-10-26-web-frame-performance/task-2e-brief.md`.
+2. Tasks 2–2d are done; 2e is in review (BASE 466d0a4, package `review-466d0a4..4303eaf.diff`). Next is a 1080p/1440p busy profile (Thai on), then Task 3.
 3. Builds for tests go in their own BUILD_DIR with `-DWEB_OUT` outside `web/public/game` (CLAUDE.md); e2e loads them with `--build`. Benchmark profile: `work/perf/profile-fresh`; busy save: `work/perf/busy.sav`; baseline: `work/perf/baseline/run.json`.
 
 ## Baseline (Task 1, published Release build ef2b94fc673f9950, headed Chrome)
@@ -74,7 +74,7 @@ The user asked to focus on the game with HD off (HD vehicles are experimental an
 
 ## Ideas raised during the run (separate projects)
 
-- The Thai font fix rejects the busy save's font (a glyph wider than 16 pixels), so it never shapes Thai text there. Decide whether it should accept such fonts (changes the picture).
+- The Thai font fix rejects the busy save's font (a glyph wider than 16 pixels), so it never shapes Thai text there; and that font is not the `game.fnt` the app stages, so the staging doesn't reach it. Decide whether it should accept such fonts (changes the picture). A session card was proposed for this.
 
 - HD vehicles flicker when on (reported by the user): fix in the HD project.
 - HD buildings and infantry (SHP sprites, not voxels): either a pixel-art scaler in the shader, or pre-upscaled 2x sprites recorded like the HD voxels. Task 5's 2x layer + mask design leaves room for it. To design after this plan.
