@@ -11,7 +11,8 @@ Detailed ledger (rulings, review findings): `.superpowers/sdd/2026-10-26-web-fra
 |---|---|---|
 | 1. Benchmark and baseline | **done**, review clean after 5 fix rounds | aa8bb15..1981765 |
 | 2. Probes: wait precision, clock calls | **done**, review clean after 1 fix round. M = 16 ms; no clock spin | d288344, 47ab13b, dba7145, ebee1fa |
-| 2b. Profile the busy game, HD off (new) | **in review** (Haiku reviewer). Busy fps 25: the picture is under 1%, waiting 16%, and about 45% is the game drawing text on the battlefield | 5fccff2 |
+| 2b. Profile the busy game, HD off (new) | **fix round 1** (review: the 52% is unexplained; record game speed; separate group for runtime wrappers) | 5fccff2 |
+| 2c. Test the Thai-font wrapper's cost (new) | pending, after 2b | |
 | 3. Raw publish, three buffers, protocol 8 | pending | |
 | 4. WebGL2 presenter | pending | |
 | 5. HD layers on the GPU | **deferred** to a later HD project | |
@@ -32,7 +33,7 @@ The user asked to focus on the game with HD off (HD vehicles are experimental an
 
 - The game thread is about 85% busy at 25 fps (about 34 ms of work a frame; 60 fps allows 16).
 - The picture code is 0.8%, so Tasks 3, 4 and 6 can't raise busy fps; waiting is 16%.
-- About 45–52% is one game function, the text drawing at 0x00434500, reached from the battlefield's render. (The profile names it `recomp_thai_call`, the Thai font wrapper it was folded into; the Thai fix itself is off.) Finding out which text is drawn every frame, and why it is so slow, is the main lever for HD-off busy fps.
+- 52% of the samples land in `recomp_thai_call`, the Thai font wrapper around the game's text functions (the Thai fix itself is off). Why is not known yet: the compiled wrapper just calls the original, and the text function shows only about 2 s of the 20 s. (An earlier note here said the compiler had merged the text drawing into the wrapper; the review disproved that.) Task 2c tests it with a build that skips the wrapper.
 - Separate CPU cost: pcrecomp's `wait_ms` busy-polls the clock on pool threads (about 1.4 cores), which the clock probe's spin rule missed.
 
 ## To resume after an interruption
