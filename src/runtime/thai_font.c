@@ -57,7 +57,7 @@ struct ThaiLayoutContext {
     uint32_t pending_tone_color;
 };
 
-static int g_enabled;
+int g_thai_font_on;
 static ThaiFontState *g_states;
 static ThaiLayoutContext *g_context;
 static recomp_func_t g_render_original;
@@ -366,11 +366,11 @@ static void end_layout(ThaiLayoutContext *context) {
         can_apply_metrics(context->parent_metrics)) apply_metrics(context->parent_metrics);
 }
 
-void thai_font_set_enabled(int enabled) { g_enabled = enabled != 0; }
+void thai_font_set_enabled(int enabled) { g_thai_font_on = enabled != 0; }
 
 void recomp_thai_call(uint32_t target, recomp_func_t original) {
     uint32_t caller = g_cur_func;
-    if (!g_enabled || !original) {
+    if (!g_thai_font_on || !original) {
         if (original) original();
         g_cur_func = caller;
         return;
@@ -470,18 +470,30 @@ void recomp_thai_call(uint32_t target, recomp_func_t original) {
     g_cur_func = caller;
 }
 
-void recomp_thai_indirect_call(uint32_t target) {
-    g_icall_trace[g_icall_trace_idx & (ICALL_TRACE_SIZE - 1)] = target;
-    g_icall_from[g_icall_trace_idx & (ICALL_TRACE_SIZE - 1)] = g_cur_func;
-    g_icall_trace_idx++;
-    g_icall_count++;
-    recomp_func_t original = recomp_lookup_manual(target);
-    if (!original) original = recomp_lookup(target);
-    if (!original) original = recomp_lookup_import(target);
-    if (original) {
-        recomp_thai_call(target, original);
-    } else {
-        fprintf(stderr, "ICALL: unresolved VA 0x%08X from 0x%08X\n", target, g_cur_func);
-        g_eax = 0;
+/* The originals of the three Thai entry points, set by recomp_thai_trampoline.
+ * Each entry is only ever reached with its own VA, so one slot per VA is enough. */
+static recomp_func_t g_thai_originals[3];
+
+static void thai_entry_layout(void) { recomp_thai_call(THAI_LAYOUT_VA, g_thai_originals[0]); }
+static void thai_entry_render(void) { recomp_thai_call(THAI_RENDER_VA, g_thai_originals[1]); }
+static void thai_entry_text(void)   { recomp_thai_call(THAI_TEXT_VA, g_thai_originals[2]); }
+
+recomp_func_t recomp_thai_trampoline(uint32_t va) {
+    recomp_func_t original = recomp_lookup_manual(va);
+    if (!original) original = recomp_lookup(va);
+    if (!original) original = recomp_lookup_import(va);
+    if (!original) return NULL;
+    if (va == THAI_LAYOUT_VA) {
+        g_thai_originals[0] = original;
+        return thai_entry_layout;
     }
+    if (va == THAI_RENDER_VA) {
+        g_thai_originals[1] = original;
+        return thai_entry_render;
+    }
+    if (va == THAI_TEXT_VA) {
+        g_thai_originals[2] = original;
+        return thai_entry_text;
+    }
+    return original;
 }

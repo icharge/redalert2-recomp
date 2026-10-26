@@ -553,3 +553,42 @@ Proposed fix (Task 2d Step 1 does it; not implemented here): test the Thai switc
 ## Results
 
 (Filled in by Tasks 1, 7–12.)
+
+### Task 2d: the Thai-off path
+
+**The premise was wrong.** The web page's default Thai preference is on: `DEFAULT_THAI_FONT_PREFERENCE` in `web/src/storage/thai-fonts.ts` is `enabled: true`, and the Play screen reads it when nothing is stored, so the game starts with `--thai-font-fix --thai-font-id builtin-westwood-improved`. The benchmark profile (`work/perf/profile-fresh`) stores no preference, so every benchmark run before this subsection ran with the Thai fix on. "The Thai fix off (the default)" in Tasks 2c and 2d is therefore the wrong default. Build B of Task 2c (`RA2_NO_THAI_HOOK`) ignored the fix entirely, so its 62 fps is the fix-off path, and its A (26.5 fps) was the fix-on path.
+
+Two designs were built. Attempt 1 added an inline flag check to each macro (wasm 0af3b98e8ca0; superseded). The revision (the controller's ruling) makes `RECOMP_THAI_ICALL` a copy of pcrecomp's `RECOMP_ICALL` with one step after the lookup, `recomp_thai_trampoline`, and keeps the inline check in `RECOMP_THAI_CALL` (`src/runtime/thai_font.h`, `thai_font.c`; wasm f5875bbff7b8, the RA2 build 435dfc8cef9051f1). Both are in the commit that carries this subsection.
+
+Setup: builds A (`work/build-web-prof`, wasm b0fb263feb7d, the code before Task 2d) and the revised `work/build-web-thai2d` (gamemd, `-O3;--profiling-funcs`, as build A). "Fix off" stores `ra2.thai-font.*` with `enabled: false` in the benchmark profile (`work/perf/task2d/set-thai-off.mjs`); "fix on" leaves the default. All runs `perf.mjs --sizes WxH --hd off --moments busy --repeats 1 --seconds 60 --headed --build <dir>`; the wasm SHA-256 is in each run.json.
+
+720p, busy save, HD off (fpsMedian, 1% low, worst gap in ms):
+
+| Build | Thai fix | Run | Median | 1% low | Worst gap |
+|---|---|---|---|---|---|
+| A | on | A1 | 28 | 16 | 141 |
+| A | on | A2 | 23 | 22 | 115 |
+| A | on | A3 | 24 | 22 | 82 |
+| A | on | A4 | 29 | 25 | 65 |
+| revised | on | rev1 | 24 | 22 | 78 |
+| revised | on | rev2 | 24 | 21 | 111 |
+| first attempt (inline check) | on | 2d1 / 2d2 | 24 / 23 | 23 / 21 | 71 / 114 |
+| A | off | offA1 | 62 | 54 | 60 |
+| A | off | offA2 | 62 | 51 | 49 |
+| revised | off | offrev1 | 62 | 56 | 46 |
+| revised | off | offrev2 | 62 | 57 | 70 |
+
+Means: A on 26.0 (1% low 21.3), revised on 24.0 (21.5), A off 62.0 (52.5), revised off 62.0 (56.5). With the fix off the revised build is no faster than A: the wrapper's call was never the cost when the fix is off.
+
+Revised build, fix off, the other sizes (two runs each):
+
+| Size | Median | 1% low | Worst gap | 
+|---|---|---|---|
+| 1920x1080 | 49, 50 | 29, 35 | 91, 62 |
+| 2560x1440 | 33, 33 | 26, 26 | 70, 81 |
+
+Headroom (`profile-game.mjs --size 2560x1440`, fix off, revised build, 20 s sample with the profiler attached): 889 frames counted over 22 fps events (the sum of the per-second readings is 806 over 20 readings: consistent, the window ran about 2 s over), game worker busy 18,424 ms, so **20.7 ms of game-thread work per frame** (fps median 42 under the profiler). At 720p fix off: 1,272 frames, 12.5 ms per frame, median 62; `recomp_thai_call` is not in the top functions (top: futex wait 13.6%, `_emscripten_get_now` 9.2%, `recomp_lookup` 7.8%). Fix on, first attempt at 720p: `recomp_thai_call` 51.5% of self time.
+
+Thai-on check (default, fix on, revised builds): the game opens from the profile, runs, and shows the main menu with a lit picture: Yuri's Revenge at 800x600, 1,894 of 4,948 sampled pixels lit (`work/perf/task2d/thai-on-yr.log`); Red Alert 2 (`edition=ra2`, `work/build-web-thai2d-ra2`) at 800x600, title "Red Alert 2", 3,823 lit (`thai-on-ra2.log`). No console errors in either. Both fix-on busy runs (rev1, rev2) loaded the save and drew at 720p. Not run: `node e2e/smoke.mjs`. Its page loads `../game` through the dev server's memory copy, and it crashed at `ra2.mix (26 of 36)` with `unwind` (`work/perf/task2d/smoke-yr.log`), which `perf-nav.mjs` documents for Yuri's Revenge (768 MB limit). The profile-based menu check above is the equivalent I ran; the RA2 smoke in its documented form was not run for the same reason.
+
+Decision needed. With the default on, the busy save runs at 24 fps; with it off, 62 (both builds). The Task 2d code does not change the off path's speed, since build A is already at 62, and the trampoline does not help the on path. The 35 fps is the cost of the Thai fix, which the web app turns on by default. Either the default becomes off (a product decision: `DEFAULT_THAI_FONT_PREFERENCE.enabled`), or the fix-on path has to become fast. The first should be decided before the fix-on path is tuned.

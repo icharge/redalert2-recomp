@@ -529,6 +529,11 @@ too. The JSON holds the six shares, the top 20 functions, the time under `wait_m
 `_emscripten_get_now`, `now`, `_clock_time_get` and `__clock_gettime` calls), each busy worker's own shares, and
 `speed`: the game speed is recorded as `assumed 5 (busy.sav)`, because the page exposes no getter for it.
 
+`--size WxH` sets the picture size of the sample (default `1280x720`; the game's resolution list must have it, as
+`setResolution` checks, for example `2560x1440`). The JSON records the sample's `frames` (the fps of each fps event,
+counted from the store's state every 100 ms, so each event counts once), `fpsEvents`, the game worker's `busyMs`, and
+`workPerFrameMs`, the game worker's busy time divided by those frames: the headroom measure.
+
 `--reanalyze` (with the same `--build` and `--name`) recomputes the groups from the saved `<name>.cpuprofile` without a
 browser, and keeps the capture's fps and workers. The objects are read from the build directory, so it needs the build
 too. `--emsdk <dir>` names the emsdk checkout whose `upstream/bin/llvm-nm.exe` reads the objects (default `../../emsdk`

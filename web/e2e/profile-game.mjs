@@ -2,14 +2,20 @@
 //
 //   cd web; node e2e/profile-game.mjs --build ../work/build-web-prof [--profile ../work/perf/profile-fresh]
 //                                     [--save ../work/perf/busy.sav] [--settle-seconds 10] [--seconds 20]
-//                                     [--name profile-busy] [--emsdk ../../emsdk] [--headed]
+//                                     [--size 1280x720] [--name profile-busy] [--emsdk ../../emsdk] [--headed]
 //   cd web; node e2e/profile-game.mjs --build ../work/build-web-prof --name profile-busy --reanalyze
 //
-// Opens the game from the profile (perf-nav.mjs's openGame), sets the picture to 1280x720, loads the busy save
-// through the game's own Load Saved Game, turns HD vehicles off, waits --settle-seconds, then records --seconds
-// of CPU profile on every worker over CDP and reads the game's fps once a second. The game runs on an Emscripten
-// pthread worker, so the profiles are of the workers. The game's thread is the one with the most game work: time
-// outside waiting and outside the Sleep spin (pcrecomp's wait_ms polls the clock, so it looks busy but is not work).
+// Opens the game from the profile (perf-nav.mjs's openGame), sets the picture to --size (default 1280x720), loads
+// the busy save through the game's own Load Saved Game, turns HD vehicles off, waits --settle-seconds, then
+// records --seconds of CPU profile on every worker over CDP and reads the game's fps once a second. The game runs
+// on an Emscripten pthread worker, so the profiles are of the workers. The game's thread is the one with the most
+// game work: time outside waiting and outside the Sleep spin (pcrecomp's wait_ms polls the clock, so it looks busy
+// but is not work).
+//
+// The frames of the sample are counted from the game's fps events: each event carries the frames of its second,
+// and the page's store (window.ra2Store) gives a new state object per event, so the sample polls it every 100 ms
+// and adds the fps of each new object that carries one. The JSON's workPerFrameMs is the game worker's work
+// (busy time) divided by those frames: the headroom measure (docs/web/testing.md, "Profiling the busy game").
 //
 // Writes work/perf/<name>.cpuprofile (the Chrome profile, for DevTools) and work/perf/<name>.json: the self-time
 // share of six groups and the top 20 functions, the Sleep spin's share, the clock reads' time, and each busy
@@ -37,6 +43,11 @@ const option = (name, fallback) => {
 const settleSeconds = Number(option("--settle-seconds", 10));
 const seconds = Number(option("--seconds", 20));
 const name = option("--name", "profile-busy");
+// the picture size of the sample, WxH (the game's resolution list must have it: setResolution checks)
+const sizeArg = option("--size", "1280x720");
+const sizeMatch = /^(\d+)x(\d+)$/.exec(sizeArg);
+if (!sizeMatch) throw new Error(`--size ${sizeArg}: expected WxH, for example 2560x1440`);
+const size = { w: Number(sizeMatch[1]), h: Number(sizeMatch[2]) };
 const savePath = path.resolve(option("--save", "../work/perf/busy.sav"));
 // the emsdk checkout, whose llvm-nm.exe reads the objects (the Windows binary's name)
 const emsdkBin = path.resolve(option("--emsdk", "../../emsdk")).replace(/\\/g, "/");
@@ -331,7 +342,7 @@ if (argv.includes("--reanalyze")) {
   process.exit(0);
 }
 
-const t = await openGame(base, { video: "1280x720", shots: base.shots, headed: base.headed });
+const t = await openGame(base, { video: sizeArg, shots: base.shots, headed: base.headed });
 try {
   const cdp = await t.page.context().newCDPSession(t.page);
   const root = makeSession({ cdp, onAttach });
@@ -348,7 +359,7 @@ try {
   });
 
   await settle(t, 3000);
-  await setResolution(t, { w: 1280, h: 720 });
+  await setResolution(t, size);
   await loadBusySave(t, savePath, { log: console.log });
   // HD vehicles off, as perf.mjs's setHd does it (the setting, then the store's copy of it)
   await t.page.evaluate(() =>
@@ -363,21 +374,44 @@ try {
   console.log(
     `busy save at ${before.size?.w}x${before.size?.h}, hd ${before.settings?.hd}; ${workers.length} worker(s) attached`,
   );
-  if (before.size?.w !== 1280 || before.size?.h !== 720 || before.settings?.hd !== false)
+  if (before.size?.w !== size.w || before.size?.h !== size.h || before.settings?.hd !== false)
     throw new Error(
-      `the picture is ${before.size?.w}x${before.size?.h} with hd ${before.settings?.hd}, not 1280x720 with hd off`,
+      `the picture is ${before.size?.w}x${before.size?.h} with hd ${before.settings?.hd}, not ${size.w}x${size.h} with hd off`,
     );
+
+  // Counts the frames of the sample: each new store state that carries an fps adds its fps (one event a second).
+  // The first call only sets the baseline, so the state the sample starts from is not counted.
+  const countFrames = () =>
+    t.page.evaluate(() => {
+      const store = window.ra2Store;
+      const snap = store?.getSnapshot();
+      const acc = (window.__frameCount ??= { frames: 0, events: 0, last: undefined });
+      if (acc.last === undefined) acc.last = snap;
+      else if (snap !== acc.last) {
+        acc.last = snap;
+        if (typeof snap?.fps === "number") {
+          acc.frames += snap.fps;
+          acc.events++;
+        }
+      }
+      return { frames: acc.frames, events: acc.events };
+    });
+  await countFrames();
 
   for (const w of workers)
     await w.send("Profiler.start").catch((e) => console.log(`start ${w.sessionId}: ${e.message}`));
   const fps = [];
   for (let i = 0; i < seconds; i++) {
-    await t.page.waitForTimeout(1000);
+    for (let k = 0; k < 10; k++) {
+      await t.page.waitForTimeout(100);
+      await countFrames();
+    }
     const s = await t.state();
     if (s?.phase === "crashed" || s?.phase === "exited")
       throw new Error(`the game ${s.phase} during the sample: ${s.error ?? ""}`);
     fps.push(s?.fps ?? null);
   }
+  const counted = await countFrames();
   const stopped = [];
   for (const w of workers) {
     const result = await w.send("Profiler.stop").catch((e) => {
@@ -431,6 +465,11 @@ try {
       median: median(fps),
       min: Math.min(...fps.filter((x) => x != null)),
     },
+    // the sample's frames (the fps events counted above) and the game worker's work per frame (busy time / frames)
+    frames: counted.frames,
+    fpsEvents: counted.events,
+    busyMs: +(game.busy / 1000).toFixed(1),
+    workPerFrameMs: counted.frames > 0 ? +(game.busy / 1000 / counted.frames).toFixed(2) : null,
     workers: ranked.map((s) => ({
       sessionId: s.session.sessionId,
       url: s.session.info?.url ?? null,
@@ -448,6 +487,9 @@ try {
 
   console.log(
     `fps per second: ${fps.join(", ")}; median ${result.fps.median}, min ${result.fps.min}`,
+  );
+  console.log(
+    `${counted.frames} frames in ${counted.events} fps events; game work ${result.busyMs} ms, ${result.workPerFrameMs} ms a frame`,
   );
   printSummary(summary);
   console.log(`wrote ${cpuprofile}\nwrote ${jsonOut}`);
