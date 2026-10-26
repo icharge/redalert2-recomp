@@ -24,6 +24,7 @@
 #include "host.h"
 #include "recomp_target.h"
 #include "web_api.h"
+#include "frame_buffers.h"
 #include "hdvox.h"
 #include "mods.h"
 
@@ -79,68 +80,82 @@ void web_event_exit(int code) {
 
 /* ---- the picture ------------------------------------------------------------- */
 
-static ra2_shared_t g_sh = { .protocol = RA2_WEB_PROTOCOL };
+/* read_index and frame_index start at -1: no buffer is being read, none is published yet. */
+static ra2_shared_t g_sh = { .protocol = RA2_WEB_PROTOCOL, .read_index = -1, .frame_index = -1 };
 /* Pacing, for the overlay: how long each publish took, and how evenly the game's frames come. */
 static double g_pub_ms, g_worst_gap, g_frame_at;
 static unsigned g_pub_n, g_late, g_frame_seen;
 
-static uint32_t *g_buf[2];
-static size_t g_cap[2];
-static int g_front;
+static frame_bufs_t g_frames = { .newest = -1 };         /* the picture's three buffers (frame_buffers.h) */
+static uint32_t g_palette[256];                          /* raw PAL8: the palette palette_ptr names */
 static uint32_t g_pause_dialog;
-static int g_republish;                                  /* set by the game's thread when the page returns */
 static void present_now(void);
 
 EMSCRIPTEN_KEEPALIVE ra2_shared_t *ra2_shared(void) { return &g_sh; }
 
-/* The primary surface as RGBA bytes (R lowest) in the buffer the page is not reading. */
+/* The primary surface, into the buffer the page is not reading: RGBA bytes (R lowest) with presentMode 0, the
+ * game's own format unconverted with presentMode 1. Raw mode publishes the 1x frame even with HD vehicles on:
+ * the HD layers are not composed here (the GPU path, Task 5, will fill hd_* and draw them). */
 static void publish(const uint8_t *px, int w, int h, int pitch, int bpp, const uint32_t *pal) {
     static uint32_t last_w, last_h;
     double began = emscripten_get_now();
+    int reading = g_sh.read_index;
+    int raw = g_sh.present_mode == RA2_PRESENT_RAW;
     int game_w = w, game_h = h;
-    int hd = bpp == 16 && ra2_vox_hd_on;
-    if (hd) { w *= 2; h *= 2; }
-    size_t n = (size_t)w * (size_t)h;
-    int back = g_front ^ 1;
-    if (g_cap[back] < n) {
-        g_buf[back] = (uint32_t *)malloc(n * 4);          /* the old one is left: the page may be reading it */
-        g_cap[back] = g_buf[back] ? n : 0;
-        if (!g_buf[back]) return;
-    }
-    uint32_t *out = g_buf[back];
-    if (hd) {
-        hdvox_compose(px, pitch, game_w, game_h, out);    /* compositor returns XRGB */
-        for (size_t i = 0; i < n; i++) {
-            uint32_t v = out[i];
-            out[i] = 0xFF000000u | (v & 0xFF) << 16 | (v & 0xFF00) | (v >> 16 & 0xFF);
-        }
-    } else if (bpp == 16) {                              /* RGB565 */
-        for (int y = 0; y < h; y++) {
-            const uint16_t *s = (const uint16_t *)(px + (size_t)y * (size_t)pitch);
-            uint32_t *d = out + (size_t)y * (size_t)w;
-            for (int x = 0; x < w; x++) {
-                uint32_t p = s[x], r = p >> 11, g = (p >> 5) & 63, b = p & 31;
-                d[x] = 0xFF000000u | (b << 3 | b >> 2) << 16 | (g << 2 | g >> 4) << 8 | (r << 3 | r >> 2);
+    int hd = !raw && bpp == 16 && ra2_vox_hd_on;
+    uint32_t format, row;                                /* bytes per row in the buffer */
+    uint8_t *out;
+    if (bpp == 8 && !pal) return;
+    if (raw) {
+        format = bpp == 16 ? RA2_FMT_RGB565 : bpp == 8 ? RA2_FMT_PAL8 : RA2_FMT_BGRX;
+        row = (uint32_t)w * (bpp == 16 ? 2u : bpp == 8 ? 1u : 4u);
+        out = frame_acquire(&g_frames, reading, (size_t)row * (size_t)h);
+        if (!out) return;
+        for (int y = 0; y < h; y++) memcpy(out + (size_t)y * row, px + (size_t)y * (size_t)pitch, row);
+        if (bpp == 8) memcpy(g_palette, pal, sizeof g_palette), g_sh.palette_ptr = (uint32_t)(uintptr_t)g_palette;
+    } else {
+        if (hd) { w *= 2; h *= 2; }
+        format = RA2_FMT_RGBA, row = (uint32_t)w * 4u;
+        out = frame_acquire(&g_frames, reading, (size_t)row * (size_t)h);
+        if (!out) return;
+        uint32_t *o = (uint32_t *)out;
+        if (hd) {
+            hdvox_compose(px, pitch, game_w, game_h, o);    /* compositor returns XRGB */
+            for (int i = 0; i < w * h; i++) {
+                uint32_t v = o[i];
+                o[i] = 0xFF000000u | (v & 0xFF) << 16 | (v & 0xFF00) | (v >> 16 & 0xFF);
+            }
+        } else if (bpp == 16) {                          /* RGB565 */
+            for (int y = 0; y < h; y++) {
+                const uint16_t *s = (const uint16_t *)(px + (size_t)y * (size_t)pitch);
+                uint32_t *d = o + (size_t)y * (size_t)w;
+                for (int x = 0; x < w; x++) {
+                    uint32_t p = s[x], r = p >> 11, g = (p >> 5) & 63, b = p & 31;
+                    d[x] = 0xFF000000u | (b << 3 | b >> 2) << 16 | (g << 2 | g >> 4) << 8 | (r << 3 | r >> 2);
+                }
+            }
+        } else if (bpp == 8) {                           /* palette entries are r | g << 8 | b << 16 */
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++) o[(size_t)y * (size_t)w + x] = 0xFF000000u | pal[px[(size_t)y * (size_t)pitch + x]];
+        } else {                                         /* 32-bit: B, G, R, X in memory */
+            for (int y = 0; y < h; y++) {
+                const uint32_t *s = (const uint32_t *)(px + (size_t)y * (size_t)pitch);
+                uint32_t *d = o + (size_t)y * (size_t)w;
+                for (int x = 0; x < w; x++) {
+                    uint32_t v = s[x];
+                    d[x] = 0xFF000000u | (v & 0xFF) << 16 | (v & 0xFF00) | (v >> 16 & 0xFF);
+                }
             }
         }
-    } else if (bpp == 8) {                               /* palette entries are r | g << 8 | b << 16 */
-        if (!pal) return;
-        for (int y = 0; y < h; y++)
-            for (int x = 0; x < w; x++) out[(size_t)y * (size_t)w + x] = 0xFF000000u | pal[px[(size_t)y * (size_t)pitch + x]];
-    } else {                                             /* 32-bit: B, G, R, X in memory */
-        for (int y = 0; y < h; y++) {
-            const uint32_t *s = (const uint32_t *)(px + (size_t)y * (size_t)pitch);
-            uint32_t *d = out + (size_t)y * (size_t)w;
-            for (int x = 0; x < w; x++) {
-                uint32_t v = s[x];
-                d[x] = 0xFF000000u | (v & 0xFF) << 16 | (v & 0xFF00) | (v >> 16 & 0xFF);
-            }
-        }
     }
+    int index = frame_index_of(&g_frames, out);
+    g_sh.format = format, g_sh.frame_pitch = row;
     g_sh.frame_w = (uint32_t)w, g_sh.frame_h = (uint32_t)h;
     g_sh.game_w = (uint32_t)game_w, g_sh.game_h = (uint32_t)game_h;
+    g_sh.frame_index = index;
     g_sh.frame_ptr = (uint32_t)(uintptr_t)out;
-    g_front = back;
+    frame_publish(&g_frames, index);
+    frame_collect(&g_frames, reading);
     __atomic_add_fetch(&g_sh.frame_seq, 1, __ATOMIC_RELEASE);
     g_pub_ms += emscripten_get_now() - began, g_pub_n++;
     if ((uint32_t)game_w != last_w || (uint32_t)game_h != last_h) {
@@ -216,7 +231,7 @@ static void present_now(void) {
     unsigned seq;
     if (!hle_dd_frame(&px, &w, &h, &pitch, &bpp, &pal, &seq)) return;
     uint32_t now = hle_ticks_ms();
-    if (g_republish) g_republish = 0, shown_seq = ~0u, last = now - 15;   /* the page came back: a new picture now */
+    if (g_sh.republish) g_sh.republish = 0, shown_seq = ~0u, last = now - 15;   /* the page came back: a new picture now */
     if (now - last < 15 || (seq == shown_seq && now - last < 250)) return;
     shown_seq = seq, last = now;
     publish(px, w, h, pitch, bpp, pal);
@@ -403,7 +418,7 @@ static void drain_input(void) {
              * blur still lets go of keys, buttons and the pointer (input.ts). Coming back, every
              * showing window paints in full and a new picture goes out at once. */
             if (h) hle_post_message(h, WM_ACTIVATEAPP, 1, 0);
-            if (e.a) redraw_whole_screen(), hle_invalidate_all(), g_republish = 1;
+            if (e.a) redraw_whole_screen(), hle_invalidate_all(), g_sh.republish = 1;
             else web_presenter_pause();                      /* leaving a match: it is paused when they come back */
             break;
         }

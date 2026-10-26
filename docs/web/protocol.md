@@ -49,7 +49,7 @@ and the page reads it each animation frame.
 |---|---|---|
 | 0 | `protocol` | `RA2_WEB_PROTOCOL` |
 | 1 | `frame_seq` | goes up after each frame is written; redraw when it moves |
-| 2 | `frame_ptr` | address of `frame_w * frame_h * 4` bytes of RGBA |
+| 2 | `frame_ptr` | address of the picture: `frame_w * frame_h * 4` bytes of RGBA with `presentMode` 0 (the default), or `frame_h` rows of `framePitch` bytes in `format` with 1 |
 | 3, 4 | `frame_w`, `frame_h` | the picture's size, which is the game's display mode |
 | 5 | `cursor_seq` | goes up whenever the cursor changes |
 | 6 | `cursor_kind` | 0 hide the system cursor (the game draws its own), 1 the image below, 2 the system arrow, 3 draw the image above the full game/sidebar |
@@ -57,6 +57,20 @@ and the page reads it each animation frame.
 | 9, 10, 11 | `view_w`, `view_h`, `view_dpr` | what `ra2_resize` last said |
 | byte 52 | `cursor_rgba` | 32x32 RGBA |
 | 1042, 1043 | `pointer_x`, `pointer_y` | pointer position in game pixels, used by the pause cursor overlay |
+| 1044 | `format` | raw picture: `PixelFormat` (0 RGBA, 1 RGB565, 2 PAL8, 3 BGRX as the game's 32-bit screen stores them) |
+| 1045 | `framePitch` | raw picture: bytes per row |
+| 1046 | `palettePtr` | PAL8: 256 words, `r \| g << 8 \| b << 16` |
+| 1047 | `readIndex` | written by the page: the buffer (0 to 2) it is reading, -1 for none; the game never writes that buffer. Set to -1 at start-up |
+| 1048 | `frameIndex` | the buffer `frame_ptr` is in (0 to 2), -1 before the first picture |
+| 1049, 1050 | `hdLayer1x`, `hdLayer2x` | the HD vehicle layers; filled by the GPU path, 0 until then |
+| 1051, 1052 | `hdRects`, `hdRectCount` | the HD layers' rectangles; the same |
+| 1053 | `hdSeq` | goes up when the HD layers change; the same |
+| 1054 | `republish` | the page sets 1 to ask for a full picture; the game clears it |
+| 1055 | `presentMode` | written by the page: 0 publishes RGBA as before (the default), 1 publishes the game's format unconverted. Read at each publish. With 1 and HD vehicles on, the 1x frame goes out and the HD layers stay 0 |
+
+The game keeps three buffers for the picture. It writes into the one that is
+neither the newest published nor `readIndex`, and a buffer it has outgrown is
+freed once no slot reads or publishes it (`src/web/frame_buffers.c`).
 
 ## Page to game: exported functions
 

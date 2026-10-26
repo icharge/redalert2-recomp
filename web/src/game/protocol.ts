@@ -1,7 +1,7 @@
 // What the page and the game say to each other (docs/web/protocol.md). The C side is
 // src/web/web_api.h: change the two together, and RA2_WEB_PROTOCOL with them.
 
-export const RA2_WEB_PROTOCOL = 7;
+export const RA2_WEB_PROTOCOL = 8;
 
 export const SCALES = ["sharp", "smooth", "crt", "nearest", "integer"] as const;
 export type Scale = (typeof SCALES)[number];
@@ -160,7 +160,32 @@ export const Shared = {
   warpY: 1041,
   pointerX: 1042,
   pointerY: 1043,
+  /** the raw picture's format (PixelFormat); protocol 8 */
+  format: 1044,
+  /** bytes per row of the raw picture */
+  framePitch: 1045,
+  /** PAL8: 256 words, r | g << 8 | b << 16 */
+  palettePtr: 1046,
+  /** the buffer the page is reading (0 to 2), -1 for none; the page writes it */
+  readIndex: 1047,
+  /** the buffer framePtr is in (0 to 2) */
+  frameIndex: 1048,
+  /** the HD vehicle layers (filled by the GPU path; 0 until then) */
+  hdLayer1x: 1049,
+  hdLayer2x: 1050,
+  hdRects: 1051,
+  hdRectCount: 1052,
+  hdSeq: 1053,
+  /** the page sets 1 to ask for a full picture; the game clears it */
+  republish: 1054,
+  /** 0 (the default) publishes RGBA as before; 1 publishes the game's own format raw (PresentMode.Raw) */
+  presentMode: 1055,
 } as const;
+
+/** The pixel formats of a raw picture (Shared.format). */
+export const PixelFormat = { Rgba: 0, Rgb565: 1, Pal8: 2, Bgrx: 3 } as const;
+/** Shared.presentMode: what the game publishes. */
+export const PresentMode = { Rgba: 0, Raw: 1 } as const;
 
 /** Byte offset of the cursor's 32x32 RGBA pixels in the struct. */
 export const CURSOR_RGBA_OFFSET = 52;

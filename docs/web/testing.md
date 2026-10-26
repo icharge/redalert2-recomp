@@ -319,6 +319,16 @@ listing, opaque option bytes, compatibility metadata, MOTD and logout events.
 `pnpm test` also checks the browser protocol client and cancellation during
 HTTP login or WebSocket opening.
 
+The picture's three buffers (`src/web/frame_buffers.c`, protocol 8) have a plain C selftest, run the
+same way from the repository root (PowerShell or Git Bash; the output goes to a scratch folder, not
+`build-web/`):
+
+```sh
+../emsdk/upstream/emscripten/emcc.exe src/web/frame_buffers_selftest.c src/web/frame_buffers.c \
+  -DFRAME_BUFFERS_SELFTEST -sENVIRONMENT=node -sEXIT_RUNTIME=1 -o work/t3/frame-buffers-selftest.js
+node work/t3/frame-buffers-selftest.js   # frame_buffers selftest: ok
+```
+
 With Vite on `http://localhost:5173`, local RA2Web on `127.0.0.1:19090`, and the
 game modules built, run the original menu smoke check from `web/`:
 
