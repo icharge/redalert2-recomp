@@ -111,7 +111,10 @@ if ((moments.includes("busy") || soakMinutes > 0) && !existsSync(savePath))
 
 // --game is the import folder here, so lib.mjs must not read it as a test folder
 // --build <dir> (lib.mjs) serves that build directory's ra2.* files as the page's Yuri's Revenge module; without it
-// the page loads the published build in web/public/game.
+// the page loads the published build in web/public/game. --build is resolved against the working directory (run
+// from web/, as the examples do), unlike --out, --profile and --save, which are repo-relative. The wasm's SHA-256
+// (the run's build label) is the build's reliable identity: build.json's ids come from WEB_OUT, which can be
+// rebuilt later.
 const base = {
   ...options(argv),
   profile,
