@@ -12,7 +12,8 @@ Detailed ledger (rulings, review findings): `.superpowers/sdd/2026-10-26-web-fra
 | 1. Benchmark and baseline | **done**, review clean after 5 fix rounds | aa8bb15..1981765 |
 | 2. Probes: wait precision, clock calls | **done**, review clean after 1 fix round. M = 16 ms; no clock spin | d288344, 47ab13b, dba7145, ebee1fa |
 | 2b. Profile the busy game, HD off (new) | **done**, review clean after 1 fix round | 5fccff2, 006fcef |
-| 2c. Test the Thai-font wrapper's cost (new) | **fix round 1**: the build without the wrapper ran the busy save at 62 fps vs 29 in the profiling script; the benchmark ignored `--build` (a Task 1 bug), so its A/B is being re-run | 483d5d7 |
+| 2c. Test the Thai-font wrapper's cost (new) | **in review**. Confirmed: busy 720p HD off is 26.5 fps with the wrapper, **62** (1% low 55–56) without it | 483d5d7, 5887904 |
+| 2d. Thai-off path as a plain call (the fix) | pending, after 2c; in the plan (1022509) | |
 | 3. Raw publish, three buffers, protocol 8 | pending | |
 | 4. WebGL2 presenter | pending | |
 | 5. HD layers on the GPU | **deferred** to a later HD project | |
@@ -33,7 +34,7 @@ The user asked to focus on the game with HD off (HD vehicles are experimental an
 
 - The game thread is about 84% busy at 25 fps (about 34 ms of work a frame; 60 fps allows 16).
 - The picture code (presenter group) is 0.8% of the game thread; waiting is 16%, which caps what Tasks 8 and 10 can gain there.
-- 52% of the samples land in `recomp_thai_call`, the Thai font wrapper around the game's text functions (the Thai fix itself is off). Why is not known yet: the compiled wrapper just calls the original, and the text function shows only about 2 s of the 20 s. (An earlier note here said the compiler had merged the text drawing into the wrapper; the review disproved that.) Task 2c tests it with a build that skips the wrapper: first result, 29 → 62 fps (busy, 720p, HD off), being confirmed with the benchmark.
+- 52% of the samples land in `recomp_thai_call`, the Thai font wrapper around the game's text functions (the Thai fix itself is off). Why is not known yet: the compiled wrapper just calls the original, and the text function shows only about 2 s of the 20 s. (An earlier note here said the compiler had merged the text drawing into the wrapper; the review disproved that.) Task 2c tests it with a build that skips the wrapper: confirmed with the fixed benchmark: 26.5 → 62 fps median, 1% low 21–22 → 55–56 (busy, 720p, HD off). Task 2d makes that the real build.
 - Separate CPU cost: pcrecomp's `wait_ms` busy-polls the clock on another worker (about 81% of that worker's time in clock reads), which the clock probe's spin rule missed. A second worker was 42% busy in uncategorised time, not confirmed as clock reads.
 
 ## To resume after an interruption
@@ -59,7 +60,7 @@ The user asked to focus on the game with HD off (HD vehicles are experimental an
 
 ## Found along the way (outside this plan)
 
-- `perf.mjs` ignored `--build` (it always measured the published game); being fixed in Task 2c.
+- `perf.mjs` ignored `--build` (it always measured the published game); fixed in Task 2c (5887904).
 
 - The OPFS profile's RA2MD.INI gains a repeated `[Video]` section per run (a loader INI-rewrite bug).
 - `?dev=1` / `?test=1` game folders copy the whole install into wasm memory and crash at the 768 MiB cap.
