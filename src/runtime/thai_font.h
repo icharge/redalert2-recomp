@@ -14,6 +14,13 @@ void recomp_thai_indirect_call(uint32_t target);
 #define RECOMP_THAI_TARGET(va) ((va) == 0x00434CD0u || (va) == 0x00434120u || (va) == 0x00434500u)
 #endif
 
+#ifdef RA2_NO_THAI_HOOK
+/* Measurement switch (web Task 2c): with this defined, the font entry points
+ * are plain lifted calls with no wrapper, so the wrapper's cost can be timed
+ * A/B. Not for the shipped build; leave it undefined. */
+#define RECOMP_THAI_CALL(va, fn) RECOMP_CALL(fn)
+#define RECOMP_THAI_ICALL(target_va) RECOMP_ICALL(target_va)
+#else
 /* Preserve the lifted call boundary, while letting the host adjust the font
  * and glyph metrics around the original function. */
 #define RECOMP_THAI_CALL(va, fn) do { \
@@ -43,3 +50,4 @@ void recomp_thai_indirect_call(uint32_t target);
         g_cur_func = _caller; \
     } \
 } while (0)
+#endif

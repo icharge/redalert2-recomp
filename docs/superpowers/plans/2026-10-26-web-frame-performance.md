@@ -509,6 +509,37 @@ Spin. pcrecomp's `wait_ms` (the game's `Sleep`) polls the clock until its deadli
 
 Reading. The game's thread is the bound: it is 84% busy at 25 fps, about 34 ms of its own work a frame where 60 fps allows about 16 ms. The 52% in `recomp_thai_call` (the hook group, 55% with `recomp_lookup`) is not yet attributed: it is either a runtime wrapper's real cost or a profiler artefact. The review found that the wrapper's early path is one indirect call to the original, and that `sub_00434500` is a separate function with about 2 s on the stack, so the self time does not yet add up. Task 2c tests it. The game's own code is 28%, spread over many functions. The presenter group is 0.8%. Waiting (`emscripten_futex_wait` on the game thread) is 16%, which caps Tasks 8 and 10 at about that share of the frame.
 
+### Thai wrapper A/B (Task 2c)
+
+Switch: `RA2_NO_THAI_HOOK` in `src/runtime/thai_font.h` maps `RECOMP_THAI_CALL` and `RECOMP_THAI_ICALL` onto pcrecomp's `RECOMP_CALL` and `RECOMP_ICALL`. Build B is `work/build-web-nothai` (`-DWEB_LINK_OPT=-O3;--profiling-funcs`, `-DCMAKE_C_FLAGS=-DRA2_NO_THAI_HOOK`, WEB_OUT `work/web-out-nothai`); the define is in all 273 compile lines of its `build.ninja` (none in build A's). Build A is `work/build-web-prof`, unchanged.
+
+Benchmark: `web/e2e/perf.mjs --build` at 1280x720, HD off, the busy save, 60 s (30 s untouched, then panned), headed Chrome, one browser session per run. Median is `fpsMedian`; 1% low is `fps1Low`, the nearest-rank first percentile, which over 60 one-second samples is the minimum.
+
+| Run | Build | Median fps | 1% low | Worst gap (ms) |
+|---|---|---|---|---|
+| A1 | A | 29 | 25 | 92 |
+| B1 | B | 22 | 21 | 87 |
+| A2 | A | 23 | 18 | 123 |
+| B2 | B | 23 | 22 | 83 |
+| B3 (extra) | B | 30 | 25 | 119 |
+| A3 (extra) | A | 22 | 20 | 81 |
+
+The brief's pair rule: A's two medians average 26.0 (spread 6), B's average 22.5 (spread 1). B is 3.5 below A, not 3 above, so by the rule the wrapper is not a measurable cost here. Across all six runs the medians are 22 to 30 for both builds, so the benchmark does not separate them. The three extra runs are outside the four-run protocol; they were run because `profile-game.mjs` disagreed (below).
+
+`profile-game.mjs` (20 s CPU profile after a 10 s settle, same save and size; outputs `work/perf/profile-A-2c.*`, `profile-nothai.*`, `profile-nothai-2.*`):
+
+| Run | Median fps (min) | Game | Hook | Waiting | Other | `recomp_thai_call` self |
+|---|---|---|---|---|---|---|
+| A (`profile-A-2c`) | 29 (26) | 35.2% | 58.3% | 3.9% | 1.2% | 55.2% |
+| B (`profile-nothai`) | 62 (61) | 64.7% | 7.9% | 3.0% | 21.8% | n/a |
+| B (`profile-nothai-2`) | 62 (61) | 69.0% | 8.9% | 3.6% | 16.1% | n/a |
+
+Conflict, not resolved. Under `profile-game.mjs`, B runs at 62 fps against A's 29, the reverse of the benchmark's result, and both B runs agree. The benchmark's B runs were 22 to 30. The two tools differ in the CDP session (`profile-game.mjs` attaches to every worker and enables the profiler before the load) and in the benchmark's CPU sampler. I did not find which setting explains it.
+
+B's profile (`work/perf/profile-nothai.json`, the first run; top 10 by self time of the game worker; the second run agrees to about 1 point on most, the spin being 11.3% there): `_emscripten_get_now` 15.2% (other, the `wait_ms` spin; 11.3% in the second run), `recomp_lookup` 7.8% (hook; 8.9%), `RLEBlitTransXlatAlphaZRead_G__virtual_1` 4.8% (game), `TechnoClass__virtual_23` 3.1% (game), `emscripten_futex_wait` 2.6% (waiting), `now` 2.4% (other), `present_now` 2.2% (presenter), `sub_007258D0` 1.7% (game), `sub_00437A10` 1.6% (game), `TechnoClass__virtual_10` 1.5% (game). With the wrapper gone the game thread is ahead of its 16 ms budget at 62 fps and spends about 11 to 15% spinning in `wait_ms`.
+
+Verdict (provisional). By the brief's rule, the wrapper is not shown to be a real cost (B is not at least 3 above A), so no fix is proposed yet. The profile's 55% self time in `recomp_thai_call` is not confirmed by the benchmark, but `profile-game.mjs` gives a 2x difference that would make it a real and large cost. Before Task 8 relies on either reading, measure it directly: a timing counter (`emscripten_get_now` or a cycle count) around the wrapper's `original()` call in build A, or the game's own fps overlay with and without the CDP session attached. If the wrapper is real, the fix is to test the Thai flag inline in the macro and call the original directly when no Thai target is hit, as the brief suggests.
+
 ## Results
 
 (Filled in by Tasks 1, 7–12.)
