@@ -17,7 +17,8 @@ At the user's request, the target is the game with **HD off**; HD vehicles are e
 - **Task 2b (new) runs next:** profile the busy game with HD off. The busy save runs at 18–23 fps at every size, so the limit is not the picture; this profile says what it is before the rendering work starts.
 - **Task 5 (HD layers on the GPU) is deferred** to a later HD project (with the flicker and HD buildings/infantry). Task 4's presenter keeps HD working through the 2D fallback when HD is on.
 - Task 7 measures and profiles the HD-off busy cases; HD-on rows are recorded only. Task 11's soak runs HD off.
-- Order: 2b, 2c, 2d, 3, 4, 6, 7, 8, 10, 11, 12 (9 skipped: no spin). Task 2c was added after 2b's profile, and 2d after 2c's result.
+- Order: 2b, 2c, 2d, 2e, 3, 4, 6, 7, 8, 10, 11, 12 (9 skipped: no spin). Task 2c was added after 2b's profile, 2d after 2c's result, and 2e after 2d found the Thai fix on by default.
+- The pass bar is measured with the app's defaults, so with the Thai fix on; fix-off numbers are recorded beside them.
 
 ### Task 2b: Profile the busy game, HD off
 
@@ -58,6 +59,21 @@ Task 2c measured the busy save at 1280x720, HD off: 26.5 fps median (1% low 21�
 - [ ] **Step 3: Measure** the default edition with `perf.mjs --build <dir>`: busy, HD off, at 1280x720, 1920x1080 and 2560x1440, two runs each, against Task 2c's build A numbers at 720p. Expected: 720p median ≥ 60. 62 is the speed-5 frame cap, so also record the game thread's work per frame from one `profile-game.mjs` run at 2560x1440 as the headroom measure. Record the table in "Results".
 - [ ] **Step 4: Check the fix still works when on**: start the default edition with `?arg=--thai-font-fix` (and the Thai font settings `main.c:738` needs, from `web/src/storage/thai-fonts.ts`; if no Thai font is available in the profile, say so) and confirm it reaches the main menu with no errors in the console. Also run the browser suite's smoke test for both editions (`docs/web/testing.md`).
 - [ ] **Step 5: Commit** `thai_font.h`, `thai_font.c` and the plan.
+
+### Task 2e: The Thai fix without full-font rewrites
+
+Task 2d found that the web app turns the Thai font fix on by default (`web/src/storage/thai-fonts.ts:29-30`, and older saved preferences are switched on at `:99-101`), so every busy measurement so far ran with it on. With it off, builds A and 2d both reach 62 fps at 720p; with it on, 24–26. The cost is the fix itself: `begin_layout` calls `apply_metrics` and `end_layout` calls `restore_metrics` (`src/runtime/thai_font.c:249-262, 346-367`), and each rewrites the width of every glyph record in the font (`state->count`, up to 0x10000) on every text call. The default stays on; this task makes it cheap. The macros are back to their pre-2c form (585ef08).
+
+**Files:**
+- Modify: `src/runtime/thai_font.c`
+- Create: `web/e2e/thai-shots.mjs`
+- Modify: `docs/web/testing.md`, this plan's "Results"
+
+- [ ] **Step 1: Measure the calls.** In a scratch `-O1` build (not committed), count per second in the busy save with the fix on: layout entries, full `apply_metrics` / `restore_metrics` rewrites, the glyph count of each font state, and the spacing values seen. Record them in "Results".
+- [ ] **Step 2: Write the picture check.** `thai-shots.mjs --build <dir> --out <dir>` starts the game with the fix on (the app default), and saves PNGs of the main menu, the skirmish setup screen, and the busy save's in-game options menu (the game paused, so the battlefield and sidebar behind it are still). `--compare <dirA> <dirB>` reports the differing pixels per image and exits non-zero on any. Take the reference shots from build A (`work/build-web-prof`, which has the original macros and metrics code).
+- [ ] **Step 3: Make the rewrites proportional to what changes.** Choose from Step 1's numbers and say why. If nearly every call has spacing 0, the spacing-0 apply and restore touch only the marked records (`mark_count`, the zero-width marks); otherwise each font state remembers the spacing its records hold and skips a rewrite when it is unchanged. The result must not depend on how many glyphs the font has, and the Step 2 check must pass against build A's shots with zero differing pixels.
+- [ ] **Step 4: Measure** with `perf.mjs --build`, busy, HD off, fix on and off (the fix's setting: `?arg=--thai-font-fix` and the font id, or the stored preference; say which), at 1280x720 (two runs each, against build A's fix-on 26.0 / 21.3), 1920x1080 and 2560x1440 (one run each). Expected: fix on at 720p median ≥ 60. Record the table in "Results".
+- [ ] **Step 5: Commit** `thai_font.c`, `thai-shots.mjs`, `testing.md` and the plan.
 
 ## Global Constraints
 
