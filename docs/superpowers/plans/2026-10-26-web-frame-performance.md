@@ -689,37 +689,46 @@ Fix round 1 also tried A (fix on, second run), A (fix off) and 2e (fix off). All
 - `perf.mjs --out` is repo-relative (`--out ../x` lands outside the repo); the first round-0 run was written outside and moved in.
 - The native MSVC compile of `thai_font.c` at `/W4` (`cl`, native build flags) exits 0 with no warnings. The RA2-define compile exits 0 with two warnings in code that predates this change (`read8`/`write8` unused).
 
+
 ### Task 2f: the busy game at 720p and 1440p (profile)
 
-**Status: partial.** The 1440p and 720p profiles are measured, two fix-off runs each at the new default, plus one 1440p fix-on run taken before the default changed. A Thai-on 720p run was not taken. The launch stalls below remain in `profile-fresh`. Build: `work/build-web-thai2e` (release `-O3`, `--profiling-funcs`, Task 2e's code, not rebuilt). Tool: `profile-game.mjs`, run through a scratch copy (`work/perf/task2f/profile-game-task2f.mjs`) that adds the `thaiFix` field (the `[thaifont]` line from `t.all`); the script itself is unchanged. Outputs: `work/perf/task2f-<run>.json` and `.cpuprofile` (names in the table), logs in `work/perf/task2f/`.
+**Status: partial.** Profiles are measured at 720p and 1440p, two fix-off runs each at the new default, plus one 1440p fix-on run taken before the default changed. Not taken: a Thai-on 720p run that completes (the one attempt crashed), and any run on `profile-fresh`, which stalls at launch (below). Build: `work/build-web-thai2e` (release `-O3`, `--profiling-funcs`, Task 2e's code, not rebuilt). Tool: `profile-game.mjs`, run through a scratch copy (`work/perf/task2f/profile-game-task2f.mjs`) that adds the `thaiFix` field (the `[thaifont]` line from `t.all`); the committed script is unchanged. Outputs: `work/perf/task2f-<run>.json` and `.cpuprofile`, logs in `work/perf/task2f/`.
 
-**Profile.** Busy save, HD vehicles off, 10 s settle, 20 s sample. `workPerFrameMs` is busy time divided by the frames of the fps events. The profiler's fps is not perf.mjs's: 720p 62 here (perf.mjs 61 in Task 2e), 1440p 43 to 44 (perf.mjs 34). Compare sizes within this table only.
+**Bases.** Two per-frame figures are used. "Sample ms per frame" is the game worker's total time (`totalMs`, which includes waiting) divided by the frames; the group table uses it. "Work per frame" is `busyMs` divided by the frames, which excludes waiting and the wait_ms spin; the run table uses it. The profiler's fps are not perf.mjs's: 720p 62 here (perf.mjs 61 in Task 2e), 1440p 43 to 44 (perf.mjs 34). Compare sizes within this table only.
 
-| Run (`work/perf/`) | Size | Thai state | Frames | fps median (min) | Work per frame |
-|---|---|---|---|---|---|
-| `task2f-720-off-1` | 1280x720 | off (no `[thaifont]` line) | 1239 | 62 (61) | 13.03 ms |
-| `task2f-720-off-2` | 1280x720 | off | 1234 | 62 (60) | 13.10 ms |
-| `task2f-1440-off-1` | 2560x1440 | off | 856 | 44 (36) | 22.73 ms |
-| `task2f-1440-off-2` | 2560x1440 | off | 857 | 43 (35) | 22.70 ms |
-| `task2f-thaioff-1440-probe` | 2560x1440 | off (stored preference off) | 901 | 45 (38) | 21.72 ms |
-| `task2f-1440-1` | 2560x1440 | on (`[thaifont] using selected font builtin-westwood-improved`) | 892 | 42 (34) | 21.86 ms |
+**Runs.** Busy save, HD vehicles off, 10 s settle, 20 s sample; window 20.6 to 20.8 s.
 
-The fix-on run was taken while the default was still on (its stored preference had been cleared). The probe ran with a stored preference of off. The JSON's `thaiFix` field reads `unknown` for the fix-off runs, because a missing line means off. Work per frame at 1440p is 21.7 to 22.7 ms with the fix on or off, so the Thai fix does not change the picture cost there.
+| Run (`work/perf/`) | Size | Thai | Profile | Frames | fps median (min) | Work per frame |
+|---|---|---|---|---|---|---|
+| `task2f-720-off-1` | 1280x720 | off | copy | 1239 | 62 (61) | 13.03 ms |
+| `task2f-720-off-2` | 1280x720 | off | copy | 1234 | 62 (60) | 13.10 ms |
+| `task2f-1440-off-1` | 2560x1440 | off | copy | 856 | 44 (36) | 22.73 ms |
+| `task2f-1440-off-2` | 2560x1440 | off | copy | 857 | 43 (35) | 22.70 ms |
+| `task2f-thaioff-1440-probe` | 2560x1440 | off (stored preference off) | copy | 901 | 45 (38) | 21.72 ms |
+| `task2f-1440-1` | 2560x1440 | on (`thaiFix` holds the line) | copy, preferences cleared | 892 | 42 (34) | 21.86 ms |
 
-**Groups, ms per frame (mean of the two 720p and the two 1440p fix-off runs).** Shares are of the game worker's time.
+Not in the table: a copy run at 720p (`task2f-720-copy-probe2`, Thai off, 62/60/62 fps) whose JSON was lost to a `ReferenceError` in the wrapper's result step (`thaiFix` was undefined there), so its cpuprofile was not written and its group shares were not computed.
 
-| Group | 720p ms/frame | 1440p ms/frame | Ratio (1440/720) |
+**How the Thai state is known.** The fix is on only when the launch passes `--thai-font-fix`: `web/src/game/loader.ts:281` adds it only when `thaiFontFix.enabled`. The game prints `[thaifont] using selected font ...` only inside `thai_font_check()` (`src/web/main.c:617`), which runs only with that flag (`main.c:740`). So a run with no line is fix off. The JSON's `thaiFix` reads `unknown` for those runs because `profile-game.mjs` has no declared state to write. The `[thaifont]` line is in the JSON for the fix-on run, and it appears in a run's log only on a failed launch (`lib.mjs` prints the page's lines on failure); successful runs' logs do not carry it.
+
+**Profile used.** `profile-fresh` (stalled, below) was not used for any completed run. Every completed run used `work/perf/task2f/profile-copy`, a copy of `profile-fresh` made before the runs (1,719 MB, 1.6 GiB; git-ignored, kept). Its save store was edited before some runs (below), and its stored Thai preferences were cleared before the fix-on run, so later runs take the app's default. `profile-fresh`'s own stored preferences for `ra2md` and `slot-1-ra2md` are `enabled:false` (version 2), so runs on it are fix off whatever the default.
+
+**Groups, sample ms per frame (mean of the two runs per size; game worker's total time).**
+
+| Group | 720p | 1440p | Ratio |
 |---|---|---|---|
-| game | 11.32 (68%) | 18.85 (78%) | 1.67 |
-| hook | 1.11 (6.7%) | 1.39 (5.8%) | 1.25 |
+| game | 11.32 | 18.85 | 1.67 |
+| hook | 1.11 | 1.39 | 1.25 |
 | runtime | 0.08 | 0.16 | 2.0 |
-| presenter | 0.38 (2.3%) | 1.92 (8.0%) | 5.0 |
-| waiting | 0.53 (3.2%) | 1.36 (5.7%) | 2.6 |
-| other (clock reads) | 3.28 (19.6%) | 0.34 (1.6%) | 0.1 |
+| presenter | 0.38 | 1.92 | 5.0 |
+| waiting | 0.53 | 1.37 | 2.6 |
+| other (clock reads) | 3.28 | 0.39 | 0.1 |
 
-At 720p the 13.0 ms includes 2.6 ms of clock reads (`_emscripten_get_now` and `now`). The game runs at its 62 fps cap there and polls the clock while it waits, so this is pacing, not work. It is absent at 1440p, where the game is below the cap.
+Shares of the total at 1440p: game 78%, presenter 8%, hook 6%, waiting 6%. At 720p: game 67 to 68%, other 19 to 20%, hook 7%, waiting 3%, presenter 2%.
 
-**Top functions, ms per frame (mean of two runs each); ratio is 1440p over 720p.** A function outside the 720p top 20 is shown with its 1440p value only.
+**Work per frame at 720p with and without the clock reads.** The 13.0 ms busy figure includes `clockReadsMs` (3,600 and 3,424 ms over the runs, 2.9 and 2.8 ms per frame), of which 3,457 and 3,259 ms were under wait_ms, the frame limiter's spin. Without them the work is 10.1 and 10.3 ms per frame. At 1440p the clock reads are 0.26 to 0.29 ms per frame, and busy minus clock reads is 22.4 ms per frame.
+
+**Top functions, sample ms per frame (mean of two runs; the 720p top-20 cutoff is about 0.17 ms per frame).** Ratio is 1440p over 720p.
 
 | Function | Group | 720p | 1440p | Ratio |
 |---|---|---|---|---|
@@ -728,27 +737,39 @@ At 720p the 13.0 ms includes 2.6 ms of clock reads (`_emscripten_get_now` and `n
 | `recomp_lookup` | hook | 1.101 | 1.389 | 1.3 |
 | `emscripten_futex_wait` | waiting | 0.469 | 1.317 | 2.8 |
 | `BlitPlain_G__virtual_1` | game | 0.242 | 1.190 | 4.9 |
-| `BlitTransXlatAlphaZRead_G__virtual_1` | game | below top 20 | 0.926 | at least 5 |
+| `BlitTransXlatAlphaZRead_G__virtual_1` | game | 0.189 (run 1, rank 16; not in run 2's top 20) | 0.926 | about 4.9 (run 1) |
 | `sub_00437A10` | game | 0.219 | 0.618 | 2.8 |
 | `TechnoClass__virtual_23` | game | 0.539 | 0.574 | 1.1 |
-| `sub_004373B0` | game | below top 20 | 0.417 | at least 2 |
+| `sub_004373B0` | game | below cutoff (under 0.17) | 0.417 | at least 2.4 |
 | `sub_007258D0` | game | 0.311 | 0.336 | 1.1 |
 | `sub_006D8DB0` | game | 0.194 | 0.315 | 1.6 |
 | `TechnoClass__virtual_10` | game | 0.245 | 0.300 | 1.2 |
-| `sub_006D7840` | game | below top 20 | 0.297 | at least 1.5 |
-| `RLEBlitTransXlat_E__virtual_1` | game | below top 20 | 0.269 | at least 1.5 |
+| `sub_006D7840` | game | below cutoff (under 0.17) | 0.297 | at least 1.7 |
+| `RLEBlitTransXlat_E__virtual_1` | game | below cutoff (under 0.17) | 0.269 | at least 1.6 |
 | `BuildingClass__virtual_23` | game | 0.210 | 0.266 | 1.3 |
 | `TechnoClass__virtual_254` | game | 0.225 | 0.243 | 1.1 |
 | `sub_006F8960` | game | 0.229 | 0.236 | 1.0 |
 | `TechnoClass__virtual_33` | game | 0.183 | 0.232 | 1.3 |
 | `_emscripten_get_now` | other (clock) | 2.286 | 0.23 | 0.1 |
 
-**Reading.** Picture-bound (grows 2.6 to 5 times, against the 4 times pixel ratio): `present_now` (presenter), the blits `BlitPlain_G`, `RLEBlitTransXlatAlphaZRead_G`, `BlitTransXlatAlphaZRead_G`, `RLEBlitTransXlat_E`, and `sub_00437A10`. Together about 7.3 ms per frame at 1440p (drawing about 5.4, presenter 1.9), against about 1.9 ms at 720p. Simulation-bound (flat, 1.0 to 1.3 times): the `TechnoClass`, `BuildingClass` and `sub_007258D0` and `sub_006F8960` functions. The game group grows 1.67 times, and most of its increase is spread over functions that grow 1.0 to 1.6 times. Which later tasks can move 1440p: the presenter group (Tasks 3/4) is at most about 1.9 ms per frame at 1440p. The blits are the game's own drawing (not in this plan) and are about 5.4 ms per frame there. The 1440p busy time is 22.7 ms per frame, against 16.7 ms for 60 fps, so the presenter work alone cannot reach 60 fps at 1440p.
+**Where the game group's rise comes from.** The game group rises 7.5 ms per frame (11.32 to 18.85). Of that, about 3.7 ms is the blits and `sub_00437A10` (`RLEBlitTransXlatAlphaZRead_G` +1.46, `BlitPlain_G` +0.95, `BlitTransXlatAlphaZRead_G` about +0.7, `RLEBlitTransXlat_E` about +0.1, `sub_00437A10` +0.40). The functions that grow 1.0 to 1.6 times in the top 20 add only about 0.4 ms between them. `sub_004373B0` adds at least about 0.25 ms and `sub_006D7840` at least about 0.13 ms (their 720p values are under the cutoff). The remaining 3 ms or so is in game functions outside the top 20 at both sizes, which this report does not enumerate. The `.cpuprofile` files hold every function, so they can be re-read to classify that tail.
 
-**Cross-check, not comparable.** The Task 2d pair (`fixround-off-profile-rev-720`, `-1440`; build `work/build-web-thai2d`, Thai off) shows 21.0 ms per frame at 720p and 21.5 at 1440p, both at about 41 fps in the profiler. That build's 720p profile does not grow with size, unlike this build's, so only this task's runs are compared here.
+**Classification.** Picture-bound (by the four-times test): the presenter `present_now`; the blits `BlitPlain_G`, `RLEBlitTransXlatAlphaZRead_G`, `BlitTransXlatAlphaZRead_G`, `RLEBlitTransXlat_E`; and `sub_00437A10`. `sub_004373B0` grows at least 2.4 times, so it is picture-bound on the ratio, though its 720p value is not measured. `sub_006D7840` grows at least 1.7 times, which is not enough to call it picture-bound; it is unclassified. Simulation-bound (flat, 1.0 to 1.3 times): `TechnoClass__virtual_23`, `TechnoClass__virtual_10`, `TechnoClass__virtual_254`, `TechnoClass__virtual_33`, `BuildingClass__virtual_23`, `sub_007258D0`, `sub_006F8960`. `sub_006D8DB0` (1.6) is between. The tail is not classified.
 
-**Launch stalls (Step 3).** `profile-fresh`: four of four launches stalled (1440p three times, 720p once). The page printed `cannot map /game/gamemd.exe at 0x00400000` with the copy at 35 of 36 files, then ten `[pageerror] No such directory` (WasmFS's `readdir` throws it; `emsdk/upstream/emscripten/src/lib/libwasmfs.js`), until the 300 s wait timed out. No Chrome was running on `profile-fresh`; the only Chrome process was another run's `ra2-resolution-load` profile, left alone. A copy of `profile-fresh` (`work/perf/task2f/profile-copy`) stalled the same way. Diagnosis: the save store `/save/slot-1-ra2md/` in OPFS held files that are not saves. In `profile-fresh`, `gamemd.exe` was 149,205,232 bytes and `Blowfish.dll` 36,052,960 bytes, against the bundled runtime's 4,813,072 and 225,331. `restoreSaves` (`web/src/storage/saves.ts`) writes the store's files over `/game` at launch, and the save sync copies the game's top-level files into the store, so the wrong copies return each launch. Removing `gamemd.exe`, `Blowfish.dll` and `RA2MD.INI` from the copy's store let the next four launches run. The sync then re-created them with new sizes (gamemd.exe 19 MB, SAVE0001.SAV 15.7 MB, RA2MD.INI 0.7 MB), and the launches that came before that removal had failed in other ways: a game crash in a lifted function (`sub_0053E770`, `PeekMessageA`), and a `page.evaluate` exception in `loadBusySave`'s `FS.writeFile`. The loader was not changed. The fix belongs to the save sync (the store must not hold the game's top-level executables and INI); until it is made, each run needs those files removed from the store first.
+**Reading.** Picture-bound work at 1440p is about 7.3 ms per frame (the blits and `sub_00437A10` about 5.4, the presenter 1.9), against about 1.9 ms at 720p; `sub_004373B0` (0.42 at 1440p) would add to it if it is picture-bound. The presenter group (Tasks 3/4) can remove at most about 1.9 ms per frame at 1440p. The 1440p busy time is 22.4 to 22.7 ms per frame, against 16.7 ms for 60 fps, so the presenter work alone cannot reach 60 fps there. The blits and `sub_00437A10` are the game's own drawing, which this plan does not cover, and the tail is unknown until it is classified.
 
-**Profile state.** `profile-fresh`'s stored Thai preferences for `ra2md` and `slot-1-ra2md` are `{"enabled":false,...,"version":2}`, so runs on it are fix off whatever the default is. The copy had those preferences cleared for the fix-on run, and it has none now, so it takes the app's default. The copy is 1.7 GB under `work/perf/task2f/` (git-ignored, kept).
+**Cross-check, not comparable.** The Task 2d pair (`fixround-off-profile-rev-720`, `-1440`; build `work/build-web-thai2d`, Thai off) shows 21.0 ms per frame at 720p and 21.5 at 1440p, both at about 41 fps in the profiler. That build's 720p work does not grow with size, unlike this build's, so only this task's runs are compared.
 
-**Open.** Not taken: a Thai-on 720p run, and any run on `profile-fresh`. The controller decides whether the save sync gets fixed, and whether the 720p and 1440p pairs are repeated on a clean store under the new default.
+**Launch stalls and failures (Step 3).** Order by log time, and what each step did.
+
+- `profile-fresh`: three logged stalls at 1440p, `task2f-1440-1-stall1.log` (15:51), `-stall2.log` (15:56), `-stall3.log` (16:02). Each printed `cannot map /game/gamemd.exe at 0x00400000` with the copy at 35 of 36 files, then ten `[pageerror] No such directory` (WasmFS's `readdir` error, `emsdk/upstream/emscripten/src/lib/libwasmfs.js`), and the 300 s wait timed out. A fourth stall at 720p on `profile-fresh` happened, but its log (`task2f-720-1.log`) was overwritten later and is not kept.
+- `profile-copy`, first copy stall (16:15, `task2f-720-copy-probe.log`): the same signature, with the store as copied.
+- Removal 1 (16:16, before any run after it): `gamemd.exe` and `Blowfish.dll` removed from the copy's save store `/save/slot-1-ra2md/`. Then `task2f-720-copy-probe2` ran (62 fps; its JSON lost, see above), `thaioff-1440-probe` ran (16:18, listed above), the copy's Thai preferences were cleared, and `task2f-1440-1` ran (16:20).
+- After removal 1 and before removal 2, the launches failed. `task2f-720-2.log` (16:26): an exception in `loadBusySave`'s `window.Module.FS.writeFile` through `page.evaluate` (the thrown value is not kept). A 1440p launch before the retry crashed in a lifted function (`sub_0053E770`, `PeekMessageA`, a wasm exception); its log was overwritten by the retry, so it is not cited. `task2f-1440-2.log` (16:29), the retry: the same `page.evaluate` exception. A 720p run with a diagnostic read of `/game` (no log kept) and then `task2f-720-1.log` (16:34): Thai on (`[thaifont]` line present), the game ran to `running` and then `Uncaught RuntimeError: memory access out of bounds` in lifted `sub_00407680`, with `LeaveCriticalSection` the last import; `(no crash report)`. Two more `720p off` launches (about 16:37 to 16:41, logs overwritten) gave the `page.evaluate` exception, then a crash after 120 s.
+- Removal 2 (about 16:43): `RA2MD.INI` added to the set. Then `task2f-720-off-1` (16:44), `-720-off-2` (16:45), `-1440-off-1` (16:46) and `-1440-off-2` (16:47) all completed.
+
+Store contents: in `profile-fresh`, `gamemd.exe` 149,205,232 bytes and `Blowfish.dll` 36,052,960 bytes. In the copy, before removal 2: `gamemd.exe` 57,756,864, `RA2MD.INI` 16,405,230, `Blowfish.dll` 2,703,972, `SAVE0001.SAV` 7,870,464. After the four completed runs: `gamemd.exe` 19,252,288, `SAVE0001.SAV` 15,740,928, `RA2MD.INI` 729,550, `Blowfish.dll` 901,324. The bundled runtime (`web/public/game/runtime/ra2md/`) has `gamemd.exe` 4,813,072 bytes and `Blowfish.dll` 225,331 bytes. `restoreSaves` writes the store's files over `/game` before the game starts (`web/src/storage/saves.ts`), so a wrong copy in the store is restored at launch.
+
+How the wrong copies enter the store is not known. `startSaveSync` copies files that are new or changed after it starts (the files present at its start count as unchanged), and `gamemd.exe` is written by `stageRuntimeBundle` after `loadOpfsFiles` starts that sync, which would give the bundled 4.8 MB file, not the sizes seen. The correlation is the evidence: the failures continued after removal 1 and stopped after removal 2 (four launches). The loader was not changed. A fix belongs in the save sync (the store must not hold the game's top-level executables and INI), and the decision is the controller's; until then, runs need those three files removed from the store first.
+
+**Open.** Not taken: a Thai-on 720p run that completes; any run on `profile-fresh`; the tail's classification. Next: the controller decides whether the save sync is fixed, and whether to repeat the 720p and 1440p pairs on a clean store under the new default, and to classify the cpuprofile tail.
