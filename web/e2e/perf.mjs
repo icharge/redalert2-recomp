@@ -4,19 +4,25 @@
 //   node e2e/perf.mjs [--sizes 1280x720,1920x1080,2560x1440,3840x2160] [--hd off,on]
 //                     [--moments early,busy,menu] [--repeats 2] [--seconds 60] [--save work/perf/busy.sav]
 //                     [--soak-minutes 0] [--out work/perf/<date>] [--baseline <run.json>] [--append]
-//                     [--profile work/perf/profile] [--game game] [--headed]
+//                     [--profile work/perf/profile-fresh] [--game game] [--headed]
 //
 // The defaults are early skirmishes and the main menu at 720p, 1080p and 1440p, HD vehicles off and on
 // (60 s each: 30 s untouched, then 30 s of right-button panning), the main menu untouched for 30 s. Each
 // early case is run --repeats times (default 2, each a new launch); run.json holds the last run, and the
 // first run's summary is kept beside it as firstRun. Every skirmish sets game speed 5 on the setup screen,
 // and each case records the speed and the picture size the game reported.
-// --moments busy loads --save (made by make-busy-save.mjs) at each size, 4K included, with each HD state.
-// --soak-minutes N runs the busy save at 2560x1440 for N minutes with HD vehicles off and on and the
-// presenter's scale mode switched, reloading the save if the match ends. Cases are keyed
-// "WxH/hd-on|hd-off/early|busy", "menu/idle" and "soak/2560x1440/hd-on/busy". --append merges this run's
-// cases into the run.json at --out (for the same build only). Relative paths are the repo root's. Each
-// command must finish within 10 minutes: run longer ones in the background.
+// --moments busy loads --save (made by make-busy-save.mjs) through the game's Load Saved Game at each size,
+// 4K included, with each HD state; the case is 60 s of the loaded battle, panned like the early cases. The
+// menu case expects the game's 800x600 menu shell. Every case also fails when the game reports a picture size
+// other than the requested one.
+// --soak-minutes N runs the busy save at 2560x1440 for N minutes with HD vehicles on, off at 20%, on again at
+// 40%, and the presenter's scale mode switched at 60% and 80%; if the match ends (no game frames for 5 s) the
+// save is loaded again (resolution set, size checked) and the sample after it is marked reloaded.
+// Cases are keyed "WxH/hd-on|hd-off/early|busy", "menu/idle" and "soak/2560x1440/hd-on/busy".
+// run.json is written after every finished case, so a later failure keeps the earlier cases; a case that
+// failed is listed under "failures" (and the exit code is 1). --append merges this run's cases into the
+// run.json at --out (for the same build only). Relative paths are the repo root's. Each command must finish
+// within 10 minutes: run longer ones in the background.
 //
 // The first run imports ../game into --profile (a persistent Chrome profile under work/, git-ignored)
 // through the Import screen; later runs reuse it. Games are opened from the profile, not from a folder:
@@ -37,6 +43,7 @@ import {
   setGameSpeedFive,
   setResolution,
   settle,
+  waitState,
 } from "./perf-nav.mjs";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -59,7 +66,6 @@ const VALUE_FLAGS = new Set([
   "--shots",
   "--arg",
   "--build",
-  "--chrome",
 ]);
 const BOOLEAN_FLAGS = new Set(["--append", "--headed"]);
 for (let i = 0; i < argv.length; i++) {
@@ -88,16 +94,11 @@ const repeats = Number(flag("--repeats", 2));
 const savePath = path.resolve(repo, flag("--save", "work/perf/busy.sav"));
 const today = new Date().toLocaleDateString("en-CA"); // the local date, YYYY-MM-DD
 const outDir = path.resolve(repo, flag("--out", `work/perf/${today}`));
-const profile = path.resolve(repo, flag("--profile", "work/perf/profile"));
+const profile = path.resolve(repo, flag("--profile", "work/perf/profile-fresh"));
 const gameDir = path.resolve(repo, flag("--game", "game"));
 const baselinePath = flag("--baseline", null);
 const append = argv.includes("--append");
 
-for (const m of moments)
-  if (!["early", "busy", "menu"].includes(m))
-    throw new Error(`--moments ${m}: use early, busy or menu`);
-for (const h of hdStates)
-  if (!["off", "on"].includes(h)) throw new Error(`--hd ${h}: use off or on`);
 for (const m of moments)
   if (!["early", "busy", "menu"].includes(m))
     throw new Error(`--moments ${m}: use early, busy or menu`);
@@ -177,9 +178,11 @@ async function readSample(t, cdp, last) {
     const presenter = window.ra2Presenter;
     return {
       fps: snapshot?.fps ?? null,
+      size: snapshot?.size ? `${snapshot.size.w}x${snapshot.size.h}` : null,
       worstMs: snapshot?.pacing?.worstMs ?? null,
       late: snapshot?.pacing?.late ?? null,
       publishMs: snapshot?.pacing?.publishMs ?? null,
+      published: snapshot?.pacing?.published ?? null,
       counters: presenter?.counters?.() ?? null,
       overlayDrawMs: draw ? Number(draw[1]) : null,
       textureBytes: presenter?.textureBytes?.() ?? null,
@@ -258,37 +261,45 @@ async function sample(t, { total, pan = null, actions = [], reload = null }) {
   let reloaded = false;
   const pending = [...actions].sort((a, b) => a.at - b.at);
   const begin = Date.now();
-  for (let s = 0; s < total; s++) {
-    const elapsed = (Date.now() - begin) / 1000;
-    while (pending.length && pending[0].at <= elapsed) await pending.shift().run();
-    if (pan !== null && !stopPanning && elapsed >= pan) stopPanning = startPanning(t, size);
+  try {
+    for (let s = 0; s < total; s++) {
+      const elapsed = (Date.now() - begin) / 1000;
+      while (pending.length && pending[0].at <= elapsed) await pending.shift().run();
+      if (pan !== null && !stopPanning && elapsed >= pan) stopPanning = startPanning(t, size);
+      if (stopPanning?.failure()) throw stopPanning.failure();
+      await t.page.waitForTimeout(1000);
+      const row = await readSample(t, cdp, last);
+      if (reloaded) {
+        row.reloaded = true;
+        reloaded = false;
+      }
+      last = { cpu: row.cpu, counters: row.counters };
+      delete row.cpu;
+      delete row.counters;
+      rows.push(row);
+      zeroFrames = row.fps === 0 ? zeroFrames + 1 : 0;
+      // PERF_TEST_RELOAD_AT=<second> forces the reload once, to test it without waiting for a match to end
+      const forced = Number(process.env.PERF_TEST_RELOAD_AT) === s + 1;
+      if (reload && (zeroFrames >= 5 || forced)) {
+        log("the match has ended (no game frames for 5 s): reloading the save");
+        if (stopPanning) await stopPanning.stop();
+        stopPanning = null;
+        await cdp.detach();
+        await reload();
+        cdp = await t.page.context().newCDPSession(t.page);
+        last = { cpu: sampler.latest(), counters: null };
+        zeroFrames = 0;
+        reloaded = true;
+        if (pan !== null) stopPanning = startPanning(t, size);
+      }
+    }
+    // a panning failure in the last second counts too
     if (stopPanning?.failure()) throw stopPanning.failure();
-    await t.page.waitForTimeout(1000);
-    const row = await readSample(t, cdp, last);
-    if (reloaded) {
-      row.reloaded = true;
-      reloaded = false;
-    }
-    last = { cpu: row.cpu, counters: row.counters };
-    delete row.cpu;
-    delete row.counters;
-    rows.push(row);
-    zeroFrames = row.fps === 0 ? zeroFrames + 1 : 0;
-    if (reload && zeroFrames >= 5) {
-      log("the match has ended (no game frames for 5 s): reloading the save");
-      if (stopPanning) await stopPanning.stop();
-      stopPanning = null;
-      await cdp.detach();
-      await reload();
-      cdp = await t.page.context().newCDPSession(t.page);
-      last = { cpu: sampler.latest(), counters: null };
-      zeroFrames = 0;
-      reloaded = true;
-      if (pan !== null) stopPanning = startPanning(t, size);
-    }
+  } finally {
+    // whatever ended the sampling (a failed read, a panning failure), panning stops and the session is released
+    if (stopPanning) await stopPanning.stop().catch(() => {});
+    await cdp.detach().catch(() => {});
   }
-  if (stopPanning) await stopPanning.stop();
-  await cdp.detach();
   return rows;
 }
 
@@ -319,61 +330,78 @@ function parseSize(text) {
   return { w, h };
 }
 
+/** Runs `steps` on an open game; if they throw, the game's browser is closed before the error goes on. */
+async function closingOnError(t, steps) {
+  try {
+    await steps();
+    return t;
+  } catch (error) {
+    await t.browser.close().catch(() => {});
+    throw error;
+  }
+}
+
 /** The game at a picture size, in a new skirmish (the same path as measure.mjs), at the battle. */
 async function openEarly(video) {
   const t = await openGame(base, { video });
-  await settle(t, 5000);
-  await setResolution(t, parseSize(video));
-  await t.clickGame(...at.singlePlayer);
-  await t.page.waitForTimeout(4000);
-  await t.clickGame(...at.skirmish);
-  await t.page.waitForTimeout(4000);
-  await setGameSpeedFive(t);
-  await t.clickGame(...at.startGame);
-  await t.waitFor("the battle", (s) => (s?.fps ?? 0) > 0, 240);
-  await t.page.waitForTimeout(5000); // the load's own frames are over
-  return t;
+  return closingOnError(t, async () => {
+    await settle(t, 5000);
+    await setResolution(t, parseSize(video));
+    await t.clickGame(...at.singlePlayer);
+    await t.page.waitForTimeout(4000);
+    await t.clickGame(...at.skirmish);
+    await t.page.waitForTimeout(4000);
+    await setGameSpeedFive(t);
+    await t.clickGame(...at.startGame);
+    await t.waitFor("the battle", (s) => (s?.fps ?? 0) > 0, 240);
+    await t.page.waitForTimeout(5000); // the load's own frames are over
+  });
 }
 
 /** The busy save at a picture size: the game's own Load Saved Game, then the battle. */
 async function openBusy(video) {
   const t = await openGame(base, { video });
-  await setResolution(t, parseSize(video));
-  await loadBusySave(t, savePath);
-  return t;
+  return closingOnError(t, async () => {
+    await settle(t, 3000);
+    await setResolution(t, parseSize(video));
+    await loadBusySave(t, savePath, { log });
+  });
 }
 
 /** Runs `body` with a game open, and closes its browser however it ends. */
 async function withGame(open, body) {
-  const t = await open();
+  let t = null;
   try {
+    t = await open();
     return await body(t);
   } finally {
-    await t.browser.close().catch(() => {});
+    await t?.browser.close().catch(() => {});
   }
+}
+
+/** The picture the game reports must be the one asked for: a case at another size is not a measurement. */
+async function checkSize(t, size) {
+  const want = typeof size === "string" ? parseSize(size) : size;
+  const reported = (await t.state())?.size ?? null;
+  if (!reported || reported.w !== want.w || reported.h !== want.h)
+    throw new Error(
+      `${want.w}x${want.h}: the game reports ${reported ? `${reported.w}x${reported.h}` : "no size"}, not ${want.w}x${want.h}`,
+    );
+  return reported;
 }
 
 /**
  * One size of a moment, with each HD state in turn in one launch. Early cases run `repeats` times, a new
  * launch each. Result: { [key]: { runs: [rows, ...], gameSpeed, size } }, the size as the game reported it.
  */
-async function runMoment(moment, size, hdList) {
+async function runMoment(moment, size, hdList, onCase) {
   const results = {};
   const runs = moment === "early" ? repeats : 1;
   for (let r = 1; r <= runs; r++) {
     await withGame(
       () => (moment === "busy" ? openBusy(size) : openEarly(size)),
       async (t) => {
-        // the picture the game reports must be the one asked for: a case at another size is not a measurement
-        const reported = (await t.state())?.size ?? null;
-        if (
-          !reported ||
-          reported.w !== Number(size.split("x")[0]) ||
-          reported.h !== Number(size.split("x")[1])
-        )
-          throw new Error(
-            `${size}: the game reports ${reported ? `${reported.w}x${reported.h}` : "no size"}, not ${size}`,
-          );
+        const reported = await checkSize(t, size);
         for (const hd of hdList) {
           await setHd(t, hd === "on");
           const key = `${size}/hd-${hd}/${moment}`;
@@ -385,6 +413,7 @@ async function runMoment(moment, size, hdList) {
             size: reported,
           };
           results[key].runs.push(rows);
+          onCase?.(results); // a finished case is on disk before the next one starts
         }
       },
     );
@@ -392,15 +421,17 @@ async function runMoment(moment, size, hdList) {
   return results;
 }
 
+/** The game's menus are an 800x600 shell whatever size a battle is set to, so the menu case expects 800x600. */
+const MENU_SIZE = { w: 800, h: 600 };
+
 async function runMenu() {
   return withGame(
     () => openGame(base, { video: "1280x720" }),
     async (t) => {
+      const reported = await checkSize(t, MENU_SIZE);
       log("case menu/idle: 30 s untouched");
       const rows = await sample(t, { total: 30 });
-      return {
-        "menu/idle": { runs: [rows], gameSpeed: null, size: (await t.state())?.size ?? null },
-      };
+      return { "menu/idle": { runs: [rows], gameSpeed: null, size: reported } };
     },
   );
 }
@@ -418,6 +449,7 @@ async function runSoak(minutes) {
     async (t) => {
       let hd = true;
       let scale = 0;
+      const reported = await checkSize(t, "2560x1440");
       await setHd(t, true);
       log(`case ${key}: ${minutes} min`);
       const rows = await sample(t, {
@@ -455,8 +487,11 @@ async function runSoak(minutes) {
         ],
         reload: async () => {
           await t.page.goto(gameUrl(base, "2560x1440"));
-          await t.waitFor("the main menu", (s) => s?.phase === "running", 300);
-          await loadBusySave(t, savePath);
+          await waitState(t, "the main menu", (s) => s?.phase === "running", 300);
+          await settle(t, 3000);
+          await setResolution(t, parseSize("2560x1440"));
+          await loadBusySave(t, savePath, { log });
+          await checkSize(t, "2560x1440");
           await setHd(t, hd);
           await setScaleMode(t, scale);
         },
@@ -465,34 +500,49 @@ async function runSoak(minutes) {
         [key]: {
           runs: [rows],
           gameSpeed: "5 (in the save)",
-          size: (await t.state())?.size ?? null,
+          size: reported,
         },
       };
     },
   );
 }
 
+/** Every finished case of this process (key to { runs, gameSpeed, size }), and the cases that failed (key to message). */
+const finished = {};
+const failures = {};
+let baseRun = null; // the run.json this process builds on: the file's cases with --append, else none
+
 /**
- * Writes run.json: each case's last run, with the first run's summary kept as firstRun when there were two,
- * and its gameSpeed and size; merged into the file's cases when --append. Samples go beside it, one file per run.
+ * Writes run.json from the cases finished so far: each case's last run, with the first run's summary kept as
+ * firstRun when there were two, and its gameSpeed and size; merged into the file's cases when --append. A case
+ * that failed is listed in failures, not dropped. Samples go beside it, one file per run. It runs after every
+ * finished case, so a later failure does not lose the earlier cases.
  */
-function writeRun(results) {
+function writeRun() {
   const { id, buildType } = build();
   const runPath = path.join(outDir, "run.json");
-  const run = { date: today, build: id, buildType, cases: {} };
-  if (append && existsSync(runPath)) {
-    const old = JSON.parse(readFileSync(runPath, "utf8"));
-    if (old.build !== id)
-      throw new Error(
-        `${runPath} was measured with build ${old.build}, this is ${id}: use a new --out`,
-      );
-    run.date = old.date;
-    run.cases = { ...old.cases };
+  if (baseRun === null) {
+    baseRun = { date: today, cases: {}, failures: {} };
+    if (append && existsSync(runPath)) {
+      const old = JSON.parse(readFileSync(runPath, "utf8"));
+      if (old.build !== id)
+        throw new Error(
+          `${runPath} was measured with build ${old.build}, this is ${id}: use a new --out`,
+        );
+      baseRun = { date: old.date, cases: old.cases ?? {}, failures: old.failures ?? {} };
+    }
   }
-  for (const [key, result] of Object.entries(results)) {
+  const run = { date: baseRun.date, build: id, buildType, cases: { ...baseRun.cases } };
+  for (const [key, result] of Object.entries(finished)) {
     const last = result.runs.at(-1);
+    const summary = summarize(last);
     run.cases[key] = {
-      ...summarize(last),
+      ...summary,
+      // seconds of a running game that was handed no picture: the page shows a frozen picture (the wasm memory at
+      // its 768 MiB cap in 2560x1440 HD on); the case's fps and CPU are the game's, not what the player sees
+      ...(summary.noPictureSeconds > 0
+        ? { pictureFrozen: `${summary.noPictureSeconds} of ${last.length} seconds` }
+        : {}),
       gameSpeed: result.gameSpeed,
       size: result.size,
       ...(result.runs.length > 1 ? { firstRun: summarize(result.runs[0]) } : {}),
@@ -503,8 +553,19 @@ function writeRun(results) {
       writeFileSync(path.join(outDir, "samples", `${name}.json`), JSON.stringify(rows, null, 1));
     });
   }
+  // a case that failed has no numbers: an older run's would be mistaken for it
+  for (const key of Object.keys(failures)) if (!(key in finished)) delete run.cases[key];
+  // an older failure stays listed unless the case has since been measured
+  const listed = { ...baseRun.failures, ...failures };
+  for (const key of Object.keys(listed)) if (key in finished) delete listed[key];
+  if (Object.keys(listed).length) run.failures = listed;
   writeFileSync(runPath, JSON.stringify(run, null, 2));
   return run;
+}
+
+function record(results) {
+  Object.assign(finished, results);
+  writeRun();
 }
 
 /** Imports ../game into the profile when it is not there yet (the Library shows its card when it is). */
@@ -542,20 +603,53 @@ function printCompare(run, baseline) {
 
 // ---- main ---------------------------------------------------------------------------------------
 let exitCode = 0;
+// a game failure (lib.mjs's fail) ends the process at once; the case it was in is recorded as failed first
+let current = null;
+process.on("exit", () => {
+  sampler?.stop();
+  if (!current) return;
+  for (const key of current) failures[key] = "the process exited during this case (see its output)";
+  try {
+    writeRun();
+  } catch {
+    // nothing more can be done at exit
+  }
+});
+
+/** Runs one part of the matrix: the cases it names are recorded as failed if it throws, and the run goes on. */
+async function part(keys, body) {
+  current = keys;
+  try {
+    await body();
+  } catch (error) {
+    console.error(`FAILED ${keys.join(", ")}: ${error?.stack ?? error}`);
+    for (const key of keys) failures[key] = String(error?.message ?? error);
+    exitCode = 1;
+    writeRun();
+  }
+  current = null;
+}
+
 sampler = startCpuSampler();
 try {
   await ensureImported();
-  let results = {};
-  if (moments.includes("early"))
+  for (const moment of ["early", "busy"]) {
+    if (!moments.includes(moment)) continue;
     for (const size of sizes)
-      results = { ...results, ...(await runMoment("early", size, hdStates)) };
-  if (moments.includes("busy"))
-    for (const size of sizes)
-      results = { ...results, ...(await runMoment("busy", size, hdStates)) };
-  if (moments.includes("menu")) results = { ...results, ...(await runMenu()) };
-  if (soakMinutes > 0) results = { ...results, ...(await runSoak(soakMinutes)) };
-  const run = writeRun(results);
+      await part(
+        hdStates.map((hd) => `${size}/hd-${hd}/${moment}`),
+        async () => {
+          await runMoment(moment, size, hdStates, record);
+        },
+      );
+  }
+  if (moments.includes("menu")) await part(["menu/idle"], async () => record(await runMenu()));
+  if (soakMinutes > 0)
+    await part(["soak/2560x1440/hd-on/busy"], async () => record(await runSoak(soakMinutes)));
+  const run = writeRun();
   log(`wrote ${path.join(outDir, "run.json")}: ${Object.keys(run.cases).length} cases`);
+  if (Object.keys(failures).length)
+    log(`FAILED cases: ${Object.keys(failures).join(", ")} (listed under failures in run.json)`);
   if (baselinePath) printCompare(run, JSON.parse(readFileSync(path.resolve(baselinePath), "utf8")));
 } catch (error) {
   console.error(`FAILED: ${error?.stack ?? error}`);

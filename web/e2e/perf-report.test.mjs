@@ -197,3 +197,18 @@ test("in a match, a fps drop of exactly 1 still passes; more CPU fails", () => {
   };
   assert.equal(row(compare(more, base), "cpuPctMedian").pass, false);
 });
+
+test("noPictureSeconds counts seconds with game frames and no published picture", () => {
+  const samples = [
+    sample({ fps: 20, published: 30 }),
+    sample({ fps: 20, published: 0 }),
+    sample({ fps: 18, published: 0 }),
+    sample({ fps: 0, published: 0 }), // no game frames: not a frozen picture
+    sample({ fps: 20, published: null }), // not measured: not counted
+  ];
+  assert.equal(summarize(samples).noPictureSeconds, 2);
+});
+
+test("noPictureSeconds is null when no sample says what was published", () => {
+  assert.equal(summarize([sample({ fps: 30 }), sample({ fps: 30 })]).noPictureSeconds, null);
+});

@@ -413,7 +413,7 @@ holds the pure summary and comparison (`node --test e2e/perf-report.test.mjs` in
 
 - **Game.** The build the page serves: `web/public/game/` (the release build; `build.json` names the
   Yuri's Revenge build). The first run imports `../game` through the page's Import screen into a
-  persistent Chrome profile, `work/perf/profile` (git-ignored, as is all of `work/`), and later runs open
+  persistent Chrome profile, `work/perf/profile-fresh` (git-ignored, as is all of `work/`), and later runs open
   the game from that profile, where its large files are read in place. The dev and test folders copy every
   file into memory, which Yuri's Revenge does not fit in the 768 MB limit.
 - **Server.** `--url` defaults to `http://127.0.0.1:5173/`. `pnpm dev` binds only `::1` on Windows, so start
@@ -421,7 +421,7 @@ holds the pure summary and comparison (`node --test e2e/perf-report.test.mjs` in
 - **Run.** `node e2e/perf.mjs --headed --out work/perf/<name>` measures the matrix: 1280x720, 1920x1080 and
   2560x1440, the skirmish early in the match, with HD vehicles off then on (60 s each: 30 s untouched, then 30 s
   of right-button panning), and the main menu untouched for 30 s. Cases are keyed `WxH/hd-off|hd-on/early` and
-  `menu/idle`. Pass `--sizes`, `--hd`, `--moments` (`early`, `menu`) and `--seconds` to run a part of it. Every
+  `menu/idle`. Pass `--sizes`, `--hd`, `--moments` (`early`, `busy`, `menu`), `--repeats`, `--save`, `--soak-minutes` and `--seconds` to run a part of it. Every
   command must finish within 10 minutes, so add the rest with `--append` (the same build only):
   `node e2e/perf.mjs --sizes 1920x1080 --moments early --append --out work/perf/<name>`.
 - **Results.** `run.json` holds one summary per case (median and 1% low fps, worst frame gap, late frames,
@@ -429,14 +429,45 @@ holds the pure summary and comparison (`node --test e2e/perf-report.test.mjs` in
   `samples/`. `--baseline <run.json>` prints each measure against that run with its pass-bar verdict.
 - **CPU** is the Chrome processes' CPU time read by the OS once a second (a PowerShell loop filtered by the
   profile's path), as a percentage of one core, so a figure above 100 means more than one core busy.
-- **The busy moment and the soak are blocked.** The design's busy case is a skirmish with many units, loaded from
-  a save made by `e2e/make-busy-save.mjs`: an eight-player Team Alliance match (the human with three allied AIs
-  against four) at game speed 5, saved through the game's own Save Game menu after about four minutes of play.
-  No save has been made. The picture size was the blocker in one attempt: a launch's `?video=` alone did not set
-  the size a battle reports (it lagged by launches); the game's resolution setting (`ra2_setting` key 4, at the menu)
-  does, and `perf-nav.mjs`'s `setResolution` now sets it before each launch, and every case checks the reported size.
-  In the next attempt the battle reported 1280x720 and the match ran at 58 to 62 fps, but the human (a fresh profile's
-  "[New Player]") was eliminated at 2:14 of game time, before the save. Screenshots: the scratchpad's `busy-shots8`
-  folder (`busy-03-4min.png` is the Skirmish Score screen). Until a save is made, `perf.mjs` rejects `--moments busy`
-  and `--soak-minutes`, and `loadBusySave` stops with an error. Resolution is a launcher setting for the next launch,
-  not a switch in a running game, so a soak would use the presenter's scale-mode switches instead.
+- **The busy save.** The design's busy case loads a save of an eight-player match with many units and
+  buildings (`work/perf/busy.sav`, not in version control, like all of `work/`). Make it with
+  `node e2e/make-busy-save.mjs --headed --minutes 5 --scroll "<arrow key>=<ms>,..."` (about 7 minutes; it needs the
+  imported Yuri's Revenge in the profile, as perf.mjs does). The match is Team Alliance on Territorial Imperative
+  (2-8): the human and six Brutal AIs on team A against one Easy AI on team B, game speed 5, Short Game off. Nothing
+  threatens the human, so the match lasts while the allied AIs build up (Free For All lost the idle human at 1:39,
+  four against four ended at 2:14 to 8:08, and the first attempts at the in-game menu never hit its buttons: see the
+  pointer note below). The human deploys its MCV (a box drag around the middle of the picture, then `D`) and idles.
+  After `--minutes` the camera is scrolled with `--scroll` (arrow keys held for the milliseconds given; the start
+  positions are random, so the busiest base differs from match to match: read the one-a-minute screenshots in
+  `--shots`, and `busy-view.png`, the picture that gets saved, then run again with a scroll that suits), and the
+  game's own menu saves it (Escape, Save Game, Save, the box's OK) at 1280x720; the save loads at any size.
+  The save in use was made in a headed session with the same setup and the same menu clicks, scrolling the camera by
+  hand (arrow keys held) to the allied Yuri base about 8 game minutes in (the game clock runs about 1.6 times the
+  wall clock at speed 5): about 30 buildings and 15 units on the picture, and the match at 20 to 24 game fps at
+  1280x720 with HD off, below the 60 of an early skirmish because seven AIs think, not because of the picture.
+- **Pointer lock.** In a battle the page locks the pointer, and a locked pointer is relative: the game moves it by
+  the distance the mouse travelled from where it last had it, so a click at game pixels (x, y) landed somewhere else
+  (the MCV never selected; the in-game menu's buttons never hit). `perf-nav.mjs` `syncPointer` releases the lock
+  before a click, which makes the next move absolute; the click locks it again from that spot. The Escape menu
+  releases the lock itself. Menus before the battle are not locked. The in-game menu at 1280x720 (game pixels):
+  Save Game 1194,289; Save 1194,239; the "Mission Saved" box's OK 787,493; Resume Mission 1194,664.
+- **Loading it.** `loadBusySave` writes the save into the game's file system (`/game/SAVE0001.SAV`), then uses the
+  game's screens: Single Player, Load Saved Game (719,263), the save in the list (300,135), Load (719,221). It
+  returns when the game's frame rate is above 0 for three samples and the picture changes, and leaves
+  `busy-loaded.png` in the shots folder. `--moments busy` loads it at each size, with each HD state, and samples
+  60 s; `--soak-minutes N` runs it at 2560x1440 for N minutes (HD on; off at 20%, on at 40%; the presenter's scale
+  mode switched at 60% and 80%; if the match ends the save is loaded again and the next sample has
+  `"reloaded": true`). Resolution is a launcher setting for the next launch, not a switch in a running game, so
+  the soak's mode switches are scale-mode switches and HD off and on.
+- **Failures.** `run.json` is written after every finished case, so a later failure keeps the earlier ones; a case
+  that failed (a size mismatch, a crash) is listed under `failures` and the exit code is 1. The menu case expects
+  the game's 800x600 menu shell, not the requested size. `PERF_TEST_RELOAD_AT=<second>` forces the soak's reload
+  once, to test it without waiting for a match to end.
+- **3840x2160 cannot be measured.** The game's resolution setting (`src/web/settings.c`) lists sizes up to
+  2560x1440 and ignores the rest; `?video=3840x2160` and a hand-edited RA2MD.INI were tried too, and the battle
+  still reported 1920x1080. The 4K cases therefore fail with that message in `failures`; they need a game-side
+  change (a size the setting accepts).
+- **A frozen picture.** Each case counts the seconds in which the game ran but the page was handed no picture
+  (`pacing.published` 0) and lists them as `pictureFrozen`. With the busy save at 2560x1440 and HD vehicles on, the
+  wasm memory is at its 768 MiB cap and no picture is published at all (the screen keeps the last one); the case's
+  fps and CPU are then the game's, not what a player would see.

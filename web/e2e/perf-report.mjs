@@ -43,7 +43,7 @@ const sum = (values) => {
  *
  * @param {Array<{fps:number, worstMs:number|null, late:number|null, publishMs:number|null,
  *   drawMs:number|null, cpuPct:number|null, wasmBytes:number, jsHeapBytes:number|null,
- *   textureBytes:number|null}>} samples
+ *   textureBytes:number|null, published?:number|null}>} samples
  */
 export function summarize(samples) {
   const f = (key) => samples.map((s) => s[key]);
@@ -62,6 +62,12 @@ export function summarize(samples) {
     if (heapLater.length && typeof heapBase === "number")
       jsHeapGrowthBytes = heapLater[heapLater.length - 1] - heapBase;
   }
+  // seconds in which the game ran but the page was handed no picture (pacing.published, pictures a second): a
+  // frozen picture. null when the samples do not say.
+  const published = samples.filter((s) => typeof s.published === "number");
+  const noPictureSeconds = published.length
+    ? published.filter((s) => s.published === 0 && s.fps > 0).length
+    : null;
   return {
     fpsMedian: median(f("fps")),
     fps1Low: percentile(f("fps"), 1),
@@ -73,6 +79,7 @@ export function summarize(samples) {
     wasmPeakBytes: wasm.length ? Math.max(...wasm) : null,
     wasmGrowthAfter60s,
     jsHeapGrowthBytes,
+    noPictureSeconds,
   };
 }
 

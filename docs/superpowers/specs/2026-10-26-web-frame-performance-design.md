@@ -42,30 +42,53 @@ there is nothing to do and less memory for the picture.
   with HD on; publish cost 0.33 ms off, 1.59 ms on. Nothing was measured at
   1080p, 1440p or 4K, in a busy match, or for CPU and memory.
 - **Baseline, 26 October 2026** (`perf.mjs`, the release build `ef2b94fc673f9950`, Yuri's Revenge build
-  `53959836c46852af`, build type Release, headed Chrome on the developer's Windows machine). Each early case ran
-  twice, each run a new launch, 60 s a sample: 30 s untouched, then 30 s of panning. Every skirmish set game speed 5
-  on the setup screen (the setup screen's normal speed, the value it starts at). `work/perf/baseline/run.json` holds
-  the second run and each case's `firstRun`. The early skirmish is the default one: one Brutal AI.
-  **Not measured:** the busy matrix (1280x720 to 3840x2160) and the 10-minute soak. The busy save was not made: two
-  attempts failed (see `docs/web/testing.md`, "The frame benchmark").
-  **Caveats:** the two runs of an HD-on case differ by more than 5 fps (the table shows both); the picture the game
-  reported differs from the requested size for the 1920x1080 and 2560x1440 cases (it reported 1280x720 and 1920x1080),
-  so those rows are not at the size their names say; the machine was shared with other sessions' Chrome and dev
-  servers while these ran.
+  `53959836c46852af`, build type Release, headed Chrome on the developer's Windows machine, shared with other
+  sessions' Chrome and dev servers while it ran). `work/perf/baseline/run.json` (not in version control) holds every
+  case; each early case ran twice, each run a new launch, 60 s a sample (30 s untouched, then 30 s of panning), and
+  its `firstRun` is the other run. Every skirmish set game speed 5 on the setup screen. The early skirmish is the
+  default one: one Brutal AI. Every case reports the picture size it was asked for (a mismatch fails the case); the
+  game's menus are an 800x600 shell. The **busy** cases load `work/perf/busy.sav` through the game's own Load Saved
+  Game: eight players (the human and six Brutal AIs against one Easy AI) on Territorial Imperative, about 8 game
+  minutes in, the camera on an allied Yuri base with about 30 buildings and 15 units on the picture, 60 s each (panned
+  like the early cases); how it was made is in `docs/web/testing.md`, "The frame benchmark".
 
-  | Case (early skirmish, speed 5) | game picture reported | fps median, run 2 (run 1) | 1% low fps, run 2 (run 1) | worst gap ms | late | publish ms | draw ms | CPU % | wasm MiB |
+  | Case (speed 5) | game picture reported | fps median, run 2 (run 1) | 1% low fps, run 2 (run 1) | worst gap ms | late | publish ms | draw ms | CPU % | wasm MiB |
   |---|---|---|---|---|---|---|---|---|---|
-  | 1280x720, HD off | 1280x720 | 62 (62) | 59 (57) | 70 | 6 | 0.35 | 0.22 | 266 | 545 |
-  | 1280x720, HD on | 1280x720 | 48 (60) | 37 (35) | 53 | 361 | 1.69 | 0.73 | 263 | 545 |
-  | 1920x1080, HD off | 1280x720 | 62 (62) | 61 (62) | 32 | 9 | 0.88 | 0.50 | 264 | 710 |
-  | 1920x1080, HD on | 1280x720 | 25 (42) | 20 (36) | 75 | 1494 | 4.09 | 0.94 | 260 | 710 |
-  | 2560x1440, HD off | 1920x1080 | 62 (62) | 62 (61) | 25 | 1 | 0.20 | 0.13 | 259 | 768 |
-  | 2560x1440, HD on | 1920x1080 | 60 (31) | 51 (22) | 48 | 46 | 1.01 | 0.41 | 260 | 768 |
-  | main menu, idle (30 s, one run) | 800x600 | - | - | - | - | 1.04 | 0.48 | 263 | 568 |
+  | 1280x720, HD off, early | 1280x720 | 62 (62) | 62 (61) | 23 | 0 | 0.39 | 0.24 | 262 | 627 |
+  | 1280x720, HD on, early | 1280x720 | 62 (39) | 40 (37) | 50 | 123 | 1.92 | 0.86 | 268 | 627 |
+  | 1920x1080, HD off, early | 1920x1080 | 62 (62) | 61 (61) | 32 | 2 | 0.89 | 0.50 | 270 | 627 |
+  | 1920x1080, HD on, early | 1920x1080 | 33 (36) | 15 (25) | 88 | 1267 | 4.24 | 1.31 | 267 | 753 |
+  | 2560x1440, HD off, early | 2560x1440 | 62 (62) | 59 (57) | 33 | 18 | 1.57 | 0.91 | 273 | 627 |
+  | 2560x1440, HD on, early | 2560x1440 | 19 (24) | 16 (21) | 86 | 587 | 7.52 | 1.00 | 271 | 768 |
+  | main menu, idle (30 s, one run) | 800x600 | - | - | - | - | 0.20 | 0.13 | 247 | 627 |
+  | 1280x720, HD off, busy | 1280x720 | 23 | 22 | 82 | 1459 | 0.38 | 0.22 | 256 | 627 |
+  | 1280x720, HD on, busy | 1280x720 | 16 | 14 | 93 | 1036 | 1.84 | 0.43 | 251 | 738 |
+  | 1920x1080, HD off, busy | 1920x1080 | 20 | 18 | 83 | 1281 | 0.85 | 0.51 | 277 | 627 |
+  | 1920x1080, HD on, busy | 1920x1080 | 11 | 8 | 163 | 740 | 4.45 | 0.83 | 255 | 747 |
+  | 2560x1440, HD off, busy | 2560x1440 | 18 | 15 | 99 | 1106 | 1.59 | 0.89 | 306 | 738 |
+  | 2560x1440, HD on, busy | 2560x1440 | 17 | 14 | 94 | 1079 | 1.56 | 0.50 | 252 | 768 |
 
-  The CPU column is the Chrome processes' CPU time over the sample, as a percentage of one core. The menu is idle yet
-  uses about 2.6 cores; the spin described below is the likely cause, not yet confirmed by the probes in section 3.
-  With HD vehicles on, fps is 25 to 60 in these runs; the target is 60 at 720p to 1440p.
+  **Soak** (10 min, busy save, 2560x1440, HD on, off at 20% and on again at 40%, scale mode switched at 60% and 80%,
+  panning throughout): fps median 14, 1% low 11, worst gap 180 ms, CPU 240%,
+  wasm peak 768 MiB (the 768 MiB cap), wasm growth after the first minute 0.0 MiB, JS heap growth
+  1.4 MiB; the match did not end in this run (0 reloads; in an earlier 10-minute run it ended at about 9:45, and the
+  reload is covered by a forced test; a reload marks its sample in `samples/`).
+
+  **Not measured: 3840x2160.** The game's resolution setting lists sizes up to 2560x1440 and ignores the rest;
+  `?video=3840x2160` and a hand-edited INI were tried and the battle still reported 1920x1080 (`docs/web/testing.md`).
+  Those cases are listed as failures in `run.json`; they need a game-side size.
+
+  **Reading the table.** The CPU column is the Chrome processes' CPU time as a percentage of one core: the menu is
+  idle yet uses about 2.5 cores (the spin described below is the likely cause, not yet confirmed by the probes in
+  section 3). The busy cases run at 11 to 23 game fps at every size, HD off or on, because seven AIs think: they are
+  bound by the game's own work, not by the picture (CPU stays near 2.5 cores). With HD on the early skirmish is
+  62 at 720p in one run and 39 in the other, 33 and 36 at 1080p, and 19 and 24 at 1440p: the two runs of the HD-on
+  cases differ by up to 23 fps, so only large changes are readable there. At 2560x1440 with HD on the wasm memory
+  reaches its 768 MiB cap in the early and busy cases, and there the busy save misbehaves: in the soak, with HD on from the load,
+  the page was handed no picture for 483 of 600 seconds (the screen kept its last picture) while the game ran at 11 to 25 fps; the pictures came back
+  when HD was turned off (20% to 40% of the soak) and stopped again when it was turned back on. In the matrix case (HD off first,
+  then on) pictures were published, at a publish time equal to HD off. `pictureFrozen` in `run.json` marks
+  the seconds with game frames and no picture.
 
 - **CPU spin, on purpose.** pcrecomp's web `wait_ms` spins out any `Sleep` under
   20 ms and the last 16 ms of a longer one (`kernel32.c`, around line 299),
