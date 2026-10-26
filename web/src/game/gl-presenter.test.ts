@@ -215,6 +215,6 @@ describe("GlPresenter", () => {
           fallback,
         ),
     ).toThrow("WebGL2 unavailable");
-    expect(fallback).toHaveBeenCalledWith("context");
+    expect(fallback).not.toHaveBeenCalled();
   });
 });

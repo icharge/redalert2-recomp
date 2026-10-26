@@ -221,6 +221,17 @@ started and observed does:
 Playwright runs Chromium headless, with GPU or SwiftShader for WebGL2.
 `--jobs N` runs N browser contexts, as `playtest.py` runs N games today.
 Use `--headed` with `--web` to show Chromium for a local interactive run.
+
+The WebGL pixel comparison uses the persistent imported game profile so Yuri's
+Revenge reads its large files from OPFS instead of copying the installation
+into the page's memory. Run it from the repository root with
+`node web/e2e/gl-pixels.mjs --profile work/perf/profile-fresh --build work/build-web-t3`;
+add `--headed` to show Chromium. `--build` points at the current Emscripten
+output so the browser page and game module use the same protocol. It checks the
+main menu, samples the running menu movie for animation and pixel formats
+(including PAL8 when published), then checks a skirmish frame. The profile must
+already contain an imported Yuri's Revenge installation.
+
 The default target is Yuri's Revenge. To run the same suite on Red Alert 2,
 build its module with `RA2_TARGET=game` and use `RA2_TARGET=game` when invoking
 `tools/playtest.py --web`; the page then loads `/game/ra2.js`.

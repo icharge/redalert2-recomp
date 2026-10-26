@@ -180,11 +180,41 @@ export class Presenter2d implements GamePresenter {
   async capture(): Promise<{ width: number; height: number; data: Uint8Array }> {
     const { HEAPU8, HEAP32 } = this.memory();
     const base = this.shared >> 2;
-    const width = Atomics.load(HEAP32, base + Shared.frameW);
-    const height = Atomics.load(HEAP32, base + Shared.frameH);
-    const pointer = Atomics.load(HEAP32, base + Shared.framePtr) >>> 0;
-    const bytes = width * height * 4;
-    return { width, height, data: HEAPU8.slice(pointer, pointer + bytes) };
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const seq = Atomics.load(HEAP32, base + Shared.frameSeq);
+      if (seq < 0 || seq & 1) {
+        if (attempt < 9) await new Promise<void>((resolve) => setTimeout(resolve, 0));
+        continue;
+      }
+      const width = Atomics.load(HEAP32, base + Shared.frameW);
+      const height = Atomics.load(HEAP32, base + Shared.frameH);
+      const pointer = Atomics.load(HEAP32, base + Shared.framePtr) >>> 0;
+      const frameIndex = Atomics.load(HEAP32, base + Shared.frameIndex);
+      const bytes = width * height * 4;
+      if (width <= 0 || height <= 0 || pointer <= 0 || pointer + bytes > HEAPU8.length)
+        throw new Error("No published frame to capture");
+
+      Atomics.store(HEAP32, base + Shared.readIndex, frameIndex);
+      try {
+        if (
+          Atomics.load(HEAP32, base + Shared.frameSeq) !== seq ||
+          Atomics.load(HEAP32, base + Shared.frameIndex) !== frameIndex ||
+          Atomics.load(HEAP32, base + Shared.framePtr) >>> 0 !== pointer
+        )
+          continue;
+        const data = HEAPU8.slice(pointer, pointer + bytes);
+        if (
+          Atomics.load(HEAP32, base + Shared.frameSeq) === seq &&
+          Atomics.load(HEAP32, base + Shared.frameIndex) === frameIndex &&
+          Atomics.load(HEAP32, base + Shared.framePtr) >>> 0 === pointer
+        )
+          return { width, height, data };
+      } finally {
+        Atomics.store(HEAP32, base + Shared.readIndex, -1);
+      }
+      if (attempt < 9) await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    }
+    throw new Error("The game kept publishing while the frame was captured");
   }
 
   textureBytes(): number {

@@ -141,6 +141,50 @@ describe("Presenter2d", () => {
     expect(drawn).toHaveLength(1);
   });
 
+  it("captures a stable frame and releases readIndex after a concurrent publication", async () => {
+    const { presenter, memory, word } = setup();
+    const base = SHARED >> 2;
+    word(Shared.frameW, 1);
+    word(Shared.frameH, 1);
+    word(Shared.framePtr, FRAME);
+    word(Shared.frameIndex, 0);
+    word(Shared.frameSeq, 2);
+    memory.HEAPU8.set([10, 20, 30, 255], FRAME);
+    const slice = memory.HEAPU8.slice.bind(memory.HEAPU8);
+    let publishing = true;
+    vi.spyOn(memory.HEAPU8, "slice").mockImplementation((start, end) => {
+      if (publishing) {
+        publishing = false;
+        word(Shared.frameSeq, 3);
+        memory.HEAPU8.set([40, 50, 60, 255], FRAME + 4);
+        word(Shared.framePtr, FRAME + 4);
+        word(Shared.frameIndex, 1);
+        word(Shared.frameSeq, 4);
+      }
+      return slice(start, end);
+    });
+
+    const captured = await presenter.capture();
+
+    expect(Array.from(captured.data)).toEqual([40, 50, 60, 255]);
+    expect(Atomics.load(memory.HEAP32, base + Shared.readIndex)).toBe(-1);
+  });
+
+  it("waits for an in-progress publication before capturing", async () => {
+    const { presenter, memory, word } = setup();
+    word(Shared.frameW, 1);
+    word(Shared.frameH, 1);
+    word(Shared.framePtr, FRAME);
+    word(Shared.frameIndex, 0);
+    word(Shared.frameSeq, 3);
+    memory.HEAPU8.set([70, 80, 90, 255], FRAME);
+    setTimeout(() => word(Shared.frameSeq, 4), 0);
+
+    const captured = await presenter.capture();
+
+    expect(Array.from(captured.data)).toEqual([70, 80, 90, 255]);
+  });
+
   it("rejects a picture if frame_seq changes while its pixels are copied", () => {
     const { presenter, memory, word, drawn } = setup();
     word(Shared.frameW, 1);

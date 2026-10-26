@@ -61,7 +61,7 @@ function startOnce(files: FileSource, thaiFontFix: ThaiFontPreference): Promise<
 /** The canvas fills the window; the game draws into it through shared memory. React never touches it again. */
 export function Play({ files }: { files: FileSource }) {
   const stage = useRef<HTMLDivElement>(null);
-  const canvas = useRef<HTMLCanvasElement>(null);
+  const canvas = useRef<HTMLCanvasElement | null>(null);
   const textInput = useRef<HTMLTextAreaElement>(null);
   const backdrop = useRef<HTMLCanvasElement>(null);
   const cursor = useRef<HTMLImageElement>(null);
@@ -174,8 +174,11 @@ export function Play({ files }: { files: FileSource }) {
     startOnce(files, thaiFontFix).then(
       (game) => {
         if (cancelled || !runtimeLive()) return;
-        const pointer = autoLockPointer(element);
         let activeCanvas = element;
+        let pointer = autoLockPointer(element);
+        let detach = () => {};
+        let observer: ResizeObserver | null = null;
+        let canvasMounted = false;
         const capture = (active: boolean) =>
           pointer.update(
             active &&
@@ -184,14 +187,58 @@ export function Play({ files }: { files: FileSource }) {
               !gameStore.getSnapshot().exitConfirmation,
           );
         let presenter: GamePresenter | null = null;
+        const bindCanvas = (target: HTMLCanvasElement) => {
+          detach();
+          observer?.disconnect();
+          pointer.dispose();
+          activeCanvas = target;
+          pointer = autoLockPointer(target);
+          detach = attachInput(target, game.exports, {
+            picture: () => presenter!.gameSize(),
+            warp: () => presenter!.cursorWarp(),
+            textInput: textInput.current ?? undefined,
+            sendText: (text) => game.exports.ra2_input_text(text),
+            enabled: () =>
+              runtimeLive() &&
+              !gameStore.getSnapshot().settings?.open &&
+              !gameStore.getSnapshot().exitConfirmation,
+            shortcut: (event) => {
+              if (event.code === "F11" || (event.code === "Enter" && event.altKey)) {
+                if (!event.repeat)
+                  void (
+                    document.fullscreenElement
+                      ? leaveFullscreen()
+                      : enterFullscreen(document.documentElement)
+                  ).catch((e: unknown) => setBrowserError(String(e)));
+                return true;
+              }
+              if (event.code === "F12" && !event.ctrlKey) {
+                if (!event.repeat) {
+                  const modes = ["sharp", "smooth", "crt", "nearest", "integer"];
+                  const at = modes.indexOf(gameStore.getSnapshot().settings?.scale ?? "sharp");
+                  game.exports.ra2_setting(Setting.Scale, (at + 1) % modes.length, 0);
+                }
+                return true;
+              }
+              return false;
+            },
+          });
+          observer = new ResizeObserver(([entry]) => {
+            if (!entry || !runtimeLive()) return;
+            const { width, height } = entry.contentRect;
+            game.exports.ra2_resize(Math.round(width), Math.round(height), window.devicePixelRatio);
+          });
+          observer.observe(target);
+          target.focus();
+        };
         const fallback = () => {
-          if (!presenter) return;
-          presenter.stop();
+          presenter?.stop();
           const replacement = document.createElement("canvas");
           replacement.className = activeCanvas.className;
           replacement.tabIndex = 0;
           activeCanvas.replaceWith(replacement);
           activeCanvas = replacement;
+          canvas.current = replacement;
           presenter = new Presenter2d(
             replacement,
             game.memory,
@@ -200,7 +247,10 @@ export function Play({ files }: { files: FileSource }) {
             cursor.current,
             capture,
           );
-          presenter.start();
+          if (canvasMounted) {
+            presenter.start();
+            bindCanvas(replacement);
+          }
           setPresenter(presenter);
           window.ra2Presenter = presenter;
         };
@@ -216,14 +266,7 @@ export function Play({ files }: { files: FileSource }) {
               () => fallback(),
             );
           } catch {
-            presenter = new Presenter2d(
-              element,
-              game.memory,
-              game.shared,
-              backdrop.current,
-              cursor.current,
-              capture,
-            );
+            fallback();
           }
         } else {
           presenter = new Presenter2d(
@@ -235,9 +278,13 @@ export function Play({ files }: { files: FileSource }) {
             capture,
           );
         }
-        presenter.start();
-        setPresenter(presenter);
-        window.ra2Presenter = presenter;
+        const initialPresenter = presenter;
+        if (!initialPresenter) throw new Error("Could not create a game presenter");
+        initialPresenter.start();
+        canvasMounted = true;
+        bindCanvas(activeCanvas);
+        setPresenter(initialPresenter);
+        window.ra2Presenter = initialPresenter;
         handle.current = game;
         const sound = new GameAudio(game.exports, game.memory);
         void sound.start();
@@ -249,43 +296,6 @@ export function Play({ files }: { files: FileSource }) {
           game.exports.ra2_set_volume(saved);
           setVolume(saved);
         });
-        const detach = attachInput(activeCanvas, game.exports, {
-          picture: () => presenter!.gameSize(),
-          warp: () => presenter!.cursorWarp(),
-          textInput: textInput.current ?? undefined,
-          sendText: (text) => game.exports.ra2_input_text(text),
-          enabled: () =>
-            runtimeLive() &&
-            !gameStore.getSnapshot().settings?.open &&
-            !gameStore.getSnapshot().exitConfirmation,
-          shortcut: (event) => {
-            if (event.code === "F11" || (event.code === "Enter" && event.altKey)) {
-              if (!event.repeat)
-                void (
-                  document.fullscreenElement
-                    ? leaveFullscreen()
-                    : enterFullscreen(document.documentElement)
-                ).catch((e: unknown) => setBrowserError(String(e)));
-              return true;
-            }
-            if (event.code === "F12" && !event.ctrlKey) {
-              if (!event.repeat) {
-                const modes = ["sharp", "smooth", "crt", "nearest", "integer"];
-                const at = modes.indexOf(gameStore.getSnapshot().settings?.scale ?? "sharp");
-                game.exports.ra2_setting(Setting.Scale, (at + 1) % modes.length, 0);
-              }
-              return true;
-            }
-            return false;
-          },
-        });
-        const observer = new ResizeObserver(([entry]) => {
-          if (!entry || !runtimeLive()) return;
-          const { width, height } = entry.contentRect;
-          game.exports.ra2_resize(Math.round(width), Math.round(height), window.devicePixelRatio);
-        });
-        observer.observe(activeCanvas);
-        activeCanvas.focus();
         // what the game saved is in OPFS within a moment of leaving the tab
         const onHidden = () => {
           if (document.visibilityState === "hidden")
@@ -307,7 +317,7 @@ export function Play({ files }: { files: FileSource }) {
           setAudio(null);
           setPresenter(null);
           detach();
-          observer.disconnect();
+          observer?.disconnect();
           document.removeEventListener("visibilitychange", onHidden);
           delete window.ra2Presenter;
           releaseBrowserControls();

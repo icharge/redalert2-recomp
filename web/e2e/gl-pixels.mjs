@@ -1,10 +1,12 @@
 // Verify that the WebGL capture matches the game's published raw pixels.
 // Run with the same --url/--game options as the other e2e scripts.
 import assert from "node:assert/strict";
-import { options, startPage } from "./lib.mjs";
+import { options } from "./lib.mjs";
+import { openGame } from "./perf-nav.mjs";
 
 const opts = options(process.argv.slice(2));
-const run = await startPage(opts);
+assert.ok(opts.profile, "pass --profile <persistent Chrome profile with an imported game>");
+const run = await openGame(opts, { shots: opts.shots, headed: opts.headed });
 
 async function compare(label) {
   const result = await run.page.evaluate(async () => {
@@ -63,17 +65,32 @@ async function compare(label) {
 }
 
 try {
-  await run.waitFor("the main menu", (s) => s?.phase === "running");
-  await run.page.waitForTimeout(1000);
   await compare("main menu");
-  await run.page.waitForTimeout(2000);
-  const format = await run.page.evaluate(() => {
-    const m = window.Module,
-      p = m.cwrap("ra2_shared", "number", [])() >>> 2;
-    return m.HEAPU32[p + 1044];
+  const movie = await run.page.evaluate(async () => {
+    const m = window.Module;
+    const shared = m.cwrap("ra2_shared", "number", [])() >>> 2;
+    const formats = new Set();
+    const checksums = new Set();
+    for (let i = 0; i < 24; i++) {
+      const { data } = await window.ra2Presenter.capture();
+      formats.add(m.HEAPU32[shared + 1044]);
+      let checksum = 0;
+      for (let p = 0; p < data.length; p += 4 * 97)
+        checksum = (checksum * 31 + data[p] + data[p + 1] * 3 + data[p + 2] * 7) >>> 0;
+      checksums.add(checksum);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    return { formats: [...formats].sort(), distinctFrames: checksums.size };
   });
-  if (format === 2) await compare("movie frame");
-  else console.log("movie frame: skipped (the current menu frame is not PAL8)");
+  assert.ok(movie.distinctFrames > 1, "the main-menu movie did not animate during capture");
+  console.log(
+    `main-menu movie: ${movie.distinctFrames} captured frames; formats ${movie.formats.join(", ")}`,
+  );
+  if (movie.formats.includes(2)) await compare("main-menu PAL8 movie frame");
+  else
+    console.log(
+      "main-menu PAL8 movie frame: game did not publish PAL8 during the animation window",
+    );
 
   const waitDialog = async (id) => {
     const deadline = Date.now() + 120000;

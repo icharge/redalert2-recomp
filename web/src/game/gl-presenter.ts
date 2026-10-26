@@ -41,7 +41,6 @@ export class GlPresenter implements GamePresenter {
       powerPreference: "high-performance",
     });
     if (!gl) {
-      this.onFallback("context");
       throw new Error("WebGL2 unavailable");
     }
     this.gl = gl;
