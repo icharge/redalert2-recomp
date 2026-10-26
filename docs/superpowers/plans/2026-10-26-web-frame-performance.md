@@ -17,7 +17,7 @@ At the user's request, the target is the game with **HD off**; HD vehicles are e
 - **Task 2b (new) runs next:** profile the busy game with HD off. The busy save runs at 18–23 fps at every size, so the limit is not the picture; this profile says what it is before the rendering work starts.
 - **Task 5 (HD layers on the GPU) is deferred** to a later HD project (with the flicker and HD buildings/infantry). Task 4's presenter keeps HD working through the 2D fallback when HD is on.
 - Task 7 measures and profiles the HD-off busy cases; HD-on rows are recorded only. Task 11's soak runs HD off.
-- Order: 2b, 2c, 2d, 2e, 3, 4, 6, 7, 8, 10, 11, 12 (9 skipped: no spin). Task 2c was added after 2b's profile, 2d after 2c's result, and 2e after 2d found the Thai fix on by default.
+- Order: 2b, 2c, 2d, 2e, 2f, 3, 4, 6, 7, 8, 10, 11, 12 (9 skipped: no spin). Task 2c was added after 2b's profile, 2d after 2c's result, and 2e after 2d found the Thai fix on by default.
 - The pass bar is measured with the app's defaults, so with the Thai fix on; fix-off numbers are recorded beside them.
 
 ### Task 2b: Profile the busy game, HD off
@@ -76,6 +76,18 @@ Task 2d found that the web app turns the Thai font fix on by default (`web/src/s
 - [ ] **Step 3: Make the rewrites proportional to what changes.** Choose from Step 1's numbers and say why. If nearly every call has spacing 0, the spacing-0 apply and restore touch only the marked records (`mark_count`, the zero-width marks); otherwise each font state remembers the spacing its records hold and skips a rewrite when it is unchanged. The result must not depend on how many glyphs the font has, and the Step 2 check must pass against build A's shots with zero differing pixels.
 - [ ] **Step 4: Measure** with `perf.mjs --build`, busy, HD off, fix on and off (the fix's setting: `?arg=--thai-font-fix` and the font id, or the stored preference; say which), at 1280x720 (two runs each, against build A's fix-on 26.0 / 21.3), 1920x1080 and 2560x1440 (one run each). Expected: fix on at 720p median ≥ 60. Record the table in "Results".
 - [ ] **Step 5: Commit** `thai_font.c`, `thai-shots.mjs`, `testing.md` and the plan.
+
+### Task 2f: Profile the busy game at 1440p, Thai on
+
+After Task 2e the busy save reaches 61 fps at 720p (HD off, Thai on), but 49 at 1080p and 34 at 1440p. The game thread's work grows with the picture size, and this profile finds where, before the picture tasks (3, 4, 6) are started.
+
+**Files:**
+- Modify: this plan's "Results"
+
+- [ ] **Step 1: Profile** Task 2e's release build (`work/build-web-thai2e`, function names kept) with `profile-game.mjs --size 2560x1440`, then `--size 1280x720`, two runs each, the Thai fix on (the default). Record per size: the group shares (game, hook, runtime, presenter, waiting), the top 15 functions by self time, and the work per frame.
+- [ ] **Step 2: Compare** 1440p against 720p: which functions grow with the pixel count (the drawing of the battlefield, the presenter's conversion and publish) and which don't (the simulation). Say which later tasks can move the 1440p number: the presenter group is Tasks 3/4; the game's own drawing is not in this plan.
+- [ ] **Step 3: If a launch stalls** at the file copy ("cannot map /game/gamemd.exe" with 35 of 36 files, seen in Task 2e), record the page errors and the steps before it, check whether an earlier Chrome is still running on the profile (`work/perf/profile-fresh`), and say what clears it. Don't change the loader in this task.
+- [ ] **Step 4: Commit** the plan.
 
 ## Global Constraints
 
@@ -597,7 +609,7 @@ Setup. Build A is `work/build-web-prof` (wasm b0fb263feb7d, the code before Task
 | revised | off | offrev1 | 62 | 56 | 46 |
 | revised | off | offrev2 | 62 | 57 | 70 |
 
-Means: A on 26.0 (1% low 21.3), revised on 24.0 (21.5), A off 62.0 (52.5), revised off 62.0 (56.5). With the fix off the revised build is no faster than A.
+Means (A on is the mean of four runs: 28, 23, 24, 29): A on 26.0 (1% low 21.3), revised on 24.0 (21.5), A off 62.0 (52.5), revised off 62.0 (56.5). With the fix off the revised build is no faster than A.
 
 Revised build, fix off, the other sizes (two runs each):
 
@@ -670,7 +682,7 @@ Fix round 1 also tried A (fix on, second run), A (fix off) and 2e (fix off). All
 
 **Concerns.**
 - The fix is inactive for the busy save's font, so the fix-on numbers measure the rejection path only (see above).
-- The game stopped loading in four of seven launches in fix round 1, with a cause not identified; the fix-off pair and a second build A fix-on run are not measured.
+- The game stopped loading in three of six perf launches in fix round 1, with a cause not identified; the fix-off pair and a second build A fix-on run are not measured.
 - The rejected font is not the staged `game.fnt`; the game loads it from elsewhere.
 - The cache keys on header values plus one checked condition; a font whose header is unchanged but whose content changes elsewhere is re-checked only at that condition.
 - A full cache (64 fonts) falls back to the early width scan each call.
