@@ -15,7 +15,7 @@ Detailed ledger (rulings, review findings): `.superpowers/sdd/2026-10-26-web-fra
 | 2c. Test the Thai-font wrapper's cost (new) | **done**, review clean after 2 fix rounds. Busy 720p HD off: 26.5 fps with the wrapper, **62** (1% low 55–56, the speed-5 cap) without; work per frame 34 ms vs 12–13 ms | 483d5d7, 5887904, 95ed1b2 |
 | 2d. Thai-off path as a plain call | **done** (review clean after 1 fix round); its macro changes were reverted (585ef08): they didn't matter. It found the real cause: **the app turns the Thai font fix on by default**; with it off the busy save already runs at 62 fps (720p). Fix off: 1080p 49–50, 1440p 33 | 533d330, 585ef08, 4c6da57 |
 | 2e. The Thai fix without full-font rewrites (new) | **done** (review clean after 1 fix round; one measurement question parked). Rejected fonts are remembered, with the reason re-checked on each use; screenshots identical to the old build. Busy, HD off, Thai on (the default): 720p **61 fps** (1% low 54–55) vs 23–29 before; 1080p 49, 1440p 34. The Thai shaping itself stays inactive for this font | 30f984d, 4303eaf, cb64513 |
-| 2f. Profile the busy game at 1440p (new) | **fix round 1** (Results text). Game work a frame: 720p 13.0 ms, 1440p 22.7 ms (60 fps allows 16.7). Most of the growth is the game's own drawing (blits, about 4 ms) and a long tail of other game functions; the presenter is at most about 1.9 ms. **So Tasks 3/4/6 can save at most about 2 ms at 1440p** | 9787c04 |
+| 2f. Profile the busy game at 1440p (new) | **fix round 1 in re-review**. Game work a frame: 720p 13.0 ms, 1440p 22.7 ms (60 fps allows 16.7). Most of the growth is the game's own drawing (blits, about 4 ms) and a long tail of other game functions; the presenter is at most about 1.9 ms. **So Tasks 3/4/6 can save at most about 2 ms at 1440p** | 9787c04, 22ac9c1 |
 | 3. Raw publish, three buffers, protocol 8 | pending | |
 | 4. WebGL2 presenter | pending | |
 | 5. HD layers on the GPU | **deferred** to a later HD project | |
@@ -62,6 +62,7 @@ The user asked to focus on the game with HD off (HD vehicles are experimental an
 - The busy 60 fps bar stays the target; Task 7 profiles whether the gap is the game's own simulation and reports it.
 
 ## Found along the way (outside this plan)
+- One Thai-on launch of Task 2e's build crashed at 720p (memory access out of bounds in `sub_00407680`, in `LeaveCriticalSection`; `work/perf/task2f/task2f-720-1.log`). Task 2e's other Thai-on runs completed; the fix is off by default now. Watch for it.
 - **Start-up stall (app bug):** the game stops at the file copy ("cannot map /game/gamemd.exe", 35 of 36 files). Cause evidence (Task 2f): the OPFS save store `/save/slot-1-ra2md` holds copies of `gamemd.exe` (149 MB; the bundled runtime's is 4.8 MB) and `Blowfish.dll`, restored over `/game` at launch; removing them in a scratch copy let launches run, and a 19 MB `gamemd.exe` came back after. How they get into the store is not known yet (the sync only copies files changed after launch). The benchmark profile now stalls on every launch. Needs a fix in `web/src/storage/saves.ts` (never save or restore install files) plus a repair for stores that already have them.
 - `perf.mjs` ignored `--build` (it always measured the published game); fixed in Task 2c (5887904).
 
