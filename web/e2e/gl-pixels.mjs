@@ -14,9 +14,11 @@ async function compare(label) {
     const shared = m.cwrap("ra2_shared", "number", [])() >>> 2;
     const words = new Int32Array(m.HEAPU8.buffer);
     const u8 = m.HEAPU8;
-    const capture = await window.ra2Presenter.capture();
     let snapshot;
     for (let attempt = 0; attempt < 100; attempt++) {
+      // Keep the texture capture paired with the raw snapshot attempt. A live
+      // game may publish another frame while the previous attempt waits.
+      const capture = await window.ra2Presenter.capture();
       const seq = Atomics.load(words, shared + 1);
       if (seq !== capture.frameSeq || seq < 0 || seq & 1) {
         await new Promise((resolve) => setTimeout(resolve, 0));
@@ -72,12 +74,15 @@ async function compare(label) {
       } finally {
         Atomics.store(words, shared + 1047, -1);
       }
-      if (snapshot) break;
+      if (snapshot) {
+        snapshot.capture = capture;
+        break;
+      }
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
     if (!snapshot) throw new Error("Could not snapshot raw pixels for the captured frame");
     const { width, height, format, expected } = snapshot;
-    const { width: cw, height: ch, data } = capture;
+    const { width: cw, height: ch, data } = snapshot.capture;
     let different = 0;
     for (let i = 0; i < expected.length; i++) if (expected[i] !== data[i]) different++;
     return { width, height, cw, ch, format, different, pixels: width * height };

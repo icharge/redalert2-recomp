@@ -12,6 +12,7 @@ function setup() {
   const words = new Int32Array(buffer);
   const word = (index: number, value: number) => (words[(SHARED >> 2) + index] = value);
   const calls: [string, ...unknown[]][] = [];
+  let duringUpload: (() => void) | null = null;
   const fallback = vi.fn();
   let id = 0;
   const gl = new Proxy(
@@ -42,6 +43,7 @@ function setup() {
       COMPILE_STATUS: 0x8b81,
       LINK_STATUS: 0x8b82,
       createTexture: () => ({ texture: ++id }),
+      createFramebuffer: () => ({ framebuffer: ++id }),
       createShader: () => ({ shader: ++id }),
       createProgram: () => ({ program: ++id }),
       createBuffer: () => ({ buffer: ++id }),
@@ -56,10 +58,14 @@ function setup() {
         if (typeof v === "function")
           return (...args: unknown[]) => {
             calls.push([String(key), ...args]);
+            if (key === "texSubImage2D") duringUpload?.();
             return v(...args);
           };
         if (typeof v === "number") return v;
-        return (...args: unknown[]) => calls.push([String(key), ...args]);
+        return (...args: unknown[]) => {
+          calls.push([String(key), ...args]);
+          if (key === "texSubImage2D") duringUpload?.();
+        };
       },
     },
   ) as unknown as WebGL2RenderingContext;
@@ -79,6 +85,7 @@ function setup() {
   };
   return {
     calls,
+    duringUpload: (callback: () => void) => (duringUpload = callback),
     canvas,
     fallback,
     frame,
@@ -135,6 +142,22 @@ describe("GlPresenter", () => {
     presenter.draw();
     expect(calls.filter((c) => c[0] === "texSubImage2D")).toHaveLength(1);
     expect(words[(SHARED >> 2) + Shared.readIndex]).toBe(-1);
+  });
+
+  it("keeps the uploaded texture tagged with its frame when a publish overlaps upload", async () => {
+    const { duringUpload, frame, presenter, word, words } = setup();
+    frame(PixelFormat.Rgb565, 4, 2, 8);
+    duringUpload(() => word(Shared.frameSeq, 3));
+
+    presenter.draw();
+
+    expect(words[(SHARED >> 2) + Shared.frameSeq]).toBe(3);
+    expect(words[(SHARED >> 2) + Shared.readIndex]).toBe(-1);
+    await expect(presenter.capture()).resolves.toMatchObject({
+      width: 4,
+      height: 2,
+      frameSeq: 2,
+    });
   });
 
   it("writes presentMode 1 when started", () => {

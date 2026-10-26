@@ -198,9 +198,12 @@ export class GlPresenter implements GamePresenter {
           pitch || w * (fmt === PixelFormat.Rgb565 ? 2 : fmt === PixelFormat.Pal8 ? 1 : 4),
           fmt,
         );
+        // readIndex keeps this buffer immutable through the upload. Even if the
+        // game publishes another frame concurrently, the texture now contains
+        // this sequence and capture() must report that sequence for its pixels.
+        this.uploadedSeq = seq;
         if (word(Shared.frameSeq) === seq) {
           this.frameSeq = seq;
-          this.uploadedSeq = seq;
           this.paint(w, h, fmt);
           this.pictures++;
         }
