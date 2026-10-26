@@ -10,7 +10,7 @@ Detailed ledger (rulings, review findings): `.superpowers/sdd/2026-10-26-web-fra
 | Task | State | Commits |
 |---|---|---|
 | 1. Benchmark and baseline | **done**, review clean after 5 fix rounds | aa8bb15..1981765 |
-| 2. Probes: wait precision, clock calls | **running** (Haiku implementer; started from 1981765) | — |
+| 2. Probes: wait precision, clock calls | **running**: probe build done, clock probe running at the menu (Haiku implementer; from 1981765) | — |
 | 3. Raw publish, three buffers, protocol 8 | pending | |
 | 4. WebGL2 presenter | pending | |
 | 5. HD layers on the GPU | pending | |
