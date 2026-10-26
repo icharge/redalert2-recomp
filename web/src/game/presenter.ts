@@ -107,7 +107,6 @@ export class Presenter {
       const height = word(Shared.frameH);
       const pointer = word(Shared.framePtr) >>> 0;
       if (width > 0 && height > 0 && pointer > 0) {
-        this.frameSeq = seq;
         if (this.canvas.width !== width || this.canvas.height !== height) {
           this.canvas.width = width;
           this.canvas.height = height;
@@ -116,13 +115,18 @@ export class Presenter {
         this.image ??= this.context.createImageData(width, height);
         // a view on shared memory cannot back an ImageData, so the pixels are copied
         this.image.data.set(HEAPU8.subarray(pointer, pointer + width * height * 4));
-        this.render(this.image, width, height);
-        if (this.backdrop) {
-          if (this.backdrop.width !== 64) this.backdrop.width = 64;
-          if (this.backdrop.height !== 48) this.backdrop.height = 48;
-          this.backdrop.getContext("2d")?.drawImage(this.canvas, 0, 0, 64, 48);
+        if (word(Shared.frameSeq) === seq) {
+          this.frameSeq = seq;
+          this.render(this.image, width, height);
+          if (this.backdrop) {
+            if (this.backdrop.width !== 64) this.backdrop.width = 64;
+            if (this.backdrop.height !== 48) this.backdrop.height = 48;
+            this.backdrop.getContext("2d")?.drawImage(this.canvas, 0, 0, 64, 48);
+          }
+          this.pictures++;
+        } else {
+          this.image = null;
         }
-        this.pictures++;
       }
     }
 

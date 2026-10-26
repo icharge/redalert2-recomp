@@ -10,6 +10,21 @@
 static int frees;
 static void counting_free(void *p) { frees++; free(p); }
 
+static void publication_sequence_brackets_pixel_writes(void) {
+    volatile uint32_t sequence = 8;
+    uint32_t previous = frame_publish_begin(&sequence);
+    assert(previous == 8 && sequence == 9);
+
+    /* A page reading during this write must see an odd sequence. */
+    uint8_t pixels[2] = {0};
+    pixels[0] = 1;
+    assert(sequence & 1);
+    pixels[1] = 2;
+
+    frame_publish_end(&sequence, previous);
+    assert(sequence == 10 && !(sequence & 1));
+}
+
 /* What the presenter does for one frame: collect, take a buffer, "write" it, publish it. */
 static uint8_t *make(frame_bufs_t *b, int reading, size_t bytes, int announces, int *index) {
     frame_collect(b, reading, announces);
@@ -134,6 +149,7 @@ static void presentmode0_never_frees(void) {
 }
 
 int main(void) {
+    publication_sequence_brackets_pixel_writes();
     pick_skips_reading_and_newest();
     acquire_never_returns_the_read_buffer();
     resize_frees_only_after_release();

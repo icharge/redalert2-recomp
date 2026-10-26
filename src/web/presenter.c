@@ -107,6 +107,7 @@ static void publish(const uint8_t *px, int w, int h, int pitch, int bpp, const u
     int game_w = w, game_h = h;
     int hd = !raw && bpp == 16 && ra2_vox_hd_on;
     uint32_t format, row;                                /* bytes per row in the buffer */
+    uint32_t seq;
     uint8_t *out;
     if (bpp == 8 && !pal) return;
     /* Replaced buffers are freed only when the page announces its reads (mode 1; frame_buffers.h). */
@@ -116,6 +117,7 @@ static void publish(const uint8_t *px, int w, int h, int pitch, int bpp, const u
         row = (uint32_t)w * (bpp == 16 ? 2u : bpp == 8 ? 1u : 4u);
         out = frame_acquire(&g_frames, reading, (size_t)row * (size_t)h);
         if (!out) return;
+        seq = frame_publish_begin(&g_sh.frame_seq);
         for (int y = 0; y < h; y++) memcpy(out + (size_t)y * row, px + (size_t)y * (size_t)pitch, row);
     } else {
         if (hd) { w *= 2; h *= 2; }
@@ -123,6 +125,7 @@ static void publish(const uint8_t *px, int w, int h, int pitch, int bpp, const u
         row = (uint32_t)w * 4u;
         out = frame_acquire(&g_frames, reading, (size_t)row * (size_t)h);
         if (!out) return;
+        seq = frame_publish_begin(&g_sh.frame_seq);
         uint32_t *o = (uint32_t *)out;
         if (hd) {
             hdvox_compose(px, pitch, game_w, game_h, o);    /* compositor returns XRGB */
@@ -153,13 +156,7 @@ static void publish(const uint8_t *px, int w, int h, int pitch, int bpp, const u
             }
         }
     }
-    /* The seqlock (protocol.md): the pixels above are not page-visible yet. frame_seq goes odd before any published
-     * word is written and even when the whole picture is written, so a page that reads an even frame_seq before
-     * and after reading the words sees one picture. Every published word is an atomic store, so none moves above
-     * the odd store, and the fence keeps the palette copy below it. */
-    uint32_t seq = __atomic_load_n(&g_sh.frame_seq, __ATOMIC_SEQ_CST);
-    __atomic_store_n(&g_sh.frame_seq, seq + 1, __ATOMIC_SEQ_CST);
-    __atomic_thread_fence(__ATOMIC_SEQ_CST);
+    /* The seqlock went odd before the pixel write, so the page rejects any read that overlaps it. */
     if (raw && bpp == 8) {
         memcpy(g_palette, pal, sizeof g_palette);
         __atomic_store_n(&g_sh.palette_ptr, (uint32_t)(uintptr_t)g_palette, __ATOMIC_SEQ_CST);
@@ -174,7 +171,7 @@ static void publish(const uint8_t *px, int w, int h, int pitch, int bpp, const u
     frame_publish(&g_frames, index);
     __atomic_store_n(&g_sh.frame_ptr, (uint32_t)(uintptr_t)out, __ATOMIC_SEQ_CST);
     __atomic_store_n(&g_sh.frame_index, index, __ATOMIC_SEQ_CST);
-    __atomic_store_n(&g_sh.frame_seq, seq + 2, __ATOMIC_SEQ_CST);
+    frame_publish_end(&g_sh.frame_seq, seq);
     g_pub_ms += emscripten_get_now() - began, g_pub_n++;
     if ((uint32_t)game_w != last_w || (uint32_t)game_h != last_h) {
         char line[64];

@@ -35,6 +35,17 @@ int frame_index_of(const frame_bufs_t *b, const uint8_t *p) {
 
 void frame_publish(frame_bufs_t *b, int index) { b->newest = index; }
 
+uint32_t frame_publish_begin(volatile uint32_t *sequence) {
+    uint32_t previous = __atomic_load_n(sequence, __ATOMIC_SEQ_CST);
+    __atomic_store_n(sequence, previous + 1, __ATOMIC_SEQ_CST);
+    __atomic_thread_fence(__ATOMIC_SEQ_CST);
+    return previous;
+}
+
+void frame_publish_end(volatile uint32_t *sequence, uint32_t previous) {
+    __atomic_store_n(sequence, previous + 2, __ATOMIC_SEQ_CST);
+}
+
 void frame_collect(frame_bufs_t *b, int reading, int page_announces_reads) {
     if (!page_announces_reads) return;  /* presentMode 0: the page does not say what it reads, so nothing is freed */
     for (int i = 0; i < 3; i++) {

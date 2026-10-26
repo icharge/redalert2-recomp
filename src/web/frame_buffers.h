@@ -5,9 +5,10 @@
  * page says it is reading (ra2_shared_t readIndex).
  *
  * The seqlock (protocol.md): frame_seq is odd while the game publishes a
- * picture and even when it is whole. The game writes the pixels into a buffer
- * no page reads, then frame_seq goes odd, then the published words (format,
- * pitch, sizes, palette_ptr, framePtr, frameIndex), then frame_seq goes even.
+ * picture and even when it is whole. After acquiring a writable buffer, the
+ * game makes frame_seq odd before writing pixels, then writes the published
+ * words (format, pitch, sizes, palette_ptr, framePtr, frameIndex), then makes
+ * frame_seq even. The page checks the sequence again after copying pixels.
  * The page's reads, which Task 4 implements (protocol.md): read frame_seq s1
  * and retry while it is odd; read the metadata, framePtr and frameIndex; store
  * readIndex = frameIndex (Atomics.store); read frame_seq s2 and retry if
@@ -54,6 +55,10 @@ int frame_index_of(const frame_bufs_t *b, const uint8_t *p);
 
 /* Marks slot `index` as the newest published frame. */
 void frame_publish(frame_bufs_t *b, int index);
+
+/* Bracket writing the published picture and metadata with the shared seqlock. */
+uint32_t frame_publish_begin(volatile uint32_t *sequence);
+void frame_publish_end(volatile uint32_t *sequence, uint32_t previous);
 
 /* Frees the replaced buffers that no slot reads or publishes any more. Frees nothing unless
  * page_announces_reads (presentMode 1): see the comment above. */

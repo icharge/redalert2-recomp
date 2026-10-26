@@ -134,6 +134,28 @@ describe("Presenter", () => {
     expect(drawn).toHaveLength(1);
   });
 
+  it("rejects a picture if frame_seq changes while its pixels are copied", () => {
+    const { presenter, memory, word, drawn } = setup();
+    word(Shared.frameW, 1);
+    word(Shared.frameH, 1);
+    word(Shared.framePtr, FRAME);
+    word(Shared.frameSeq, 2);
+    memory.HEAPU8.set([10, 20, 30, 255], FRAME);
+    const subarray = memory.HEAPU8.subarray.bind(memory.HEAPU8);
+    vi.spyOn(memory.HEAPU8, "subarray").mockImplementation((start, end) => {
+      word(Shared.frameSeq, 4);
+      memory.HEAPU8.set([40, 50, 60, 255], FRAME);
+      return subarray(start, end);
+    });
+
+    presenter.draw();
+    expect(drawn).toHaveLength(0);
+
+    presenter.draw();
+    expect(drawn).toHaveLength(1);
+    expect(Array.from(drawn[0]!.data)).toEqual([40, 50, 60, 255]);
+  });
+
   it("keeps the game's frame size when it exceeds the viewport", () => {
     const { presenter, word, canvas } = setup({ width: 1, height: 1 });
     presenter.configure("integer");
