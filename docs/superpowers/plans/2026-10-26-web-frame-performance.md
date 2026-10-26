@@ -462,25 +462,26 @@ Spin found: no. No second had 1,000 or more clock reads with no Sleep: every sec
 
 ### Busy profile (HD off)
 
-Task 2b, `e2e/profile-game.mjs` (docs/web/testing.md, "Profiling the busy game"): the busy save at 1280x720, HD vehicles off, game speed 5 (the save's own), 10 s settle, then 20 s of CPU profile on the game's worker. Release link with names: `-O3;--profiling-funcs` (not the `-O2` fallback), in `work/build-web-prof`. Two separate browser sessions; both are in `work/perf/profile-busy.json` and `profile-busy-2.json`.
+Task 2b, `e2e/profile-game.mjs` (docs/web/testing.md, "Profiling the busy game"): the busy save at 1280x720, HD vehicles off, game speed 5 recorded as assumed (`"speed": "assumed 5 (busy.sav)"`: the page exposes no game-speed getter, so it is not read back), 10 s settle, then 20 s of CPU profile on the game's worker. Release link with names: `-O3;--profiling-funcs` (not the `-O2` fallback), in `work/build-web-prof`. Two separate browser sessions; both are in `work/perf/profile-busy.json` and `profile-busy-2.json`.
 
 | Share of the game thread's self time | Run 1 | Run 2 |
 |---|---|---|
 | recompiled game (`src/recomp`) | 28.0% | 27.9% |
-| runtime (pcrecomp `win32hle`, `src/runtime`) | 55.1% | 54.7% |
+| hook (`recomp_*`: `recomp_thai_call`, `recomp_lookup`) | 55.0% | 54.6% |
+| runtime (pcrecomp `win32hle`, `src/runtime`, not `recomp_*`) | 0.1% | 0.1% |
 | presenter (`src/web`) | 0.8% | 0.8% |
 | waiting (idle, `emscripten_futex_wait`, `wait_ms`) | 15.7% | 16.1% |
 | other (libc, JS glue, FFmpeg) | 0.3% | 0.5% |
 
-Fps during the sample (one reading a second): run 1 median 25, lowest 17; run 2 median 25, lowest 16. The game's thread had 17.1 s and 17.0 s of game work in the 20 s, so it was about 85% busy.
+Fps during the sample (one reading a second): run 1 median 25, lowest 17; run 2 median 25, lowest 16. The game's thread had 17.1 s and 17.0 s of game work in the 20.3 s, 84% busy. The Task 1 baseline (`work/perf/baseline/run.json`, 1280x720, HD off, busy, the same save) has a median of 23 and a lowest of 22, with an earlier build (`ef2b94fc…`). This profiling build (`-O3`, with names) runs at 25 on the same save and size. The difference is unexplained.
 
 Top 10 by self time (run 1 / run 2):
 
 | # | Run 1 | Group | Share | Run 2 | Group | Share |
 |---|---|---|---|---|---|---|
-| 1 | `recomp_thai_call` | runtime | 52.0% | `recomp_thai_call` | runtime | 51.8% |
+| 1 | `recomp_thai_call` | hook | 52.0% | `recomp_thai_call` | hook | 51.8% |
 | 2 | `emscripten_futex_wait` | waiting | 15.7% | `emscripten_futex_wait` | waiting | 16.1% |
-| 3 | `recomp_lookup` | runtime | 3.0% | `recomp_lookup` | runtime | 2.8% |
+| 3 | `recomp_lookup` | hook | 3.0% | `recomp_lookup` | hook | 2.8% |
 | 4 | `RLEBlitTransXlatAlphaZRead_G__virtual_1` | game | 1.8% | `RLEBlitTransXlatAlphaZRead_G__virtual_1` | game | 2.3% |
 | 5 | `TechnoClass__virtual_23` | game | 1.5% | `TechnoClass__virtual_23` | game | 1.3% |
 | 6 | `present_now` | presenter | 0.8% | `present_now` | presenter | 0.8% |
@@ -489,11 +490,11 @@ Top 10 by self time (run 1 / run 2):
 | 9 | `TechnoClass__virtual_10` | game | 0.6% | `TechnoClass__virtual_10` | game | 0.6% |
 | 10 | `sub_006F8960` | game | 0.5% | `BuildingClass__virtual_23` | game | 0.5% |
 
-Classification. A function's group is the source tree of the object file that defines it (`llvm-nm` over `work/build-web-prof/CMakeFiles/ra2.dir`): `src/recomp/` is the game, `pcrecomp/` and `src/runtime/` the runtime, `src/web/` the presenter. The `sub_XXXXXXXX` names are the lifted game's and count as game. Waiting is the idle node, `emscripten_futex_wait`, `Atomics`, `wait_ms` and the thread-sleep calls. Other is everything else. 740 names are defined in more than one object (mostly `static` helpers); a name takes the first object's group. Each name in the top ten is defined in one object only, so that does not change the table.
+Classification. A function's group is the source tree of the object file that defines it (`llvm-nm` over `work/build-web-prof/CMakeFiles/ra2.dir`): `src/recomp/` is the game, `pcrecomp/` and `src/runtime/` the runtime, `src/web/` the presenter. The `sub_XXXXXXXX` names are the lifted game's and count as game. Functions named `recomp_*` are the hook group (the runtime's call wrappers and dispatch: `recomp_thai_call`, `recomp_lookup`), checked before the object map, so the runtime group keeps the other pcrecomp and runtime functions (0.1%). Waiting is the idle node, `emscripten_futex_wait`, `Atomics`, `wait_ms`'s own self time and the thread-sleep calls. Other is everything else. 740 names are defined in more than one object (mostly `static` helpers); a name takes the first object's group. Each name in the top ten is defined in one object only, so that does not change the table.
 
-Spin. Much of the time under `wait_ms` is not waiting: pcrecomp's `wait_ms` (the game's `Sleep`) polls `clock_gettime` until its deadline, so the clock reads (`_emscripten_get_now`, `now`, `_clock_time_get`) land in group "other". In the first profile I took (superseded: `work/perf/superseded-profile-busy-picked-spin.json`), the selector picked a worker that was almost all clock polling under `wait_ms` (94% of its 20 s); another pool worker spent 96% of its time under `wait_ms`, about 42% of it clock polling and the rest futex waits. Together the clock polls were about 27 s in 20 s, about 1.4 cores, while the game thread ran. The clock probe's spin verdict missed this, because it counts `Sleep` calls and each of these calls is one. The game thread does not poll the clock (0% of its time is clock polling under `wait_ms`).
+Spin. pcrecomp's `wait_ms` (the game's `Sleep`) polls the clock until its deadline, so much of its time is clock reads, not waiting. In the first profile I took (superseded: `work/perf/superseded-profile-busy-picked-spin.json`, selected before the spin was excluded), the selected worker's four clock-named functions are 16.5 s of its 20.3 s, 81%: `_emscripten_get_now` 13.2 s, `now` 2.1 s, `_clock_time_get` 0.9 s, `__clock_gettime` 0.3 s, all under `wait_ms`. With the JS helpers on those calls (`bigintToI53Checked` 0.9 s, `wasm-to-js` 0.6 s, `growMemViews` 0.6 s, `get buffer` 0.2 s) it is 18.9 s, 93%; non-waiting time under `wait_ms` is 93% of that worker. A second pool worker had 96% under `wait_ms`: about 42% in "other", which is not confirmed as clock reads (its profile was not saved), and the rest futex waits. The clock probe's spin verdict missed this, because it counts `Sleep` calls and each of these calls is one. The game thread does not spin: 0% of its time is non-waiting time under `wait_ms`, and its `wait_ms` time is in waiting.
 
-Reading. The game's thread is the bound: it is about 85% busy at 25 fps, which is about 34 ms of its own work a frame where 60 fps allows about 16 ms. The picture is not the bound: the presenter is 0.8% of that time, so Tasks 3, 4 and 6 cannot move the busy fps. Waiting is 16% and is `emscripten_futex_wait` on the game thread; Tasks 8 and 10 (waits and locks) could take part of that, but it caps at about 16% of the frame. The bulk is the runtime (55%), and most of that is one entry, `recomp_thai_call`, which none of the planned tasks touches. Its attribution is unverified and should be checked before it is planned against: the Thai font fix is off by default in the web build (`--thai-font-fix`), so the wrapper's body should be a few instructions. Its callers run from `GScreenClass`'s draw path through `sub_00434B90`, which calls the hook. The next step is to confirm the 52% (a call count from a probe, or the wasm body at its offset). If it holds, the game's own runtime dispatch is the first thing to fix, as a new task outside this plan; if it does not, the remaining game code is spread across many functions and the busy frame cost is the game's simulation and drawing, not the picture.
+Reading. The game's thread is the bound: it is 84% busy at 25 fps, about 34 ms of its own work a frame where 60 fps allows about 16 ms. The 52% in `recomp_thai_call` (the hook group, 55% with `recomp_lookup`) is not yet attributed: it is either a runtime wrapper's real cost or a profiler artefact. The review found that the wrapper's early path is one indirect call to the original, and that `sub_00434500` is a separate function with about 2 s on the stack, so the self time does not yet add up. Task 2c tests it. The game's own code is 28%, spread over many functions. The presenter group is 0.8%. Waiting (`emscripten_futex_wait` on the game thread) is 16%, which caps Tasks 8 and 10 at about that share of the frame.
 
 ## Results
 

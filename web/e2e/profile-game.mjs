@@ -2,19 +2,24 @@
 //
 //   cd web; node e2e/profile-game.mjs --build ../work/build-web-prof [--profile ../work/perf/profile-fresh]
 //                                     [--save ../work/perf/busy.sav] [--settle-seconds 10] [--seconds 20]
-//                                     [--name profile-busy] [--headed]
+//                                     [--name profile-busy] [--emsdk ../../emsdk] [--headed]
+//   cd web; node e2e/profile-game.mjs --build ../work/build-web-prof --name profile-busy --reanalyze
 //
 // Opens the game from the profile (perf-nav.mjs's openGame), sets the picture to 1280x720, loads the busy save
 // through the game's own Load Saved Game, turns HD vehicles off, waits --settle-seconds, then records --seconds
 // of CPU profile on every worker over CDP and reads the game's fps once a second. The game runs on an Emscripten
 // pthread worker, so the profiles are of the workers. The game's thread is the one with the most game work: time
 // outside waiting and outside the Sleep spin (pcrecomp's wait_ms polls the clock, so it looks busy but is not work).
+//
 // Writes work/perf/<name>.cpuprofile (the Chrome profile, for DevTools) and work/perf/<name>.json: the self-time
-// share of four groups and the top 20 functions, the Sleep spin's share, and each busy worker's own shares.
+// share of six groups and the top 20 functions, the Sleep spin's share, the clock reads' time, and each busy
+// worker's own shares. --reanalyze recomputes the JSON's groups from the saved .cpuprofile, without a browser.
+//
 // A group is a function's source tree, found from the build's object files (llvm-nm): the recompiled game
 // (src/recomp), the runtime (pcrecomp's win32hle and src/runtime), the presenter (src/web), and waiting (the idle
-// node, futex and thread-sleep calls, Atomics, Sleep). Anything else (Emscripten's libc, JS glue, FFmpeg) is
-// "other", so the five shares add up to one.
+// node, futex and thread-sleep calls, Atomics, Sleep, and wait_ms's own time). Functions named recomp_* are their own
+// group, hook: the runtime's call wrappers, which the object map would otherwise count as runtime. Anything else
+// (Emscripten's libc, JS glue, FFmpeg) is "other", so the six shares add up to one.
 //
 // The CDP sessions are in legacy (non-flattened) mode: Playwright's CDPSession sends only on its own session, so
 // a worker's messages go through its parent (Target.sendMessageToTarget and Target.receivedMessageFromTarget).
@@ -33,7 +38,11 @@ const settleSeconds = Number(option("--settle-seconds", 10));
 const seconds = Number(option("--seconds", 20));
 const name = option("--name", "profile-busy");
 const savePath = path.resolve(option("--save", "../work/perf/busy.sav"));
+// the emsdk checkout, whose llvm-nm.exe reads the objects (the Windows binary's name)
 const emsdkBin = path.resolve(option("--emsdk", "../../emsdk")).replace(/\\/g, "/");
+// The page exposes no game-speed getter (HostSettings has none, and the speed lives in the game's memory), so the
+// busy save's own speed, 5, is recorded as assumed rather than read back.
+const SPEED = "assumed 5 (busy.sav)";
 
 const base = options(argv);
 if (!base.gameBuild)
@@ -114,9 +123,13 @@ async function onAttach(session) {
     .catch((error) => console.log(`profiler on ${session.sessionId}: ${error.message}`));
 }
 
+// wait_ms's own time is waiting too: it is the game's Sleep, and the clock polls under it are counted apart
 const WAITING =
   /futex|thread_sleep|Atomics|^\(idle\)$|^wait_ms$|^Sleep$|usleep|nanosleep|cond_wait|^__wait$|^_wait$/;
+const HOOK = /^recomp_/;
 const RECOMPILED = /^sub_[0-9A-Fa-f]{8}$/;
+// the clock reads a wait_ms poll makes (the Emscripten and libc calls it goes through)
+const CLOCK = /^(_emscripten_get_now|now|_clock_time_get|__clock_gettime)$/;
 
 /** function name -> group, from the build's object files: each defined symbol's group is its object's source tree. */
 function symbolGroups() {
@@ -144,10 +157,7 @@ function symbolGroups() {
     const nm = spawnSync(
       `${emsdkBin}/upstream/bin/llvm-nm.exe`,
       ["--defined-only", "--print-file-name", ...chunk],
-      {
-        encoding: "utf8",
-        maxBuffer: 256 * 1024 * 1024,
-      },
+      { encoding: "utf8", maxBuffer: 256 * 1024 * 1024 },
     );
     if (nm.status !== 0) throw new Error(`llvm-nm failed: ${nm.stderr}`);
     for (const line of nm.stdout.split(/\r?\n/)) {
@@ -166,6 +176,7 @@ function symbolGroups() {
 /** The group of a function in the profile. */
 function classify(fnName, symbols) {
   if (fnName === "(idle)" || WAITING.test(fnName)) return "waiting";
+  if (HOOK.test(fnName)) return "hook";
   if (RECOMPILED.test(fnName)) return "game";
   return symbols.groups.get(fnName) ?? "other";
 }
@@ -182,8 +193,8 @@ function selfTimes(profile) {
 }
 
 /**
- * The four groups' self time and the time with wait_ms on the stack (the game's Sleep: pcrecomp's wait_ms polls the
- * clock until its deadline, so its clock reads are a spin, not a wait), in microseconds.
+ * The six groups' self time, the time with wait_ms on the stack (outside waiting), the clock reads' time and the
+ * clock reads under wait_ms, in microseconds. wait_ms's own self time is in waiting.
  */
 function breakdown(profile, symbols) {
   const nodes = new Map(profile.nodes.map((n) => [n.id, n]));
@@ -197,37 +208,128 @@ function breakdown(profile, symbols) {
     under.add(id);
     stack.push(...(nodes.get(id)?.children ?? []));
   }
-  const totals = { game: 0, runtime: 0, presenter: 0, waiting: 0, other: 0 };
+  const totals = { game: 0, hook: 0, runtime: 0, presenter: 0, waiting: 0, other: 0 };
   const byName = new Map();
   let spin = 0;
+  let clock = 0;
+  let clockUnder = 0;
   let unmapped = 0; // self time in functions no build object defines (Emscripten's libc, the JS glue, FFmpeg's)
   for (const [id, us] of selfTimes(profile)) {
     const fn = nodes.get(id)?.callFrame?.functionName || "(anonymous)";
     const group = classify(fn, symbols);
     totals[group] += us;
     if (under.has(id) && group !== "waiting") spin += us;
+    if (CLOCK.test(fn)) {
+      clock += us;
+      if (under.has(id)) clockUnder += us;
+    }
     if (group === "other" && !symbols.groups.has(fn)) unmapped += us;
     const row = byName.get(fn) ?? { name: fn, group, us: 0 };
     row.us += us;
     byName.set(fn, row);
   }
   const grand = Object.values(totals).reduce((a, b) => a + b, 0);
-  return { totals, grand, spin, unmapped, byName };
+  return { totals, grand, spin, clock, clockUnder, unmapped, byName };
 }
 
 /**
- * The game's own work on a worker, in microseconds: its time outside waiting (idle, futex, thread sleep) and outside
- * the Sleep spin (wait_ms's clock polling). The game's thread is the one with the most of this.
+ * The game's own work on a worker, in microseconds: its time outside waiting (idle, futex, thread sleep, wait_ms)
+ * and outside the Sleep spin (wait_ms's clock polling). The game's thread is the one with the most of this.
  */
 function busyMicros(profile, symbols) {
   const b = breakdown(profile, symbols);
   return b.grand - b.totals.waiting - b.spin;
 }
 
+/** The JSON's measures of one profile: shares, top 20, spin, clock reads (all from breakdown). */
+function summarize(profile, symbols) {
+  const b = breakdown(profile, symbols);
+  const share = Object.fromEntries(
+    Object.entries(b.totals).map(([k, v]) => [k, +(v / b.grand).toFixed(4)]),
+  );
+  return {
+    shares: share,
+    shareMs: Object.fromEntries(
+      Object.entries(b.totals).map(([k, v]) => [k, +(v / 1000).toFixed(1)]),
+    ),
+    totalMs: +(b.grand / 1000).toFixed(1),
+    wait_msSpinShare: +(b.spin / b.grand).toFixed(4),
+    clockReadsMs: +(b.clock / 1000).toFixed(1),
+    clockReadsUnderWaitMsMs: +(b.clockUnder / 1000).toFixed(1),
+    unmappedOtherMs: +(b.unmapped / 1000).toFixed(1),
+    objects: symbols.objects,
+    symbolGroupConflicts: symbols.conflicts,
+    top: [...b.byName.values()]
+      .sort((x, y) => y.us - x.us)
+      .slice(0, 20)
+      .map((r) => ({
+        name: r.name,
+        group: r.group,
+        selfMs: +(r.us / 1000).toFixed(1),
+        share: +(r.us / b.grand).toFixed(4),
+      })),
+  };
+}
+
 const median = (xs) => {
   const s = xs.filter((x) => x != null).sort((a, b) => a - b);
   return s.length ? s[Math.floor(s.length / 2)] : null;
 };
+
+/** Prints the shares and the top 10 of a summary. */
+function printSummary(summary) {
+  console.log(
+    `shares of the game worker's ${summary.totalMs} ms: ` +
+      Object.entries(summary.shares)
+        .map(([k, v]) => `${k} ${(v * 100).toFixed(1)}%`)
+        .join(", "),
+  );
+  console.log(
+    `time under wait_ms (the Sleep spin, not waiting): ${(summary.wait_msSpinShare * 100).toFixed(1)}%; ` +
+      `clock reads ${summary.clockReadsMs} ms, of which under wait_ms ${summary.clockReadsUnderWaitMsMs} ms`,
+  );
+  console.log("top 10 by self time:");
+  for (const r of summary.top.slice(0, 10))
+    console.log(`  ${(r.share * 100).toFixed(1).padStart(5)}%  ${r.group.padEnd(9)} ${r.name}`);
+}
+
+/** --reanalyze: the groups recomputed from the saved <name>.cpuprofile; the fps and the capture stay as they were. */
+function reanalyze() {
+  const jsonPath = path.join(outDir, `${name}.json`);
+  const cpuprofile = path.join(outDir, `${name}.cpuprofile`);
+  const prior = JSON.parse(readFileSync(jsonPath, "utf8"));
+  const profile = JSON.parse(readFileSync(cpuprofile, "utf8"));
+  const symbols = symbolGroups();
+  const summary = summarize(profile, symbols);
+  const b = breakdown(profile, symbols);
+  const gameEntry = {
+    sessionId: prior.game.sessionId,
+    totalMs: summary.totalMs,
+    shares: summary.shares,
+    wait_msSpinShare: summary.wait_msSpinShare,
+  };
+  const result = {
+    ...prior,
+    at: new Date().toISOString(),
+    reanalyzed: "groups recomputed from the saved .cpuprofile (hook group added)",
+    speed: prior.speed ?? SPEED,
+    game: { ...prior.game, samples: profile.samples.length },
+    // the other workers' profiles were not saved, so only the game worker's entry is recomputed
+    perWorker: (prior.perWorker ?? []).map((w) =>
+      w.sessionId === prior.game.sessionId ? gameEntry : w,
+    ),
+    ...summary,
+  };
+  writeFileSync(jsonPath, JSON.stringify(result, null, 1) + "\n");
+  console.log(`reanalyzed ${cpuprofile} (${profile.samples.length} samples, ${b.grand / 1000} ms)`);
+  printSummary(summary);
+  console.log(`wrote ${jsonPath}`);
+}
+
+if (argv.includes("--reanalyze")) {
+  reanalyze();
+  process.exit(0);
+}
 
 const t = await openGame(base, { video: "1280x720", shots: base.shots, headed: base.headed });
 try {
@@ -297,8 +399,8 @@ try {
     throw new Error("no worker has a profile with busy time");
   const game = ranked[0];
 
-  const { totals, grand, spin, unmapped, byName } = breakdown(game.profile, symbols);
-  const share = Object.fromEntries(Object.entries(totals).map(([k, v]) => [k, v / grand]));
+  const summary = summarize(game.profile, symbols);
+  // the workers with at least 1% of the game's work, with their own shares
   const perWorker = ranked
     .filter((s) => s.busy >= ranked[0].busy * 0.01)
     .map((s) => {
@@ -312,15 +414,6 @@ try {
         wait_msSpinShare: +(b.spin / b.grand).toFixed(4),
       };
     });
-  const top = [...byName.values()]
-    .sort((a, b) => b.us - a.us)
-    .slice(0, 20)
-    .map((r) => ({
-      name: r.name,
-      group: r.group,
-      selfMs: +(r.us / 1000).toFixed(1),
-      share: +(r.us / grand).toFixed(4),
-    }));
 
   const cache = readFileSync(path.join(buildDir, "CMakeCache.txt"), "utf8");
   const webLinkOpt = /^WEB_LINK_OPT:[^=]*=(.*)$/m.exec(cache)?.[1] ?? "";
@@ -331,8 +424,13 @@ try {
     webLinkOpt,
     size: `${after.size?.w}x${after.size?.h}`,
     hd: after.settings?.hd ?? null,
+    speed: SPEED,
     seconds,
-    fps: { perSecond: fps, median: median(fps), min: Math.min(...fps.filter((x) => x != null)) },
+    fps: {
+      perSecond: fps,
+      median: median(fps),
+      min: Math.min(...fps.filter((x) => x != null)),
+    },
     workers: ranked.map((s) => ({
       sessionId: s.session.sessionId,
       url: s.session.info?.url ?? null,
@@ -340,18 +438,8 @@ try {
       totalMs: +((s.profile.endTime - s.profile.startTime) / 1000).toFixed(1),
     })),
     game: { sessionId: game.session.sessionId, samples: game.profile.samples.length },
-    shares: share,
-    shareMs: Object.fromEntries(
-      Object.entries(totals).map(([k, v]) => [k, +(v / 1000).toFixed(1)]),
-    ),
-    totalMs: +(grand / 1000).toFixed(1),
-    // the part of "other" (clock reads, mostly) and of the rest that runs under wait_ms, the game's Sleep spin
-    wait_msSpinShare: +(spin / grand).toFixed(4),
     perWorker,
-    unmappedOtherMs: +(unmapped / 1000).toFixed(1),
-    objects: symbols.objects,
-    symbolGroupConflicts: symbols.conflicts,
-    top,
+    ...summary,
   };
   const cpuprofile = path.join(outDir, `${name}.cpuprofile`);
   writeFileSync(cpuprofile, JSON.stringify(game.profile));
@@ -361,18 +449,7 @@ try {
   console.log(
     `fps per second: ${fps.join(", ")}; median ${result.fps.median}, min ${result.fps.min}`,
   );
-  console.log(
-    `shares of the game worker's ${result.totalMs} ms: ` +
-      Object.entries(share)
-        .map(([k, v]) => `${k} ${(v * 100).toFixed(1)}%`)
-        .join(", "),
-  );
-  console.log(
-    `time under wait_ms (the Sleep spin): ${(result.wait_msSpinShare * 100).toFixed(1)}% of the game worker`,
-  );
-  console.log("top 10 by self time:");
-  for (const r of top.slice(0, 10))
-    console.log(`  ${(r.share * 100).toFixed(1).padStart(5)}%  ${r.group.padEnd(9)} ${r.name}`);
+  printSummary(summary);
   console.log(`wrote ${cpuprofile}\nwrote ${jsonOut}`);
 } finally {
   await t.browser.close();

@@ -521,9 +521,18 @@ CDP, reading the fps once a second. It writes `work/perf/<name>.cpuprofile` (for
 (`--name`, default `profile-busy`; use another name for a second run). The game's thread is the worker with the most
 game work: time outside waiting and outside `wait_ms`. Its self time is grouped by the source tree of the function,
 from the build's object files (`llvm-nm`): the recompiled game (`src/recomp`), the runtime (pcrecomp's `win32hle` and
-`src/runtime`), the presenter (`src/web`), waiting (the idle node, futex and thread-sleep calls), and other (Emscripten's
-libc, the JS glue, FFmpeg). The JSON holds the shares, the top 20 functions, the time under `wait_ms`, and each busy
-worker's own shares.
+`src/runtime`), the presenter (`src/web`), waiting (the idle node, futex and thread-sleep calls, and `wait_ms`'s own
+time), other (Emscripten's libc, the JS glue, FFmpeg), and hook: any function named `recomp_*`, the runtime's call
+wrappers and dispatch (`recomp_thai_call`, `recomp_lookup`), which the object map would otherwise count as runtime.
+`recomp_*` names also occur in the lifter's game objects (`recomp_cond`, `recomp_yield_hook`), and those count as hook
+too. The JSON holds the six shares, the top 20 functions, the time under `wait_ms`, the clock reads' time (the
+`_emscripten_get_now`, `now`, `_clock_time_get` and `__clock_gettime` calls), each busy worker's own shares, and
+`speed`: the game speed is recorded as `assumed 5 (busy.sav)`, because the page exposes no getter for it.
+
+`--reanalyze` (with the same `--build` and `--name`) recomputes the groups from the saved `<name>.cpuprofile` without a
+browser, and keeps the capture's fps and workers. The objects are read from the build directory, so it needs the build
+too. `--emsdk <dir>` names the emsdk checkout whose `upstream/bin/llvm-nm.exe` reads the objects (default `../../emsdk`
+from `web/`, the sibling of the repository); on Windows the binary is `llvm-nm.exe`.
 
 The build is a release link with names: `cmake -S . -B work/build-web-prof -G Ninja -DCMAKE_TOOLCHAIN_FILE=cmake/emscripten.cmake
 -DPCRECOMP=<pcrecomp> -DRA2_TARGET=gamemd "-DWEB_LINK_OPT=-O3;--profiling-funcs" "-DWEB_OUT=<repo>/work/web-out-prof"`,
