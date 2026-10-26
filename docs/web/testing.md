@@ -528,9 +528,11 @@ Every session checks the game's `[thaifont] using selected font` line, which onl
 - `busy-menu.png`: the page's stats overlay (0,0)-(260,90): frames per second and draw time, which change each second.
 - `skirmish.png`: no mask.
 
-The reference is build A (`work/build-web-prof`); the picture check is A against A first (the masks must make it zero), then A against the new build. The main menu's mask covers most of its picture, so that image checks little beyond the buttons.
+The reference is build A (`work/build-web-prof`); the picture check is A against A first (the masks must make it zero), then A against the new build. The screenshots are 1280x960 page captures (the page, not the game's 800x600 shell alone), so the mask fractions are of the page: the main menu's radar and bar-graph masks cover 68.4% of `menu.png`, leaving the buttons and frame to check. The busy stats overlay covers 1.9% of `busy-menu.png`.
 
-The perf runs record the fix's state per case: `thaiFix` in each case of `run.json` is the game's `[thaifont]` line, or `off: no [thaifont] line` when the game did not start with the fix.
+The perf runs record the fix's state per case: `thaiFix` in each case of `run.json` is the game's `[thaifont]` line. With no such line, it is `off: no [thaifont] line (launched with --thai-fix off)` when the run was declared with `--thai-fix off` (the stored preference was set to off beforehand), and `unknown` otherwise. Pass `--thai-fix on|off` to declare how the run was launched; the script does not change the preference itself.
+
+**Paths.** `perf.mjs --out` and `--save` are relative to the repository root, so `--out ../x` lands outside the repository (the Task 2e first run did). `thai-shots.mjs --out` is relative to the working directory, which is `web/` when it is run as documented, so `--out ../work/thai-shots/<name>` is inside the repository. Neither script's behaviour was changed to match the other.
 
 ### Profiling the busy game
 

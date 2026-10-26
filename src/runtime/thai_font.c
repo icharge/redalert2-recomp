@@ -147,7 +147,36 @@ static ThaiFontState *find_state(uint8_t *data) {
     return NULL;
 }
 
-static ThaiFontState *create_state(uint32_t font) {
+/* Why create_state rejected a font. Only content and header rejections are remembered (see get_state):
+ * a failed allocation says nothing about the font, so the next call tries again. */
+typedef enum {
+    REJECT_NONE,
+    REJECT_NO_MEMORY,   /* calloc or malloc failed: not cached */
+    REJECT_HEADER,      /* a header field is out of range: the cache key is the header */
+    REJECT_WIDTH,       /* glyph record `at` has a width above 16 */
+    REJECT_MARK_RANGE,  /* mark code `at` maps past the last glyph record */
+    REJECT_NO_MARKS,    /* no mark code maps to a glyph record */
+    REJECT_MARK_SHARED  /* non-mark code `at` maps to a glyph record that a mark code also maps to */
+} RejectKind;
+
+typedef struct RejectReason {
+    RejectKind kind;
+    uint32_t at;
+} RejectReason;
+
+static ThaiFontState *reject(RejectReason *why, RejectKind kind, uint32_t at) {
+    why->kind = kind;
+    why->at = at;
+    return NULL;
+}
+
+static ThaiFontState *fail_state(ThaiFontState *state, uint8_t *cloned_data, uint8_t *records,
+                                 uint8_t *widths, RejectReason *why, RejectKind kind, uint32_t at) {
+    free(state); free(cloned_data); free(records); free(widths);
+    return reject(why, kind, at);
+}
+
+static ThaiFontState *create_state(uint32_t font, RejectReason *why) {
     uint32_t data_va = read32(font + 4);
     uint32_t height = read32(data_va + 8);
     uint32_t stride = read32(data_va + 0x14);
@@ -156,13 +185,12 @@ static ThaiFontState *create_state(uint32_t font) {
     uint32_t count = read32(data_va + 0x20);
     if (height != 16 || stride < 49 || stride > 128 || !count || count > 0x10000 ||
         !map_va || !source_records_va || (uint64_t)count * stride > 16u * 1024u * 1024u)
-        return NULL;
+        return reject(why, REJECT_HEADER, 0);
 
     /* Reject before any allocation or copy: the glyph widths are checked in the guest's own records. */
-    for (uint32_t i = 0; i < count; ++i) {
-        uint8_t width = guest_bytes(source_records_va)[(size_t)i * stride];
-        if (width > 16 || 1 + 16 * 3 > stride) return NULL;
-    }
+    for (uint32_t i = 0; i < count; ++i)
+        if (guest_bytes(source_records_va)[(size_t)i * stride] > 16)
+            return reject(why, REJECT_WIDTH, i);
 
     size_t record_bytes = (size_t)count * stride;
     ThaiFontState *state = (ThaiFontState *)calloc(1, sizeof *state);
@@ -171,7 +199,7 @@ static ThaiFontState *create_state(uint32_t font) {
     uint8_t *widths = (uint8_t *)malloc((size_t)count * 2);
     if (!state || !cloned_data || !records || !widths) {
         free(state); free(cloned_data); free(records); free(widths);
-        return NULL;
+        return reject(why, REJECT_NO_MEMORY, 0);
     }
     memcpy(cloned_data, guest_bytes(data_va), 0x24);
     memcpy(records, guest_bytes(source_records_va), record_bytes);
@@ -189,11 +217,7 @@ static ThaiFontState *create_state(uint32_t font) {
 
     for (uint32_t i = 0; i < count; ++i) {
         uint8_t *record = records + (size_t)i * stride;
-        uint8_t width = record[0];
-        if (width > 16 || 1 + 16 * 3 > stride) {
-            free(state); free(cloned_data); free(records); free(widths);
-            return NULL;
-        }
+        uint8_t width = record[0]; /* at most 16: checked above */
         widths[i] = width;
         for (unsigned y = 0; y < 16; ++y) {
             for (unsigned x = width; x < (unsigned)width + MAX_EXTRA_SPACING; ++x) {
@@ -209,19 +233,20 @@ static ThaiFontState *create_state(uint32_t font) {
         if (!is_mark((uint16_t)code)) continue;
         uint16_t entry = state->map[code];
         if (!entry) continue;
-        if (entry > count) { free(state); free(cloned_data); free(records); free(widths); return NULL; }
+        if (entry > count)
+            return fail_state(state, cloned_data, records, widths, why, REJECT_MARK_RANGE, code);
         if (!state->marked_records[entry - 1]) {
             state->marked_records[entry - 1] = 1;
             ++state->mark_count;
         }
     }
-    if (!state->mark_count) { free(state); free(cloned_data); free(records); free(widths); return NULL; }
+    if (!state->mark_count)
+        return fail_state(state, cloned_data, records, widths, why, REJECT_NO_MARKS, 0);
     for (unsigned code = 0; code <= 0xff; ++code) {
         if (is_mark((uint16_t)code)) continue;
         uint16_t entry = state->map[code];
-        if (entry && entry <= count && state->marked_records[entry - 1]) {
-            free(state); free(cloned_data); free(records); free(widths); return NULL;
-        }
+        if (entry && entry <= count && state->marked_records[entry - 1])
+            return fail_state(state, cloned_data, records, widths, why, REJECT_MARK_SHARED, code);
     }
     write32(font + 4, (uint32_t)(uintptr_t)cloned_data);
     state->next = g_states;
@@ -229,20 +254,28 @@ static ThaiFontState *create_state(uint32_t font) {
     return state;
 }
 
-/* The header values create_state reads for a font. A font it rejects is remembered by these, so a
- * later text call on the same font skips the clone and the glyph scan. Before this cache, a rejected
- * font was cloned and scanned again on every text call: 1.67 MB and 34,151 glyphs in the busy save,
- * about 90 times a second, with the fix on. */
-typedef struct RejectedFont {
+/* The header values create_state reads for a font: the cache key. */
+typedef struct FontKey {
     uint32_t data, height, count, stride, map, records;
+} FontKey;
+
+/* A rejected font: its key, and the first check that failed. A later call re-checks that one check (see
+ * still_rejected) rather than the whole font, so a hit costs the same however many glyphs the font has. */
+typedef struct RejectedFont {
+    FontKey key;
+    RejectReason why;
 } RejectedFont;
 
+/* Without this cache a rejected font was cloned and scanned on every text call: 1.67 MB and 34,151
+ * glyphs in the busy save, about 90 times a second, with the fix on. The Thai calls run on the game thread
+ * only, so g_rejected, like g_states and g_context, is not synchronised. A full cache (64 fonts) falls back
+ * to the early width scan on each call, which is slower but gives the same answer. */
 enum { REJECTED_FONT_SLOTS = 64 };
 static RejectedFont g_rejected[REJECTED_FONT_SLOTS];
 static int g_rejected_count;
 
-static RejectedFont rejected_key(uint32_t font) {
-    RejectedFont key;
+static FontKey font_key(uint32_t font) {
+    FontKey key;
     key.data = read32(font + 4);
     key.height = read32(key.data + 8);
     key.stride = read32(key.data + 0x14);
@@ -252,15 +285,64 @@ static RejectedFont rejected_key(uint32_t font) {
     return key;
 }
 
+/* create_state's mark rule: a mark code maps to a glyph record when its entry is non-zero and within the count. */
+static int any_mark_entry(const FontKey *key) {
+    for (unsigned code = 0; code <= 0xff; ++code) {
+        if (!is_mark((uint16_t)code)) continue;
+        uint16_t entry = read16(key->map + 2 * code);
+        if (entry && entry <= key->count) return 1;
+    }
+    return 0;
+}
+
+/* Whether non-mark code `code` maps to a glyph record that some mark code also maps to. */
+static int mark_shares(const FontKey *key, unsigned code) {
+    uint16_t entry = read16(key->map + 2 * code);
+    if (is_mark((uint16_t)code) || !entry || entry > key->count) return 0;
+    for (unsigned m = 0; m <= 0xff; ++m) {
+        if (!is_mark((uint16_t)m)) continue;
+        uint16_t mark = read16(key->map + 2 * m);
+        if (mark && mark <= key->count && mark == entry) return 1;
+    }
+    return 0;
+}
+
+/* Whether the check that rejected a font still fails. Reads one glyph record or a fixed number of map
+ * entries, never the glyphs, so it costs the same however many glyphs the font has. create_state rejects
+ * whenever any check fails, so if this one still fails the font is still rejected. A header rejection needs
+ * no check: the key is the header. */
+static int still_rejected(const RejectedFont *r) {
+    const FontKey *key = &r->key;
+    switch (r->why.kind) {
+    case REJECT_HEADER: return 1;
+    case REJECT_WIDTH: return guest_bytes(key->records)[(size_t)r->why.at * key->stride] > 16;
+    case REJECT_MARK_RANGE: return read16(key->map + 2 * r->why.at) > key->count;
+    case REJECT_NO_MARKS: return !any_mark_entry(key);
+    case REJECT_MARK_SHARED: return mark_shares(key, r->why.at);
+    default: return 0;
+    }
+}
+
 static ThaiFontState *get_state(uint32_t font) {
     uint32_t data = read32(font + 4);
     ThaiFontState *state = find_state(guest_bytes(data));
     if (state) return state;
-    RejectedFont key = rejected_key(font);
-    for (int i = 0; i < g_rejected_count; ++i)
-        if (memcmp(&g_rejected[i], &key, sizeof key) == 0) return NULL;
-    state = create_state(font);
-    if (!state && g_rejected_count < REJECTED_FONT_SLOTS) g_rejected[g_rejected_count++] = key;
+    FontKey key = font_key(font);
+    for (int i = 0; i < g_rejected_count; ++i) {
+        RejectedFont *r = &g_rejected[i];
+        if (memcmp(&r->key, &key, sizeof key) != 0) continue;
+        if (still_rejected(r)) return NULL;
+        g_rejected[i] = g_rejected[--g_rejected_count]; /* the content changed: forget it and check again */
+        break;
+    }
+    RejectReason why = { REJECT_NONE, 0 };
+    state = create_state(font, &why);
+    /* Only a content or header rejection is a fact about the font. An allocation failure is retried. */
+    if (!state && why.kind != REJECT_NO_MEMORY && g_rejected_count < REJECTED_FONT_SLOTS) {
+        g_rejected[g_rejected_count].key = key;
+        g_rejected[g_rejected_count].why = why;
+        ++g_rejected_count;
+    }
     return state;
 }
 

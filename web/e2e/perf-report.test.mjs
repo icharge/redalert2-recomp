@@ -3,7 +3,7 @@
 //   cd web && node --test e2e/perf-report.test.mjs
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { compare, mergeCases, summarize } from "./perf-report.mjs";
+import { compare, mergeCases, summarize, thaiFixState } from "./perf-report.mjs";
 
 /** A sample with every field null except the ones given. */
 const sample = (fields) => ({
@@ -250,4 +250,50 @@ test("mergeCases: a failed case with no data of this run loses an older run's nu
   });
   assert.deepEqual(Object.keys(cases), ["y"]);
   assert.deepEqual(failures, { x: "boom" });
+});
+
+test("thaiFix passes through mergeCases as the game logged it", () => {
+  const line = "[thaifont] using selected font builtin-westwood-improved at game.fnt";
+  const { cases } = mergeCases({
+    baseCases: {},
+    baseFailures: {},
+    finished: {
+      "720/on": {
+        runs: [[{ fps: 60 }]],
+        gameSpeed: 5,
+        size: { w: 1280, h: 720 },
+        thaiFix: thaiFixState([line]),
+      },
+      "720/off": {
+        runs: [[{ fps: 61 }]],
+        gameSpeed: 5,
+        size: { w: 1280, h: 720 },
+        thaiFix: thaiFixState([]),
+      },
+    },
+    failures: {},
+  });
+  assert.equal(cases["720/on"].thaiFix, line);
+  assert.equal(cases["720/off"].thaiFix, "unknown");
+});
+
+test("a case without a thaiFix field has none in its record", () => {
+  const { cases } = mergeCases({
+    baseCases: {},
+    baseFailures: {},
+    finished: { a: { runs: [[{ fps: 60 }]], gameSpeed: 5, size: null } },
+    failures: {},
+  });
+  assert.equal("thaiFix" in cases.a, false);
+});
+
+test("thaiFixState: the log line when printed, else off only when declared off, else unknown", () => {
+  const line = "[thaifont] using selected font builtin-westwood-improved at game.fnt";
+  assert.equal(thaiFixState(["noise", line]), line.trim());
+  assert.equal(
+    thaiFixState(["noise"], "off"),
+    "off: no [thaifont] line (launched with --thai-fix off)",
+  );
+  assert.equal(thaiFixState(["noise"]), "unknown");
+  assert.equal(thaiFixState(["noise"], "on"), "unknown");
 });

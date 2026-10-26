@@ -187,6 +187,17 @@ export function compare(run, baseline) {
  *   finished: Record<string, {runs: object[][], planned?: number, gameSpeed: unknown, size: unknown}>,
  *   failures: Record<string, string>}} input
  */
+/**
+ * The Thai font fix of a launched game, for a run record: the game's [thaifont] log line when it printed one. With no
+ * line, "off" only when the run was launched with the fix off (declared "off"); otherwise "unknown", because the
+ * run did not say what it was launched with.
+ */
+export function thaiFixState(lines, declared = null) {
+  const line = lines.find((l) => l.includes("[thaifont] using selected font"));
+  if (line) return line.trim();
+  return declared === "off" ? "off: no [thaifont] line (launched with --thai-fix off)" : "unknown";
+}
+
 export function mergeCases({ baseCases, baseFailures, finished, failures }) {
   const cases = { ...baseCases };
   const listed = { ...baseFailures, ...failures };

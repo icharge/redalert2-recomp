@@ -35,7 +35,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { lastFailure, options, startPage } from "./lib.mjs";
-import { compare, mergeCases } from "./perf-report.mjs";
+import { compare, mergeCases, thaiFixState } from "./perf-report.mjs";
 import {
   at,
   gameUrl,
@@ -67,6 +67,7 @@ const VALUE_FLAGS = new Set([
   "--shots",
   "--arg",
   "--build",
+  "--thai-fix",
 ]);
 const BOOLEAN_FLAGS = new Set(["--append", "--headed"]);
 for (let i = 0; i < argv.length; i++) {
@@ -99,6 +100,11 @@ const profile = path.resolve(repo, flag("--profile", "work/perf/profile-fresh"))
 const gameDir = path.resolve(repo, flag("--game", "game"));
 const baselinePath = flag("--baseline", null);
 const append = argv.includes("--append");
+// --thai-fix on|off: how the run was launched (the stored Thai preference set beforehand). A run launched with
+// the fix off records "off" when the game logs no [thaifont] line; otherwise a missing line is "unknown".
+const thaiFixDeclared = flag("--thai-fix", null);
+if (thaiFixDeclared !== null && !["on", "off"].includes(thaiFixDeclared))
+  throw new Error(`--thai-fix ${thaiFixDeclared}: use on or off`);
 
 for (const m of moments)
   if (!["early", "busy", "menu"].includes(m))
@@ -447,10 +453,8 @@ async function runMoment(moment, size, hdList, onCase) {
         if (Number(process.env.PERF_TEST_FAIL_LAUNCH_HARD) === r)
           await t.fail(`forced game failure in launch ${r}`);
         const reported = await checkSize(t, size);
-        // the Thai font fix is on when the game started with --thai-font-fix, which prints this line
-        const thaiFix =
-          t.all.find((line) => line.includes("[thaifont] using selected font"))?.trim() ??
-          "off: no [thaifont] line";
+        // the Thai font fix as the game started: its [thaifont] line (printed only with --thai-font-fix)
+        const thaiFix = thaiFixState(t.all, thaiFixDeclared);
         for (const hd of hdList) {
           await setHd(t, hd === "on");
           const key = `${size}/hd-${hd}/${moment}`;
