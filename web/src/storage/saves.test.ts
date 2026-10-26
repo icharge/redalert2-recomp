@@ -79,6 +79,19 @@ let stop: (() => void) | null = null;
 afterEach(() => stop?.());
 
 describe("startSaveSync", () => {
+  it("never saves runtime binaries staged after the watcher starts", async () => {
+    const game = fakeFs();
+    const target = memoryTarget();
+    const sync = startSaveSync(game.fs, target, "ra2md", 1e9);
+    stop = sync.stop;
+    game.put("/game/GAMEMD.EXE", "bundled runtime");
+    game.put("/game/Blowfish.dll", "bundled tables");
+    game.put("/game/SAVE0001.sav", "saved match");
+
+    expect(await sync.flush()).toBe(1);
+    expect([...target.files.keys()]).toEqual(["save/ra2md/SAVE0001.sav"]);
+  });
+
   it("persists host settings separately from the game's RA2.INI", async () => {
     const game = fakeFs({ "/game/RA2.INI": "[Video]" });
     const target = memoryTarget();
@@ -143,6 +156,27 @@ describe("startSaveSync", () => {
 });
 
 describe("restoreSaves", () => {
+  it("removes stale runtime binaries from the save store without restoring them", async () => {
+    const game = fakeFs({ "/game/gamemd.exe": "current runtime" });
+    const target = memoryTarget();
+    target.files.set("save/ra2md/gamemd.exe", "stale runtime");
+    target.files.set("save/ra2md/Blowfish.dll", "stale tables");
+    const store: SaveStore = {
+      async list() {
+        return [
+          { path: "gamemd.exe", read: async () => new TextEncoder().encode("stale runtime") },
+          { path: "Blowfish.dll", read: async () => new TextEncoder().encode("stale tables") },
+          { path: "RA2MD.INI", read: async () => new TextEncoder().encode("saved settings") },
+        ];
+      },
+    };
+
+    expect(await restoreSaves(game.fs, store, "ra2md", () => true, target)).toBe(1);
+    expect(new TextDecoder().decode(game.fs.readFile("/game/gamemd.exe"))).toBe("current runtime");
+    expect(new TextDecoder().decode(game.fs.readFile("/game/RA2MD.INI"))).toBe("saved settings");
+    expect([...target.files.keys()]).toEqual([]);
+  });
+
   it("puts the saved files back over the game's, making the folders", async () => {
     const game = fakeFs({ "/game/RA2MD.INI": "default" });
     const store: SaveStore = {

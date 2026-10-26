@@ -22,6 +22,7 @@ import { loadMods } from "../storage/mods";
 import {
   checkExe,
   EMPTY_ARCHIVE,
+  isRuntimeInput,
   loadBuildInfo,
   REQUIRED_MOVIE_ARCHIVES,
   type BuildInfo,
@@ -48,7 +49,6 @@ export function gameModuleFile(game: GameId, moduleBase: string, file: string): 
   return `${moduleBase}${moduleFile}`;
 }
 const gameIni = (game: GameId) => (game === "ra2" ? "ra2.ini" : "ra2md.ini");
-const locallyBundledRuntimeFile = /^(?:game|gamemd)\.exe$|^(?:blowfish|binkw32)\.dll$/i;
 
 /** No module for this game is present (docs/web/toolchain.md). */
 export class GameNotBuilt extends Error {
@@ -401,7 +401,7 @@ async function stageThaiFont(fs: EmscriptenFs, preference: ThaiFontPreference): 
  * their copy in OPFS, which the game's thread has mounted at /opfs and reads in place; the small ones
  * are copied into memory, because the game edits some (the picture size, the online port) and reads
  * the rest over and over. Then what the game saved last time goes back over it, and from then on its
- * writes are kept (saves.ts).
+ * writes are kept (saves.ts), after the build's runtime binaries are staged.
  */
 async function loadOpfsFiles(
   fs: EmscriptenFs,
@@ -409,12 +409,10 @@ async function loadOpfsFiles(
   record: GameRecord,
   video: VideoSize | null,
   thaiFontFix: ThaiFontPreference,
-): Promise<SaveSync> {
+): Promise<void> {
   fs.mkdir("/game");
   const names = Object.keys(record.files).filter(
-    (name) =>
-      !locallyBundledRuntimeFile.test(name) &&
-      shouldLoadImportedGameFile(name, thaiFontFix.enabled),
+    (name) => !isRuntimeInput(name) && shouldLoadImportedGameFile(name, thaiFontFix.enabled),
   );
   const totalBytes = names.reduce((sum, name) => sum + (record.files[name]?.size ?? 0), 0);
   let doneBytes = 0;
@@ -466,6 +464,7 @@ async function loadOpfsFiles(
     opfsSaveStore(),
     record.storage,
     (path) => !path.startsWith("mods/") || mods.includes(path.split("/")[1] ?? ""),
+    opfsTarget(),
   );
   stageWolDataKey(fs, record.id);
   // Restored browser settings include the game's INI and can contain a stale mode.
@@ -473,7 +472,6 @@ async function loadOpfsFiles(
   stageVideoSize(fs, record.id, video);
   await stageThaiFont(fs, thaiFontFix);
   store.loading("the game");
-  return startSaveSync(fs, opfsTarget(), record.storage);
 }
 
 function createHandle(module: Ra2Module, saves: SaveSync | null, game: GameId): GameHandle {
@@ -630,11 +628,7 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
     const files = options.files;
     const loadFiles = (fs: EmscriptenFs): Promise<void> => {
       if (files.kind === "opfs")
-        return loadOpfsFiles(fs, store, files.record, files.video ?? null, thaiFontFix).then(
-          (sync) => {
-            saves = sync;
-          },
-        );
+        return loadOpfsFiles(fs, store, files.record, files.video ?? null, thaiFontFix);
       if (files.kind === "dev-folder" || files.kind === "test-folder") {
         const base = appPath(files.kind === "test-folder" ? "test-game" : "dev-game");
         return loadDevFiles(fs, store, files.video ?? null, fetch, base, game, thaiFontFix);
@@ -675,6 +669,8 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
         loadFiles(fs)
           .then(() => stageRuntimeBundle(fs, game, runtimeGame))
           .then(() => {
+            if (files.kind === "opfs")
+              saves = startSaveSync(fs, opfsTarget(), files.record.storage);
             resolve(createHandle(module, saves, game));
             module.callMain(module.arguments);
           }, fail);

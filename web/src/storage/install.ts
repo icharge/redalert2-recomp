@@ -50,6 +50,10 @@ const BOTH: GameId[] = ["ra2", "ra2md"];
 /** Built locally and staged by the launcher; these are not imported from the player's content folder. */
 const RUNTIME_INPUTS = new Set(["game.exe", "gamemd.exe", "blowfish.dll", "binkw32.dll"]);
 
+/** Runtime files are supplied by the matching web build, never by an import or save store. */
+export const isRuntimeInput = (path: string): boolean =>
+  !path.includes("/") && RUNTIME_INPUTS.has(path.toLowerCase());
+
 /** Where an older layout's `Saved Games/...` starts, as a path with `/`. */
 const SAVES = "saved games/";
 
@@ -70,7 +74,7 @@ export function classify(path: string): Classified | null {
   if (name.includes("/")) return null;
   // the game writes `SAVE0001.sav` beside its exe (SAVE%04lX.%3s), not in a folder
   if (name.endsWith(".sav")) return { kind: "save", needs: BOTH };
-  if (RUNTIME_INPUTS.has(name)) return null;
+  if (isRuntimeInput(name)) return null;
   const md: GameId[] = name.includes("md") ? ["ra2md"] : BOTH;
   if (/^(movies|movmd)[^/]*\.mix$/.test(name)) return { kind: "movie", needs: md };
   if (name.endsWith(".mix")) return { kind: "archive", needs: md };

@@ -16,7 +16,7 @@ Detailed ledger (rulings, review findings): `.superpowers/sdd/2026-10-26-web-fra
 | 2d. Thai-off path as a plain call | **done** (review clean after 1 fix round); its macro changes were reverted (585ef08): they didn't matter. It found the real cause: **the app turns the Thai font fix on by default**; with it off the busy save already runs at 62 fps (720p). Fix off: 1080p 49–50, 1440p 33 | 533d330, 585ef08, 4c6da57 |
 | 2e. The Thai fix without full-font rewrites (new) | **done** (review clean after 1 fix round; one measurement question parked). Rejected fonts are remembered, with the reason re-checked on each use; screenshots identical to the old build. Busy, HD off, Thai on (the default): 720p **61 fps** (1% low 54–55) vs 23–29 before; 1080p 49, 1440p 34. The Thai shaping itself stays inactive for this font | 30f984d, 4303eaf, cb64513 |
 | 2f. Profile the busy game at 1440p and 720p (new) | **done** (review clean after 2 fix rounds). Game work a frame: 720p 13.0 ms, 1440p 22.7 ms (60 fps allows 16.7). Of the 9.7 ms rise: the game's sprite/tile drawing about 3.7 ms, the presenter about 1.5 ms (1.9 ms in all at 1440p), at least 3.1 ms other game functions. **So Tasks 3/4/6 can save at most about 2 ms at 1440p** | 9787c04, 22ac9c1, a1624f5 |
-| 3. Raw publish, three buffers, protocol 8 | **fix round 2 in re-review** (a sequence counter so the page never mixes two frames' details; round 1: today's page could read a freed buffer after a resize: keep the old buffers in that mode; state the read order and use atomics): the game can hand its screen over unconverted through three buffers (off by default until Task 4); tests pass, both editions reach the menu | f438c6c, ba1014f, 9fb8554 |
+| 3. Raw publish, three buffers, protocol 8 | **done**, scoped review clean after a third fix: the sequence is odd before pixel writes, and the 2D page checks it again after copying. The raw path remains off by default until Task 4. Both editions build; web tests pass | f438c6c, ba1014f, 9fb8554, 2941553 |
 | 4. WebGL2 presenter | pending | |
 | 5. HD layers on the GPU | **deferred** to a later HD project | |
 | 6. Scaling modes and bars | pending | |
@@ -43,7 +43,7 @@ The user asked to focus on the game with HD off (HD vehicles are experimental an
 ## To resume after an interruption
 
 1. `git log --oneline 1981765..HEAD` shows what landed since Task 1.
-2. Tasks 2–2f are done; Task 3 is in review (package `review-a1624f5..f438c6c.diff`). Waiting on the user: the save-store bug fix, and the Thai font picker / Thai fix split.
+2. Tasks 2–3 are done. The save-store start-up bug found in Task 2f is fixed and checked against the affected Chrome profile. Task 4 is next. The Thai font picker / Thai fix split still needs the user's decision.
 3. Builds for tests go in their own BUILD_DIR with `-DWEB_OUT` outside `web/public/game` (CLAUDE.md); e2e loads them with `--build`. Benchmark profile: `work/perf/profile-fresh`; busy save: `work/perf/busy.sav`; baseline: `work/perf/baseline/run.json`.
 
 ## Baseline (Task 1, published Release build ef2b94fc673f9950, headed Chrome)
@@ -63,7 +63,7 @@ The user asked to focus on the game with HD off (HD vehicles are experimental an
 
 ## Found along the way (outside this plan)
 - One Thai-on launch of Task 2e's build crashed at 720p (memory access out of bounds in `sub_00407680`, in `LeaveCriticalSection`; `work/perf/task2f/task2f-720-1.log`). Task 2e's other Thai-on runs completed; the fix is off by default now. Watch for it.
-- **Start-up stall (app bug):** the game stops at the file copy ("cannot map /game/gamemd.exe", 35 of 36 files). Cause evidence (Task 2f): the OPFS save store `/save/slot-1-ra2md` holds copies of `gamemd.exe` (149 MB; the bundled runtime's is 4.8 MB) and `Blowfish.dll`, restored over `/game` at launch; removing them in a scratch copy let launches run, and a 19 MB `gamemd.exe` came back after. How they get into the store is not known yet (the sync only copies files changed after launch). The benchmark profile now stalls on every launch. Needs a fix in `web/src/storage/saves.ts` (never save or restore install files) plus a repair for stores that already have them.
+- **Start-up stall (app bug, fixed):** the save watcher started before `stageRuntimeBundle` wrote the build's executable and `Blowfish.dll`, so it copied those newly staged files into `/save/slot-1-ra2md`. The next launch restored the stale binaries into `/game` and could stop at "cannot map /game/gamemd.exe". The watcher now starts after runtime staging; save sync skips these binaries; restore removes old copies without reading them into Wasm. A live check of `work/perf/profile-fresh` found `gamemd.exe` (149 MB) and `Blowfish.dll` (36 MB) before launch, reached Yuri's Revenge's menu in about 6 s, and found neither file afterward. The original profile was repaired by this check.
 - `perf.mjs` ignored `--build` (it always measured the published game); fixed in Task 2c (5887904).
 
 - The OPFS profile's RA2MD.INI gains a repeated `[Video]` section per run (a loader INI-rewrite bug).

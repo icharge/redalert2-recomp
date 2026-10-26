@@ -7,6 +7,7 @@
 // started, are kept: the game's own files are already in OPFS from the import.
 
 import type { CopyTarget } from "./opfs";
+import { isRuntimeInput } from "./install";
 
 /** What FS.stat answers: WasmFS gives the time in seconds as a number, the older file system a Date. */
 export interface StatLike {
@@ -92,7 +93,7 @@ function scan(fs: FsLike): Map<string, Seen> {
             prefix.startsWith("mods/"))
         )
           walk(path, `${prefix}${name}/`, name.toLowerCase() !== "saved games");
-      } else if (!IGNORED.test(name)) {
+      } else if (!IGNORED.test(name) && !(prefix === "" && isRuntimeInput(name))) {
         out.set(`${prefix}${name}`, { size: stat.size, mtime: modifiedMs(stat.mtime) });
       }
     }
@@ -128,9 +129,17 @@ export async function restoreSaves(
   store: SaveStore,
   game: string,
   accept: (path: string) => boolean = () => true,
+  repair?: CopyTarget,
 ): Promise<number> {
-  const files = (await store.list(game)).filter((file) => accept(file.path));
+  const files = await store.list(game);
+  let restored = 0;
   for (const file of files) {
+    if (isRuntimeInput(file.path)) {
+      // Older versions saved the build's binaries here. Remove those copies without reading them into Wasm.
+      await repair?.remove(`save/${game}/${file.path}`);
+      continue;
+    }
+    if (!accept(file.path)) continue;
     const parts = file.path.split("/");
     for (let i = 1; i < parts.length; i++) {
       try {
@@ -140,8 +149,9 @@ export async function restoreSaves(
       }
     }
     replaceFile(fs, `${GAME}/${file.path}`, await file.read());
+    restored++;
   }
-  return files.length;
+  return restored;
 }
 
 export interface SaveSync {

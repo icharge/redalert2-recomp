@@ -138,6 +138,10 @@ folder. `saves.ts` copies what the game writes into `save/<edition-storage>/` in
 back over the imported files at every start. A save that came with the import is a plain
 imported file in the slot instead.
 
+The save watcher starts after the matching runtime bundle is staged. It ignores the bundle's
+executables and DLLs. At launch, restore also removes any such files left in the save store by
+older versions, without copying them into the game's memory.
+
 The Library card offers "download saves": every `.sav` in `save/<edition-storage>/` (and any in an
 older `Saved Games/` folder there), plus the saves that came with the import, zipped under the names
 the game keeps them by, so a save can move to the desktop build or another browser. "Import saves"
