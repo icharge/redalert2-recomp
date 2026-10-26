@@ -19,12 +19,14 @@ await t.page.waitForTimeout(3000);
 // the picture's pixels in a region, as a checksum, now
 const region = (x, y, w, h) =>
   t.page.evaluate(
-    ([x0, y0, w0, h0]) => {
-      const c = document.querySelector("canvas");
-      const d = c.getContext("2d").getImageData(x0, y0, w0, h0).data;
+    async ([x0, y0, w0, h0]) => {
+      const { width, data: d } = await window.ra2Presenter.capture();
       let sum = 0;
-      for (let i = 0; i < d.length; i += 4)
-        sum = (sum * 31 + d[i] + d[i + 1] * 3 + d[i + 2] * 7) >>> 0;
+      for (let y = y0; y < y0 + h0; y++)
+        for (let x = x0; x < x0 + w0; x++) {
+          const i = (y * width + x) * 4;
+          sum = (sum * 31 + d[i] + d[i + 1] * 3 + d[i + 2] * 7) >>> 0;
+        }
       return sum;
     },
     [x, y, w, h],

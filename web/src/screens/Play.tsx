@@ -24,7 +24,9 @@ import {
   type GameHandle,
 } from "../game/loader";
 import { readThaiFontPreference, type ThaiFontPreference } from "../storage/thai-fonts";
-import { Presenter } from "../game/presenter";
+import { Presenter2d, type GamePresenter } from "../game/presenter";
+import { GlPresenter } from "../game/gl-presenter";
+import { presenterKind } from "../game/choose-presenter";
 import { gameStore, useGameState } from "../game/store";
 import { useAttention } from "../game/attention";
 import {
@@ -44,6 +46,7 @@ const runtimeLive = () => !["exited", "crashed"].includes(gameStore.getSnapshot(
 declare global {
   interface Window {
     ra2Session?: Promise<GameHandle>;
+    ra2Presenter?: GamePresenter;
   }
 }
 function startOnce(files: FileSource, thaiFontFix: ThaiFontPreference): Promise<GameHandle> {
@@ -63,7 +66,7 @@ export function Play({ files }: { files: FileSource }) {
   const backdrop = useRef<HTMLCanvasElement>(null);
   const cursor = useRef<HTMLImageElement>(null);
   const [startError, setStartError] = useState<Error | null>(null);
-  const [presenter, setPresenter] = useState<Presenter | null>(null);
+  const [presenter, setPresenter] = useState<GamePresenter | null>(null);
   const [audio, setAudio] = useState<GameAudio | null>(null);
   const [volume, setVolume] = useState(1);
   const [soundPreferences, setSoundPreferences] = useState(DEFAULT_SOUND_PREFERENCES);
@@ -101,7 +104,7 @@ export function Play({ files }: { files: FileSource }) {
   }, [phase, exitCode, returnToLauncher]);
 
   useEffect(() => {
-    if (settings) presenter?.configure(settings.scale);
+    if (settings) presenter?.configure(settings.scale, settings.bars);
   }, [presenter, settings]);
   useEffect(() => {
     let cancelled = false;
@@ -172,22 +175,69 @@ export function Play({ files }: { files: FileSource }) {
       (game) => {
         if (cancelled || !runtimeLive()) return;
         const pointer = autoLockPointer(element);
-        const presenter = new Presenter(
-          element,
-          game.memory,
-          game.shared,
-          backdrop.current,
-          cursor.current,
-          (active) =>
-            pointer.update(
-              active &&
-                gameStore.getSnapshot().phase === "running" &&
-                !gameStore.getSnapshot().settings?.open &&
-                !gameStore.getSnapshot().exitConfirmation,
-            ),
-        );
+        let activeCanvas = element;
+        const capture = (active: boolean) =>
+          pointer.update(
+            active &&
+              gameStore.getSnapshot().phase === "running" &&
+              !gameStore.getSnapshot().settings?.open &&
+              !gameStore.getSnapshot().exitConfirmation,
+          );
+        let presenter: GamePresenter | null = null;
+        const fallback = () => {
+          if (!presenter) return;
+          presenter.stop();
+          const replacement = document.createElement("canvas");
+          replacement.className = activeCanvas.className;
+          replacement.tabIndex = 0;
+          activeCanvas.replaceWith(replacement);
+          activeCanvas = replacement;
+          presenter = new Presenter2d(
+            replacement,
+            game.memory,
+            game.shared,
+            backdrop.current,
+            cursor.current,
+            capture,
+          );
+          presenter.start();
+          setPresenter(presenter);
+          window.ra2Presenter = presenter;
+        };
+        const hasWebGl2 = !!document.createElement("canvas").getContext("webgl2");
+        if (presenterKind(new URLSearchParams(window.location.search), hasWebGl2) === "gl") {
+          try {
+            presenter = new GlPresenter(
+              element,
+              game.memory,
+              game.shared,
+              cursor.current,
+              capture,
+              () => fallback(),
+            );
+          } catch {
+            presenter = new Presenter2d(
+              element,
+              game.memory,
+              game.shared,
+              backdrop.current,
+              cursor.current,
+              capture,
+            );
+          }
+        } else {
+          presenter = new Presenter2d(
+            element,
+            game.memory,
+            game.shared,
+            backdrop.current,
+            cursor.current,
+            capture,
+          );
+        }
         presenter.start();
         setPresenter(presenter);
+        window.ra2Presenter = presenter;
         handle.current = game;
         const sound = new GameAudio(game.exports, game.memory);
         void sound.start();
@@ -199,9 +249,9 @@ export function Play({ files }: { files: FileSource }) {
           game.exports.ra2_set_volume(saved);
           setVolume(saved);
         });
-        const detach = attachInput(element, game.exports, {
-          picture: () => presenter.gameSize(),
-          warp: () => presenter.cursorWarp(),
+        const detach = attachInput(activeCanvas, game.exports, {
+          picture: () => presenter!.gameSize(),
+          warp: () => presenter!.cursorWarp(),
           textInput: textInput.current ?? undefined,
           sendText: (text) => game.exports.ra2_input_text(text),
           enabled: () =>
@@ -234,15 +284,15 @@ export function Play({ files }: { files: FileSource }) {
           const { width, height } = entry.contentRect;
           game.exports.ra2_resize(Math.round(width), Math.round(height), window.devicePixelRatio);
         });
-        observer.observe(element);
-        element.focus();
+        observer.observe(activeCanvas);
+        activeCanvas.focus();
         // what the game saved is in OPFS within a moment of leaving the tab
         const onHidden = () => {
           if (document.visibilityState === "hidden")
             void game.saves?.flush().catch((e: unknown) => setBrowserError(String(e)));
           else if (runtimeLive()) {
             // back from the background: the game paints its whole screen again
-            presenter.redraw();
+            presenter!.redraw();
             if (document.hasFocus()) game.exports.ra2_focus(1);
           }
         };
@@ -251,7 +301,7 @@ export function Play({ files }: { files: FileSource }) {
         stop = () => {
           if (stopped) return;
           stopped = true;
-          presenter.stop();
+          presenter?.stop();
           pointer.dispose();
           sound.close(runtimeLive());
           setAudio(null);
@@ -259,6 +309,7 @@ export function Play({ files }: { files: FileSource }) {
           detach();
           observer.disconnect();
           document.removeEventListener("visibilitychange", onHidden);
+          delete window.ra2Presenter;
           releaseBrowserControls();
         };
         unsubscribe = gameStore.subscribe(() => {

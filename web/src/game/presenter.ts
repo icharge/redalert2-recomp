@@ -1,4 +1,11 @@
-import { CURSOR_PX, CURSOR_RGBA_OFFSET, CursorKind, Shared, type Scale } from "./protocol";
+import {
+  CURSOR_PX,
+  CURSOR_RGBA_OFFSET,
+  CursorKind,
+  PresentMode,
+  Shared,
+  type Scale,
+} from "./protocol";
 
 /** The wasm memory's views. Emscripten makes new ones when the memory grows, so ask each time. */
 export interface WasmMemory {
@@ -12,13 +19,26 @@ export interface PresenterCounters {
   drawMs: number;
 }
 
+export interface GamePresenter {
+  start(): void;
+  stop(): void;
+  draw(): void;
+  configure(scale: Scale, bars: boolean): void;
+  redraw(): void;
+  counters(): PresenterCounters;
+  gameSize(): { width: number; height: number };
+  cursorWarp(): { seq: number; x: number; y: number };
+  capture(options?: { hd?: boolean }): Promise<{ width: number; height: number; data: Uint8Array }>;
+  textureBytes(): number;
+}
+
 /**
  * Draws what the game thread publishes (src/web/presenter.c) on the canvas, once per
  * animation frame: the picture, and the cursor the game sets in its menus. The canvas
  * is the picture's own size and CSS scales it (object-fit: contain), so a resize costs
  * the game nothing.
  */
-export class Presenter {
+export class Presenter2d implements GamePresenter {
   private raf = 0;
   private frameSeq = -1;
   private cursorSeq = -1;
@@ -67,7 +87,8 @@ export class Presenter {
     };
   }
 
-  configure(scale: Scale): void {
+  configure(scale: Scale, _bars = true): void {
+    void _bars;
     this.scale = scale;
     this.canvas.style.width = this.canvas.style.height = "100%";
     this.canvas.style.objectFit = "contain";
@@ -80,6 +101,7 @@ export class Presenter {
   }
 
   start(): void {
+    Atomics.store(this.memory().HEAP32, (this.shared >> 2) + Shared.presentMode, PresentMode.Rgba);
     const tick = () => {
       const began = performance.now();
       this.draw();
@@ -106,7 +128,17 @@ export class Presenter {
       const width = word(Shared.frameW);
       const height = word(Shared.frameH);
       const pointer = word(Shared.framePtr) >>> 0;
+      const frameIndex = word(Shared.frameIndex);
       if (width > 0 && height > 0 && pointer > 0) {
+        Atomics.store(HEAP32, base + Shared.readIndex, frameIndex);
+        if (
+          word(Shared.frameSeq) !== seq ||
+          word(Shared.frameIndex) !== frameIndex ||
+          word(Shared.framePtr) >>> 0 !== pointer
+        ) {
+          Atomics.store(HEAP32, base + Shared.readIndex, -1);
+          return;
+        }
         if (this.canvas.width !== width || this.canvas.height !== height) {
           this.canvas.width = width;
           this.canvas.height = height;
@@ -127,6 +159,7 @@ export class Presenter {
         } else {
           this.image = null;
         }
+        Atomics.store(HEAP32, base + Shared.readIndex, -1);
       }
     }
 
@@ -142,6 +175,20 @@ export class Presenter {
     }
     this.drawCursorOverlay(word);
     this.capturePointer?.(word(Shared.frameW) > 0 && word(Shared.cursorKind) === CursorKind.None);
+  }
+
+  async capture(): Promise<{ width: number; height: number; data: Uint8Array }> {
+    const { HEAPU8, HEAP32 } = this.memory();
+    const base = this.shared >> 2;
+    const width = Atomics.load(HEAP32, base + Shared.frameW);
+    const height = Atomics.load(HEAP32, base + Shared.frameH);
+    const pointer = Atomics.load(HEAP32, base + Shared.framePtr) >>> 0;
+    const bytes = width * height * 4;
+    return { width, height, data: HEAPU8.slice(pointer, pointer + bytes) };
+  }
+
+  textureBytes(): number {
+    return 0;
   }
 
   private drawCursorOverlay(word: (index: number) => number): void {

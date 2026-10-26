@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Presenter, type WasmMemory } from "./presenter";
+import { Presenter2d, type WasmMemory } from "./presenter";
 import { CURSOR_PX, CURSOR_RGBA_OFFSET, CursorKind, Shared } from "./protocol";
 
 // jsdom has no canvas: a context that records what is drawn, and the ImageData it lacks
@@ -38,7 +38,7 @@ function setup(viewport = { width: 0, height: 0 }) {
     height: viewport.height,
   } as DOMRect);
   const cursor = document.createElement("img");
-  const presenter = new Presenter(canvas, () => memory, SHARED, null, cursor);
+  const presenter = new Presenter2d(canvas, () => memory, SHARED, null, cursor);
   return { memory, word, drawn, canvas, cursor, presenter };
 }
 
@@ -50,7 +50,14 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("Presenter", () => {
+describe("Presenter2d", () => {
+  it("writes presentMode 0 when started", () => {
+    const { presenter, memory } = setup();
+    presenter.start();
+    expect(Atomics.load(memory.HEAP32, (SHARED >> 2) + Shared.presentMode)).toBe(0);
+    presenter.stop();
+  });
+
   it("puts the current picture on the canvas again after redraw(), though no new one came", () => {
     const { drawn, word, presenter } = setup();
     word(Shared.frameW, 2);
@@ -68,7 +75,7 @@ describe("Presenter", () => {
   it("captures during gameplay, releases on pause, and captures again on resume", () => {
     const { canvas, memory, word } = setup();
     const capture = vi.fn();
-    const presenter = new Presenter(canvas, () => memory, SHARED, null, null, capture);
+    const presenter = new Presenter2d(canvas, () => memory, SHARED, null, null, capture);
     presenter.draw();
     expect(capture).toHaveBeenLastCalledWith(false);
     word(Shared.frameW, 200);

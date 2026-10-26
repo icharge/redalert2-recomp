@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Pacing } from "../game/protocol";
-import type { Presenter, PresenterCounters } from "../game/presenter";
+import type { GamePresenter, PresenterCounters } from "../game/presenter";
 import { useGameState } from "../game/store";
 import styles from "./FrameStats.module.css";
 
@@ -78,7 +78,7 @@ function localStorageOrNull(): Storage | null {
 }
 
 /** A small readout over the picture: Alt+Shift+F shows or hides it. */
-export function FrameStats({ presenter }: { presenter: Presenter | null }) {
+export function FrameStats({ presenter }: { presenter: GamePresenter | null }) {
   const [on, setOn] = useState(() => statsWanted(window.location.search, localStorageOrNull()));
   const [rates, setRates] = useState<FrameRates>({ pictures: 0, ticks: 0, drawMs: 0 });
   const fps = useGameState((s) => s.fps);

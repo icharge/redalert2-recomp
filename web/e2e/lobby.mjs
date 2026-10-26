@@ -23,20 +23,16 @@ const waitDialog = async (id) => {
   }
 };
 const capture = async (name) => {
-  const result = await run.page.evaluate((rectangles) => {
-    const m = window.Module;
-    const shared = m.cwrap("ra2_shared", "number", [])() >>> 2;
-    const words = m.HEAPU32;
-    const width = words[shared + 3],
-      height = words[shared + 4];
+  const result = await run.page.evaluate(async (rectangles) => {
+    const { width, height, data } = await window.ra2Presenter.capture();
     if (width !== 800 || height !== 600)
       throw new Error(`expected 800x600 menu, got ${width}x${height}`);
-    const data = new Uint8ClampedArray(width * height * 4);
-    data.set(m.HEAPU8.subarray(words[shared + 2], words[shared + 2] + data.length));
     const canvas = document.createElement("canvas");
     canvas.width = width;
     canvas.height = height;
-    canvas.getContext("2d").putImageData(new ImageData(data, width, height), 0, 0);
+    canvas
+      .getContext("2d")
+      .putImageData(new ImageData(new Uint8ClampedArray(data), width, height), 0, 0);
     const crops = {};
     for (const [key, [x, y, w, h]] of Object.entries(rectangles)) {
       const crop = [];

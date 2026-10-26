@@ -211,9 +211,8 @@ export async function startPage(opts) {
 
 /** How much of the canvas is lit, and how many distinct frames it showed: is it drawing? */
 export function picture(page) {
-  return page.evaluate(() => {
-    const c = document.querySelector("canvas");
-    const d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data;
+  return page.evaluate(async () => {
+    const { width: w, height: h, data: d } = await window.ra2Presenter.capture();
     let lit = 0;
     let sum = 0;
     const step = 4 * 97;
@@ -221,6 +220,6 @@ export function picture(page) {
       if (d[i] + d[i + 1] + d[i + 2] > 30) lit++;
       sum = (sum * 31 + d[i] + d[i + 1] * 3 + d[i + 2] * 7) >>> 0;
     }
-    return { w: c.width, h: c.height, sampled: Math.floor(d.length / step), lit, checksum: sum };
+    return { w, h, sampled: Math.floor(d.length / step), lit, checksum: sum };
   });
 }
