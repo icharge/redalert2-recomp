@@ -82,8 +82,27 @@ describe("Thai font storage validation", () => {
       fontId: "builtin-default",
     });
     expect(readThaiFontPreference("slot-3-ra2", storage)).toEqual({
-      enabled: true,
+      enabled: false,
       fontId: "builtin-westwood-improved",
     });
+  });
+
+  it("turns off a fix that an earlier build saved as on", () => {
+    const values = new Map<string, string>([
+      [
+        "ra2.thai-font.slot-1",
+        JSON.stringify({ version: 2, enabled: true, fontId: "builtin-default" }),
+      ],
+    ]);
+    const storage = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+    };
+    expect(readThaiFontPreference("slot-1", storage)).toEqual({
+      enabled: false,
+      fontId: "builtin-default",
+    });
+    writeThaiFontPreference("slot-1", { enabled: true, fontId: "builtin-default" }, storage);
+    expect(readThaiFontPreference("slot-1", storage).enabled).toBe(true);
   });
 });

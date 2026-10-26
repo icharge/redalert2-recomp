@@ -1,5 +1,5 @@
 const PREFERENCE_PREFIX = "ra2.thai-font.";
-const PREFERENCE_VERSION = 2;
+const PREFERENCE_VERSION = 3;
 
 export interface ThaiFontChoice {
   id: string;
@@ -26,8 +26,11 @@ export interface ThaiFontPreference {
   fontId: string;
 }
 
+/** Off by default (26 October 2026): the fix does not shape text yet, because the game's font
+ * fails its glyph check (a glyph wider than 16 pixels), so it only cost time. Players can still
+ * turn it on in the launcher's game settings. */
 export const DEFAULT_THAI_FONT_PREFERENCE: ThaiFontPreference = {
-  enabled: true,
+  enabled: false,
   fontId: "builtin-westwood-improved",
 };
 
@@ -96,9 +99,10 @@ export function readThaiFontPreference(
       const fontId = BUILT_IN_THAI_FONTS.some((font) => font.id === preference.fontId)
         ? preference.fontId
         : DEFAULT_THAI_FONT_PREFERENCE.fontId;
-      // Older builds defaulted the fix off, which left the bundled default selected but unstaged.
+      // Version 2 builds switched every saved preference on; version 3 turns the fix off again
+      // until it works (see DEFAULT_THAI_FONT_PREFERENCE). A choice saved from now on is kept.
       const enabled =
-        (value as { version?: number }).version === PREFERENCE_VERSION ? preference.enabled : true;
+        (value as { version?: number }).version === PREFERENCE_VERSION ? preference.enabled : false;
       return { enabled, fontId };
     }
   } catch {
