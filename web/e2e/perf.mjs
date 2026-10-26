@@ -447,6 +447,10 @@ async function runMoment(moment, size, hdList, onCase) {
         if (Number(process.env.PERF_TEST_FAIL_LAUNCH_HARD) === r)
           await t.fail(`forced game failure in launch ${r}`);
         const reported = await checkSize(t, size);
+        // the Thai font fix is on when the game started with --thai-font-fix, which prints this line
+        const thaiFix =
+          t.all.find((line) => line.includes("[thaifont] using selected font"))?.trim() ??
+          "off: no [thaifont] line";
         for (const hd of hdList) {
           await setHd(t, hd === "on");
           const key = `${size}/hd-${hd}/${moment}`;
@@ -454,6 +458,7 @@ async function runMoment(moment, size, hdList, onCase) {
           const rows = await sample(t, { total: seconds, pan: seconds / 2 });
           results[key] ??= {
             planned: runs,
+            thaiFix,
             runs: [],
             gameSpeed: moment === "busy" ? "5 (in the save)" : 5,
             size: reported,

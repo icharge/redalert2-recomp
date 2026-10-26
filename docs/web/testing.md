@@ -512,6 +512,26 @@ plan (Task 2). Run them with the Vite dev server up, bound to IPv4 (see "The fra
   The verdict does not see a `Sleep` that polls the clock inside itself: the profile below shows pcrecomp's
   `wait_ms` doing that, so the probe's "no" is not the whole answer.
 
+### The Thai picture check: `e2e/thai-shots.mjs`
+
+Checks that a change to the Thai font fix's code leaves the picture as it was (Task 2e of the frame performance plan). `node e2e/thai-shots.mjs --build <dir> --out <dir>` (in `web/`, with the Vite dev server up, bound to `127.0.0.1`) opens the imported Yuri's Revenge from `work/perf/profile-fresh` with the Thai fix at the app's default (the stored preference is removed, so `DEFAULT_THAI_FONT_PREFERENCE` applies: enabled). It saves three PNGs and `run.json`:
+
+- `menu.png`: the main menu (the game's 800x600 shell, after 6 s).
+- `skirmish.png`: the Skirmish Game setup screen, reached from Single Player.
+- `busy-menu.png`: the busy save (`work/perf/busy.sav`) at 1280x720, with the in-game menu open (Escape; the game is paused).
+
+Every session checks the game's `[thaifont] using selected font` line, which only a game started with `--thai-font-fix` prints; the script fails without it. `run.json` records the build's `ra2.wasm` SHA-256 and each session's line.
+
+`node e2e/thai-shots.mjs --compare <dirA> <dirB>` compares the PNGs pixel by pixel (no image library: the script decodes the 8-bit PNGs itself). It prints each image's differing pixels, the bounding box, and the masks it applied, and exits 1 on any difference. The masks are in the script (`MASKS`), each with its reason:
+
+- `menu.png`: the radar screen (40,60)-(1000,900) and the bar-graph monitor (1040,40)-(1240,200). Both animate from the game's frame count, not from the save, so two runs of one build differ there.
+- `busy-menu.png`: the page's stats overlay (0,0)-(260,90): frames per second and draw time, which change each second.
+- `skirmish.png`: no mask.
+
+The reference is build A (`work/build-web-prof`); the picture check is A against A first (the masks must make it zero), then A against the new build. The main menu's mask covers most of its picture, so that image checks little beyond the buttons.
+
+The perf runs record the fix's state per case: `thaiFix` in each case of `run.json` is the game's `[thaifont]` line, or `off: no [thaifont] line` when the game did not start with the fix.
+
 ### Profiling the busy game
 
 `node e2e/profile-game.mjs --build ../work/build-web-prof` (in `web/`, with the Vite dev server up, bound to

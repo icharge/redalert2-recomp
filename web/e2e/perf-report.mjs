@@ -203,6 +203,8 @@ export function mergeCases({ baseCases, baseFailures, finished, failures }) {
         : {}),
       gameSpeed: result.gameSpeed,
       size: result.size,
+      // the Thai font fix as the game started (its [thaifont] log line), when the run recorded it
+      ...(result.thaiFix !== undefined ? { thaiFix: result.thaiFix } : {}),
       ...(result.runs.length > 1 ? { firstRun: summarize(result.runs[0]) } : {}),
       ...(result.runs.length < planned
         ? { complete: false, runsDone: `${result.runs.length} of ${planned}` }

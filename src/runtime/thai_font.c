@@ -158,6 +158,12 @@ static ThaiFontState *create_state(uint32_t font) {
         !map_va || !source_records_va || (uint64_t)count * stride > 16u * 1024u * 1024u)
         return NULL;
 
+    /* Reject before any allocation or copy: the glyph widths are checked in the guest's own records. */
+    for (uint32_t i = 0; i < count; ++i) {
+        uint8_t width = guest_bytes(source_records_va)[(size_t)i * stride];
+        if (width > 16 || 1 + 16 * 3 > stride) return NULL;
+    }
+
     size_t record_bytes = (size_t)count * stride;
     ThaiFontState *state = (ThaiFontState *)calloc(1, sizeof *state);
     uint8_t *cloned_data = (uint8_t *)malloc(0x24);
@@ -223,10 +229,39 @@ static ThaiFontState *create_state(uint32_t font) {
     return state;
 }
 
+/* The header values create_state reads for a font. A font it rejects is remembered by these, so a
+ * later text call on the same font skips the clone and the glyph scan. Before this cache, a rejected
+ * font was cloned and scanned again on every text call: 1.67 MB and 34,151 glyphs in the busy save,
+ * about 90 times a second, with the fix on. */
+typedef struct RejectedFont {
+    uint32_t data, height, count, stride, map, records;
+} RejectedFont;
+
+enum { REJECTED_FONT_SLOTS = 64 };
+static RejectedFont g_rejected[REJECTED_FONT_SLOTS];
+static int g_rejected_count;
+
+static RejectedFont rejected_key(uint32_t font) {
+    RejectedFont key;
+    key.data = read32(font + 4);
+    key.height = read32(key.data + 8);
+    key.stride = read32(key.data + 0x14);
+    key.map = read32(key.data + 0x18);
+    key.records = read32(key.data + 0x1c);
+    key.count = read32(key.data + 0x20);
+    return key;
+}
+
 static ThaiFontState *get_state(uint32_t font) {
     uint32_t data = read32(font + 4);
     ThaiFontState *state = find_state(guest_bytes(data));
-    return state ? state : create_state(font);
+    if (state) return state;
+    RejectedFont key = rejected_key(font);
+    for (int i = 0; i < g_rejected_count; ++i)
+        if (memcmp(&g_rejected[i], &key, sizeof key) == 0) return NULL;
+    state = create_state(font);
+    if (!state && g_rejected_count < REJECTED_FONT_SLOTS) g_rejected[g_rejected_count++] = key;
+    return state;
 }
 
 static ThaiLayoutContext *context_for_data(ThaiLayoutContext *context, uint8_t *data) {

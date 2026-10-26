@@ -629,22 +629,48 @@ Run accounting (all under `work/perf/task2d/` unless noted):
 - Superseded, old count: `superseded-old-count/` (`off-profile-rev-720.log`, `off-profile-rev-1440.log`) and `work/perf/superseded-old-count/`.
 - Deleted, not in the record: the first attempt's `2d-1920x1080-1` (exit 0) and `2d-1920x1080-2` (exit 1). I deleted both folders and logs during the cancellation before reading them. The exit-1 run's cause is not recorded; it may have been killed by the `pkill` I ran then, which I did not verify.
 
-### Task 2e: the Thai fix's cost (Steps 1 and 2; Step 3 blocked)
+### Task 2e: the Thai fix's cost
 
-**Status: NEEDS_CONTEXT.** Step 1 shows that the metrics path the brief's Step 3 designs would make cheaper never runs in the busy save. The fix-on cost is a font clone that fails, repeated on every text call. Neither of the brief's two designs fits these numbers, so no change was made to `src/runtime/thai_font.c`. Steps 4 and 5 are not done.
+**What changed.** `create_state` rejected the busy save's font on every text call, so the fix's metrics never ran, and each call cloned and scanned the font first. A negative cache (`get_state` remembers the header values of a rejected font) plus a width check ahead of the clone removes that per-call work. The picture is unchanged (see the check below). The fix itself is still inactive for this font: see Step 1.
 
-**Step 1: counts in the busy save, fix on (the app default; `[thaifont] using selected font builtin-westwood-improved at game.fnt` printed, so the game ran with `--thai-font-fix`).** Scratch `-O1` build `work/build-web-thai2e-count` (not committed; the instrumentation is `work/perf/task2e/count-instrumentation.diff`), busy save at 1280x720, 20 s after the load, `work/perf/task2e/count.mjs`. Per second, from the `[thaistat]` lines (run `count-3`, `count-4`):
-- text entries (`THAI_TEXT_VA`): 54 to 114 a second; layout entries (`THAI_LAYOUT_VA`): 0.
-- render entries (`THAI_RENDER_VA`): 486 to 1020 a second.
-- `apply_metrics` and `restore_metrics`: 0 each. No font state was ever created.
-- font state creations (`create_state`, called on each text call that finds no state): about 90 a second, all failed (total 1,743 at 20 s after the load, 982 in the 10 s run; `creates_total` = `fails_total`).
-- The failing check (line 223 in the instrumented file, the glyph-width test `width > 16 || 1 + 16*3 > stride`): the font is `count=34151 stride=49`, and glyph 29996 has width 207 (`[thaifail]` line, `count-4.json`). The same font pointer every time (0x067d95e0). One unused glyph with a bogus width rejects the whole font.
-- Spacing values seen: every text entry has spacing 1 (the `hist` array, index 1; `hist=0,54,0,...` is 54 entries at spacing 1, none at 0, none above 1). The spacing is read from `font+0x2c`. No metrics are applied at spacing 1, because no state exists.
-- Glyph count of the font: 34151 (no state exists, so no mark count, safe spacing or same-spacing count).
+**Step 1: counts (fix on, busy save, 1280x720, `work/perf/task2e/count-*.log`).** Scratch `-O1` counting build (`work/build-web-thai2e-count`, instrumentation in `work/perf/task2e/count-instrumentation.diff`, not committed), 20 s after the load, the app default (`[thaifont] using selected font builtin-westwood-improved at game.fnt` printed):
+- Before the cache (`count-3`): 54 to 114 text entries a second (`THAI_TEXT_VA`), 0 layout entries, 486 to 1020 render entries a second, 0 `apply_metrics`, 0 `restore_metrics`. `create_state` was called about 90 times a second, and every call failed (`creates_total` = `fails_total`).
+- The rejected font: `count=34151`, `stride=49`, `height=16`, data at 0x067d9530 (the same font every call). Glyph 29996 has width 207 (the check is `width > 16 || 1 + 16*3 > stride`). The check rejects the whole font for that one record, and the record is not checked against what the game draws.
+- Spacing: every text entry has spacing 1 (`hist[1]`), read from `font+0x2c`. No metrics are applied, because no state exists.
+- With the cache (`count-cache`, `count-cache2`): one `create_state` attempt for the whole session (menu, then the busy save's load), and the rest are cache hits. The page's `/game/game.fnt` is the staged built-in font (`count=29796`, no over-wide glyph records, checked in Node), so the rejected 34,151-glyph font is not the staged file. The game loads it from elsewhere; I did not find where. The fix's staging does not reach it.
+- Fonts rejected in the menu and the busy save: this one font, in Yuri's Revenge. A Red Alert 2 count was not run: its full build would take about an hour, and the -O1 counting build is only for Yuri's Revenge.
 
-What this means. With the fix on, each text call clones the font's records (34151 x 49 bytes, about 1.67 MB, `memcpy` plus `malloc` and `free`) and then rejects it. The fix's metrics code never runs, so the picture with the fix on is the fix-off picture. The 24 fps is the clone, not `apply_metrics` / `restore_metrics`, which the brief names as the cost. The brief's Step 3 cases (spacing-0 touches only the marked records; a per-state spacing memory) would not change this at all.
+**The change.** `src/runtime/thai_font.c`: (1) `create_state` checks the glyph widths in the guest's source records before any allocation or copy; (2) `get_state` keeps up to 64 rejected fonts, keyed by their header values (data VA, height, count, stride, map VA, records VA), and returns NULL for them without cloning. A font that is not rejected is unchanged. If the list is full, a rejected font is re-checked on each call (correct, but slow); one rejected font was seen in the run.
 
-**Step 2: the picture check (`web/e2e/thai-shots.mjs`).** Shots are the main menu (`menu.png`), the skirmish setup (`skirmish.png`) and the busy save's in-game menu at 1280x720 (`busy-menu.png`). Every capture checks the `[thaifont]` line. Reference: build A (`work/build-web-prof`, wasm b0fb263feb7d), in `work/thai-shots/A`; the second run in `work/thai-shots/A2`. A vs A2 with the masks below: zero differing pixels in every image (`work/thai-shots-AvsA2.log`).
-- Unmasked, A vs A2 differs: `menu.png` 185,847 pixels (the radar screen and the bar-graph monitor animate), `busy-menu.png` 88 pixels (the page's `stats=1` overlay: frames per second and draw time).
-- Masks (not compared; the rectangles are in `MASKS` in `thai-shots.mjs`): `menu.png` the radar screen (40,60)-(1000,900) and the bar-graph monitor (1040,40)-(1240,200); `busy-menu.png` the stats overlay (0,0)-(260,90). The radar mask covers about 68% of `menu.png`, so the menu check is weak. The skirmish shot needs no mask (0 differing in both runs).
-- A vs 2e: not run, since no 2e build exists.
+**Step 2: the picture check (`web/e2e/thai-shots.mjs`).** Reference A (`work/build-web-prof`, wasm b0fb263feb7d, `work/thai-shots/A`), second run of A (`A2`), and build 2e on the release link (wasm 0c570ddbf3ff, `work/thai-shots/2e`). Masks are the script's `MASKS` (each with its reason):
+- `menu.png`: the radar screen (40,60)-(1000,900) and the bar-graph monitor (1040,40)-(1240,200), together 840,562 of 1,228,800 pixels (68.4%). The menu check therefore compares only about a third of the picture (the buttons and frame).
+- `busy-menu.png`: the stats overlay (0,0)-(260,90), 23,751 pixels (1.9%).
+- `skirmish.png`: no mask.
+- A vs A2 (`work/thai-shots-AvsA2.log`): zero differing pixels, with the masks. Unmasked, A vs A2 differs by 185,847 pixels in `menu.png` and 88 in `busy-menu.png`.
+- A vs 2e (`work/thai-shots-AvsE.log`): zero differing pixels in every image, with the same masks.
+
+**Step 4: measurements** (`perf.mjs --build <dir> --sizes WxH --hd off --moments busy --repeats 1 --seconds 60 --headed`; busy save; `work/perf/task2e/<name>/run.json`). Each case records its `thaiFix`: the game's `[thaifont]` line, or `off: no [thaifont] line` when the game did not start with the fix. The fix was set per run by `work/perf/task2d/set-thai-on.mjs` (removes the stored preference, so the app default, on, applies) or `set-thai-off.mjs` (stores `enabled: false`).
+
+| Run | Build (wasm) | Fix | Size | Median fps | 1% low | Worst gap (ms) | Thai flag |
+|---|---|---|---|---|---|---|---|
+| 720-A-on-1 | A (b0fb263feb7d) | on | 720p | 26 | 12 | 184 | on |
+| 720-A-on-2 | A | on | 720p | 29 | 21 | 69 | on |
+| 720-2e-on-1 | 2e (0c570ddbf3ff) | on | 720p | 61 | 55 | 44 | on |
+| 720-2e-on-2 | 2e | on | 720p | 59 | 42 | 50 | on |
+| 720-2e-off-1 | 2e | off | 720p | 61 | 39 | 44 | off |
+| 720-2e-off-2 | 2e | off | 720p | 61 | 40 | 132 | off |
+| 1080-2e-on-1 | 2e | on | 1080p | 49 | 42 | 54 | on |
+| 1080-2e-off-1 | 2e | off | 1080p | 50 | 42 | 56 | off |
+| 1440-2e-on-1 | 2e | on | 1440p | 34 | 26 | 85 | on |
+| 1440-2e-off-1 | 2e | off | 1440p | 31 | 25 | 85 | off |
+
+Against the bar (median ≥ 60, 1% low ≥ 55, worst gap ≤ 33 ms). 720p fix on: the 2e medians are 61 and 59 (mean 60.0), the 1% lows 55 and 42. The second 2e run misses on both. No case meets the worst gap bar. 1080p and 1440p miss the median bar, with the fix on and off alike. The fix-off 720p 1% lows (39, 40) are lower than Task 2d's revised build (56, 57) on the same hardware; I did not explain the difference, and it may be run-to-run noise. Build A's fix-on median (26, 29) matches Task 2d's 26.0 mean, so the measurements are comparable.
+
+**What the numbers say.** With the cache, the busy save's fix-on median at 720p moves from 26 to about 60, which is the fix-off level. At 1080p and 1440p the fix on and off are the same within noise (49 and 50, 34 and 31), so the game is CPU-bound there and the fix's cost was not the limit. The fix's own work is now gone because it does nothing for this font, not because it is cheap.
+
+**Concerns.**
+- The Thai fix is inactive for the busy save's font (Step 1). Fixing that changes what players see and needs its own decision (the coordinator's option 1).
+- The rejected font is not the staged `game.fnt`. The game loads it from somewhere the fix does not reach.
+- The cache keys on the header values, not on the glyph contents. A different font with the same header values would be treated as rejected. None was seen.
+- `perf.mjs` resolves `--out` from the repo's parent when given `../`; the first run's output was written outside the repo and moved in. The runs were not repeated.
+- The RA2 check was a compile of `thai_font.c` with `RA2_TARGET_GAME` (exit 0), not a full RA2 build; the full RA2 build was not run.
