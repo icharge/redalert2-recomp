@@ -10,10 +10,11 @@ Detailed ledger (rulings, review findings): `.superpowers/sdd/2026-10-26-web-fra
 | Task | State | Commits |
 |---|---|---|
 | 1. Benchmark and baseline | **done**, review clean after 5 fix rounds | aa8bb15..1981765 |
-| 2. Probes: wait precision, clock calls | **in review** (Haiku reviewer). Wait margin M = 16 ms; no clock spin found | d288344, 47ab13b |
+| 2. Probes: wait precision, clock calls | **fix round 1** (review: commit the clock-probe script, 6 small fixes). M = 16 ms; no clock spin | d288344, 47ab13b |
+| 2b. Profile the busy game, HD off (new) | pending, next after Task 2 | |
 | 3. Raw publish, three buffers, protocol 8 | pending | |
 | 4. WebGL2 presenter | pending | |
-| 5. HD layers on the GPU | pending | |
+| 5. HD layers on the GPU | **deferred** to a later HD project | |
 | 6. Scaling modes and bars | pending | |
 | 7. Rendering checkpoint | pending | |
 | 8. Sleep margin (pcrecomp) | pending | |
@@ -22,6 +23,10 @@ Detailed ledger (rulings, review findings): `.superpowers/sdd/2026-10-26-web-fra
 | 11. Memory bounds and limits | pending | |
 | 12. Final benchmark and docs | pending | |
 | Final whole-branch review | pending | |
+
+## Change of target (26 October)
+
+The user asked to focus on the game with HD off (HD vehicles are experimental and flicker). The pass bar is now 60 fps median, 55 1% low, 720p–1440p, busy, **HD off**; HD on is recorded with no target. New Task 2b profiles the busy save first, since it runs at 18–23 fps at every size (the picture isn't the limit). Order: 2b, 3, 4, 6, 7, 8, 10, 11, 12.
 
 ## To resume after an interruption
 
@@ -57,4 +62,5 @@ Detailed ledger (rulings, review findings): `.superpowers/sdd/2026-10-26-web-fra
 
 ## Ideas raised during the run (separate projects)
 
+- HD vehicles flicker when on (reported by the user): fix in the HD project.
 - HD buildings and infantry (SHP sprites, not voxels): either a pixel-art scaler in the shader, or pre-upscaled 2x sprites recorded like the HD voxels. Task 5's 2x layer + mask design leaves room for it. To design after this plan.
