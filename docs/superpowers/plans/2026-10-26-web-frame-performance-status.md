@@ -14,7 +14,7 @@ Detailed ledger (rulings, review findings): `.superpowers/sdd/2026-10-26-web-fra
 | 2b. Profile the busy game, HD off (new) | **done**, review clean after 1 fix round | 5fccff2, 006fcef |
 | 2c. Test the Thai-font wrapper's cost (new) | **done**, review clean after 2 fix rounds. Busy 720p HD off: 26.5 fps with the wrapper, **62** (1% low 55–56, the speed-5 cap) without; work per frame 34 ms vs 12–13 ms | 483d5d7, 5887904, 95ed1b2 |
 | 2d. Thai-off path as a plain call | **done** (review clean after 1 fix round); its macro changes were reverted (585ef08): they didn't matter. It found the real cause: **the app turns the Thai font fix on by default**; with it off the busy save already runs at 62 fps (720p). Fix off: 1080p 49–50, 1440p 33 | 533d330, 585ef08, 4c6da57 |
-| 2e. The Thai fix without full-font rewrites (new) | **in review**: rejected fonts are remembered; screenshots identical to the old build. Busy, HD off, Thai on (the default): 720p **59–61 fps** (1% low 42–55) vs 26–29 before; 1080p 49, 1440p 34 (same as Thai off) | 30f984d, 4303eaf |
+| 2e. The Thai fix without full-font rewrites (new) | **fix round 1** (the rejected-font cache must not keep memory failures, and must re-check why a font was rejected): rejected fonts are remembered; screenshots identical to the old build. Busy, HD off, Thai on (the default): 720p **59–61 fps** (1% low 42–55) vs 26–29 before; 1080p 49, 1440p 34 (same as Thai off) | 30f984d, 4303eaf |
 | 3. Raw publish, three buffers, protocol 8 | pending | |
 | 4. WebGL2 presenter | pending | |
 | 5. HD layers on the GPU | **deferred** to a later HD project | |
