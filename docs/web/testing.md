@@ -509,6 +509,25 @@ plan (Task 2). Run them with the Vite dev server up, bound to IPv4 (see "The fra
   build (`RA2_TARGET=game`) is a separate build directory; this runner plays Yuri's Revenge only.
 - **Reading the verdict.** `spin: no` means no second had 1,000 or more clock reads with no `Sleep`, so the timed
   waits in the frame loop are not spinning on the clock. `spin: YES` names the seconds; Task 9 runs only then.
+  The verdict does not see a `Sleep` that polls the clock inside itself: the profile below shows pcrecomp's
+  `wait_ms` doing that, so the probe's "no" is not the whole answer.
+
+### Profiling the busy game
+
+`node e2e/profile-game.mjs --build ../work/build-web-prof` (in `web/`, with the Vite dev server up, bound to
+`127.0.0.1`) opens the imported Yuri's Revenge from `work/perf/profile-fresh`, loads `work/perf/busy.sav` at 1280x720
+with HD vehicles off, waits `--settle-seconds` (10), and records `--seconds` (20) of CPU profile on every worker over
+CDP, reading the fps once a second. It writes `work/perf/<name>.cpuprofile` (for DevTools) and `work/perf/<name>.json`
+(`--name`, default `profile-busy`; use another name for a second run). The game's thread is the worker with the most
+game work: time outside waiting and outside `wait_ms`. Its self time is grouped by the source tree of the function,
+from the build's object files (`llvm-nm`): the recompiled game (`src/recomp`), the runtime (pcrecomp's `win32hle` and
+`src/runtime`), the presenter (`src/web`), waiting (the idle node, futex and thread-sleep calls), and other (Emscripten's
+libc, the JS glue, FFmpeg). The JSON holds the shares, the top 20 functions, the time under `wait_ms`, and each busy
+worker's own shares.
+
+The build is a release link with names: `cmake -S . -B work/build-web-prof -G Ninja -DCMAKE_TOOLCHAIN_FILE=cmake/emscripten.cmake
+-DPCRECOMP=<pcrecomp> -DRA2_TARGET=gamemd "-DWEB_LINK_OPT=-O3;--profiling-funcs" "-DWEB_OUT=<repo>/work/web-out-prof"`,
+then `cmake --build work/build-web-prof` (about ten minutes at `-O3`). `WEB_OUT` stays under `work/`.
 
 `--build <dir>` takes a build directory holding `ra2.js`, `ra2.wasm` and `ra2.data` (CMake's own names), and
 the e2e scripts serve them for the page's `ra2md.*` (Yuri's Revenge) or `ra2.*` (Red Alert 2) requests.

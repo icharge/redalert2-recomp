@@ -460,6 +460,41 @@ Clock calls per second, main menu / match: main menu (25 s, median per second): 
 
 Spin found: no. No second had 1,000 or more clock reads with no Sleep: every second of the menu and the battle had 91 or more Sleep(n) calls, so Task 9 does not run. (Measured with the -O1 probe build, headed Chrome, the profile work/perf/profile-fresh, the default skirmish. A re-run with the committed `e2e/clock-probe.mjs` (`work/perf/clock-probe.json`) gave a menu median of 41,788 clock reads a second and 612+ Sleep(n) a second in the battle, still no spin; the menu rate varies 42k–59k between runs.)
 
+### Busy profile (HD off)
+
+Task 2b, `e2e/profile-game.mjs` (docs/web/testing.md, "Profiling the busy game"): the busy save at 1280x720, HD vehicles off, game speed 5 (the save's own), 10 s settle, then 20 s of CPU profile on the game's worker. Release link with names: `-O3;--profiling-funcs` (not the `-O2` fallback), in `work/build-web-prof`. Two separate browser sessions; both are in `work/perf/profile-busy.json` and `profile-busy-2.json`.
+
+| Share of the game thread's self time | Run 1 | Run 2 |
+|---|---|---|
+| recompiled game (`src/recomp`) | 28.0% | 27.9% |
+| runtime (pcrecomp `win32hle`, `src/runtime`) | 55.1% | 54.7% |
+| presenter (`src/web`) | 0.8% | 0.8% |
+| waiting (idle, `emscripten_futex_wait`, `wait_ms`) | 15.7% | 16.1% |
+| other (libc, JS glue, FFmpeg) | 0.3% | 0.5% |
+
+Fps during the sample (one reading a second): run 1 median 25, lowest 17; run 2 median 25, lowest 16. The game's thread had 17.1 s and 17.0 s of game work in the 20 s, so it was about 85% busy.
+
+Top 10 by self time (run 1 / run 2):
+
+| # | Run 1 | Group | Share | Run 2 | Group | Share |
+|---|---|---|---|---|---|---|
+| 1 | `recomp_thai_call` | runtime | 52.0% | `recomp_thai_call` | runtime | 51.8% |
+| 2 | `emscripten_futex_wait` | waiting | 15.7% | `emscripten_futex_wait` | waiting | 16.1% |
+| 3 | `recomp_lookup` | runtime | 3.0% | `recomp_lookup` | runtime | 2.8% |
+| 4 | `RLEBlitTransXlatAlphaZRead_G__virtual_1` | game | 1.8% | `RLEBlitTransXlatAlphaZRead_G__virtual_1` | game | 2.3% |
+| 5 | `TechnoClass__virtual_23` | game | 1.5% | `TechnoClass__virtual_23` | game | 1.3% |
+| 6 | `present_now` | presenter | 0.8% | `present_now` | presenter | 0.8% |
+| 7 | `sub_00437A10` | game | 0.7% | `sub_007258D0` | game | 0.7% |
+| 8 | `RLEBlitTransXlat_E__virtual_1` | game | 0.6% | `sub_00437A10` | game | 0.6% |
+| 9 | `TechnoClass__virtual_10` | game | 0.6% | `TechnoClass__virtual_10` | game | 0.6% |
+| 10 | `sub_006F8960` | game | 0.5% | `BuildingClass__virtual_23` | game | 0.5% |
+
+Classification. A function's group is the source tree of the object file that defines it (`llvm-nm` over `work/build-web-prof/CMakeFiles/ra2.dir`): `src/recomp/` is the game, `pcrecomp/` and `src/runtime/` the runtime, `src/web/` the presenter. The `sub_XXXXXXXX` names are the lifted game's and count as game. Waiting is the idle node, `emscripten_futex_wait`, `Atomics`, `wait_ms` and the thread-sleep calls. Other is everything else. 740 names are defined in more than one object (mostly `static` helpers); a name takes the first object's group. Each name in the top ten is defined in one object only, so that does not change the table.
+
+Spin. Much of the time under `wait_ms` is not waiting: pcrecomp's `wait_ms` (the game's `Sleep`) polls `clock_gettime` until its deadline, so the clock reads (`_emscripten_get_now`, `now`, `_clock_time_get`) land in group "other". In the first profile I took (superseded: `work/perf/superseded-profile-busy-picked-spin.json`), the selector picked a worker that was almost all clock polling under `wait_ms` (94% of its 20 s); another pool worker spent 96% of its time under `wait_ms`, about 42% of it clock polling and the rest futex waits. Together the clock polls were about 27 s in 20 s, about 1.4 cores, while the game thread ran. The clock probe's spin verdict missed this, because it counts `Sleep` calls and each of these calls is one. The game thread does not poll the clock (0% of its time is clock polling under `wait_ms`).
+
+Reading. The game's thread is the bound: it is about 85% busy at 25 fps, which is about 34 ms of its own work a frame where 60 fps allows about 16 ms. The picture is not the bound: the presenter is 0.8% of that time, so Tasks 3, 4 and 6 cannot move the busy fps. Waiting is 16% and is `emscripten_futex_wait` on the game thread; Tasks 8 and 10 (waits and locks) could take part of that, but it caps at about 16% of the frame. The bulk is the runtime (55%), and most of that is one entry, `recomp_thai_call`, which none of the planned tasks touches. Its attribution is unverified and should be checked before it is planned against: the Thai font fix is off by default in the web build (`--thai-font-fix`), so the wrapper's body should be a few instructions. Its callers run from `GScreenClass`'s draw path through `sub_00434B90`, which calls the hook. The next step is to confirm the 52% (a call count from a probe, or the wasm body at its offset). If it holds, the game's own runtime dispatch is the first thing to fix, as a new task outside this plan; if it does not, the remaining game code is spread across many functions and the busy frame cost is the game's simulation and drawing, not the picture.
+
 ## Results
 
 (Filled in by Tasks 1, 7–12.)
