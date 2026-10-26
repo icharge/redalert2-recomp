@@ -73,8 +73,9 @@ const base = { ...options(argv), profile, shots, testGame: null, gameBuild: null
 const started = Date.now();
 const log = (line) => console.log(`${((Date.now() - started) / 1000).toFixed(0)}s  ${line}`);
 
-const t = await openGame(base, { video: "1280x720" });
+let t = null;
 try {
+  t = await openGame(base, { video: "1280x720" });
   await setResolution(t, { w: 1280, h: 720 });
   await setUpBusySkirmish(t, { log });
   await startBattle(t);
@@ -139,6 +140,7 @@ try {
     const name = fs
       .readdir("/game")
       .filter((n) => /^SAVE[0-9A-F]+\.SAV$/i.test(n) && !known.includes(n))
+      .sort()
       .at(-1);
     if (!name) return null;
     const bytes = fs.readFile(`/game/${name}`);
@@ -152,10 +154,10 @@ try {
   log(`saved ${saved.name} (${saved.size} bytes) to ${out}`);
 } catch (error) {
   console.error(`FAILED: ${error?.stack ?? error}`);
-  await t.shot("failure").catch(() => {});
+  await t?.shot("failure").catch(() => {});
   process.exitCode = 1;
 } finally {
-  await t.browser.close().catch(() => {});
+  await t?.browser.close().catch(() => {});
 }
 if (!process.exitCode && !existsSync(out)) throw new Error(`${out} was not written`);
 

@@ -33,8 +33,8 @@ import { createInterface } from "node:readline";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { options, startPage } from "./lib.mjs";
-import { compare, summarize } from "./perf-report.mjs";
+import { lastFailure, options, startPage } from "./lib.mjs";
+import { compare, mergeCases } from "./perf-report.mjs";
 import {
   at,
   gameUrl,
@@ -269,6 +269,11 @@ async function sample(t, { total, pan = null, actions = [], reload = null }) {
       if (stopPanning?.failure()) throw stopPanning.failure();
       await t.page.waitForTimeout(1000);
       const row = await readSample(t, cdp, last);
+      // the picture size is the case's: a change while the game runs (a menu has none) is not a measurement
+      if (row.fps > 0 && row.size && row.size !== `${size.w}x${size.h}`)
+        throw new Error(
+          `the game's picture changed from ${size.w}x${size.h} to ${row.size} during the case`,
+        );
       if (reloaded) {
         row.reloaded = true;
         reloaded = false;
@@ -282,7 +287,10 @@ async function sample(t, { total, pan = null, actions = [], reload = null }) {
       const forced = Number(process.env.PERF_TEST_RELOAD_AT) === s + 1;
       if (reload && (zeroFrames >= 5 || forced)) {
         log("the match has ended (no game frames for 5 s): reloading the save");
-        if (stopPanning) await stopPanning.stop();
+        if (stopPanning) {
+          await stopPanning.stop();
+          if (stopPanning.failure()) throw stopPanning.failure();
+        }
         stopPanning = null;
         await cdp.detach();
         await reload();
@@ -293,8 +301,11 @@ async function sample(t, { total, pan = null, actions = [], reload = null }) {
         if (pan !== null) stopPanning = startPanning(t, size);
       }
     }
-    // a panning failure in the last second counts too
-    if (stopPanning?.failure()) throw stopPanning.failure();
+    // a panning failure in the last second counts too, including one that happens while it is stopping
+    if (stopPanning) {
+      await stopPanning.stop();
+      if (stopPanning.failure()) throw stopPanning.failure();
+    }
   } finally {
     // whatever ended the sampling (a failed read, a panning failure), panning stops and the session is released
     if (stopPanning) await stopPanning.stop().catch(() => {});
@@ -401,6 +412,11 @@ async function runMoment(moment, size, hdList, onCase) {
     await withGame(
       () => (moment === "busy" ? openBusy(size) : openEarly(size)),
       async (t) => {
+        // PERF_TEST_FAIL_LAUNCH=<n> fails the nth launch, to test the partial-run record
+        if (Number(process.env.PERF_TEST_FAIL_LAUNCH) === r)
+          throw new Error(`forced failure of launch ${r}`);
+        if (Number(process.env.PERF_TEST_FAIL_LAUNCH_HARD) === r)
+          await t.fail(`forced game failure in launch ${r}`);
         const reported = await checkSize(t, size);
         for (const hd of hdList) {
           await setHd(t, hd === "on");
@@ -408,6 +424,7 @@ async function runMoment(moment, size, hdList, onCase) {
           log(`case ${key}, run ${r} of ${runs}: ${seconds} s`);
           const rows = await sample(t, { total: seconds, pan: seconds / 2 });
           results[key] ??= {
+            planned: runs,
             runs: [],
             gameSpeed: moment === "busy" ? "5 (in the save)" : 5,
             size: reported,
@@ -532,33 +549,21 @@ function writeRun() {
       baseRun = { date: old.date, cases: old.cases ?? {}, failures: old.failures ?? {} };
     }
   }
-  const run = { date: baseRun.date, build: id, buildType, cases: { ...baseRun.cases } };
+  const merged = mergeCases({
+    baseCases: baseRun.cases,
+    baseFailures: baseRun.failures,
+    finished,
+    failures,
+  });
+  const run = { date: baseRun.date, build: id, buildType, cases: merged.cases };
   for (const [key, result] of Object.entries(finished)) {
-    const last = result.runs.at(-1);
-    const summary = summarize(last);
-    run.cases[key] = {
-      ...summary,
-      // seconds of a running game that was handed no picture: the page shows a frozen picture (the wasm memory at
-      // its 768 MiB cap in 2560x1440 HD on); the case's fps and CPU are the game's, not what the player sees
-      ...(summary.noPictureSeconds > 0
-        ? { pictureFrozen: `${summary.noPictureSeconds} of ${last.length} seconds` }
-        : {}),
-      gameSpeed: result.gameSpeed,
-      size: result.size,
-      ...(result.runs.length > 1 ? { firstRun: summarize(result.runs[0]) } : {}),
-    };
     const stem = key.replaceAll("/", "_");
     result.runs.forEach((rows, i) => {
       const name = result.runs.length > 1 ? `${stem}_run${i + 1}` : stem;
       writeFileSync(path.join(outDir, "samples", `${name}.json`), JSON.stringify(rows, null, 1));
     });
   }
-  // a case that failed has no numbers: an older run's would be mistaken for it
-  for (const key of Object.keys(failures)) if (!(key in finished)) delete run.cases[key];
-  // an older failure stays listed unless the case has since been measured
-  const listed = { ...baseRun.failures, ...failures };
-  for (const key of Object.keys(listed)) if (key in finished) delete listed[key];
-  if (Object.keys(listed).length) run.failures = listed;
+  if (Object.keys(merged.failures).length) run.failures = merged.failures;
   writeFileSync(runPath, JSON.stringify(run, null, 2));
   return run;
 }
@@ -603,12 +608,16 @@ function printCompare(run, baseline) {
 
 // ---- main ---------------------------------------------------------------------------------------
 let exitCode = 0;
+/** A case with all the runs planned for it: a later failure in its part does not touch it. */
+const isComplete = (key) =>
+  finished[key] && finished[key].runs.length >= (finished[key].planned ?? 1);
 // a game failure (lib.mjs's fail) ends the process at once; the case it was in is recorded as failed first
 let current = null;
 process.on("exit", () => {
   sampler?.stop();
   if (!current) return;
-  for (const key of current) failures[key] = "the process exited during this case (see its output)";
+  for (const key of current.filter((k) => !isComplete(k)))
+    failures[key] = lastFailure() ?? "the process exited during this case (see its output)";
   try {
     writeRun();
   } catch {
@@ -623,7 +632,8 @@ async function part(keys, body) {
     await body();
   } catch (error) {
     console.error(`FAILED ${keys.join(", ")}: ${error?.stack ?? error}`);
-    for (const key of keys) failures[key] = String(error?.message ?? error);
+    for (const key of keys.filter((k) => !isComplete(k)))
+      failures[key] = String(error?.message ?? error);
     exitCode = 1;
     writeRun();
   }

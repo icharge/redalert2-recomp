@@ -6,6 +6,10 @@ import { createServer } from "node:http";
 import path from "node:path";
 import { serveGame } from "./files-server.mjs";
 
+let lastReason = null;
+/** Why the last `fail` ended the process (for a caller's exit handler), or null. */
+export const lastFailure = () => lastReason;
+
 export function options(argv) {
   const option = (name, fallback) => {
     const at = argv.indexOf(name);
@@ -104,6 +108,7 @@ export async function startPage(opts) {
   const log = () => page.evaluate(() => window.ra2Store?.getLog().slice(-40) ?? []);
   const shot = (name) => page.screenshot({ path: path.join(opts.shots, `${name}.png`) });
   const fail = async (why) => {
+    lastReason = String(why);
     console.error("FAIL:", why);
     console.error("state:", JSON.stringify(await state()));
     console.error((await log()).join("\n"));
@@ -158,7 +163,12 @@ export async function startPage(opts) {
   if (opts.testGame) url.searchParams.set("test", "1");
   else if (!opts.noDev) url.searchParams.set("dev", "1");
   for (const arg of opts.pageArgs) url.searchParams.append("arg", arg);
-  await page.goto(url.toString());
+  try {
+    await page.goto(url.toString());
+  } catch (error) {
+    await browser.close().catch(() => {}); // a page that never opened leaves no Chrome behind
+    throw error;
+  }
   const started = Date.now();
 
   const waitFor = async (what, done, seconds = 600) => {

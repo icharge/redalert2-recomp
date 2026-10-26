@@ -442,9 +442,17 @@ holds the pure summary and comparison (`node --test e2e/perf-report.test.mjs` in
   `--shots`, and `busy-view.png`, the picture that gets saved, then run again with a scroll that suits), and the
   game's own menu saves it (Escape, Save Game, Save, the box's OK) at 1280x720; the save loads at any size.
   The save in use was made in a headed session with the same setup and the same menu clicks, scrolling the camera by
-  hand (arrow keys held) to the allied Yuri base about 8 game minutes in (the game clock runs about 1.6 times the
-  wall clock at speed 5): about 30 buildings and 15 units on the picture, and the match at 20 to 24 game fps at
-  1280x720 with HD off, below the 60 of an early skirmish because seven AIs think, not because of the picture.
+  hand to the allied Yuri base about 5.5 minutes after the battle started (about 8.5 game minutes: the game clock
+  runs about 1.6 times the wall clock at speed 5): about 30 buildings and 15 units on the picture, and the match at
+  20 to 24 game fps at 1280x720 with HD off, below the 60 of an early skirmish because seven AIs think, not because
+  of the picture. The camera route, from where the battle starts (the human's base; the base found was north-east of
+  it), was: the pointer held at the top edge (x 1000) for 2.5 s; the top edge (x 500) for 1.5 s; the bottom edge for
+  2.5 s; 40 presses of ArrowUp; ArrowRight held 2500 ms (too far east); ArrowLeft held 1700 ms, which gave the saved
+  view. Edge scrolling with the pointer is not in `make-busy-save.mjs`; its equivalent in `--scroll` terms is
+  `--scroll "ArrowRight=2500,ArrowLeft=1700"` after moving the camera to the same spot. **The route only fits a match
+  whose human starts where that one did: start positions are random, so a new run gives a comparable save (a busy
+  allied base on the picture, found from `busy-view.png`), not the same one. `work/perf/busy.sav` itself is the
+  reference; keep it (a copy of the file is the only exact reproduction).**
 - **Pointer lock.** In a battle the page locks the pointer, and a locked pointer is relative: the game moves it by
   the distance the mouse travelled from where it last had it, so a click at game pixels (x, y) landed somewhere else
   (the MCV never selected; the in-game menu's buttons never hit). `perf-nav.mjs` `syncPointer` releases the lock
@@ -462,7 +470,11 @@ holds the pure summary and comparison (`node --test e2e/perf-report.test.mjs` in
 - **Failures.** `run.json` is written after every finished case, so a later failure keeps the earlier ones; a case
   that failed (a size mismatch, a crash) is listed under `failures` and the exit code is 1. The menu case expects
   the game's 800x600 menu shell, not the requested size. `PERF_TEST_RELOAD_AT=<second>` forces the soak's reload
-  once, to test it without waiting for a match to end.
+  once, to test it without waiting for a match to end; `PERF_TEST_FAIL_LAUNCH=<n>` fails the nth launch of an early
+  case and `PERF_TEST_FAIL_LAUNCH_HARD=<n>` fails it through the game's own failure exit, to test the partial-run record.
+  A repeat that failed leaves the case in `run.json` with `complete: false` and `runsDone: "1 of 2"`, and its failure
+  stays listed; a game failure's reason is carried into `failures`. A case also fails if the picture size changes while
+  the game runs.
 - **3840x2160 cannot be measured.** The game's resolution setting (`src/web/settings.c`) lists sizes up to
   2560x1440 and ignores the rest; `?video=3840x2160` and a hand-edited RA2MD.INI were tried too, and the battle
   still reported 1920x1080. The 4K cases therefore fail with that message in `failures`; they need a game-side

@@ -175,3 +175,41 @@ export function compare(run, baseline) {
   }
   return rows;
 }
+
+/**
+ * The cases and failures a run.json holds: the cases already in the file, then this process's finished cases
+ * (each case's last run, the first run's summary kept as firstRun when there were two), then the failures.
+ * A failure of this process always stays listed, even when the case has data: a case with fewer runs than
+ * planned (a failed repeat) is marked `complete: false` with `runsDone: "1 of 2"`. An older failure is dropped
+ * once the case has been measured in full; a failed case loses the numbers of an older run.
+ *
+ * @param {{baseCases: object, baseFailures: object,
+ *   finished: Record<string, {runs: object[][], planned?: number, gameSpeed: unknown, size: unknown}>,
+ *   failures: Record<string, string>}} input
+ */
+export function mergeCases({ baseCases, baseFailures, finished, failures }) {
+  const cases = { ...baseCases };
+  const listed = { ...baseFailures, ...failures };
+  for (const [key, result] of Object.entries(finished)) {
+    const planned = result.planned ?? 1;
+    const last = result.runs.at(-1);
+    const summary = summarize(last);
+    cases[key] = {
+      ...summary,
+      // seconds of a running game that was handed no picture: the page shows a frozen picture (the wasm memory at
+      // its 768 MiB cap in 2560x1440 HD on); the case's fps and CPU are the game's, not what the player sees
+      ...(summary.noPictureSeconds > 0
+        ? { pictureFrozen: `${summary.noPictureSeconds} of ${last.length} seconds` }
+        : {}),
+      gameSpeed: result.gameSpeed,
+      size: result.size,
+      ...(result.runs.length > 1 ? { firstRun: summarize(result.runs[0]) } : {}),
+      ...(result.runs.length < planned
+        ? { complete: false, runsDone: `${result.runs.length} of ${planned}` }
+        : {}),
+    };
+    if (result.runs.length >= planned && !(key in failures)) delete listed[key];
+  }
+  for (const key of Object.keys(failures)) if (!(key in finished)) delete cases[key];
+  return { cases, failures: listed };
+}

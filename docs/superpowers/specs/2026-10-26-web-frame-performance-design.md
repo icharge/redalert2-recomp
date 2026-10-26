@@ -66,7 +66,7 @@ there is nothing to do and less memory for the picture.
   | 1920x1080, HD off, busy | 1920x1080 | 20 | 18 | 83 | 1281 | 0.85 | 0.51 | 277 | 627 |
   | 1920x1080, HD on, busy | 1920x1080 | 11 | 8 | 163 | 740 | 4.45 | 0.83 | 255 | 747 |
   | 2560x1440, HD off, busy | 2560x1440 | 18 | 15 | 99 | 1106 | 1.59 | 0.89 | 306 | 738 |
-  | 2560x1440, HD on, busy | 2560x1440 | 17 | 14 | 94 | 1079 | 1.56 | 0.50 | 252 | 768 |
+  | 2560x1440, HD on, busy (HD may not have been applied: published at HD-off cost) | 2560x1440 | 17 | 14 | 94 | 1079 | 1.56 | 0.50 | 252 | 768 |
 
   **Soak** (10 min, busy save, 2560x1440, HD on, off at 20% and on again at 40%, scale mode switched at 60% and 80%,
   panning throughout): fps median 14, 1% low 11, worst gap 180 ms, CPU 240%,

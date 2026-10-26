@@ -3,7 +3,7 @@
 //   cd web && node --test e2e/perf-report.test.mjs
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { compare, summarize } from "./perf-report.mjs";
+import { compare, mergeCases, summarize } from "./perf-report.mjs";
 
 /** A sample with every field null except the ones given. */
 const sample = (fields) => ({
@@ -211,4 +211,43 @@ test("noPictureSeconds counts seconds with game frames and no published picture"
 
 test("noPictureSeconds is null when no sample says what was published", () => {
   assert.equal(summarize([sample({ fps: 30 }), sample({ fps: 30 })]).noPictureSeconds, null);
+});
+
+const rows = (n) => Array.from({ length: n }, () => sample({ fps: 60 }));
+
+test("mergeCases keeps a failed repeat listed and marks the case incomplete", () => {
+  const { cases, failures } = mergeCases({
+    baseCases: {},
+    baseFailures: {},
+    finished: {
+      "1280x720/hd-off/early": { runs: [rows(3)], planned: 2, gameSpeed: 5, size: { w: 1, h: 2 } },
+    },
+    failures: { "1280x720/hd-off/early": "run 2 failed" },
+  });
+  assert.equal(cases["1280x720/hd-off/early"].complete, false);
+  assert.equal(cases["1280x720/hd-off/early"].runsDone, "1 of 2");
+  assert.equal(failures["1280x720/hd-off/early"], "run 2 failed");
+});
+
+test("mergeCases: a complete case has no complete flag, and its older failure is dropped", () => {
+  const { cases, failures } = mergeCases({
+    baseCases: {},
+    baseFailures: { a: "old", b: "old" },
+    finished: { a: { runs: [rows(3), rows(3)], planned: 2, gameSpeed: 5, size: null } },
+    failures: {},
+  });
+  assert.equal("complete" in cases.a, false);
+  assert.ok(cases.a.firstRun);
+  assert.deepEqual(failures, { b: "old" });
+});
+
+test("mergeCases: a failed case with no data of this run loses an older run's numbers", () => {
+  const { cases, failures } = mergeCases({
+    baseCases: { x: { fpsMedian: 1 }, y: { fpsMedian: 2 } },
+    baseFailures: {},
+    finished: {},
+    failures: { x: "boom" },
+  });
+  assert.deepEqual(Object.keys(cases), ["y"]);
+  assert.deepEqual(failures, { x: "boom" });
 });

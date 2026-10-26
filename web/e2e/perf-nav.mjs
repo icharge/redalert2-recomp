@@ -27,7 +27,12 @@ export async function openGame(base, { video, shots, headed } = {}) {
     noDev: true,
     url: gameUrl(base, video),
   });
-  await t.waitFor("the main menu", (s) => s?.phase === "running", 300);
+  try {
+    await t.waitFor("the main menu", (s) => s?.phase === "running", 300);
+  } catch (error) {
+    await t.browser.close().catch(() => {});
+    throw error;
+  }
   return t;
 }
 
