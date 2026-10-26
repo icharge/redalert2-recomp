@@ -18,9 +18,8 @@ int frame_pick(int newest, int reading) {
 uint8_t *frame_acquire(frame_bufs_t *b, int reading, size_t bytes) {
     int i = frame_pick(b->newest, reading);
     if (b->cap[i] >= bytes) return b->ptr[i];
-    /* The slot is neither newest nor read, so the buffer it held before is not read either. Keep it
-     * for frame_collect, which frees it once the slot is released; a second one from before goes now. */
-    if (b->old[i]) RELEASE(b->old[i]);
+    /* The replaced buffer waits in old[i] for frame_collect. If one still waits here, frame_collect freed nothing
+     * (presentMode 0) and it is overwritten, which leaks it: the one leak per resize the ruling allows. */
     b->old[i] = b->ptr[i];
     b->ptr[i] = malloc(bytes);
     b->cap[i] = b->ptr[i] ? bytes : 0;
@@ -35,7 +34,8 @@ int frame_index_of(const frame_bufs_t *b, const uint8_t *p) {
 
 void frame_publish(frame_bufs_t *b, int index) { b->newest = index; }
 
-void frame_collect(frame_bufs_t *b, int reading) {
+void frame_collect(frame_bufs_t *b, int reading, int page_announces_reads) {
+    if (!page_announces_reads) return;  /* presentMode 0: the page does not say what it reads, so nothing is freed */
     for (int i = 0; i < 3; i++) {
         if (!b->old[i] || i == b->newest || i == reading) continue;
         RELEASE(b->old[i]);

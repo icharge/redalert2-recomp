@@ -38,7 +38,7 @@ typedef struct ra2_shared {
     volatile uint32_t format;        /* RA2_FMT_* */
     volatile uint32_t frame_pitch;   /* bytes per row of the raw frame */
     volatile uint32_t palette_ptr;   /* PAL8: 256 words, r | g << 8 | b << 16 */
-    volatile int32_t read_index;     /* written by the page: the buffer it is reading, -1 for none */
+    volatile int32_t read_index;     /* written by the page with Atomics.store: the buffer it is reading, -1 for none (protocol.md) */
     volatile int32_t frame_index;    /* the buffer frame_ptr is in, 0..2; -1 before the first */
     volatile uint32_t hd_layer_1x, hd_layer_2x;  /* the HD vehicle layers (filled by the GPU path; 0 until then) */
     volatile uint32_t hd_rects, hd_rect_count, hd_seq;
@@ -68,6 +68,9 @@ _Static_assert(__builtin_offsetof(ra2_shared_t, palette_ptr) == 1046 * 4, "web/s
 _Static_assert(__builtin_offsetof(ra2_shared_t, read_index) == 1047 * 4, "web/src/game/protocol.ts reads readIndex at word 1047");
 _Static_assert(__builtin_offsetof(ra2_shared_t, frame_index) == 1048 * 4, "web/src/game/protocol.ts reads frameIndex at word 1048");
 _Static_assert(__builtin_offsetof(ra2_shared_t, hd_layer_1x) == 1049 * 4, "web/src/game/protocol.ts reads hdLayer1x at word 1049");
+_Static_assert(__builtin_offsetof(ra2_shared_t, hd_layer_2x) == 1050 * 4, "web/src/game/protocol.ts reads hdLayer2x at word 1050");
+_Static_assert(__builtin_offsetof(ra2_shared_t, hd_rects) == 1051 * 4, "web/src/game/protocol.ts reads hdRects at word 1051");
+_Static_assert(__builtin_offsetof(ra2_shared_t, hd_rect_count) == 1052 * 4, "web/src/game/protocol.ts reads hdRectCount at word 1052");
 _Static_assert(__builtin_offsetof(ra2_shared_t, hd_seq) == 1053 * 4, "web/src/game/protocol.ts reads hdSeq at word 1053");
 _Static_assert(__builtin_offsetof(ra2_shared_t, republish) == 1054 * 4, "web/src/game/protocol.ts reads republish at word 1054");
 _Static_assert(__builtin_offsetof(ra2_shared_t, present_mode) == 1055 * 4, "web/src/game/protocol.ts reads presentMode at word 1055");

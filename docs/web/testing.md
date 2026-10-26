@@ -324,6 +324,7 @@ same way from the repository root (PowerShell or Git Bash; the output goes to a 
 `build-web/`):
 
 ```sh
+mkdir -p work/t3
 ../emsdk/upstream/emscripten/emcc.exe src/web/frame_buffers_selftest.c src/web/frame_buffers.c \
   -DFRAME_BUFFERS_SELFTEST -sENVIRONMENT=node -sEXIT_RUNTIME=1 -o work/t3/frame-buffers-selftest.js
 node work/t3/frame-buffers-selftest.js   # frame_buffers selftest: ok

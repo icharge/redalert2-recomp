@@ -166,9 +166,13 @@ export const Shared = {
   framePitch: 1045,
   /** PAL8: 256 words, r | g << 8 | b << 16 */
   palettePtr: 1046,
-  /** the buffer the page is reading (0 to 2), -1 for none; the page writes it */
+  /**
+   * The buffer the page is reading (0 to 2), -1 for none. Written with Atomics.store only. The page's reads:
+   * read frameIndex and framePtr; store readIndex = that index; re-read frameIndex and framePtr and retry if
+   * either changed; read the pixels; store -1 when done (docs/web/protocol.md).
+   */
   readIndex: 1047,
-  /** the buffer framePtr is in (0 to 2) */
+  /** the buffer framePtr is in (0 to 2); the page reads it with Atomics.load */
   frameIndex: 1048,
   /** the HD vehicle layers (filled by the GPU path; 0 until then) */
   hdLayer1x: 1049,

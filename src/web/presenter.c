@@ -95,27 +95,35 @@ EMSCRIPTEN_KEEPALIVE ra2_shared_t *ra2_shared(void) { return &g_sh; }
 
 /* The primary surface, into the buffer the page is not reading: RGBA bytes (R lowest) with presentMode 0, the
  * game's own format unconverted with presentMode 1. Raw mode publishes the 1x frame even with HD vehicles on:
- * the HD layers are not composed here (the GPU path, Task 5, will fill hd_* and draw them). */
+ * the HD layers are not composed here (the GPU path, Task 5, will fill hd_* and draw them).
+ * With presentMode 0 the page does not announce readIndex yet, so frame_collect frees nothing there and a
+ * resized-away buffer leaks once per resize (frame_buffers.h); Task 4 makes the 2D presenter set it. */
 static void publish(const uint8_t *px, int w, int h, int pitch, int bpp, const uint32_t *pal) {
     static uint32_t last_w, last_h;
     double began = emscripten_get_now();
-    int reading = g_sh.read_index;
-    int raw = g_sh.present_mode == RA2_PRESENT_RAW;
+    int reading = (int)__atomic_load_n(&g_sh.read_index, __ATOMIC_SEQ_CST);
+    int raw = __atomic_load_n(&g_sh.present_mode, __ATOMIC_SEQ_CST) == RA2_PRESENT_RAW;
     int game_w = w, game_h = h;
     int hd = !raw && bpp == 16 && ra2_vox_hd_on;
     uint32_t format, row;                                /* bytes per row in the buffer */
     uint8_t *out;
     if (bpp == 8 && !pal) return;
+    /* Replaced buffers are freed only when the page announces its reads (mode 1; frame_buffers.h). */
+    frame_collect(&g_frames, reading, raw);
     if (raw) {
         format = bpp == 16 ? RA2_FMT_RGB565 : bpp == 8 ? RA2_FMT_PAL8 : RA2_FMT_BGRX;
         row = (uint32_t)w * (bpp == 16 ? 2u : bpp == 8 ? 1u : 4u);
         out = frame_acquire(&g_frames, reading, (size_t)row * (size_t)h);
         if (!out) return;
         for (int y = 0; y < h; y++) memcpy(out + (size_t)y * row, px + (size_t)y * (size_t)pitch, row);
-        if (bpp == 8) memcpy(g_palette, pal, sizeof g_palette), g_sh.palette_ptr = (uint32_t)(uintptr_t)g_palette;
+        if (bpp == 8) {
+            memcpy(g_palette, pal, sizeof g_palette);
+            g_sh.palette_ptr = (uint32_t)(uintptr_t)g_palette;
+        }
     } else {
         if (hd) { w *= 2; h *= 2; }
-        format = RA2_FMT_RGBA, row = (uint32_t)w * 4u;
+        format = RA2_FMT_RGBA;
+        row = (uint32_t)w * 4u;
         out = frame_acquire(&g_frames, reading, (size_t)row * (size_t)h);
         if (!out) return;
         uint32_t *o = (uint32_t *)out;
@@ -148,15 +156,18 @@ static void publish(const uint8_t *px, int w, int h, int pitch, int bpp, const u
             }
         }
     }
+    /* The page's order (protocol.md): the pixels are written; then frame_ptr and frame_index; then frame_seq. */
     int index = frame_index_of(&g_frames, out);
-    g_sh.format = format, g_sh.frame_pitch = row;
-    g_sh.frame_w = (uint32_t)w, g_sh.frame_h = (uint32_t)h;
-    g_sh.game_w = (uint32_t)game_w, g_sh.game_h = (uint32_t)game_h;
-    g_sh.frame_index = index;
-    g_sh.frame_ptr = (uint32_t)(uintptr_t)out;
+    g_sh.format = format;
+    g_sh.frame_pitch = row;
+    g_sh.frame_w = (uint32_t)w;
+    g_sh.frame_h = (uint32_t)h;
+    g_sh.game_w = (uint32_t)game_w;
+    g_sh.game_h = (uint32_t)game_h;
     frame_publish(&g_frames, index);
-    frame_collect(&g_frames, reading);
-    __atomic_add_fetch(&g_sh.frame_seq, 1, __ATOMIC_RELEASE);
+    __atomic_store_n(&g_sh.frame_ptr, (uint32_t)(uintptr_t)out, __ATOMIC_SEQ_CST);
+    __atomic_store_n(&g_sh.frame_index, index, __ATOMIC_SEQ_CST);
+    __atomic_add_fetch(&g_sh.frame_seq, 1, __ATOMIC_SEQ_CST);
     g_pub_ms += emscripten_get_now() - began, g_pub_n++;
     if ((uint32_t)game_w != last_w || (uint32_t)game_h != last_h) {
         char line[64];
@@ -231,7 +242,10 @@ static void present_now(void) {
     unsigned seq;
     if (!hle_dd_frame(&px, &w, &h, &pitch, &bpp, &pal, &seq)) return;
     uint32_t now = hle_ticks_ms();
-    if (g_sh.republish) g_sh.republish = 0, shown_seq = ~0u, last = now - 15;   /* the page came back: a new picture now */
+    if (__atomic_exchange_n(&g_sh.republish, 0, __ATOMIC_SEQ_CST)) {   /* the page came back: a new picture now */
+        shown_seq = ~0u;
+        last = now - 15;
+    }
     if (now - last < 15 || (seq == shown_seq && now - last < 250)) return;
     shown_seq = seq, last = now;
     publish(px, w, h, pitch, bpp, pal);
@@ -418,7 +432,7 @@ static void drain_input(void) {
              * blur still lets go of keys, buttons and the pointer (input.ts). Coming back, every
              * showing window paints in full and a new picture goes out at once. */
             if (h) hle_post_message(h, WM_ACTIVATEAPP, 1, 0);
-            if (e.a) redraw_whole_screen(), hle_invalidate_all(), g_sh.republish = 1;
+            if (e.a) redraw_whole_screen(), hle_invalidate_all(), __atomic_store_n(&g_sh.republish, 1, __ATOMIC_SEQ_CST);
             else web_presenter_pause();                      /* leaving a match: it is paused when they come back */
             break;
         }
