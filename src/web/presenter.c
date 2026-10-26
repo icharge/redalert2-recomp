@@ -458,14 +458,18 @@ void web_presenter_pump(void) {
             web_event_json(line);
             if (ra2_clockstats_on()) {
                 uint32_t c[5];
-                char clock[160];
+                char clockline[160];
                 ra2_clockstats_take(c);
-                snprintf(clock, sizeof clock,
+                snprintf(clockline, sizeof clockline,
                          "{\"e\":\"clock\",\"qpc\":%u,\"tgt\":%u,\"gtc\":%u,\"sleep\":%u,\"sleep0\":%u}",
                          c[0], c[1], c[2], c[3], c[4]);
-                web_event_json(clock);
+                web_event_json(clockline);
             }
             g_worst_gap = 0, g_late = 0, g_pub_ms = 0, g_pub_n = 0;
+        } else if (ra2_clockstats_on()) {
+            /* the first tick: the counts so far run from boot, not from a second, so drop them */
+            uint32_t discard[5];
+            ra2_clockstats_take(discard);
         }
         last_frames = frames;
         next_fps = now + 1000;

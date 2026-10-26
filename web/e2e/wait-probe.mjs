@@ -15,11 +15,14 @@ const url = process.argv.includes("--url") ? base.url : "http://127.0.0.1:5173/e
 const t = await startPage({ ...base, url, noDev: true });
 
 try {
-  await t.page.waitForFunction(() => window.waitProbeDone === true, null, { timeout: 120_000 });
-  const rows = await t.page.evaluate(() => window.waitProbe);
+  // SharedArrayBuffer needs COOP/COEP: check before waiting, so a page without them fails at once
   const isolated = await t.page.evaluate(() => crossOriginIsolated);
   if (!isolated)
-    throw new Error("the page is not cross-origin isolated: serve it from the Vite dev server");
+    throw new Error(
+      `${url} is not cross-origin isolated (no COOP/COEP headers): serve it from the Vite dev server on 127.0.0.1:5173`,
+    );
+  await t.page.waitForFunction(() => window.waitProbeDone === true, null, { timeout: 120_000 });
+  const rows = await t.page.evaluate(() => window.waitProbe);
 
   const fmt = (v) => v.toFixed(2).padStart(7);
   console.log("target    p50 late    p95 late    p99 late    max late   (ms)");

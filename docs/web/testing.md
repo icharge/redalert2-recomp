@@ -499,6 +499,16 @@ plan (Task 2). Run them with the Vite dev server up, bound to IPv4 (see "The fra
   second: `{"e":"clock","qpc":N,"tgt":N,"gtc":N,"sleep":N,"sleep0":N}` (`sleep0` is `Sleep(0)`). With the flag
   off, only the QPC branch is there; the other three shims are not installed. A spin is a second with a
   thousand or more clock reads and no `Sleep` at all.
+- **The runner.** `node e2e/clock-probe.mjs --build ../build-web-probe` (in `web/`, with the Vite dev server up) plays
+  the imported Yuri's Revenge from `work/perf/profile-fresh` with `?arg=--clockstats`: 25 s at the main menu, then
+  Single Player > Skirmish > Start Game and 30 s of battle (`--menu-seconds`, `--match-seconds`). It prints the
+  medians of each phase (per second), the fewest `Sleep` calls in a second, and the spin verdict, and writes
+  `work/perf/clock-probe.json`. The build is the `-O1` probe build: `$env:BUILD_DIR='build-web-probe'`, and
+  `$env:CMAKE_ARGS='-DWEB_LINK_OPT=-O1 -DWEB_OUT=C:/…/work/web-out-probe'`, then `cmd /c build-web.cmd` from the repo root.
+  `WEB_OUT` must stay outside `web/public/game`, or the fast module replaces the one the page serves. The RA2
+  build (`RA2_TARGET=game`) is a separate build directory; this runner plays Yuri's Revenge only.
+- **Reading the verdict.** `spin: no` means no second had 1,000 or more clock reads with no `Sleep`, so the timed
+  waits in the frame loop are not spinning on the clock. `spin: YES` names the seconds; Task 9 runs only then.
 
 `--build <dir>` takes a build directory holding `ra2.js`, `ra2.wasm` and `ra2.data` (CMake's own names), and
 the e2e scripts serve them for the page's `ra2md.*` (Yuri's Revenge) or `ra2.*` (Red Alert 2) requests.

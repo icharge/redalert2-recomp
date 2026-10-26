@@ -175,11 +175,15 @@ static uint64_t g_clock_skew_us;
  * presenter.c). The QPC count is one branch in its shim; the timeGetTime, GetTickCount and Sleep shims
  * are installed only with the flag, and each calls the HLE's own implementation. */
 static int g_clockstats;
+/* Guest threads (the multimedia timers, the audio) make calls too, so the counts are atomic. */
 static struct { uint32_t qpc, tgt, gtc, sleep, sleep0; } g_clock;
 int ra2_clockstats_on(void) { return g_clockstats; }
 void ra2_clockstats_take(uint32_t out[5]) {
-    out[0] = g_clock.qpc, out[1] = g_clock.tgt, out[2] = g_clock.gtc, out[3] = g_clock.sleep, out[4] = g_clock.sleep0;
-    memset(&g_clock, 0, sizeof g_clock);
+    out[0] = __atomic_exchange_n(&g_clock.qpc, 0, __ATOMIC_RELAXED);
+    out[1] = __atomic_exchange_n(&g_clock.tgt, 0, __ATOMIC_RELAXED);
+    out[2] = __atomic_exchange_n(&g_clock.gtc, 0, __ATOMIC_RELAXED);
+    out[3] = __atomic_exchange_n(&g_clock.sleep, 0, __ATOMIC_RELAXED);
+    out[4] = __atomic_exchange_n(&g_clock.sleep0, 0, __ATOMIC_RELAXED);
 }
 static recomp_func_t hle_original(const win32hle_shim *table, const char *name) {
     for (const win32hle_shim *s = table; s->name; s++)
@@ -187,9 +191,12 @@ static recomp_func_t hle_original(const win32hle_shim *table, const char *name) 
     return NULL;
 }
 static recomp_func_t real_timeGetTime, real_GetTickCount, real_Sleep;
-static void ra2_timeGetTime(void) { g_clock.tgt++; real_timeGetTime(); }
-static void ra2_GetTickCount(void) { g_clock.gtc++; real_GetTickCount(); }
-static void ra2_Sleep(void) { if (A32(0)) g_clock.sleep++; else g_clock.sleep0++; real_Sleep(); }
+static void ra2_timeGetTime(void) { __atomic_fetch_add(&g_clock.tgt, 1, __ATOMIC_RELAXED); real_timeGetTime(); }
+static void ra2_GetTickCount(void) { __atomic_fetch_add(&g_clock.gtc, 1, __ATOMIC_RELAXED); real_GetTickCount(); }
+static void ra2_Sleep(void) {
+    __atomic_fetch_add(A32(0) ? &g_clock.sleep : &g_clock.sleep0, 1, __ATOMIC_RELAXED);
+    real_Sleep();
+}
 static const win32hle_shim g_clock_shims[] = {
     { "timeGetTime", ra2_timeGetTime },
     { "GetTickCount", ra2_GetTickCount },
@@ -201,12 +208,16 @@ static void ra2_clockstats_install(void) {
     real_timeGetTime = hle_original(win32hle_winmm, "timeGetTime");
     real_GetTickCount = hle_original(win32hle_kernel32, "GetTickCount");
     real_Sleep = hle_original(win32hle_kernel32, "Sleep");
+    if (!real_timeGetTime || !real_GetTickCount || !real_Sleep) {
+        fprintf(stderr, "--clockstats: the HLE does not export timeGetTime, GetTickCount or Sleep; the flag cannot count them\n");
+        exit(1);
+    }
     win32hle_register(g_clock_shims);
 }
 
 static void ra2_QueryPerformanceCounter(void) {
     struct timespec ts;
-    if (g_clockstats) g_clock.qpc++;
+    if (g_clockstats) __atomic_fetch_add(&g_clock.qpc, 1, __ATOMIC_RELAXED);
     clock_gettime(CLOCK_MONOTONIC, &ts);
     uint64_t us = (uint64_t)ts.tv_sec * 1000000u + (uint64_t)ts.tv_nsec / 1000u;
     if (!g_play_intro && !web_menu_seen) {
