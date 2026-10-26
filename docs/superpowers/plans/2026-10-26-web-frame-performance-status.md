@@ -16,7 +16,7 @@ Detailed ledger (rulings, review findings): `.superpowers/sdd/2026-10-26-web-fra
 | 2d. Thai-off path as a plain call | **done** (review clean after 1 fix round); its macro changes were reverted (585ef08): they didn't matter. It found the real cause: **the app turns the Thai font fix on by default**; with it off the busy save already runs at 62 fps (720p). Fix off: 1080p 49–50, 1440p 33 | 533d330, 585ef08, 4c6da57 |
 | 2e. The Thai fix without full-font rewrites (new) | **done** (review clean after 1 fix round; one measurement question parked). Rejected fonts are remembered, with the reason re-checked on each use; screenshots identical to the old build. Busy, HD off, Thai on (the default): 720p **61 fps** (1% low 54–55) vs 23–29 before; 1080p 49, 1440p 34. The Thai shaping itself stays inactive for this font | 30f984d, 4303eaf, cb64513 |
 | 2f. Profile the busy game at 1440p and 720p (new) | **done** (review clean after 2 fix rounds). Game work a frame: 720p 13.0 ms, 1440p 22.7 ms (60 fps allows 16.7). Of the 9.7 ms rise: the game's sprite/tile drawing about 3.7 ms, the presenter about 1.5 ms (1.9 ms in all at 1440p), at least 3.1 ms other game functions. **So Tasks 3/4/6 can save at most about 2 ms at 1440p** | 9787c04, 22ac9c1, a1624f5 |
-| 3. Raw publish, three buffers, protocol 8 | **running** (Haiku; from 5484fc5 + 2f's commits). Benchmarks now use `work/perf/profile-clean`, a copy of the test profile without the bad save-store files | |
+| 3. Raw publish, three buffers, protocol 8 | **in review**: the game can hand its screen over unconverted through three buffers (off by default until Task 4); tests pass, both editions reach the menu | f438c6c |
 | 4. WebGL2 presenter | pending | |
 | 5. HD layers on the GPU | **deferred** to a later HD project | |
 | 6. Scaling modes and bars | pending | |
@@ -43,7 +43,7 @@ The user asked to focus on the game with HD off (HD vehicles are experimental an
 ## To resume after an interruption
 
 1. `git log --oneline 1981765..HEAD` shows what landed since Task 1.
-2. Tasks 2–2f are done. Task 3 is running: if it has a commit "Publish the screen raw into three buffers…", it needs its review (BASE in the ledger); otherwise re-dispatch from `task-3-brief.md`. Waiting on the user: the save-store bug fix, and the Thai font picker / Thai fix split.
+2. Tasks 2–2f are done; Task 3 is in review (package `review-a1624f5..f438c6c.diff`). Waiting on the user: the save-store bug fix, and the Thai font picker / Thai fix split.
 3. Builds for tests go in their own BUILD_DIR with `-DWEB_OUT` outside `web/public/game` (CLAUDE.md); e2e loads them with `--build`. Benchmark profile: `work/perf/profile-fresh`; busy save: `work/perf/busy.sav`; baseline: `work/perf/baseline/run.json`.
 
 ## Baseline (Task 1, published Release build ef2b94fc673f9950, headed Chrome)
