@@ -10,8 +10,8 @@ Detailed ledger (rulings, review findings): `.superpowers/sdd/2026-10-26-web-fra
 | Task | State | Commits |
 |---|---|---|
 | 1. Benchmark and baseline | **done**, review clean after 5 fix rounds | aa8bb15..1981765 |
-| 2. Probes: wait precision, clock calls | **fix round 1 in re-review** (clock-probe script committed, 6 small fixes; both editions build). M = 16 ms; no clock spin | d288344, 47ab13b, dba7145 |
-| 2b. Profile the busy game, HD off (new) | pending, next after Task 2 | |
+| 2. Probes: wait precision, clock calls | **done**, review clean after 1 fix round. M = 16 ms; no clock spin | d288344, 47ab13b, dba7145, ebee1fa |
+| 2b. Profile the busy game, HD off (new) | **running** (Haiku implementer; from ebee1fa; release link with function names first, about 10 min) | |
 | 3. Raw publish, three buffers, protocol 8 | pending | |
 | 4. WebGL2 presenter | pending | |
 | 5. HD layers on the GPU | **deferred** to a later HD project | |
@@ -31,7 +31,7 @@ The user asked to focus on the game with HD off (HD vehicles are experimental an
 ## To resume after an interruption
 
 1. `git log --oneline 1981765..HEAD` shows what landed since Task 1.
-2. Task 2 is committed (d288344, 47ab13b); if no "Task 2: complete" line is in the ledger, re-run its review from `review-1981765..47ab13b.diff`. Otherwise resume at the first task without a complete line.
+2. Task 2 is done. If Task 2b has a commit adding `web/e2e/profile-game.mjs`, it needs its task review (BASE ebee1fa); otherwise re-dispatch it from `.superpowers/sdd/2026-10-26-web-frame-performance/task-2b-brief.md`.
 3. Builds for tests go in their own BUILD_DIR with `-DWEB_OUT` outside `web/public/game` (CLAUDE.md); e2e loads them with `--build`. Benchmark profile: `work/perf/profile-fresh`; busy save: `work/perf/busy.sav`; baseline: `work/perf/baseline/run.json`.
 
 ## Baseline (Task 1, published Release build ef2b94fc673f9950, headed Chrome)
