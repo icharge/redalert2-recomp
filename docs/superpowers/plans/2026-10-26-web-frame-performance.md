@@ -628,3 +628,23 @@ Run accounting (all under `work/perf/task2d/` unless noted):
 - Superseded, first attempt (inline flag check, wasm 0af3b98e8ca0): `superseded-first-attempt/` (`2d1`, `2d2` at 720p, `2d-2560x1440-1/2` at 1440p, `profile-2d-720.json/log`, `profile-2d-1440.log`), and `work/perf/superseded-first-attempt/` (`profile-2d-720.cpuprofile`, `profile-2d-1440.json/.cpuprofile`).
 - Superseded, old count: `superseded-old-count/` (`off-profile-rev-720.log`, `off-profile-rev-1440.log`) and `work/perf/superseded-old-count/`.
 - Deleted, not in the record: the first attempt's `2d-1920x1080-1` (exit 0) and `2d-1920x1080-2` (exit 1). I deleted both folders and logs during the cancellation before reading them. The exit-1 run's cause is not recorded; it may have been killed by the `pkill` I ran then, which I did not verify.
+
+### Task 2e: the Thai fix's cost (Steps 1 and 2; Step 3 blocked)
+
+**Status: NEEDS_CONTEXT.** Step 1 shows that the metrics path the brief's Step 3 designs would make cheaper never runs in the busy save. The fix-on cost is a font clone that fails, repeated on every text call. Neither of the brief's two designs fits these numbers, so no change was made to `src/runtime/thai_font.c`. Steps 4 and 5 are not done.
+
+**Step 1: counts in the busy save, fix on (the app default; `[thaifont] using selected font builtin-westwood-improved at game.fnt` printed, so the game ran with `--thai-font-fix`).** Scratch `-O1` build `work/build-web-thai2e-count` (not committed; the instrumentation is `work/perf/task2e/count-instrumentation.diff`), busy save at 1280x720, 20 s after the load, `work/perf/task2e/count.mjs`. Per second, from the `[thaistat]` lines (run `count-3`, `count-4`):
+- text entries (`THAI_TEXT_VA`): 54 to 114 a second; layout entries (`THAI_LAYOUT_VA`): 0.
+- render entries (`THAI_RENDER_VA`): 486 to 1020 a second.
+- `apply_metrics` and `restore_metrics`: 0 each. No font state was ever created.
+- font state creations (`create_state`, called on each text call that finds no state): about 90 a second, all failed (total 1,743 at 20 s after the load, 982 in the 10 s run; `creates_total` = `fails_total`).
+- The failing check (line 223 in the instrumented file, the glyph-width test `width > 16 || 1 + 16*3 > stride`): the font is `count=34151 stride=49`, and glyph 29996 has width 207 (`[thaifail]` line, `count-4.json`). The same font pointer every time (0x067d95e0). One unused glyph with a bogus width rejects the whole font.
+- Spacing values seen: every text entry has spacing 1 (the `hist` array, index 1; `hist=0,54,0,...` is 54 entries at spacing 1, none at 0, none above 1). The spacing is read from `font+0x2c`. No metrics are applied at spacing 1, because no state exists.
+- Glyph count of the font: 34151 (no state exists, so no mark count, safe spacing or same-spacing count).
+
+What this means. With the fix on, each text call clones the font's records (34151 x 49 bytes, about 1.67 MB, `memcpy` plus `malloc` and `free`) and then rejects it. The fix's metrics code never runs, so the picture with the fix on is the fix-off picture. The 24 fps is the clone, not `apply_metrics` / `restore_metrics`, which the brief names as the cost. The brief's Step 3 cases (spacing-0 touches only the marked records; a per-state spacing memory) would not change this at all.
+
+**Step 2: the picture check (`web/e2e/thai-shots.mjs`).** Shots are the main menu (`menu.png`), the skirmish setup (`skirmish.png`) and the busy save's in-game menu at 1280x720 (`busy-menu.png`). Every capture checks the `[thaifont]` line. Reference: build A (`work/build-web-prof`, wasm b0fb263feb7d), in `work/thai-shots/A`; the second run in `work/thai-shots/A2`. A vs A2 with the masks below: zero differing pixels in every image (`work/thai-shots-AvsA2.log`).
+- Unmasked, A vs A2 differs: `menu.png` 185,847 pixels (the radar screen and the bar-graph monitor animate), `busy-menu.png` 88 pixels (the page's `stats=1` overlay: frames per second and draw time).
+- Masks (not compared; the rectangles are in `MASKS` in `thai-shots.mjs`): `menu.png` the radar screen (40,60)-(1000,900) and the bar-graph monitor (1040,40)-(1240,200); `busy-menu.png` the stats overlay (0,0)-(260,90). The radar mask covers about 68% of `menu.png`, so the menu check is weak. The skirmish shot needs no mask (0 differing in both runs).
+- A vs 2e: not run, since no 2e build exists.
