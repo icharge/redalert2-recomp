@@ -439,3 +439,7 @@ Margin `M`: 16 ms. No target has a p99 of 1 ms or less, so M is today's 16: the 
 Clock calls per second, main menu / match: main menu (25 s, median per second): QueryPerformanceCounter 58,933, GetTickCount 22, timeGetTime 0; Sleep(n) 93, Sleep(0) 0. Match (skirmish, 36 s of battle after the setup and load, median per second): QueryPerformanceCounter 704, timeGetTime 2,035, GetTickCount 0; Sleep(n) 667, Sleep(0) 0. During the skirmish's setup and load, up to about 125,000 QueryPerformanceCounter reads a second, with about 100 Sleep(n) in each.
 
 Spin found: no. No second had 1,000 or more clock reads with no Sleep: every second of the menu and the battle had 91 or more Sleep(n) calls, so Task 9 does not run. (Measured with the -O1 probe build, headed Chrome, the profile work/perf/profile-fresh, the default skirmish; the driver is a scratch script, not committed.)
+
+## Results
+
+(Filled in by Tasks 1, 7–12.)
