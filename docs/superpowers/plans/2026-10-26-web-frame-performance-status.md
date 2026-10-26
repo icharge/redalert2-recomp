@@ -54,3 +54,7 @@ Detailed ledger (rulings, review findings): `.superpowers/sdd/2026-10-26-web-fra
 - Worker waits: p99 lateness 7–15 ms at every target from 1 to 16 ms, so the wait margin stays M = 16 ms (today's value). Task 8 may have little to change.
 - Clock calls per second: main menu about 59,000 high-precision clock reads and 93 Sleeps; in a match about 2,000 timeGetTime, 700 clock reads and 667 Sleeps.
 - No spin: every second had 91+ Sleep calls, so Task 9 is skipped.
+
+## Ideas raised during the run (separate projects)
+
+- HD buildings and infantry (SHP sprites, not voxels): either a pixel-art scaler in the shader, or pre-upscaled 2x sprites recorded like the HD voxels. Task 5's 2x layer + mask design leaves room for it. To design after this plan.
