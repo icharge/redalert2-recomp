@@ -18,7 +18,7 @@ At the user's request, the target is the game with **HD off**; HD vehicles are e
 - **Task 5 (HD layers on the GPU) is deferred** to a later HD project (with the flicker and HD buildings/infantry). Task 4's presenter keeps HD working through the 2D fallback when HD is on.
 - Task 7 measures and profiles the HD-off busy cases; HD-on rows are recorded only. Task 11's soak runs HD off.
 - Order: 2b, 2c, 2d, 2e, 2f, 3, 4, 6, 7, 8, 10, 11, 12 (9 skipped: no spin). Task 2c was added after 2b's profile, 2d after 2c's result, and 2e after 2d found the Thai fix on by default.
-- The pass bar is measured with the app's defaults, so with the Thai fix on; fix-off numbers are recorded beside them.
+- The pass bar is measured with the app's defaults. Until 26 October those had the Thai fix on; at the user's request the fix is now off by default (0bfab6e) because it never shapes text for the game's font, so from Task 2f on the default runs are fix-off. After Task 2e the two cost the same.
 
 ### Task 2b: Profile the busy game, HD off
 

@@ -30,11 +30,11 @@ Detailed ledger (rulings, review findings): `.superpowers/sdd/2026-10-26-web-fra
 
 ## Change of target (26 October)
 
-The user asked to focus on the game with HD off (HD vehicles are experimental and flicker). The pass bar is now 60 fps median, 55 1% low, 720p–1440p, busy, **HD off**, with the app's defaults (so the Thai font fix on); HD on is recorded with no target. New Task 2b profiles the busy save first, since it runs at 18–23 fps at every size (the picture isn't the limit). Order: 2b, 2c, 2d, 2e, 2f, 3, 4, 6, 7, 8, 10, 11, 12.
+The user asked to focus on the game with HD off (HD vehicles are experimental and flicker). The pass bar is now 60 fps median, 55 1% low, 720p–1440p, busy, **HD off**, with the app's defaults (the Thai font fix is now off by default, 0bfab6e); HD on is recorded with no target. New Task 2b profiles the busy save first, since it runs at 18–23 fps at every size (the picture isn't the limit). Order: 2b, 2c, 2d, 2e, 2f, 3, 4, 6, 7, 8, 10, 11, 12.
 
 ## What limits the busy game (Tasks 2b–2d)
 
-- **The Thai font fix.** The web app turns it on by default. With it on, every text call tries to set up the Thai state for the font, and for the busy save's font that fails (glyph 29996 is 207 pixels wide, over the check's 16; `thai_font.c:223`) after copying 1.67 MB and scanning 34,151 glyphs. That is the 52% of the game thread the profile showed under `recomp_thai_call`. (An earlier note here blamed the width rewrites; Task 2e's counts showed they never run.) So the Thai shaping itself is inactive for this font: a separate question for the user. Busy save, 720p, HD off: 26 fps with the fix on, 62 (the speed-5 cap) with it off. Task 2e removed that cost (the rejection is remembered) and the fix stays on by default; the Thai shaping itself is still inactive for this font.
+- **The Thai font fix.** The web app turns it on by default. With it on, every text call tries to set up the Thai state for the font, and for the busy save's font that fails (glyph 29996 is 207 pixels wide, over the check's 16; `thai_font.c:223`) after copying 1.67 MB and scanning 34,151 glyphs. That is the 52% of the game thread the profile showed under `recomp_thai_call`. (An earlier note here blamed the width rewrites; Task 2e's counts showed they never run.) So the Thai shaping itself is inactive for this font: a separate question for the user. Busy save, 720p, HD off: 26 fps with the fix on, 62 (the speed-5 cap) with it off. Task 2e removed that cost (the rejection is remembered). Since the shaping never worked for this font, the user asked to turn the fix off by default for now (0bfab6e); players can still turn it on in the launcher's game settings.
 - **Bigger screens cost more game work.** With the fix off: 1080p 49–50 fps, 1440p 33 fps; at 1440p the profiling script measured 21.5 ms of game work a frame (60 fps allows 16), but that script's fps differs from the benchmark's, so treat the figure as rough. Profile at 1440p after Task 2e.
 - The picture code (presenter) is under 1% of the game thread at 720p; waiting is 16%.
 - Separate CPU cost: pcrecomp's `wait_ms` busy-polls the clock on another worker (about 81% of that worker's time in clock reads).
@@ -76,7 +76,7 @@ The user asked to focus on the game with HD off (HD vehicles are experimental an
 
 ## Ideas raised during the run (separate projects)
 
-- The Thai font fix rejects the busy save's font (a glyph wider than 16 pixels), so it never shapes Thai text there; and that font is not the `game.fnt` the app stages, so the staging doesn't reach it. Decide whether it should accept such fonts (changes the picture). A session card was proposed for this.
+- **Thai fix off by default for now** (0bfab6e). The Thai font fix rejects the busy save's font (a glyph wider than 16 pixels), so it never shapes Thai text there; and that font is not the `game.fnt` the app stages, so the staging doesn't reach it. Decide whether it should accept such fonts (changes the picture). A session card was proposed for this.
 
 - HD vehicles flicker when on (reported by the user): fix in the HD project.
 - HD buildings and infantry (SHP sprites, not voxels): either a pixel-art scaler in the shader, or pre-upscaled 2x sprites recorded like the HD voxels. Task 5's 2x layer + mask design leaves room for it. To design after this plan.
