@@ -17,7 +17,7 @@ At the user's request, the target is the game with **HD off**; HD vehicles are e
 - **Task 2b (new) runs next:** profile the busy game with HD off. The busy save runs at 18–23 fps at every size, so the limit is not the picture; this profile says what it is before the rendering work starts.
 - **Task 5 (HD layers on the GPU) is deferred** to a later HD project (with the flicker and HD buildings/infantry). Task 4's presenter keeps HD working through the 2D fallback when HD is on.
 - Task 7 measures and profiles the HD-off busy cases; HD-on rows are recorded only. Task 11's soak runs HD off.
-- Order: 2b, 3, 4, 6, 7, 8, 10, 11, 12 (9 skipped: no spin).
+- Order: 2b, 2c, 3, 4, 6, 7, 8, 10, 11, 12 (9 skipped: no spin). Task 2c was added after 2b's profile.
 
 ### Task 2b: Profile the busy game, HD off
 
@@ -29,6 +29,19 @@ At the user's request, the target is the game with **HD off**; HD vehicles are e
 - [ ] **Step 2: Write `profile-game.mjs`**: opens that build with `--build` and the `work/perf/profile-fresh` profile, loads `work/perf/busy.sav` at 1280x720 with HD off and game speed 5 (perf-nav.mjs helpers), waits 10 s, then records a 20 s CPU profile of the game's worker thread over CDP (auto-attach to workers, `Profiler.start` / `Profiler.stop`), and writes `work/perf/profile-busy.cpuprofile` plus `work/perf/profile-busy.json`: the 20 heaviest functions by self time, and the share of self time in four groups: the recompiled game code, the runtime (pcrecomp HLE and src/runtime), the presenter (`src/web`), and waiting (`Atomics.wait`, idle).
 - [ ] **Step 3: Run it** twice and record in "Probe results": the four shares, the top 10 functions, and the game fps during the sample. Then a one-paragraph reading: which group bounds the busy fps, and which later tasks (3/4/6 picture, 8/10 waits and locks, or none: the game's own simulation) can move it.
 - [ ] **Step 4: Document** the command in `docs/web/testing.md`, then commit `profile-game.mjs`, `testing.md` and the plan.
+
+### Task 2c: Test the Thai-font wrapper's cost
+
+Task 2b's profile puts 52% of the busy game thread's samples in `recomp_thai_call` (src/runtime/thai_font.c:371), the wrapper the lifter puts around the three font entry points; with the Thai fix off it only calls the original. This task finds out whether that time is real.
+
+**Files:**
+- Modify: `src/runtime/thai_font.h` (an opt-in `RA2_NO_THAI_HOOK` switch), this plan's "Probe results"
+
+- [ ] **Step 1: Add the switch.** With `RA2_NO_THAI_HOOK` defined, `RECOMP_THAI_CALL(va, fn)` expands to `RECOMP_CALL(fn)` and `RECOMP_THAI_ICALL(va)` to `RECOMP_ICALL(va)` (pcrecomp `runtime/recomp32/recomp_types.h:1135`); without it, nothing changes. A comment says it exists to measure the wrapper.
+- [ ] **Step 2: Build B**: the default edition, `-DWEB_LINK_OPT="-O3;--profiling-funcs"`, `-DCMAKE_C_FLAGS=-DRA2_NO_THAI_HOOK` (or the build's existing way to add a define), in `work/build-web-nothai`, `WEB_OUT` under `work/`. Build A is Task 2b's `work/build-web-prof`, unchanged (rebuild it only if it is gone).
+- [ ] **Step 3: Measure.** Alternate A, B, A, B: the busy case at 1280x720, HD off, with `perf.mjs --build <dir>` (or `profile-game.mjs`'s fps sample), and record each run's fps median and 1% low. Then run `profile-game.mjs` once on B and record its group shares and top 10.
+- [ ] **Step 4: Decide and record** in "Probe results": if B's fps median is at least 3 above A's (beyond run-to-run spread), the wrapper is a real cost: say how much, and propose the fix (for example, testing the Thai flag inline in the macro before calling the wrapper). Otherwise it is a profiler artefact: say where B's profile puts the time instead.
+- [ ] **Step 5: Commit** `thai_font.h` and the plan.
 
 ## Global Constraints
 
