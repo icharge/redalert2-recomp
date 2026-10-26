@@ -10,12 +10,32 @@
 
 **Spec:** [docs/superpowers/specs/2026-10-26-web-frame-performance-design.md](../specs/2026-10-26-web-frame-performance-design.md)
 
+## Change of target (26 October 2026)
+
+At the user's request, the target is the game with **HD off**; HD vehicles are experimental (and flicker). Consequences:
+
+- **Task 2b (new) runs next:** profile the busy game with HD off. The busy save runs at 18–23 fps at every size, so the limit is not the picture; this profile says what it is before the rendering work starts.
+- **Task 5 (HD layers on the GPU) is deferred** to a later HD project (with the flicker and HD buildings/infantry). Task 4's presenter keeps HD working through the 2D fallback when HD is on.
+- Task 7 measures and profiles the HD-off busy cases; HD-on rows are recorded only. Task 11's soak runs HD off.
+- Order: 2b, 3, 4, 6, 7, 8, 10, 11, 12 (9 skipped: no spin).
+
+### Task 2b: Profile the busy game, HD off
+
+**Files:**
+- Create: `web/e2e/profile-game.mjs`
+- Modify: `docs/web/testing.md`, this plan's "Probe results"
+
+- [ ] **Step 1: Release-link with function names**: the default edition, `-O3` (`-DWEB_LINK_OPT=` empty) plus Emscripten's `--profiling-funcs`, in its own BUILD_DIR with `WEB_OUT` under `work/` (never `web/public/game`).
+- [ ] **Step 2: Write `profile-game.mjs`**: opens that build with `--build` and the `work/perf/profile-fresh` profile, loads `work/perf/busy.sav` at 1280x720 with HD off and game speed 5 (perf-nav.mjs helpers), waits 10 s, then records a 20 s CPU profile of the game's worker thread over CDP (auto-attach to workers, `Profiler.start` / `Profiler.stop`), and writes `work/perf/profile-busy.cpuprofile` plus `work/perf/profile-busy.json`: the 20 heaviest functions by self time, and the share of self time in four groups: the recompiled game code, the runtime (pcrecomp HLE and src/runtime), the presenter (`src/web`), and waiting (`Atomics.wait`, idle).
+- [ ] **Step 3: Run it** twice and record in "Probe results": the four shares, the top 10 functions, and the game fps during the sample. Then a one-paragraph reading: which group bounds the busy fps, and which later tasks (3/4/6 picture, 8/10 waits and locks, or none: the game's own simulation) can move it.
+- [ ] **Step 4: Document** the command in `docs/web/testing.md`, then commit `profile-game.mjs`, `testing.md` and the plan.
+
 ## Global Constraints
 
 - Browser build only. Native Windows and Linux builds keep their behaviour; pcrecomp changes stay under `#ifdef __EMSCRIPTEN__`, and `hdvox_compose` stays for the native builds and the 2D fallback.
 - Both editions build and pass: Yuri's Revenge (default) and Red Alert 2 (`$env:RA2_TARGET='game'`).
 - Measure release links only (`-DWEB_LINK_OPT=` empty, `-O3`); an `-O1` link is not a measure of the release. Headed Chrome, browser in front.
-- Pass bar, verbatim from the spec: game fps median ≥ 60 and 1% low ≥ 55 (720p–1440p, HD on, busy); worst frame gap ≤ 33 ms in a 60 s sample; main-thread time per animation frame ≤ 4 ms; idle main-menu CPU at least 40% below the baseline; in-match CPU no higher than the baseline at the same fps; wasm memory no growth after the first minute of a 10-minute busy run at 1440p HD with mode switches; 3840x2160 runs, recorded, no target.
+- Pass bar, verbatim from the spec: game fps median ≥ 60 and 1% low ≥ 55 (720p–1440p, HD off, busy; HD on recorded, no target); worst frame gap ≤ 33 ms in a 60 s sample; main-thread time per animation frame ≤ 4 ms; idle main-menu CPU at least 40% below the baseline; in-match CPU no higher than the baseline at the same fps; wasm memory no growth after the first minute of a 10-minute busy run at 1440p HD off with mode switches; 3840x2160 runs, recorded, no target.
 - Every CPU change (Tasks 8–10) is kept only if the benchmark shows median fps, 1% low and worst gap no worse than before it.
 - Shared struct changes go after `pointer_y` in `ra2_shared_t`, with `_Static_assert`s on their offsets; `RA2_WEB_PROTOCOL` goes from 7 to 8 in `src/web/web_api.h` and `web/src/game/protocol.ts` together.
 - Preserve other sessions' uncommitted work here and in `../pcrecomp`: stage only this plan's hunks (`git add -p`). Agree before publishing to `web/public/game/`.

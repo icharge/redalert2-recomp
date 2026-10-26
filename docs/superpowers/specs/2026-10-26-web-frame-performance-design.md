@@ -151,14 +151,20 @@ A compare mode prints each measure against a chosen baseline file.
 
 **Pass bar** (the definition of done):
 
+Changed 26 October 2026, at the user's request: the target is the game with HD
+off. HD vehicles are an experimental feature (they also flicker), so HD on is
+measured and recorded but has no target, and moving HD onto the GPU (Task 5 of
+the plan) waits for a later HD project.
+
 | Measure | Target |
 |---|---|
-| Game fps, 720p–1440p, HD on, busy | median ≥ 60, 1% low ≥ 55 |
+| Game fps, 720p–1440p, HD off, busy | median ≥ 60, 1% low ≥ 55 |
+| Game fps, HD on (experimental) | recorded, no target |
 | Worst frame gap in a 60 s sample | ≤ 33 ms |
 | Main-thread time per animation frame | ≤ 4 ms |
 | CPU, main menu, idle | at least 40% below the baseline |
 | CPU, in a match | no higher than the baseline at the same fps |
-| Wasm memory, 10 minutes busy at 1440p HD with mode switches | no growth after the first minute; peak recorded |
+| Wasm memory, 10 minutes busy at 1440p HD off with mode switches | no growth after the first minute; peak recorded |
 | 3840x2160 | runs; numbers recorded, no target |
 
 ## 2. The frame path
