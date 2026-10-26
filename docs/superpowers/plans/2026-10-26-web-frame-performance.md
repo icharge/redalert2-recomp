@@ -511,34 +511,26 @@ Reading. The game's thread is the bound: it is 84% busy at 25 fps, about 34 ms o
 
 ### Thai wrapper A/B (Task 2c)
 
-Switch: `RA2_NO_THAI_HOOK` in `src/runtime/thai_font.h` maps `RECOMP_THAI_CALL` and `RECOMP_THAI_ICALL` onto pcrecomp's `RECOMP_CALL` and `RECOMP_ICALL`. Build B is `work/build-web-nothai` (`-DWEB_LINK_OPT=-O3;--profiling-funcs`, `-DCMAKE_C_FLAGS=-DRA2_NO_THAI_HOOK`, WEB_OUT `work/web-out-nothai`); the define is in all 273 compile lines of its `build.ninja` (none in build A's). Build A is `work/build-web-prof`, unchanged.
+Switch: `RA2_NO_THAI_HOOK` in `src/runtime/thai_font.h` maps `RECOMP_THAI_CALL` and `RECOMP_THAI_ICALL` onto pcrecomp's `RECOMP_CALL` and `RECOMP_ICALL`. Build A is `work/build-web-prof` (unchanged from Task 2b). Build B is `work/build-web-nothai` (`-DWEB_LINK_OPT=-O3;--profiling-funcs`, `-DCMAKE_C_FLAGS=-DRA2_NO_THAI_HOOK`, which is in all 273 compile lines of its `build.ninja`).
 
-Benchmark: `web/e2e/perf.mjs --build` at 1280x720, HD off, the busy save, 60 s (30 s untouched, then panned), headed Chrome, one browser session per run. Median is `fpsMedian`; 1% low is `fps1Low`, the nearest-rank first percentile, which over 60 one-second samples is the minimum.
+Benchmark: `web/e2e/perf.mjs --build <dir>` at 1280x720, HD off, the busy save, 60 s (30 s untouched, then panned), headed Chrome, one browser session per run, A, B, A, B. Median is `fpsMedian`; 1% low is `fps1Low`, the nearest-rank first percentile, which over 60 one-second samples is the minimum. Each run's `run.json` names its build directory, the build id and the SHA-256 prefix of the `ra2.wasm` it served (A `b0fb263feb7d`, B `28aa805ebe19`, matching the files in the two build directories).
 
 | Run | Build | Median fps | 1% low | Worst gap (ms) |
 |---|---|---|---|---|
-| A1 | A | 29 | 25 | 92 |
-| B1 | B | 22 | 21 | 87 |
-| A2 | A | 23 | 18 | 123 |
-| B2 | B | 23 | 22 | 83 |
-| B3 (extra) | B | 30 | 25 | 119 |
-| A3 (extra) | A | 22 | 20 | 81 |
+| A1 | A | 29 | 21 | 164 |
+| B1 | B | 62 | 55 | 36 |
+| A2 | A | 24 | 22 | 73 |
+| B2 | B | 62 | 56 | 43 |
 
-The brief's pair rule: A's two medians average 26.0 (spread 6), B's average 22.5 (spread 1). B is 3.5 below A, not 3 above, so by the rule the wrapper is not a measurable cost here. Across all six runs the medians are 22 to 30 for both builds, so the benchmark does not separate them. The three extra runs are outside the four-run protocol; they were run because `profile-game.mjs` disagreed (below).
+Pair rule: A's two medians average 26.5 (spread 5); B's average 62.0 (spread 0). B is 35.5 fps above A, about 2.3 times A, far beyond the spread. B's median meets the 60 target and its 1% low (55 and 56) meets the 55 bar; A meets neither.
 
-`profile-game.mjs` (20 s CPU profile after a 10 s settle, same save and size; outputs `work/perf/profile-A-2c.*`, `profile-nothai.*`, `profile-nothai-2.*`):
+An earlier set of four `perf.mjs` runs (medians 29, 22, 23, 23 for A and B alternating) did not show this, because `perf.mjs` ignored `--build` and measured the published game in `web/public/game` for every run. That bug is fixed in `perf.mjs`; those runs are void.
 
-| Run | Median fps (min) | Game | Hook | Waiting | Other | `recomp_thai_call` self |
-|---|---|---|---|---|---|---|
-| A (`profile-A-2c`) | 29 (26) | 35.2% | 58.3% | 3.9% | 1.2% | 55.2% |
-| B (`profile-nothai`) | 62 (61) | 64.7% | 7.9% | 3.0% | 21.8% | n/a |
-| B (`profile-nothai-2`) | 62 (61) | 69.0% | 8.9% | 3.6% | 16.1% | n/a |
+`profile-game.mjs` (`--build`, 20 s CPU profile after a 10 s settle, with the profiler attached) agrees on the direction: A median 29 (min 26), B median 62 (min 61) in two runs. Under the profile, A's `recomp_thai_call` has 55.2% of the game worker's self time (`work/perf/profile-A-2c.json`). B has none, and its time is in the game's own code (65 to 69%), the `wait_ms` clock spin (11 to 15%) and `recomp_lookup` (8 to 9%); at 62 fps B's game thread is ahead of its 16 ms budget and spins.
 
-Conflict, not resolved. Under `profile-game.mjs`, B runs at 62 fps against A's 29, the reverse of the benchmark's result, and both B runs agree. The benchmark's B runs were 22 to 30. The two tools differ in the CDP session (`profile-game.mjs` attaches to every worker and enables the profiler before the load) and in the benchmark's CPU sampler. I did not find which setting explains it.
+Verdict: the wrapper is a real cost. With the Thai fix off (the default), the wrapper's only job is to call the original, yet it costs about 35 fps at 1280x720, HD off, on the busy save. B is a measurement build, not a shipped one: B's picture check passed, but its output was not compared with A's beyond that.
 
-B's profile (`work/perf/profile-nothai.json`, the first run; top 10 by self time of the game worker; the second run agrees to about 1 point on most, the spin being 11.3% there): `_emscripten_get_now` 15.2% (other, the `wait_ms` spin; 11.3% in the second run), `recomp_lookup` 7.8% (hook; 8.9%), `RLEBlitTransXlatAlphaZRead_G__virtual_1` 4.8% (game), `TechnoClass__virtual_23` 3.1% (game), `emscripten_futex_wait` 2.6% (waiting), `now` 2.4% (other), `present_now` 2.2% (presenter), `sub_007258D0` 1.7% (game), `sub_00437A10` 1.6% (game), `TechnoClass__virtual_10` 1.5% (game). With the wrapper gone the game thread is ahead of its 16 ms budget at 62 fps and spends about 11 to 15% spinning in `wait_ms`.
-
-Verdict (provisional). By the brief's rule, the wrapper is not shown to be a real cost (B is not at least 3 above A), so no fix is proposed yet. The profile's 55% self time in `recomp_thai_call` is not confirmed by the benchmark, but `profile-game.mjs` gives a 2x difference that would make it a real and large cost. Before Task 8 relies on either reading, measure it directly: a timing counter (`emscripten_get_now` or a cycle count) around the wrapper's `original()` call in build A, or the game's own fps overlay with and without the CDP session attached. If the wrapper is real, the fix is to test the Thai flag inline in the macro and call the original directly when no Thai target is hit, as the brief suggests.
+Proposed fix (not implemented; a later task does it): test the Thai switch inline in `RECOMP_THAI_CALL` and `RECOMP_THAI_ICALL`, so that when the fix is off the macro is a plain `RECOMP_CALL(fn)` or `RECOMP_ICALL(va)`. The check is one read of a flag that `thai_font.c` owns (for example `extern uint8_t g_thai_enabled`, set by `thai_font_set_enabled`). With the fix on, the existing wrapper path runs unchanged. Keep the `RA2_NO_THAI_HOOK` switch as a way to measure this again. The benchmark for it is the same four-run protocol, with A = the current build and B = the inline version.
 
 ## Results
 

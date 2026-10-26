@@ -28,6 +28,7 @@
 // through the Import screen; later runs reuse it. Games are opened from the profile, not from a folder:
 // the page's dev and test folders copy every file into memory, which Yuri's Revenge does not fit in the
 // 768 MB limit (perf-nav.mjs).
+import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -109,19 +110,44 @@ if ((moments.includes("busy") || soakMinutes > 0) && !existsSync(savePath))
   throw new Error(`no save at ${savePath}: make it with e2e/make-busy-save.mjs`);
 
 // --game is the import folder here, so lib.mjs must not read it as a test folder
+// --build <dir> (lib.mjs) serves that build directory's ra2.* files as the page's Yuri's Revenge module; without it
+// the page loads the published build in web/public/game.
 const base = {
   ...options(argv),
   profile,
   testGame: null,
-  gameBuild: null,
   shots: path.join(outDir, "shots"),
 };
 mkdirSync(path.join(outDir, "samples"), { recursive: true });
 const started = Date.now();
 const log = (line) => console.log(`${((Date.now() - started) / 1000).toFixed(0)}s  ${line}`);
 
-/** The build the run measured: the page's build.json, and the CMake build type of its build directory. */
+/**
+ * A --build directory's identity: the wasm the page loaded (ra2.wasm in the directory, by its SHA-256), the build
+ * ids of the WEB_OUT that CMakeCache.txt names (its build.json), and the CMake build type.
+ */
+function buildOf(dir) {
+  const cachePath = path.join(dir, "CMakeCache.txt");
+  if (!existsSync(cachePath)) throw new Error(`--build ${dir}: no CMakeCache.txt there`);
+  const cache = readFileSync(cachePath, "utf8");
+  const webOut = /^WEB_OUT:PATH=(.*)$/m.exec(cache)?.[1]?.trim() || dir;
+  const info = JSON.parse(readFileSync(path.join(webOut, "build.json"), "utf8"));
+  const wasm = path.join(dir, "ra2.wasm");
+  const sha = createHash("sha256").update(readFileSync(wasm)).digest("hex").slice(0, 12);
+  const cachedType = (/^CMAKE_BUILD_TYPE:STRING=(.*)$/m.exec(cache)?.[1] ?? "").trim();
+  // an empty cache value is CMakeLists' browser default, Release
+  const buildType = cachedType || "Release (CMakeLists default)";
+  if (!buildType.startsWith("Release"))
+    console.warn(`warning: the build type is ${buildType}, not Release (${cachePath})`);
+  return {
+    id: `${path.basename(dir)}: ${info.build} (ra2md ${info.games?.ra2md?.build ?? "?"}), wasm ${sha}`,
+    buildType,
+  };
+}
+
+/** The build the run measured: --build's directory, else the page's build.json, and the CMake build type of its build directory. */
 function build() {
+  if (base.gameBuild) return buildOf(path.resolve(base.gameBuild));
   const info = JSON.parse(readFileSync(path.join(repo, "web/public/game/build.json"), "utf8"));
   const cache = path.join(repo, "build-web", "CMakeCache.txt");
   let buildType = "unknown";
