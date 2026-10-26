@@ -11,8 +11,8 @@ Detailed ledger (rulings, review findings): `.superpowers/sdd/2026-10-26-web-fra
 |---|---|---|
 | 1. Benchmark and baseline | **done**, review clean after 5 fix rounds | aa8bb15..1981765 |
 | 2. Probes: wait precision, clock calls | **done**, review clean after 1 fix round. M = 16 ms; no clock spin | d288344, 47ab13b, dba7145, ebee1fa |
-| 2b. Profile the busy game, HD off (new) | **fix round 1 in re-review** (runtime wrappers now their own group, 55%; game speed recorded as assumed 5) | 5fccff2, 006fcef |
-| 2c. Test the Thai-font wrapper's cost (new) | pending, after 2b; in the plan (97db101): a release build that skips the wrapper, busy fps A/B | |
+| 2b. Profile the busy game, HD off (new) | **done**, review clean after 1 fix round | 5fccff2, 006fcef |
+| 2c. Test the Thai-font wrapper's cost (new) | **running** (Haiku implementer; from 45dfeb4): release build without the wrapper, busy fps A/B | |
 | 3. Raw publish, three buffers, protocol 8 | pending | |
 | 4. WebGL2 presenter | pending | |
 | 5. HD layers on the GPU | **deferred** to a later HD project | |
@@ -32,14 +32,14 @@ The user asked to focus on the game with HD off (HD vehicles are experimental an
 ## Busy profile, HD off (Task 2b)
 
 - The game thread is about 84% busy at 25 fps (about 34 ms of work a frame; 60 fps allows 16).
-- The picture code is 0.8%, so Tasks 3, 4 and 6 can't raise busy fps; waiting is 16%.
+- The picture code (presenter group) is 0.8% of the game thread; waiting is 16%, which caps what Tasks 8 and 10 can gain there.
 - 52% of the samples land in `recomp_thai_call`, the Thai font wrapper around the game's text functions (the Thai fix itself is off). Why is not known yet: the compiled wrapper just calls the original, and the text function shows only about 2 s of the 20 s. (An earlier note here said the compiler had merged the text drawing into the wrapper; the review disproved that.) Task 2c tests it with a build that skips the wrapper.
-- Separate CPU cost: pcrecomp's `wait_ms` busy-polls the clock on pool threads (about 1.4 cores), which the clock probe's spin rule missed.
+- Separate CPU cost: pcrecomp's `wait_ms` busy-polls the clock on another worker (about 81% of that worker's time in clock reads), which the clock probe's spin rule missed. A second worker was 42% busy in uncategorised time, not confirmed as clock reads.
 
 ## To resume after an interruption
 
 1. `git log --oneline 1981765..HEAD` shows what landed since Task 1.
-2. Task 2 is done. Task 2b is committed (5fccff2): if the ledger has no "Task 2b: complete", re-run its review from `review-ebee1fa..5fccff2.diff` (include the text-drawing finding).
+2. Tasks 2 and 2b are done. If Task 2c has a commit touching `src/runtime/thai_font.h`, it needs its task review; otherwise re-dispatch it from `.superpowers/sdd/2026-10-26-web-frame-performance/task-2c-brief.md`.
 3. Builds for tests go in their own BUILD_DIR with `-DWEB_OUT` outside `web/public/game` (CLAUDE.md); e2e loads them with `--build`. Benchmark profile: `work/perf/profile-fresh`; busy save: `work/perf/busy.sav`; baseline: `work/perf/baseline/run.json`.
 
 ## Baseline (Task 1, published Release build ef2b94fc673f9950, headed Chrome)
