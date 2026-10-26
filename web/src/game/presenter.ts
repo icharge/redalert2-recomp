@@ -3,6 +3,7 @@ import {
   CURSOR_RGBA_OFFSET,
   CursorKind,
   PresentMode,
+  PixelFormat,
   Shared,
   type Scale,
 } from "./protocol";
@@ -28,7 +29,12 @@ export interface GamePresenter {
   counters(): PresenterCounters;
   gameSize(): { width: number; height: number };
   cursorWarp(): { seq: number; x: number; y: number };
-  capture(options?: { hd?: boolean }): Promise<{ width: number; height: number; data: Uint8Array }>;
+  capture(options?: { hd?: boolean }): Promise<{
+    width: number;
+    height: number;
+    frameSeq: number;
+    data: Uint8Array;
+  }>;
   textureBytes(): number;
 }
 
@@ -145,8 +151,40 @@ export class Presenter2d implements GamePresenter {
           this.image = null;
         }
         this.image ??= this.context.createImageData(width, height);
-        // a view on shared memory cannot back an ImageData, so the pixels are copied
-        this.image.data.set(HEAPU8.subarray(pointer, pointer + width * height * 4));
+        const format = word(Shared.format);
+        if (format === PixelFormat.Rgba) {
+          // a view on shared memory cannot back an ImageData, so the pixels are copied
+          this.image.data.set(HEAPU8.subarray(pointer, pointer + width * height * 4));
+        } else {
+          const pitch = word(Shared.framePitch);
+          const palette = word(Shared.palettePtr) >>> 0;
+          for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+              const to = (y * width + x) * 4;
+              const from = pointer + y * pitch;
+              if (format === PixelFormat.Rgb565) {
+                const value = (HEAPU8[from + x * 2] ?? 0) | ((HEAPU8[from + x * 2 + 1] ?? 0) << 8);
+                const r = (value >>> 11) & 31;
+                const g = (value >>> 5) & 63;
+                const b = value & 31;
+                this.image.data[to] = (r << 3) | (r >>> 2);
+                this.image.data[to + 1] = (g << 2) | (g >>> 4);
+                this.image.data[to + 2] = (b << 3) | (b >>> 2);
+              } else if (format === PixelFormat.Pal8) {
+                const fromPalette = palette + (HEAPU8[from + x] ?? 0) * 4;
+                this.image.data[to] = HEAPU8[fromPalette] ?? 0;
+                this.image.data[to + 1] = HEAPU8[fromPalette + 1] ?? 0;
+                this.image.data[to + 2] = HEAPU8[fromPalette + 2] ?? 0;
+              } else {
+                const pixel = from + x * 4;
+                this.image.data[to] = HEAPU8[pixel + 2] ?? 0;
+                this.image.data[to + 1] = HEAPU8[pixel + 1] ?? 0;
+                this.image.data[to + 2] = HEAPU8[pixel] ?? 0;
+              }
+              this.image.data[to + 3] = 255;
+            }
+          }
+        }
         if (word(Shared.frameSeq) === seq) {
           this.frameSeq = seq;
           this.render(this.image, width, height);
@@ -177,7 +215,7 @@ export class Presenter2d implements GamePresenter {
     this.capturePointer?.(word(Shared.frameW) > 0 && word(Shared.cursorKind) === CursorKind.None);
   }
 
-  async capture(): Promise<{ width: number; height: number; data: Uint8Array }> {
+  async capture(): Promise<{ width: number; height: number; frameSeq: number; data: Uint8Array }> {
     const { HEAPU8, HEAP32 } = this.memory();
     const base = this.shared >> 2;
     for (let attempt = 0; attempt < 10; attempt++) {
@@ -208,7 +246,7 @@ export class Presenter2d implements GamePresenter {
           Atomics.load(HEAP32, base + Shared.frameIndex) === frameIndex &&
           Atomics.load(HEAP32, base + Shared.framePtr) >>> 0 === pointer
         )
-          return { width, height, data };
+          return { width, height, frameSeq: seq, data };
       } finally {
         Atomics.store(HEAP32, base + Shared.readIndex, -1);
       }

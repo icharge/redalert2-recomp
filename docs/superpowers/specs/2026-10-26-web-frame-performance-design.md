@@ -229,9 +229,10 @@ the plan) waits for a later HD project.
   (a `presentMode` word in `ra2_shared_t`, read at each publish, so the switch
   can also happen mid-run), and today's 2D presenter runs unchanged (the game thread's RGBA
   conversion and `hdvox_compose` stay compiled in for this case).
-- **Context lost:** the presenter stops uploading, keeps the last picture, and
-  on `webglcontextrestored` recreates its textures and asks the game for a full
-  republish (the same path as the page returning).
+- **Context lost:** the presenter cleans up its animation and resize observers
+  and switches to the 2D presenter. The 2D path can draw the latest shared frame
+  in its published format while the game switches back to RGBA; it does not rely
+  on the browser preserving the WebGL drawing buffer.
 - **A format the shader does not know:** logged once as an `error` event, and
   the page switches to the 2D path.
 

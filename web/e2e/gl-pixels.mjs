@@ -12,46 +12,72 @@ async function compare(label) {
   const result = await run.page.evaluate(async () => {
     const m = window.Module;
     const shared = m.cwrap("ra2_shared", "number", [])() >>> 2;
-    const u32 = m.HEAPU32;
+    const words = new Int32Array(m.HEAPU8.buffer);
     const u8 = m.HEAPU8;
-    const width = u32[shared + 3],
-      height = u32[shared + 4];
-    const ptr = u32[shared + 2],
-      format = u32[shared + 1044],
-      pitch = u32[shared + 1045];
-    const pal = u32[shared + 1046];
-    const { width: cw, height: ch, data } = await window.ra2Presenter.capture();
-    const expected = new Uint8Array(width * height * 4);
-    for (let y = 0; y < height; y++)
-      for (let x = 0; x < width; x++) {
-        const to = (y * width + x) * 4;
-        if (format === 1) {
-          const v = u8[ptr + y * pitch + x * 2] | (u8[ptr + y * pitch + x * 2 + 1] << 8);
-          const r = (v >>> 11) & 31,
-            g = (v >>> 5) & 63,
-            b = v & 31;
-          expected[to] = (r << 3) | (r >>> 2);
-          expected[to + 1] = (g << 2) | (g >>> 4);
-          expected[to + 2] = (b << 3) | (b >>> 2);
-          expected[to + 3] = 255;
-        } else if (format === 2) {
-          const i = u8[ptr + y * pitch + x],
-            p = pal + i * 4;
-          expected[to] = u8[p];
-          expected[to + 1] = u8[p + 1];
-          expected[to + 2] = u8[p + 2];
-          expected[to + 3] = 255;
-        } else if (format === 3) {
-          const i = ptr + y * pitch + x * 4;
-          expected[to] = u8[i + 2];
-          expected[to + 1] = u8[i + 1];
-          expected[to + 2] = u8[i];
-          expected[to + 3] = 255;
-        } else {
-          const i = ptr + y * pitch + x * 4;
-          expected.set(u8.subarray(i, i + 4), to);
-        }
+    const capture = await window.ra2Presenter.capture();
+    let snapshot;
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const seq = Atomics.load(words, shared + 1);
+      if (seq !== capture.frameSeq || seq < 0 || seq & 1) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        continue;
       }
+      const width = Atomics.load(words, shared + 3);
+      const height = Atomics.load(words, shared + 4);
+      const ptr = Atomics.load(words, shared + 2) >>> 0;
+      const format = Atomics.load(words, shared + 1044);
+      const pitch = Atomics.load(words, shared + 1045);
+      const pal = Atomics.load(words, shared + 1046) >>> 0;
+      const frameIndex = Atomics.load(words, shared + 1048);
+      Atomics.store(words, shared + 1047, frameIndex);
+      try {
+        if (
+          Atomics.load(words, shared + 1) !== seq ||
+          Atomics.load(words, shared + 1048) !== frameIndex ||
+          Atomics.load(words, shared + 2) >>> 0 !== ptr
+        )
+          continue;
+        const expected = new Uint8Array(width * height * 4);
+        for (let y = 0; y < height; y++)
+          for (let x = 0; x < width; x++) {
+            const to = (y * width + x) * 4;
+            if (format === 1) {
+              const v = u8[ptr + y * pitch + x * 2] | (u8[ptr + y * pitch + x * 2 + 1] << 8);
+              const r = (v >>> 11) & 31,
+                g = (v >>> 5) & 63,
+                b = v & 31;
+              expected[to] = (r << 3) | (r >>> 2);
+              expected[to + 1] = (g << 2) | (g >>> 4);
+              expected[to + 2] = (b << 3) | (b >>> 2);
+              expected[to + 3] = 255;
+            } else if (format === 2) {
+              const i = u8[ptr + y * pitch + x],
+                p = pal + i * 4;
+              expected[to] = u8[p];
+              expected[to + 1] = u8[p + 1];
+              expected[to + 2] = u8[p + 2];
+              expected[to + 3] = 255;
+            } else if (format === 3) {
+              const i = ptr + y * pitch + x * 4;
+              expected[to] = u8[i + 2];
+              expected[to + 1] = u8[i + 1];
+              expected[to + 2] = u8[i];
+              expected[to + 3] = 255;
+            } else {
+              const i = ptr + y * pitch + x * 4;
+              expected.set(u8.subarray(i, i + 4), to);
+            }
+          }
+        if (Atomics.load(words, shared + 1) === seq) snapshot = { width, height, format, expected };
+      } finally {
+        Atomics.store(words, shared + 1047, -1);
+      }
+      if (snapshot) break;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    if (!snapshot) throw new Error("Could not snapshot raw pixels for the captured frame");
+    const { width, height, format, expected } = snapshot;
+    const { width: cw, height: ch, data } = capture;
     let different = 0;
     for (let i = 0; i < expected.length; i++) if (expected[i] !== data[i]) different++;
     return { width, height, cw, ch, format, different, pixels: width * height };

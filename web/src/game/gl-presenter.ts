@@ -12,6 +12,7 @@ export class GlPresenter implements GamePresenter {
   private texture: WebGLTexture;
   private paletteTexture: WebGLTexture;
   private frameSeq = -1;
+  private uploadedSeq = -1;
   private cursorSeq = -1;
   private raf = 0;
   private pictures = 0;
@@ -100,6 +101,8 @@ export class GlPresenter implements GamePresenter {
   private contextLost = (event: Event): void => {
     event.preventDefault();
     this.lost = true;
+    this.stop();
+    this.onFallback("context");
   };
   private contextRestored = (): void => {
     this.lost = false;
@@ -150,6 +153,8 @@ export class GlPresenter implements GamePresenter {
   stop(): void {
     cancelAnimationFrame(this.raf);
     this.observer.disconnect();
+    this.canvas.removeEventListener("webglcontextlost", this.contextLost);
+    this.canvas.removeEventListener("webglcontextrestored", this.contextRestored);
   }
   textureBytes(): number {
     return (
@@ -195,6 +200,7 @@ export class GlPresenter implements GamePresenter {
         );
         if (word(Shared.frameSeq) === seq) {
           this.frameSeq = seq;
+          this.uploadedSeq = seq;
           this.paint(w, h, fmt);
           this.pictures++;
         }
@@ -317,11 +323,16 @@ export class GlPresenter implements GamePresenter {
   }
   async capture(options?: {
     hd?: boolean;
-  }): Promise<{ width: number; height: number; data: Uint8Array }> {
+  }): Promise<{ width: number; height: number; frameSeq: number; data: Uint8Array }> {
     // HD layer composition lands in Task 5, so capture is game-size for now.
     void options;
-    const width = this.word(Shared.frameW),
-      height = this.word(Shared.frameH);
+    // Align the texture with the newest stable shared frame before reading it.
+    this.draw();
+    const width = this.texW,
+      height = this.texH,
+      frameSeq = this.uploadedSeq;
+    if (width <= 0 || height <= 0 || this.texFormat < 0 || frameSeq < 0)
+      throw new Error("No uploaded frame to capture");
     const gl = this.gl;
     const framebuffer = gl.createFramebuffer();
     const target = gl.createTexture();
@@ -331,7 +342,7 @@ export class GlPresenter implements GamePresenter {
     gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, target, 0);
     gl.viewport(0, 0, width, height);
-    this.paint(width, height, this.word(Shared.format), width, height, true);
+    this.paint(width, height, this.texFormat, width, height, true);
     const raw = new Uint8Array(width * height * 4);
     gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, raw);
     const data = new Uint8Array(raw.length);
@@ -341,7 +352,7 @@ export class GlPresenter implements GamePresenter {
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.deleteFramebuffer(framebuffer);
     gl.deleteTexture(target);
-    return { width, height, data };
+    return { width, height, frameSeq, data };
   }
   private drawCursorOverlay(word: (i: number) => number): void {
     const cursor = this.cursorOverlay;

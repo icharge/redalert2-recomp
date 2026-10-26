@@ -155,6 +155,22 @@ describe("GlPresenter", () => {
     ).toHaveLength(1);
   });
 
+  it("captures the latest stable upload with matching dimensions and sequence", async () => {
+    const { frame, presenter, word } = setup();
+    frame(PixelFormat.Rgb565, 4, 2, 8);
+    presenter.draw();
+
+    word(Shared.frameW, 8);
+    word(Shared.frameH, 4);
+    word(Shared.frameSeq, 4);
+
+    await expect(presenter.capture()).resolves.toMatchObject({
+      width: 8,
+      height: 4,
+      frameSeq: 4,
+    });
+  });
+
   it("takes fresh memory views each frame", () => {
     const first = setup();
     first.frame(PixelFormat.Rgb565, 4, 2, 8);
@@ -176,14 +192,16 @@ describe("GlPresenter", () => {
     expect(first.calls.filter((c) => c[0] === "texSubImage2D")).toHaveLength(2);
   });
 
-  it("asks the game to republish after context restoration", () => {
-    const { canvas, calls, frame, presenter, words } = setup();
+  it("falls back to the 2D presenter when the WebGL context is lost", () => {
+    const { canvas, calls, fallback, frame, presenter, words } = setup();
     frame(PixelFormat.Rgb565, 4, 2, 8);
     canvas.dispatchEvent(new Event("webglcontextlost", { cancelable: true }));
     presenter.draw();
     expect(calls.filter((c) => c[0] === "texSubImage2D")).toHaveLength(0);
     canvas.dispatchEvent(new Event("webglcontextrestored"));
-    expect(words[(SHARED >> 2) + Shared.republish]).toBe(1);
+    expect(fallback).toHaveBeenCalledOnce();
+    expect(fallback).toHaveBeenCalledWith("context");
+    expect(words[(SHARED >> 2) + Shared.republish]).toBe(0);
   });
 
   it("falls back once on a pixel format the shader does not support", () => {

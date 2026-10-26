@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Presenter2d, type WasmMemory } from "./presenter";
-import { CURSOR_PX, CURSOR_RGBA_OFFSET, CursorKind, Shared } from "./protocol";
+import { CURSOR_PX, CURSOR_RGBA_OFFSET, CursorKind, PixelFormat, Shared } from "./protocol";
 
 // jsdom has no canvas: a context that records what is drawn, and the ImageData it lacks
 class FakeImageData {
@@ -111,6 +111,23 @@ describe("Presenter2d", () => {
     expect(canvas.height).toBe(1);
     expect(drawn).toHaveLength(1);
     expect(Array.from(drawn[0]!.data)).toEqual([10, 20, 30, 255, 40, 50, 60, 255]);
+  });
+
+  it("draws a raw RGB565 frame correctly during a WebGL fallback", () => {
+    const { presenter, word, memory, drawn } = setup();
+    word(Shared.format, PixelFormat.Rgb565);
+    word(Shared.frameW, 1);
+    word(Shared.frameH, 1);
+    word(Shared.framePtr, FRAME);
+    word(Shared.framePitch, 2);
+    word(Shared.frameIndex, 1);
+    word(Shared.frameSeq, 2);
+    memory.HEAPU8[FRAME] = 0x00;
+    memory.HEAPU8[FRAME + 1] = 0xf8;
+
+    presenter.draw();
+
+    expect([...drawn[0]!.data]).toEqual([255, 0, 0, 255]);
   });
 
   it("draws a frame once, and again when the sequence moves", () => {
