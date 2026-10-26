@@ -17,7 +17,7 @@ At the user's request, the target is the game with **HD off**; HD vehicles are e
 - **Task 2b (new) runs next:** profile the busy game with HD off. The busy save runs at 18–23 fps at every size, so the limit is not the picture; this profile says what it is before the rendering work starts.
 - **Task 5 (HD layers on the GPU) is deferred** to a later HD project (with the flicker and HD buildings/infantry). Task 4's presenter keeps HD working through the 2D fallback when HD is on.
 - Task 7 measures and profiles the HD-off busy cases; HD-on rows are recorded only. Task 11's soak runs HD off.
-- Order: 2b, 2c, 3, 4, 6, 7, 8, 10, 11, 12 (9 skipped: no spin). Task 2c was added after 2b's profile.
+- Order: 2b, 2c, 2d, 3, 4, 6, 7, 8, 10, 11, 12 (9 skipped: no spin). Task 2c was added after 2b's profile, and 2d after 2c's result.
 
 ### Task 2b: Profile the busy game, HD off
 
@@ -42,6 +42,22 @@ Task 2b's profile puts 52% of the busy game thread's samples in `recomp_thai_cal
 - [ ] **Step 3: Measure.** Alternate A, B, A, B: the busy case at 1280x720, HD off, with `perf.mjs --build <dir>` (or `profile-game.mjs`'s fps sample), and record each run's fps median and 1% low. Then run `profile-game.mjs` once on B and record its group shares and top 10.
 - [ ] **Step 4: Decide and record** in "Probe results": if B's fps median is at least 3 above A's (beyond run-to-run spread), the wrapper is a real cost: say how much, and propose the fix (for example, testing the Thai flag inline in the macro before calling the wrapper). Otherwise it is a profiler artefact: say where B's profile puts the time instead.
 - [ ] **Step 5: Commit** `thai_font.h` and the plan.
+
+### Task 2d: The Thai-off path is a plain call
+
+Task 2c measured the busy save at 1280x720, HD off: 26.5 fps median (1% low 21–22) with the Thai-font wrapper, 62 (55–56) without it. With the Thai fix off (the default), the wrapper only calls the original, so this task makes the off path skip it. Why the wrapper costs so much is not known; with the fix on, the wrapper runs as today.
+
+**Files:**
+- Modify: `src/runtime/thai_font.h`, `src/runtime/thai_font.c`, this plan's "Results"
+
+**Interfaces:**
+- Produces: `extern int g_thai_font_on;` (thai_font.c; set only by `thai_font_set_enabled`, which `src/web/main.c:741` calls once at startup, before the game runs).
+
+- [ ] **Step 1: Inline the flag.** `RECOMP_THAI_CALL(va, fn)` becomes `if (!g_thai_font_on) RECOMP_CALL(fn); else` today's body; `RECOMP_THAI_ICALL(va)` takes the `RECOMP_ICALL` path when `!RECOMP_THAI_TARGET(va) || !g_thai_font_on`. thai_font.c's `g_enabled` becomes `g_thai_font_on`. Remove Task 2c's `RA2_NO_THAI_HOOK` switch (it measured what this replaces). The off path must be exactly pcrecomp's `RECOMP_CALL` / `RECOMP_ICALL` (`runtime/recomp32/recomp_types.h:1135`), which is what the wrapper did with the flag off; this holds for every build, so native builds behave the same and only skip a call.
+- [ ] **Step 2: Build** both editions with a release link (default; `$env:RA2_TARGET='game'`), each in its own BUILD_DIR with `WEB_OUT` under `work/`. Run `python -m unittest tools/test_lift_patches.py` (the lifter's Thai replacement tests).
+- [ ] **Step 3: Measure** the default edition with `perf.mjs --build <dir>`: busy, HD off, at 1280x720, 1920x1080 and 2560x1440, two runs each, against Task 2c's build A numbers at 720p. Expected: 720p median ≥ 60. Record the table in "Results".
+- [ ] **Step 4: Check the fix still works when on**: start the default edition with `?arg=--thai-font-fix` (and the Thai font settings `main.c:738` needs, from `web/src/storage/thai-fonts.ts`; if no Thai font is available in the profile, say so) and confirm it reaches the main menu with no errors in the console. Also run the browser suite's smoke test for both editions (`docs/web/testing.md`).
+- [ ] **Step 5: Commit** `thai_font.h`, `thai_font.c` and the plan.
 
 ## Global Constraints
 
