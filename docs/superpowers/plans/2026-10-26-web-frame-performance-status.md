@@ -12,8 +12,8 @@ Detailed ledger (rulings, review findings): `.superpowers/sdd/2026-10-26-web-fra
 | 1. Benchmark and baseline | **done**, review clean after 5 fix rounds | aa8bb15..1981765 |
 | 2. Probes: wait precision, clock calls | **done**, review clean after 1 fix round. M = 16 ms; no clock spin | d288344, 47ab13b, dba7145, ebee1fa |
 | 2b. Profile the busy game, HD off (new) | **done**, review clean after 1 fix round | 5fccff2, 006fcef |
-| 2c. Test the Thai-font wrapper's cost (new) | **fix round 2 in re-review**. Busy 720p HD off: 26.5 fps with the wrapper, **62** (1% low 55–56, the speed-5 cap) without; game-thread work per frame about 34 ms vs 12–13 ms | 483d5d7, 5887904, 95ed1b2 |
-| 2d. Thai-off path as a plain call (the fix) | pending, after 2c; in the plan (1022509) | |
+| 2c. Test the Thai-font wrapper's cost (new) | **done**, review clean after 2 fix rounds. Busy 720p HD off: 26.5 fps with the wrapper, **62** (1% low 55–56, the speed-5 cap) without; work per frame 34 ms vs 12–13 ms | 483d5d7, 5887904, 95ed1b2 |
+| 2d. Thai-off path as a plain call (the fix) | **running** (Haiku implementer; from d23516c): release build, A/B at 720p, then 1080p and 1440p | |
 | 3. Raw publish, three buffers, protocol 8 | pending | |
 | 4. WebGL2 presenter | pending | |
 | 5. HD layers on the GPU | **deferred** to a later HD project | |
@@ -28,7 +28,7 @@ Detailed ledger (rulings, review findings): `.superpowers/sdd/2026-10-26-web-fra
 
 ## Change of target (26 October)
 
-The user asked to focus on the game with HD off (HD vehicles are experimental and flicker). The pass bar is now 60 fps median, 55 1% low, 720p–1440p, busy, **HD off**; HD on is recorded with no target. New Task 2b profiles the busy save first, since it runs at 18–23 fps at every size (the picture isn't the limit). Order: 2b, 3, 4, 6, 7, 8, 10, 11, 12.
+The user asked to focus on the game with HD off (HD vehicles are experimental and flicker). The pass bar is now 60 fps median, 55 1% low, 720p–1440p, busy, **HD off**; HD on is recorded with no target. New Task 2b profiles the busy save first, since it runs at 18–23 fps at every size (the picture isn't the limit). Order: 2b, 2c, 2d, 3, 4, 6, 7, 8, 10, 11, 12.
 
 ## Busy profile, HD off (Task 2b)
 
@@ -40,7 +40,7 @@ The user asked to focus on the game with HD off (HD vehicles are experimental an
 ## To resume after an interruption
 
 1. `git log --oneline 1981765..HEAD` shows what landed since Task 1.
-2. Tasks 2 and 2b are done. If Task 2c has a commit touching `src/runtime/thai_font.h`, it needs its task review; otherwise re-dispatch it from `.superpowers/sdd/2026-10-26-web-frame-performance/task-2c-brief.md`.
+2. Tasks 2, 2b and 2c are done. If Task 2d has a commit changing `src/runtime/thai_font.c`, it needs its task review (BASE d23516c); otherwise re-dispatch it from `.superpowers/sdd/2026-10-26-web-frame-performance/task-2d-brief.md` with the ledger's 2d ruling.
 3. Builds for tests go in their own BUILD_DIR with `-DWEB_OUT` outside `web/public/game` (CLAUDE.md); e2e loads them with `--build`. Benchmark profile: `work/perf/profile-fresh`; busy save: `work/perf/busy.sav`; baseline: `work/perf/baseline/run.json`.
 
 ## Baseline (Task 1, published Release build ef2b94fc673f9950, headed Chrome)
@@ -59,7 +59,6 @@ The user asked to focus on the game with HD off (HD vehicles are experimental an
 - The busy 60 fps bar stays the target; Task 7 profiles whether the gap is the game's own simulation and reports it.
 
 ## Found along the way (outside this plan)
-
 - `perf.mjs` ignored `--build` (it always measured the published game); fixed in Task 2c (5887904).
 
 - The OPFS profile's RA2MD.INI gains a repeated `[Video]` section per run (a loader INI-rewrite bug).
