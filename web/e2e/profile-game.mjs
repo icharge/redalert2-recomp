@@ -12,10 +12,11 @@
 // game work: time outside waiting and outside the Sleep spin (pcrecomp's wait_ms polls the clock, so it looks busy
 // but is not work).
 //
-// The frames of the sample are counted from the game's fps events: each event carries the frames of its second,
-// and the page's store (window.ra2Store) gives a new state object per event, so the sample polls it every 100 ms
-// and adds the fps of each new object that carries one. The JSON's workPerFrameMs is the game worker's work
-// (busy time) divided by those frames: the headroom measure (docs/web/testing.md, "Profiling the busy game").
+// The frames of the sample are the fps events in the page's log (`@ra2 {"e":"fps",...}`, one a second, each with
+// its second's frames), counted between the profiler's start and stop (lib.mjs's t.all). The JSON's `window` records
+// the measured window (the loop runs --seconds plus the settle of each read, so it is a little longer), and
+// workPerFrameMs is the game worker's work (busy time) divided by the frames: the headroom measure
+// (docs/web/testing.md, "Profiling the busy game").
 //
 // Writes work/perf/<name>.cpuprofile (the Chrome profile, for DevTools) and work/perf/<name>.json: the self-time
 // share of six groups and the top 20 functions, the Sleep spin's share, the clock reads' time, and each busy
@@ -342,6 +343,25 @@ if (argv.includes("--reanalyze")) {
   process.exit(0);
 }
 
+/** The fps events among log lines: their frames and their count (each event is one second's frames). */
+function fpsEventsIn(lines) {
+  let frames = 0;
+  let events = 0;
+  for (const line of lines) {
+    if (!line.startsWith("@ra2 {")) continue;
+    let value;
+    try {
+      value = JSON.parse(line.slice("@ra2 ".length));
+    } catch {
+      continue;
+    }
+    if (value?.e !== "fps" || typeof value.fps !== "number") continue;
+    frames += value.fps;
+    events++;
+  }
+  return { frames, events };
+}
+
 const t = await openGame(base, { video: sizeArg, shots: base.shots, headed: base.headed });
 try {
   const cdp = await t.page.context().newCDPSession(t.page);
@@ -379,39 +399,28 @@ try {
       `the picture is ${before.size?.w}x${before.size?.h} with hd ${before.settings?.hd}, not ${size.w}x${size.h} with hd off`,
     );
 
-  // Counts the frames of the sample: each new store state that carries an fps adds its fps (one event a second).
-  // The first call only sets the baseline, so the state the sample starts from is not counted.
-  const countFrames = () =>
-    t.page.evaluate(() => {
-      const store = window.ra2Store;
-      const snap = store?.getSnapshot();
-      const acc = (window.__frameCount ??= { frames: 0, events: 0, last: undefined });
-      if (acc.last === undefined) acc.last = snap;
-      else if (snap !== acc.last) {
-        acc.last = snap;
-        if (typeof snap?.fps === "number") {
-          acc.frames += snap.fps;
-          acc.events++;
-        }
-      }
-      return { frames: acc.frames, events: acc.events };
-    });
-  await countFrames();
-
+  // The sample's frames come from the game's fps events: one `@ra2 {"e":"fps",...}` line a second, carrying the frames
+  // of that second. lib.mjs keeps every line the page taps (t.all), so the events are counted from the lines that
+  // arrive between the profiler's start and stop. A store state is not used: GameStore.set() makes a new state for
+  // every event and each carries the last fps, so counting states double-counts.
+  const tapStart = t.all.length;
+  const windowStart = Date.now();
   for (const w of workers)
     await w.send("Profiler.start").catch((e) => console.log(`start ${w.sessionId}: ${e.message}`));
   const fps = [];
   for (let i = 0; i < seconds; i++) {
-    for (let k = 0; k < 10; k++) {
-      await t.page.waitForTimeout(100);
-      await countFrames();
-    }
+    await t.page.waitForTimeout(1000);
     const s = await t.state();
     if (s?.phase === "crashed" || s?.phase === "exited")
       throw new Error(`the game ${s.phase} during the sample: ${s.error ?? ""}`);
     fps.push(s?.fps ?? null);
   }
-  const counted = await countFrames();
+  // the page's taps reach Node asynchronously: wait for the last ones, then close the window
+  await t.page.waitForTimeout(300);
+  const tapEnd = t.all.length;
+  const windowEnd = Date.now();
+  const counted = fpsEventsIn(t.all.slice(tapStart, tapEnd));
+  const windowSeconds = +((windowEnd - windowStart) / 1000).toFixed(2);
   const stopped = [];
   for (const w of workers) {
     const result = await w.send("Profiler.stop").catch((e) => {
@@ -468,6 +477,7 @@ try {
     // the sample's frames (the fps events counted above) and the game worker's work per frame (busy time / frames)
     frames: counted.frames,
     fpsEvents: counted.events,
+    window: { seconds: windowSeconds, requestedSeconds: seconds },
     busyMs: +(game.busy / 1000).toFixed(1),
     workPerFrameMs: counted.frames > 0 ? +(game.busy / 1000 / counted.frames).toFixed(2) : null,
     workers: ranked.map((s) => ({

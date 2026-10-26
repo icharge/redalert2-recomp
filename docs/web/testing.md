@@ -530,9 +530,12 @@ too. The JSON holds the six shares, the top 20 functions, the time under `wait_m
 `speed`: the game speed is recorded as `assumed 5 (busy.sav)`, because the page exposes no getter for it.
 
 `--size WxH` sets the picture size of the sample (default `1280x720`; the game's resolution list must have it, as
-`setResolution` checks, for example `2560x1440`). The JSON records the sample's `frames` (the fps of each fps event,
-counted from the store's state every 100 ms, so each event counts once), `fpsEvents`, the game worker's `busyMs`, and
-`workPerFrameMs`, the game worker's busy time divided by those frames: the headroom measure.
+`setResolution` checks, for example `2560x1440`). The JSON records the sample's `frames`: the fps of each
+`@ra2 {"e":"fps",...}` line the page printed between the profiler's start and stop (one a second, lib.mjs's `t.all`),
+with `fpsEvents` the number of those lines. `window.seconds` is the measured window; the loop reads once a second
+after a 1 s wait, so the window runs a little past `--seconds`. `busyMs` is the game worker's busy time, and
+`workPerFrameMs` is `busyMs` divided by `frames`: the headroom measure. Counting the store's state objects is not
+used: each store update makes a new state carrying the last fps, which double-counts.
 
 `--reanalyze` (with the same `--build` and `--name`) recomputes the groups from the saved `<name>.cpuprofile` without a
 browser, and keeps the capture's fps and workers. The objects are read from the build directory, so it needs the build
