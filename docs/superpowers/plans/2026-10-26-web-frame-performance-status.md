@@ -13,7 +13,7 @@ Detailed ledger (rulings, review findings): `.superpowers/sdd/2026-10-26-web-fra
 | 2. Probes: wait precision, clock calls | **done**, review clean after 1 fix round. M = 16 ms; no clock spin | d288344, 47ab13b, dba7145, ebee1fa |
 | 2b. Profile the busy game, HD off (new) | **done**, review clean after 1 fix round | 5fccff2, 006fcef |
 | 2c. Test the Thai-font wrapper's cost (new) | **done**, review clean after 2 fix rounds. Busy 720p HD off: 26.5 fps with the wrapper, **62** (1% low 55–56, the speed-5 cap) without; work per frame 34 ms vs 12–13 ms | 483d5d7, 5887904, 95ed1b2 |
-| 2d. Thai-off path as a plain call (the fix) | **running, revised**: the first try (a flag check in the wrapper macros) gave no gain (23.5 vs 25.5 fps). The real difference: the Thai macro is on every one of the game's 54,638 indirect calls and doubled each call's code. Revised fix (plan afa70d7) being built | |
+| 2d. Thai-off path as a plain call (the fix) | **running, revised**: the first try (a flag check in the wrapper macros) gave no gain (23.5 vs 25.5 fps). The real difference: the Thai macro is on every one of the game's 54,638 indirect calls and doubled each call's code. Revised fix (plan afa70d7) written, lifter tests pass, rebuilding (not committed yet). Size clue: without the Thai macros the wasm is 111.8 MB against 124.5 MB | |
 | 3. Raw publish, three buffers, protocol 8 | pending | |
 | 4. WebGL2 presenter | pending | |
 | 5. HD layers on the GPU | **deferred** to a later HD project | |
