@@ -13,7 +13,7 @@ Detailed ledger (rulings, review findings): `.superpowers/sdd/2026-10-26-web-fra
 | 2. Probes: wait precision, clock calls | **done**, review clean after 1 fix round. M = 16 ms; no clock spin | d288344, 47ab13b, dba7145, ebee1fa |
 | 2b. Profile the busy game, HD off (new) | **done**, review clean after 1 fix round | 5fccff2, 006fcef |
 | 2c. Test the Thai-font wrapper's cost (new) | **done**, review clean after 2 fix rounds. Busy 720p HD off: 26.5 fps with the wrapper, **62** (1% low 55–56, the speed-5 cap) without; work per frame 34 ms vs 12–13 ms | 483d5d7, 5887904, 95ed1b2 |
-| 2d. Thai-off path as a plain call | **fix round 1** (frame counter, labels, wording); macro changes reverted (585ef08): they didn't matter. It found the real cause: **the app turns the Thai font fix on by default**, and with it off the busy save already runs at 62 fps (720p). Fix off: 1080p 49–50, 1440p 33 | 533d330, 585ef08 |
+| 2d. Thai-off path as a plain call | **fix round 1 in re-review**; macro changes reverted (585ef08): they didn't matter. It found the real cause: **the app turns the Thai font fix on by default**, and with it off the busy save already runs at 62 fps (720p). Fix off: 1080p 49–50, 1440p 33 | 533d330, 585ef08, 4c6da57 |
 | 2e. The Thai fix without full-font rewrites (new) | pending, after 2d's review; in the plan (e39a7d9) | |
 | 3. Raw publish, three buffers, protocol 8 | pending | |
 | 4. WebGL2 presenter | pending | |
@@ -34,7 +34,7 @@ The user asked to focus on the game with HD off (HD vehicles are experimental an
 ## What limits the busy game (Tasks 2b–2d)
 
 - **The Thai font fix.** The web app turns it on by default. With it on, each text call rewrites the width of every glyph in the font twice (`apply_metrics` / `restore_metrics` in `src/runtime/thai_font.c`). That is the 52% of the game thread the profile showed under `recomp_thai_call`. Busy save, 720p, HD off: 26 fps with the fix on, 62 (the speed-5 cap) with it off. Task 2e makes the fix cheap and keeps it on by default.
-- **Bigger screens cost more game work.** With the fix off: 1080p 49–50 fps, 1440p 33 fps; at 1440p the game thread does 20.7 ms of work a frame (60 fps allows 16). Profile at 1440p after Task 2e.
+- **Bigger screens cost more game work.** With the fix off: 1080p 49–50 fps, 1440p 33 fps; at 1440p the game thread does 21.5 ms of work a frame (60 fps allows 16). Profile at 1440p after Task 2e.
 - The picture code (presenter) is under 1% of the game thread at 720p; waiting is 16%.
 - Separate CPU cost: pcrecomp's `wait_ms` busy-polls the clock on another worker (about 81% of that worker's time in clock reads).
 - Earlier wrong turns, for the record: the Thai wrapper call (2c, 2d first try) and the duplicated code at indirect calls (2d revised) were not the cause; the 2c "no wrapper" build was fast only because it skipped the Thai fix entirely.
