@@ -63,7 +63,6 @@ export function Play({ files }: { files: FileSource }) {
   const stage = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement | null>(null);
   const textInput = useRef<HTMLTextAreaElement>(null);
-  const backdrop = useRef<HTMLCanvasElement>(null);
   const cursor = useRef<HTMLImageElement>(null);
   const [startError, setStartError] = useState<Error | null>(null);
   const [presenter, setPresenter] = useState<GamePresenter | null>(null);
@@ -243,7 +242,7 @@ export function Play({ files }: { files: FileSource }) {
             replacement,
             game.memory,
             game.shared,
-            backdrop.current,
+            null,
             cursor.current,
             capture,
           );
@@ -273,7 +272,7 @@ export function Play({ files }: { files: FileSource }) {
             element,
             game.memory,
             game.shared,
-            backdrop.current,
+            null,
             cursor.current,
             capture,
           );
@@ -373,12 +372,6 @@ export function Play({ files }: { files: FileSource }) {
         spellCheck={false}
         onFocus={() => setTextInputOpen(true)}
         onBlur={() => setTextInputOpen(false)}
-      />
-      <canvas
-        ref={backdrop}
-        className={styles.backdrop}
-        hidden={!settings?.bars}
-        aria-hidden="true"
       />
       <img ref={cursor} className={styles.cursor} alt="" aria-hidden="true" />
       <Flex className={styles.topMenu} gap="2">

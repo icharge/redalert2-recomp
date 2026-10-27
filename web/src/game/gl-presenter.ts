@@ -13,6 +13,7 @@ export class GlPresenter implements GamePresenter {
   private paletteTexture: WebGLTexture;
   private frameSeq = -1;
   private uploadedSeq = -1;
+  private mipmapSeq = -1;
   private cursorSeq = -1;
   private raf = 0;
   private pictures = 0;
@@ -24,6 +25,7 @@ export class GlPresenter implements GamePresenter {
   private errorReported = false;
   private cssSize = { width: 1, height: 1 };
   private drawMemory: WasmMemory | null = null;
+  private rect = { x: 0, y: 0, width: 1, height: 1 };
   private observer: ResizeObserver;
 
   constructor(
@@ -97,6 +99,7 @@ export class GlPresenter implements GamePresenter {
     this.canvas.width = Math.max(1, Math.round(this.cssSize.width * dpr));
     this.canvas.height = Math.max(1, Math.round(this.cssSize.height * dpr));
     this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+    this.frameSeq = -1;
   }
   private contextLost = (event: Event): void => {
     event.preventDefault();
@@ -111,6 +114,7 @@ export class GlPresenter implements GamePresenter {
     this.paletteTexture = this.createTexture();
     this.texW = this.texH = 0;
     this.texFormat = -1;
+    this.mipmapSeq = -1;
     Atomics.store(this.memory().HEAP32, (this.shared >> 2) + Shared.republish, 1);
     this.frameSeq = -1;
   };
@@ -134,6 +138,8 @@ export class GlPresenter implements GamePresenter {
   configure(scale: Scale, bars = true): void {
     this.scale = scale;
     this.bars = bars;
+    this.gl.useProgram(this.program);
+    this.gl.uniform1i(this.gl.getUniformLocation(this.program, "scaleMode"), SCALE_MODE[scale]);
     this.frameSeq = -1;
   }
   redraw(): void {
@@ -326,15 +332,44 @@ export class GlPresenter implements GamePresenter {
     );
     const box = capture ? { width: targetWidth, height: targetHeight } : this.cssSize;
     const factor = Math.min(box.width / w, box.height / h) || 1;
-    const rw = capture || !this.bars ? 1 : (w * factor) / (box.width || 1);
-    const rh = capture || !this.bars ? 1 : (h * factor) / (box.height || 1);
+    const scale = this.scale === "integer" ? Math.max(1, Math.floor(factor)) : factor;
+    const rw = capture ? 1 : (w * scale) / (box.width || 1);
+    const rh = capture ? 1 : (h * scale) / (box.height || 1);
+    this.rect = { x: (1 - rw) / 2, y: (1 - rh) / 2, width: rw, height: rh };
+    const barsVisible = !capture && this.bars && (rw < 1 || rh < 1);
+    if (
+      !capture &&
+      this.texW === w &&
+      this.texH === h &&
+      barsVisible &&
+      this.mipmapSeq !== this.uploadedSeq
+    ) {
+      gl.bindTexture(gl.TEXTURE_2D, this.texture);
+      gl.generateMipmap(gl.TEXTURE_2D);
+      this.mipmapSeq = this.uploadedSeq;
+    }
+    const minFilter = barsVisible
+      ? gl.LINEAR_MIPMAP_LINEAR
+      : this.scale === "smooth" || this.scale === "sharp"
+        ? gl.LINEAR
+        : gl.NEAREST;
+    gl.bindTexture(gl.TEXTURE_2D, this.texture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, minFilter);
+    gl.texParameteri(
+      gl.TEXTURE_2D,
+      gl.TEXTURE_MAG_FILTER,
+      this.scale === "smooth" || this.scale === "sharp" ? gl.LINEAR : gl.NEAREST,
+    );
     gl.uniform4f(
       gl.getUniformLocation(this.program, "rect"),
-      capture ? 0 : (1 - rw) / 2,
-      capture ? 0 : (1 - rh) / 2,
+      capture ? 0 : this.rect.x,
+      capture ? 0 : this.rect.y,
       rw,
       rh,
     );
+    gl.uniform2f(gl.getUniformLocation(this.program, "pictureSize"), w, h);
+    gl.uniform2f(gl.getUniformLocation(this.program, "outputSize"), targetWidth, targetHeight);
+    gl.uniform1i(gl.getUniformLocation(this.program, "bars"), barsVisible ? 1 : 0);
     gl.clearColor(0, 0, 0, 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.drawArrays(gl.TRIANGLES, 0, 3);

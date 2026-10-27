@@ -7,7 +7,7 @@ const SHARED = 256;
 const FRAME = 4096;
 
 function setup() {
-  const buffer = new ArrayBuffer(1 << 17);
+  const buffer = new ArrayBuffer(2 << 20);
   let memory: WasmMemory = { HEAPU8: new Uint8Array(buffer), HEAP32: new Int32Array(buffer) };
   let memorySource = () => memory;
   const words = new Int32Array(buffer);
@@ -23,6 +23,7 @@ function setup() {
       TEXTURE_MAG_FILTER: 0x2800,
       NEAREST: 0x2600,
       LINEAR: 0x2601,
+      LINEAR_MIPMAP_LINEAR: 0x2703,
       CLAMP_TO_EDGE: 0x812f,
       TEXTURE_WRAP_S: 0x2802,
       TEXTURE_WRAP_T: 0x2803,
@@ -111,11 +112,21 @@ function setup() {
 }
 
 afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  FakeResizeObserver.width = 400;
+  FakeResizeObserver.height = 300;
+});
 class FakeResizeObserver {
+  static width = 400;
+  static height = 300;
   constructor(private readonly callback: ResizeObserverCallback) {}
   observe(): void {
     this.callback(
-      [{ contentRect: { width: 400, height: 300 } } as ResizeObserverEntry],
+      [
+        {
+          contentRect: { width: FakeResizeObserver.width, height: FakeResizeObserver.height },
+        } as ResizeObserverEntry,
+      ],
       this as unknown as ResizeObserver,
     );
   }
@@ -124,6 +135,63 @@ class FakeResizeObserver {
 vi.stubGlobal("ResizeObserver", FakeResizeObserver);
 
 describe("GlPresenter", () => {
+  it("configures the shader mode for every scale", () => {
+    const { calls, frame, presenter } = setup();
+    frame(PixelFormat.Rgb565, 4, 2, 8);
+    const modes = { nearest: 0, smooth: 1, sharp: 2, integer: 3, crt: 4 } as const;
+
+    for (const [scale, mode] of Object.entries(modes)) {
+      calls.length = 0;
+      presenter.configure(scale as keyof typeof modes, true);
+      expect(calls).toContainEqual(["uniform1i", "scaleMode", mode]);
+    }
+  });
+
+  it("integer shrinks the letterbox to a whole multiple", () => {
+    FakeResizeObserver.width = 2000;
+    FakeResizeObserver.height = 1300;
+    const { calls, frame, presenter } = setup();
+    frame(PixelFormat.Rgb565, 800, 600, 1600);
+    presenter.configure("integer", true);
+
+    presenter.draw();
+
+    const rectangle = calls.find((call) => call[0] === "uniform4f" && call[1] === "rect");
+    expect(rectangle).toBeDefined();
+    expect(rectangle?.slice(2)).toEqual([
+      expect.closeTo(0.1),
+      expect.closeTo(50 / 1300),
+      expect.closeTo(0.8),
+      expect.closeTo(1200 / 1300),
+    ]);
+    FakeResizeObserver.width = 400;
+    FakeResizeObserver.height = 300;
+  });
+
+  it("regenerates mipmaps only when bars are on and visible", () => {
+    FakeResizeObserver.width = 1200;
+    FakeResizeObserver.height = 600;
+    const { calls, frame, presenter, word } = setup();
+    frame(PixelFormat.Rgb565, 800, 600, 1600);
+
+    presenter.configure("sharp", false);
+    presenter.draw();
+    expect(calls.filter((call) => call[0] === "generateMipmap")).toHaveLength(0);
+
+    calls.length = 0;
+    presenter.configure("sharp", true);
+    presenter.draw();
+    expect(calls.filter((call) => call[0] === "generateMipmap")).toHaveLength(1);
+    presenter.redraw();
+    presenter.draw();
+    expect(calls.filter((call) => call[0] === "generateMipmap")).toHaveLength(1);
+    word(Shared.frameSeq, 4);
+    presenter.draw();
+    expect(calls.filter((call) => call[0] === "generateMipmap")).toHaveLength(2);
+    FakeResizeObserver.width = 400;
+    FakeResizeObserver.height = 300;
+  });
+
   it("uploads RGB565 pixels directly from shared wasm memory", () => {
     const { calls, frame, presenter } = setup();
     frame(PixelFormat.Rgb565, 4, 2, 8);
@@ -230,7 +298,7 @@ describe("GlPresenter", () => {
     const state = setup();
     state.frame(PixelFormat.Rgb565, 800, 600, 1600);
     const oldMemory = state.memory();
-    const grownBuffer = new ArrayBuffer(2 << 20);
+    const grownBuffer = new ArrayBuffer(4 << 20);
     const grownWords = new Int32Array(grownBuffer);
     grownWords.set(oldMemory.HEAP32);
     const grownMemory: WasmMemory = {

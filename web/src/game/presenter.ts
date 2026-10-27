@@ -45,6 +45,7 @@ export interface GamePresenter {
  * the game nothing.
  */
 export class Presenter2d implements GamePresenter {
+  private readonly backdrop: HTMLCanvasElement | null;
   private raf = 0;
   private frameSeq = -1;
   private cursorSeq = -1;
@@ -60,13 +61,14 @@ export class Presenter2d implements GamePresenter {
     private readonly memory: () => WasmMemory,
     /** the address of ra2_shared_t, from ra2_shared() */
     private readonly shared: number,
-    private readonly backdrop?: HTMLCanvasElement | null,
+    backdrop?: HTMLCanvasElement | null,
     private readonly cursorOverlay?: HTMLImageElement | null,
     private readonly capturePointer?: (active: boolean) => void,
   ) {
     const context = canvas.getContext("2d", { alpha: false });
     if (!context) throw new Error("this browser gave no 2D canvas");
     this.context = context;
+    this.backdrop = backdrop ?? this.createBackdrop();
   }
 
   /** Running totals, for the frame-time overlay: pictures put on the canvas, animation frames, time spent drawing. */
@@ -93,12 +95,30 @@ export class Presenter2d implements GamePresenter {
     };
   }
 
-  configure(scale: Scale, _bars = true): void {
-    void _bars;
+  configure(scale: Scale, bars = true): void {
     this.scale = scale;
+    if (this.backdrop) this.backdrop.style.display = bars ? "block" : "none";
     this.canvas.style.width = this.canvas.style.height = "100%";
     this.canvas.style.objectFit = "contain";
     this.frameSeq = -1;
+  }
+
+  private createBackdrop(): HTMLCanvasElement | null {
+    const parent = this.canvas.parentElement;
+    if (!parent) return null;
+    const backdrop = document.createElement("canvas");
+    Object.assign(backdrop.style, {
+      position: "absolute",
+      inset: "-5%",
+      width: "110%",
+      height: "110%",
+      objectFit: "cover",
+      filter: "blur(24px) brightness(0.25)",
+      pointerEvents: "none",
+      zIndex: "0",
+    });
+    parent.insertBefore(backdrop, this.canvas);
+    return backdrop;
   }
 
   /** The next animation frame puts the game's current picture on the canvas again. */

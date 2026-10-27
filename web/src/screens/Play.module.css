@@ -4,16 +4,6 @@
   background: #000;
 }
 
-.backdrop {
-  position: absolute;
-  inset: -5%;
-  width: 110%;
-  height: 110%;
-  object-fit: cover;
-  filter: blur(24px) brightness(0.25);
-  pointer-events: none;
-}
-
 .topMenu {
   position: absolute;
   top: var(--space-2);
