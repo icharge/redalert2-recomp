@@ -164,6 +164,18 @@ This is a focused game-to-web-to-game hook, not yet a general replacement
 for native dialogs or the Online lobby. Protocol 5's HWND-based overlay is
 superseded: the request ID is not a window handle.
 
+## Frame-performance verification (29 October 2026)
+
+The final current Release checks exercised protocol 8 with both YR and RA2,
+using the WebGL2 presenter and the `?presenter=2d` fallback, with HD off and
+on. The suite compared menu and skirmish frames and found zero different
+pixels. Movie playback advanced, but no PAL8 frame was published in the capture
+window, so a movie-frame pixel comparison was not made. The game's once-per-second `fps` event supplied the final
+matrix and soak measurements; its fields (`fps`, `ms`, `worst`, `late`, `pub`,
+`pubms`) distinguish game rate, gaps, late frames, and publication cost. The
+same `RA2_WEB_PROTOCOL` value is declared in `web/src/game/protocol.ts` and
+`src/web/web_api.h`.
+
 ## Versions
 
 `protocol.ts` and `web_api.h` both carry `RA2_WEB_PROTOCOL` (an integer).

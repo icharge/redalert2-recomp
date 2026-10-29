@@ -1,58 +1,64 @@
-# Browser frame-performance update, 29 October 2026
+# Browser frame-performance closeout, 29 October 2026
 
-The target remains a busy match at 720p–1440p with HD vehicles off. Task 5 is
-deferred. Task 8 is skipped because the measured wait margin is `M = 16 ms`.
-Task 9 is skipped because its entry gate requires a second with at least 1,000
-clock reads and both sleep counters at zero; every observed second had at least
-91 `Sleep(n)` calls. A later profile found `wait_ms` polling
-`clock_gettime`, a separate wait path that the proposed QPC shim would not
-affect.
+Task 12's final runs and documentation are complete. All browser checks used
+the single imported profile `work/perf/profile-fresh` at its existing
+`http://127.0.0.1:5173` origin; no game import or second persistent profile was
+created. The current Release builds were YR `f05cb27819923f29` (Wasm
+`a32da1b9692b`) and RA2 `f9d59c043f87acf6` (Wasm `8b2a772f0996`). Their 15-case
+matrices are in `work/perf/task12-yr-release-matrix-20261029/run.json` and
+`work/perf/task12-ra2-current-release-20261029/run.json`.
 
-- Task 6 is committed as `df45ca4`: the WebGL2 presenter has five scaling
-  modes and shader-rendered blurred bars. Unit and type checks pass. A live
-  pixel comparison matches both the 800×600 menu and active skirmish for YR
-  and RA2 through both WebGL and the 2D fallback. Every capture has zero
-  differing pixels; the YR skirmish is 1920×1080 and the RA2 skirmish is
-  1280×720. Each menu movie produced 24 changing captures.
-- Task 7's current YR busy HD-off matrix reports 62/60 fps at 720p, 61/44 at
-  1080p, 50/34 at 1440p, and 38/23 at 4K (median/1% low). Worst frame gaps
-  are 33, 127, 57, and 68 ms. The 720p median/low bars pass; 1080p misses the
-  low bar; 1440p misses both FPS bars. The 33 ms gap bar passes only at 720p.
-  4K is record-only. Idle-menu CPU remains 4.2% below baseline, short of its
-  40% target.
-- Task 10's futex candidate failed the repeated browser keep gate and was
-  reverted. The mixer used 13.3% of one core (3.24% in `mix`); its wake was
-  changed from 5 ms to 10 ms and the five-minute audio/skirmish check passed
-  with zero underruns. A high-uptime FPS deadline sentinel bug was fixed; the
-  current YR browser now emits FPS telemetry. Main-thread traces measured
-  0.789 ms/task frame at 1080p and 1.067 ms at 1440p, under the 4 ms bar.
-- Task 11's HD-off 1440p ten-minute soak now passes the Wasm growth gate after
-  the 640 MiB initial-memory rebuild: 640 MiB peak, zero Wasm growth after
-  60 seconds, 2,571,580 bytes JS heap growth, and no seconds without a published
-  picture. The earlier 4K soak peaked at 442.5 MiB with zero post-minute Wasm
-  growth. The current 4K soak is still outstanding.
-- Task 12 remains incomplete. The current YR busy matrix and 1440p soak were
-  run using the sole imported profile, `work/perf/profile-fresh`, at its
-  original 5173 origin. RA2 menu and skirmish pixel captures pass with zero
-  differing pixels on the retained RA2 build; a current-source RA2 link has
-  not completed. The full current release matrix for both editions, 4K soaks,
-  final full presenter suite, final docs, and final branch review remain open.
-  No additional game import was made. After measurements, 380,258,388 bytes of
-  regenerable caches were cleared from the retained profile while preserving
-  its IndexedDB/OPFS. A mistakenly created empty 77,537,983-byte profile was
-  removed; it contained no game import.
+| Edition / busy case, HD off | Median / 1% low FPS | Worst gap | Result |
+|---|---:|---:|---|
+| YR 720p | 61 / 54 | 37 ms | FPS low and gap bars miss |
+| YR 1080p | 55 / 43 | 109 ms | FPS low and gap bars miss |
+| YR 1440p | 43 / 32 | 70 ms | Median, low, and gap bars miss |
+| YR 4K | 30 / 21 | 92 ms | Record-only |
+| RA2 720p | 62 / 61 | 31 ms | FPS and gap bars pass |
+| RA2 1080p | 62 / 55 | 49 ms | FPS bars pass; gap bar misses |
+| RA2 1440p | 62 / 59 | 56 ms | FPS bars pass; gap bar misses |
+| RA2 4K | 54 / 41 | 154 ms | Record-only |
 
-Before/after comparison (baseline values are from the 26 October Release run):
+YR's `menu/idle` CPU median was 171.98% versus 246.59% at baseline (30.3%
+lower; short of the 40% target). RA2's was 161.08%; no RA2-specific baseline
+exists, so that value is record-only. HD-on rows are recorded without a pass
+target. In the RA2 matrix they reached 754.8 MiB at 1080p and 768 MiB at
+1440p.
+
+Four current-build ten-minute HD-off soaks completed: YR 1440p and 4K, and
+RA2 1440p and 4K. Each peaked at 640 MiB, had zero Wasm growth after 60
+seconds, and had zero seconds without a published picture. JS heap growth was
+2,571,580 bytes (YR 1440p), 748,740 (YR 4K), 1,052,716 (RA2 1440p), and
+136,452 (RA2 4K). Soak FPS and frame gaps are recorded, not gated.
+
+The full YR/RA2 x WebGL2/2D x HD-off/on suite passed menu and skirmish raw-pixel
+comparisons with zero differences. Movie playback advanced during the capture
+window, but the game did not publish PAL8, so no movie-frame pixel comparison
+was made. The harness restores the original scale and HD settings. `pnpm test`
+passed (39 files / 340 tests), `pnpm typecheck` passed, and lint had zero errors
+with the existing `Play.tsx:337` hook warning.
+
+The save-list harness now removes stale runtime `.sav` copies before staging
+its benchmark save; a regression test confirms runtime deletion does not
+delete the user's OPFS save. After the final browser run, 437,030,375 bytes
+across regenerable cache directories were removed from the retained profile;
+OPFS, IndexedDB, local storage, game data, and saves were preserved. Task 5 remains deferred; Tasks 8 and 9 remain
+skipped by their recorded gates. Task 7's YR performance target remains unmet
+at the sizes listed above.
+
+## Before/after comparison
+
+YR values below use the baseline from 26 October and the current Release run:
 
 | Case | Before | After current changes | Evidence state |
 |---|---:|---:|---|
-| 1280×720 busy save, HD off | 23 fps median / 22 1% low; 82 ms worst gap; 256.15% CPU | 62 / 60; 33 ms; 256.99% CPU | FPS and gap bars pass; CPU is 0.3% above baseline. |
-| 1920×1080 busy save, HD off | 20 / 18; 83 ms; 276.98% CPU | 61 / 44; 127 ms; 257.65% CPU | Median passes; 1% low and gap bars fail. |
-| 2560×1440 busy save, HD off | 18 / 15; 99 ms; 306.07% CPU | 50 / 34; 57 ms; 258.13% CPU | FPS and gap bars fail; CPU is lower. |
-| Idle main menu | 247% CPU | 236.15% CPU | 4.2% lower; misses the 40% reduction target. |
-| 2560×1440, 10-minute busy soak, HD off | 768 MiB peak; 137.7 MiB growth after 60 s | 50 / 28 fps; 86 ms worst gap; 640 MiB peak; 0 Wasm growth after 60 s; 2,571,580 bytes JS heap growth | Wasm growth gate passes; FPS is recorded without a soak target. |
-| 3840×2160 busy, HD off | Could not be selected | 38 / 23 fps; 68 ms worst gap; 640 MiB peak | Record-only current 60 s case. |
-| 3840×2160 soak, HD off | Could not be selected | Earlier run: 442.5 MiB peak; zero Wasm growth after 60 s | Previous-build record only; repeat on the current build. |
+| 1280×720 busy save, HD off | 23 fps median / 22 1% low; 82 ms worst gap; 256.15% CPU | 61 / 54; 37 ms; 256.73% CPU | FPS low and gap bars miss; CPU is 0.2% above baseline. |
+| 1920×1080 busy save, HD off | 20 / 18; 83 ms; 276.98% CPU | 55 / 43; 109 ms; 257.73% CPU | Median, low, and gap bars miss; CPU is lower. |
+| 2560×1440 busy save, HD off | 18 / 15; 99 ms; 306.07% CPU | 43 / 32; 70 ms; 257.12% CPU | FPS and gap bars fail; CPU is lower. |
+| Idle main menu | 246.59% CPU | 171.98% CPU | 30.3% lower; misses the 40% reduction target. |
+| 2560×1440, 10-minute busy soak, HD off | 768 MiB peak; 137.7 MiB growth after 60 s | 640 MiB peak; 0 Wasm growth after 60 s; 2,571,580 bytes JS heap growth | Wasm growth gate passes; FPS is recorded without a soak target. |
+| 3840×2160 busy, HD off | Could not be selected | 30 / 21 fps; 92 ms worst gap; 640 MiB peak | Record-only. |
+| 3840×2160 soak, HD off | Could not be selected | 640 MiB peak; zero Wasm growth after 60 s; 748,740 bytes JS heap growth | Current-build record; zero-growth gate passes. |
 
 Exact run files and baseline rows remain in the [plan results](../superpowers/plans/2026-10-26-web-frame-performance.md).
 

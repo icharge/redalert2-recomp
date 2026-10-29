@@ -92,6 +92,19 @@ describe("startSaveSync", () => {
     expect([...target.files.keys()]).toEqual(["save/ra2md/SAVE0001.sav"]);
   });
 
+  it("does not propagate runtime save deletions back to OPFS", async () => {
+    const game = fakeFs({ "/game/SAVE2132.SAV": "imported match" });
+    const target = memoryTarget();
+    target.files.set("save/ra2/SAVE2132.SAV", "imported match");
+    const sync = startSaveSync(game.fs, target, "ra2", 1e9);
+    stop = sync.stop;
+
+    game.files.delete("/game/SAVE2132.SAV");
+    await expect(sync.flush()).resolves.toBe(0);
+
+    expect(target.files.get("save/ra2/SAVE2132.SAV")).toBe("imported match");
+  });
+
   it("keeps scanning when a game directory disappears between looks", async () => {
     const game = fakeFs({ "/game/Saved Games/one.sav": "existing save" });
     const target = memoryTarget();

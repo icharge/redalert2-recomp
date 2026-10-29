@@ -24,6 +24,24 @@ test("uses the requested game edition while preserving presenter query options",
   assert.equal(url.searchParams.get("presenter"), "2d");
 });
 
+test("selects existing runtime save paths for removal before staging the benchmark save", () => {
+  assert.deepEqual(
+    perfNav.savePathsToClear([
+      "/game/SAVE0001.SAV",
+      "/game/SAVE2132.SAV",
+      "/game/RA2MD.INI",
+      "/game/Saved Games/SAVE0003.sav",
+    ]),
+    ["/game/SAVE0001.SAV", "/game/SAVE2132.SAV", "/game/Saved Games/SAVE0003.sav"],
+  );
+});
+
+test("recognizes either selected edition as an existing imported game", () => {
+  assert.equal(perfNav.hasImportedGame(["ra2"]), true);
+  assert.equal(perfNav.hasImportedGame(["ra2md"]), true);
+  assert.equal(perfNav.hasImportedGame([]), false);
+});
+
 test("uses RA2's eight-player map and player-row layout", () => {
   const layout = busySkirmishLayoutFor("ra2");
 

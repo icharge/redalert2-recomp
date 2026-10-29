@@ -71,11 +71,14 @@ blurred backdrop. Neither path makes a canvas resize part of game rendering.
 The cursor overlay is positioned from cached canvas bounds refreshed by a
 `ResizeObserver`; draw ticks do not read layout. The experimental HD vehicle
 composition is deferred (Task 5), so the current picture path does not compose
-separate HD layers. Live Yuri's Revenge checks confirm WebGL rendering and
-pixel parity for the menu and a skirmish frame. Red Alert 2's retained build
-also matches the menu and skirmish captures; its current-source release build
-has not completed. The final both-edition presenter matrix and performance
-acceptance gates remain open in the frame-performance plan.
+separate HD layers. The final current Release checks cover Yuri's Revenge and
+Red Alert 2 through WebGL2 and the 2D fallback, with HD off and on. Menu,
+skirmish captures match their raw references with zero differing pixels.
+Movie playback advanced during the capture window, but no PAL8 frame was
+published, so no movie-frame pixel comparison was made. The HD-off busy
+measurements and memory results, including the YR
+performance bars that remain unmet, are recorded in
+[`progress.md`](progress.md#browser-frame-performance-closeout-29-october-2026).
 
 Why not SDL's renderer, as on Linux ([decisions.md](decisions.md), D10): the
 game's loop never returns to the browser, and a GL context made on that thread

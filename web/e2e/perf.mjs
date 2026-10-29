@@ -41,6 +41,7 @@ import {
   at,
   enterSinglePlayerAtSize,
   gameUrl,
+  hasImportedGame,
   isMenuShellPicture,
   loadBusySave,
   openGame,
@@ -645,8 +646,25 @@ async function ensureImported() {
   try {
     const page = t.page;
     await page.getByRole("heading", { name: "Your games" }).waitFor({ timeout: 60_000 });
-    const have = await page.locator('[data-slot-id="1"] [data-game-id="ra2md"]').count();
+    const gameIds = await page
+      .locator("[data-slot-id] [data-game-id]")
+      .evaluateAll((games) => games.map((game) => game.getAttribute("data-game-id")));
+    const have = hasImportedGame(gameIds);
     if (!have) {
+      const hasStoredGame = await page.evaluate(async () => {
+        const root = await navigator.storage.getDirectory();
+        try {
+          const games = await root.getDirectoryHandle("game");
+          for await (const _entry of games.entries()) return true;
+        } catch {
+          return false;
+        }
+        return false;
+      });
+      if (hasStoredGame)
+        throw new Error(
+          "game data exists in this profile but no Library card was found; refusing to import again",
+        );
       log(`importing ${gameDir} into the profile (once)`);
       await page.getByRole("button", { name: "Import a folder…" }).click();
       await page.getByText("Bring your game").waitFor({ timeout: 30_000 });

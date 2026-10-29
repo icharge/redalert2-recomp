@@ -488,11 +488,11 @@ git commit -m "Bound the web build's caches and size its memory from measured pe
 **Files:**
 - Modify: `docs/web/progress.md`, `docs/web/architecture.md` ("Rendering"), `docs/web/protocol.md` (final check), `docs/web/tasks.md` (a row per finished task under a new "Frame performance" heading), this plan's "Results"
 
-- [ ] **Step 1: Release-link both editions** and run the full 720p–4K matrix with the 1440p soak against the baseline: `node e2e/perf.mjs --sizes 1280x720,1920x1080,2560x1440,3840x2160 --save <busy save> --soak-minutes 10 --soak-size 2560x1440 --out work/perf/final --baseline work/perf/baseline/run.json`. Run a separate 4K soak with `--soak-minutes 10 --soak-size 3840x2160 --out work/perf/final-4k`; repeat both commands for Red Alert 2 with its own busy save and output directories.
-- [ ] **Step 2: Check every row of the pass bar.** Expected: every `pass` is `true` (4K rows have `pass: null`). Any `false` is reported to the user with its numbers, not hidden.
-- [ ] **Step 3: Run the whole browser suite** on the WebGL2 presenter and with `?presenter=2d`, HD off and on, for both editions, and `pnpm test`, `pnpm typecheck`, `pnpm lint`. Expected: all pass.
-- [ ] **Step 4: Update the docs.** `architecture.md`'s "Rendering" describes the raw publish, the three buffers, the HD layers and the WebGL2 presenter, with the 2D presenter as the fallback. `progress.md` gets the before/after table. `tasks.md` gets the rows.
-- [ ] **Step 5: Commit**
+- [x] **Step 1: Release-link both editions and run the final matrices and soaks.** The 15-case YR matrix is `work/perf/task12-yr-release-matrix-20261029/run.json`; the 15-case RA2 matrix is `work/perf/task12-ra2-current-release-20261029/run.json`. Current-build ten-minute HD-off soaks are recorded for 1440p and 4K in each edition's `task12-*-current-release-soak-*-20261029/run.json`. Only YR has an edition-specific Task 1 baseline; RA2 results are reported without cross-edition comparison.
+- [x] **Step 2: Check every row of the pass bar.** The HD-off 60 fps median / 55 fps 1% low / 33 ms gap bars and their failures are recorded in `docs/web/progress.md`; 4K and HD-on rows are record-only. YR misses low/gap at 720p, low/gap at 1080p, and all three at 1440p. RA2 passes the FPS bars at 720p–1440p; only 720p passes the gap bar. The menu CPU reduction target remains unmet.
+- [x] **Step 3: Run the whole browser suite** on WebGL2 and `?presenter=2d`, HD off/on, for both editions. Menu and skirmish raw-pixel comparisons report zero differences. Movie playback advanced, but no PAL8 frame was published during the capture window, so no movie-frame pixel comparison was made. `pnpm test` passes (39 files / 340 tests), `pnpm typecheck` passes, and lint has zero errors with the existing `Play.tsx:337` hook warning.
+- [x] **Step 4: Update the docs.** `architecture.md`, `protocol.md`, `progress.md`, and `tasks.md` now state the final rendering checks, benchmark results, and remaining failed performance bars.
+- [x] **Step 5: Commit** the final docs and completed harness/regression changes after review and verification.
 
 ```bash
 git add docs/web/progress.md docs/web/architecture.md docs/web/protocol.md docs/web/tasks.md docs/superpowers/plans/2026-10-26-web-frame-performance.md
@@ -838,15 +838,15 @@ The first 4K record-soak attempt stalled at `loading the game` while its Vite se
 
 Task 11 Step 4's measured formula now sets `INITIAL_MEMORY=640MB` from the 627.5 MiB menu peak rounded up to 16 MiB. The 4K peak plus 25% is below the 768 MiB floor, so `MAXIMUM_MEMORY=768MB`. The memory-budget test was updated and passes. The 1440p soak with the new initial setting remains unmeasured; its previous 137.7 MiB increase began exactly at the automatic save reload, while memory stayed at 630.3 MiB for the first three minutes and 768 MiB for the rest.
 
-### Task 12: Partial — implementation docs and acceptance gaps recorded (27 October 2026)
+### Task 12: Partial checkpoint (27 October 2026; superseded by final results below)
 
 Updated `architecture.md`, `progress.md`, `tasks.md`, `memory.md`, `protocol.md`, `testing.md`, this plan, and the status ledger. The progress page now gives baseline figures beside explicitly unmeasured post-change values. The 3840×2160 resolution is marked selectable but unmeasured. No post-change performance, main-thread CPU, audio, or memory peak numbers are claimed.
 
 The full web suite passes (39 files / 334 tests), `pnpm typecheck`, `pnpm lint`, and `pnpm build` pass; lint has the existing `Play.tsx:337` warning and the build has the existing large-chunk warning. The 25 perf harness tests, both C selftests, and `python tools/test_web_memory_budget.py` pass. The final two-axis branch review found no concrete code/spec mismatch; it confirmed the missing measurement gates and found only a pre-existing untracked game-data build artifact, which is not part of the changes.
 
-Task 12 remains incomplete: the 1440p recheck with `INITIAL_MEMORY=640MB`, 1080p/1440p main-thread profiles, and final performance matrix remain. The live YR/RA2 × WebGL/2D menu and skirmish pixel suite now passes with zero differences using the single imported-game profile at `work/perf/profile-fresh`. Busy-save frames change while no FPS events arrive, so the performance profiles remain open. The profile cache has regrown during browser runs; clear regenerable caches after remaining checks while preserving OPFS. The Task 7 performance pass bar remains unmet and is documented as such. The final whole-branch review at fixed point `1981765` predates these latest test-harness and documentation changes and must be rerun.
+At the 27 October checkpoint, Task 12 remained incomplete: the 1440p recheck with `INITIAL_MEMORY=640MB`, 1080p/1440p main-thread profiles, and final performance matrix remain. The live YR/RA2 × WebGL/2D menu and skirmish pixel suite now passes with zero differences using the single imported-game profile at `work/perf/profile-fresh`. Busy-save frames change while no FPS events arrive, so the performance profiles remain open. The profile cache has regrown during browser runs; clear regenerable caches after remaining checks while preserving OPFS. The Task 7 performance pass bar remains unmet and is documented as such. The final whole-branch review at fixed point `1981765` predates these latest test-harness and documentation changes and must be rerun.
 
-### Follow-up measurements (29 October 2026)
+### Intermediate follow-up measurements (29 October 2026; final run below)
 
 Task 10's missing FPS events came from the first-pump sentinel: `next_fps` was zero, and the signed deadline check stayed false once monotonic uptime exceeded 2^31 ms. `web_fps_deadline_due` now tracks initialization separately and has a C selftest for high uptime, deadline crossing, and wraparound. The rebuilt YR browser emits FPS events. The mixer measured 13.3% of one core, including 3.24% in `mix`; changing its wake from 5 ms to 10 ms passed `node e2e/audio.mjs` with a five-minute skirmish and zero underruns. The futex change remains reverted by its A/B keep rule. Current main-thread traces at 1080p and 1440p measured 0.789 ms and 1.067 ms per published frame, respectively.
 
@@ -855,3 +855,41 @@ The 1440p HD-off soak with the 640 MiB initial-memory build completed in `work/p
 The current YR busy HD-off matrix is `work/perf/task12-yr-matrix-final-20261029/run.json`, measured on the sole imported profile at `http://127.0.0.1:5173`. Values are median/1% low FPS and worst frame gap: 720p 62/60 and 33 ms; 1080p 61/44 and 127 ms; 1440p 50/34 and 57 ms; 4K 38/23 and 68 ms. The 4K case is record-only. Corrected `perf-report.mjs` so the FPS bars apply to HD-off busy cases, as required by the 26 October target change. The reporter's 21 Node tests pass. The 720p FPS bars pass; 1080p passes median only; 1440p misses median and 1% low; the worst-gap bar fails at 1080p and 1440p. The current busy CPU medians are 256.99%, 257.65%, and 258.13% at 720p/1080p/1440p, versus 256.15%, 276.98%, and 306.07% at baseline.
 
 The full web suite passes (39 files / 335 tests), typecheck passes, and lint reports only the existing `Play.tsx:337` hook warning. RA2 menu and skirmish pixel comparisons on the retained RA2 build report zero differing pixels. A current-source RA2 release link was started but remained idle without a child optimizer and did not replace the 27 October Wasm; current-source RA2 runtime checks remain open. The empty accidental profile `web/work/perf/profile-fresh` created by a path-base mismatch was removed (77,537,983 bytes, no game import); the actual `work/perf/profile-fresh` and its 5173 OPFS were preserved. After browser runs, 380,258,388 bytes of cache-named data were removed from that retained profile. The current-build 4K soak, full both-edition matrix/soaks, final full presenter suite, and final branch review remain open.
+
+
+### Task 12 final results (29 October 2026)
+
+The 15-case YR Release matrix is `work/perf/task12-yr-release-matrix-20261029/run.json`
+(build `f05cb27819923f29`, Wasm `a32da1b9692b`). The 15-case RA2 matrix is
+`work/perf/task12-ra2-current-release-20261029/run.json` (build
+`f9d59c043f87acf6`, Wasm `8b2a772f0996`). Both include busy cases at 720p,
+1080p, 1440p, and 4K with HD off/on, repeated early-game cases at target
+resolutions, and menu idle. YR's busy HD-off medians / 1% lows / worst gaps are
+720p 61 / 54 / 37 ms, 1080p 55 / 43 / 109 ms, 1440p 43 / 32 / 70 ms, and 4K
+30 / 21 / 92 ms. The 4K row is record-only. YR misses low and gap at 720p, low
+and gap at 1080p, and median, low, and gap at 1440p. Menu CPU is 171.98% vs
+246.59% baseline (30.3% lower, short of the 40% target).
+
+RA2 busy HD-off medians / 1% lows / worst gaps are 720p 62 / 61 / 31 ms, 1080p
+62 / 55 / 49 ms, 1440p 62 / 59 / 56 ms, and 4K 54 / 41 / 154 ms. RA2 passes
+the FPS bars at 720p-1440p and the gap bar only at 720p. No RA2-specific
+baseline exists, so these are current-build measurements only. HD-on rows are
+record-only; RA2 HD-on peaks were 754.8 MiB at 1080p and 768 MiB at 1440p.
+
+All four current-build ten-minute HD-off soaks (both editions at 1440p and 4K)
+peaked at 640 MiB, had zero Wasm growth after 60 seconds, and had zero seconds
+without a published picture. JS heap growth was 2,571,580 bytes for YR 1440p,
+748,740 for YR 4K, 1,052,716 for RA2 1440p, and 136,452 for RA2 4K. The full
+YR/RA2 x WebGL2/2D x HD-off/on suite reported zero raw-pixel differences for
+menu and skirmish captures. Movie playback advanced, but no PAL8 frame was
+published during the capture window, so no movie-frame pixel comparison was
+made. `pnpm test` passed (39 files / 340 tests), typecheck passed,
+and lint had zero errors with the existing `Play.tsx:337` hook warning.
+
+All browser runs reused `work/perf/profile-fresh` at its existing 5173 origin.
+The final cleanup removed 437,030,375 bytes from regenerable cache directories.
+It preserved OPFS, IndexedDB, local storage, imported game files, and saves. The
+save-list harness now clears stale in-memory `.sav` files before staging a
+benchmark save; a regression test verifies this does not propagate deletion to
+OPFS. Task 5 remains deferred and Tasks 8/9 remain skipped under their stated
+gates. The performance shortfalls are reported, not represented as passed.

@@ -6,7 +6,34 @@ import { openGame } from "./perf-nav.mjs";
 
 const opts = options(process.argv.slice(2));
 assert.ok(opts.profile, "pass --profile <persistent Chrome profile with an imported game>");
+const hdAt = process.argv.indexOf("--hd");
+const hd = hdAt < 0 ? null : process.argv[hdAt + 1];
+assert.ok(hd === null || hd === "off" || hd === "on", "--hd must be off or on");
 const run = await openGame(opts, { shots: opts.shots, headed: opts.headed });
+const scaleValues = { sharp: 0, smooth: 1, crt: 2, nearest: 3, integer: 4 };
+const originalSettings = (await run.state())?.settings;
+
+async function setScale(scale) {
+  await run.page.evaluate((value) => {
+    window.Module.cwrap("ra2_setting", null, ["number", "number", "number"])(0, value, 0);
+  }, scaleValues[scale]);
+  await run.page.waitForFunction(
+    (value) => window.ra2Store?.getSnapshot().settings?.scale === value,
+    scale,
+    { timeout: 30_000 },
+  );
+}
+
+async function setHd(enabled) {
+  await run.page.evaluate((value) => {
+    window.Module.cwrap("ra2_setting", null, ["number", "number", "number"])(2, value ? 1 : 0, 0);
+  }, enabled);
+  await run.page.waitForFunction(
+    (value) => window.ra2Store?.getSnapshot().settings?.hd === value,
+    enabled,
+    { timeout: 30_000 },
+  );
+}
 
 async function compare(label) {
   const result = await run.page.evaluate(async () => {
@@ -144,8 +171,17 @@ async function compare(label) {
       const capture = await window.ra2Presenter.capture();
       if (capture.frameSeq !== snapshot.seq) continue;
       let different = 0;
+      let firstDifferent = null;
       for (let i = 0; i < snapshot.expected.length; i++)
-        if (snapshot.expected[i] !== capture.data[i]) different++;
+        if (snapshot.expected[i] !== capture.data[i]) {
+          different++;
+          if (!firstDifferent)
+            firstDifferent = {
+              index: i,
+              expected: snapshot.expected[i],
+              actual: capture.data[i],
+            };
+        }
       result = {
         width: snapshot.width,
         height: snapshot.height,
@@ -153,6 +189,10 @@ async function compare(label) {
         ch: capture.height,
         format: snapshot.format,
         different,
+        firstDifferent,
+        presenter: window.ra2Presenter?.constructor?.name,
+        hd: window.ra2Store?.getSnapshot().settings?.hd,
+        scale: window.ra2Store?.getSnapshot().settings?.scale,
       };
       break;
     }
@@ -164,6 +204,7 @@ async function compare(label) {
   });
   assert.equal(result.cw, result.width, `${label}: capture width`);
   assert.equal(result.ch, result.height, `${label}: capture height`);
+  if (result.different) console.error(`${label} diagnostic: ${JSON.stringify(result)}`);
   assert.equal(result.different, 0, `${label}: pixel differences`);
   console.log(
     `${label}: ${result.width}x${result.height}, format ${result.format}, 0 differing pixels`,
@@ -171,6 +212,14 @@ async function compare(label) {
 }
 
 try {
+  // The capture must use unfiltered 1:1 pixels; restore the user's mode before closing.
+  await setScale("nearest");
+  if (hd !== null) {
+    const enabled = hd === "on";
+    await setHd(enabled);
+    console.log(`HD vehicles: ${hd}`);
+  }
+  await run.page.waitForTimeout(1000);
   await compare("main menu");
   const movie = await run.page.evaluate(async () => {
     const m = window.Module;
@@ -219,5 +268,8 @@ try {
   );
   await compare("skirmish frame");
 } finally {
+  if (originalSettings?.scale in scaleValues) await setScale(originalSettings.scale);
+  if (typeof originalSettings?.hd === "boolean") await setHd(originalSettings.hd);
+  await run.page.waitForTimeout(250).catch(() => {});
   await run.browser.close();
 }

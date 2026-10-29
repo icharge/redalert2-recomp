@@ -5,7 +5,7 @@ Spec: [../specs/2026-10-26-web-frame-performance-design.md](../specs/2026-10-26-
 Run: subagent-driven, Haiku implementers and reviewers; fix rounds 4–5 and the final review on Sonnet.
 Detailed ledger (rulings, review findings): `.superpowers/sdd/2026-10-26-web-frame-performance/progress.md` (not in git).
 
-## Where it stands (29 October 2026)
+## Where it stands (29 October 2026, final Task 12 runs)
 
 | Task | State | Commits |
 |---|---|---|
@@ -17,16 +17,16 @@ Detailed ledger (rulings, review findings): `.superpowers/sdd/2026-10-26-web-fra
 | 2e. The Thai fix without full-font rewrites (new) | **done** (review clean after 1 fix round; one measurement question parked). Rejected fonts are remembered, with the reason re-checked on each use; screenshots identical to the old build. Busy, HD off, Thai on (the default): 720p **61 fps** (1% low 54–55) vs 23–29 before; 1080p 49, 1440p 34. The Thai shaping itself stays inactive for this font | 30f984d, 4303eaf, cb64513 |
 | 2f. Profile the busy game at 1440p and 720p (new) | **done** (review clean after 2 fix rounds). Game work a frame: 720p 13.0 ms, 1440p 22.7 ms (60 fps allows 16.7). Of the 9.7 ms rise: the game's sprite/tile drawing about 3.7 ms, the presenter about 1.5 ms (1.9 ms in all at 1440p), at least 3.1 ms other game functions. **So Tasks 3/4/6 can save at most about 2 ms at 1440p** | 9787c04, 22ac9c1, a1624f5 |
 | 3. Raw publish, three buffers, protocol 8 | **done**, scoped review clean after a third fix: the sequence is odd before pixel writes, and page readers check it again after copying. Both editions build; web tests pass | f438c6c, ba1014f, 9fb8554, 2941553 |
-| 4. WebGL2 presenter, HD off | **implemented**; live pixel suite passes for both editions and both presenters. YR and RA2 menu/movie/skirmish checks report 0 pixel differences; the 2D RGBA comparison now copies rows to avoid racing the shared frame sequence | e59ed78, 92669d2, 6979ceb, 8b0af1c, 521db05 |
+| 4. WebGL2 presenter, HD off | **implemented**; live pixel suite passes for both editions and both presenters. YR and RA2 menu/skirmish checks report 0 pixel differences; movie playback advanced but emitted no PAL8 frame to compare; the 2D RGBA comparison now copies rows to avoid racing the shared frame sequence | e59ed78, 92669d2, 6979ceb, 8b0af1c, 521db05 |
 | 5. HD layers on the GPU | **deferred** to a later HD project | |
 | 6. Scaling modes and bars | **implemented**, scoped review clean; full web suite passed (39 files / 324 tests), typecheck/lint/build passed. The live both-edition/presenter pixel suite passes, with 0 differences in all menu and skirmish captures | df45ca4 |
-| 7. Rendering checkpoint | **measured; performance pass bar not met**: HD-off busy medians 57/51/40 fps, worst gaps exceed 33 ms, and menu CPU improved 4.2% against a 40% target. Full live YR/RA2 × WebGL/2D menu and skirmish pixel suite now passes. Named worker profile and 720p main-thread profile are recorded; 1080p/1440p main-thread captures remain under Tasks 10/12 | |
+| 7. Rendering checkpoint | **measured; pass bar not met**: current YR HD-off median/1% low at 720p/1080p/1440p is 61/54, 55/43, and 43/32 fps; worst gaps are 37/109/70 ms. RA2 is 62/61, 62/55, and 62/59 fps with 31/49/56 ms gaps. YR misses multiple FPS/gap bars; RA2 misses only the gap bar at 1080p/1440p. YR menu CPU is 30.3% below baseline, short of 40%. | |
 | 8. Sleep margin (pcrecomp) | **skipped**: measured M = 16 ms; wake p99 was 7–15 ms at 1–16 ms targets, so Task 8's condition says no change because waits are not precise enough | |
 | 9. Clock damper (if Task 2 finds a spin) | **skipped under Task 2's stated gate**: no second had at least 1,000 clock reads with both `Sleep(n)` and `Sleep(0)` at zero. A later profile found `wait_ms` internally polling `clock_gettime`; Task 9's `QueryPerformanceCounter` shim would not affect that separate wait path | |
-| 10. Critical-section futex, mixer, page frame loop | **partial**: the cursor overlay reads are cached at setup/resize, with presenter tests passing. The futex candidate passed its targeted Emscripten tests but failed the two-pair browser keep gate (candidate low FPS 53.5 vs 56.5 control; worst-gap median 114.5 ms vs 66 ms), so its source was reverted. The mixer worker measured 13.3% of one core (3.24% in `mix`); its wake changed from 5 ms to 10 ms and the five-minute audio/skirmish check passed with 0 underruns. The high-uptime FPS deadline sentinel was fixed; current YR profiles emit FPS telemetry. Main-thread captures measured 0.789 ms/task frame at 1080p and 1.067 ms at 1440p, under the 4 ms bar. The current-source RA2 Release link remained idle without an optimizer child after compilation and was stopped without replacing its 27 Oct WASM. The existing RA2 binary still passed live menu/skirmish pixel comparisons (0 differing pixels); current-source RA2 runtime verification remains open | |
-| 11. Memory bounds and limits | **done for the planned HD-off checks**: source cache bounds and frame-buffer reclamation are tested. The 1440p HD-off soak with `INITIAL_MEMORY=640MB` completed at 640 MiB peak, zero Wasm growth after 60 s, 2,571,580 bytes JS heap growth, and no seconds without a published picture. The 4K soak peaked at 442.5 MiB with zero post-minute Wasm growth. `INITIAL_MEMORY=640MB` and `MAXIMUM_MEMORY=768MB`; the 1440p zero-growth gate now passes | |
-| 12. Final benchmark and docs | **partial**: the current YR busy matrix used the sole retained imported-game profile `work/perf/profile-fresh` at 5173. Median FPS: 720p 62 (1% low 60), 1080p 61 (1% low 44), 1440p 50 (1% low 34), and 4K 38 (1% low 23). Worst frame gaps: 33, 127, 57, and 68 ms respectively. Corrected report logic now applies FPS bars to HD-off busy cases: 720p passes median/1% low; 1080p passes median but misses 1% low; 1440p misses both. Every target size misses the 33 ms worst-gap bar except 720p at 33 ms. 4K is record-only. The 1440p ten-minute soak and memory gate are complete. RA2 menu/skirmish pixels passed with 0 differences using the existing RA2 build; current-source RA2 runtime verification remains open because its release link did not complete. The 5173 profile's regenerable caches were cleared (380,258,388 bytes) while its IndexedDB/OPFS was preserved. An accidental empty profile created by the first RA2 pixel attempt was removed (77,537,983 bytes); no game import occurred. Docs reconciliation and final review remain. Do not create another profile or game import | |
-| Final whole-branch review | **reviewed at `1981765`**: spec review found no implementation mismatch or scope creep; standards review found a pre-existing untracked `build-web-probe/` tree against CONTRIBUTING's generated-output rule and a possible duplicated frame-lease smell in the two presenters. The untracked build tree was left untouched. Remaining performance and memory acceptance gates are recorded above | |
+| 10. Critical-section futex, mixer, page frame loop | **partial**: cursor reads cached; futex candidate failed the keep gate and was reverted. Mixer measured 13.3% of one core (3.24% in `mix`); 10 ms wake passed the five-minute audio check with zero underruns. FPS sentinel fix restored telemetry; main-thread captures measured 0.789 ms/frame at 1080p and 1.067 ms at 1440p. | |
+| 11. Memory bounds and limits | **done for planned HD-off checks**: both editions' current-build 1440p and 4K ten-minute soaks peaked at 640 MiB, had zero Wasm growth after 60 s, and no seconds without a published picture. JS heap growth: YR 2,571,580 / 748,740 bytes (1440p / 4K); RA2 1,052,716 / 136,452 bytes. Memory is `INITIAL_MEMORY=640MB`, `MAXIMUM_MEMORY=768MB`. | |
+| 12. Final benchmark and docs | **done**: both current Release builds have 15-case matrices and current-build 1440p/4K soaks; the full YR/RA2 x WebGL2/2D x HD-off/on suite passed menu/skirmish raw-pixel comparisons with zero differences; movie playback advanced without a PAL8 frame to compare. The YR pass-bar failures and RA2 measurements without an edition-specific baseline are documented. All runs used `work/perf/profile-fresh`; profile cache cleanup preserves OPFS. | |
+| Final whole-branch review | **reviewed against `1981765`**, including the final worktree diff: no documented-standard violations and no remaining spec findings. One existing duplicated frame-lease implementation across the two presenters was noted as a judgment-call smell; no code change was recommended. | |
 
 ## Change of target (26 October)
 
@@ -81,3 +81,27 @@ The user asked to focus on the game with HD off (HD vehicles are experimental an
 
 - HD vehicles flicker when on (reported by the user): fix in the HD project.
 - HD buildings and infantry (SHP sprites, not voxels): either a pixel-art scaler in the shader, or pre-upscaled 2x sprites recorded like the HD voxels. Task 5's 2x layer + mask design leaves room for it. To design after this plan.
+
+
+## Final Task 12 reconciliation (29 October 2026)
+
+Both current Release matrices contain 15 cases and use the sole imported profile
+`work/perf/profile-fresh`. All four current-build ten-minute HD-off soaks
+(1440p and 4K for YR and RA2) peaked at 640 MiB, had zero Wasm growth after
+60 seconds, and had zero seconds without a published picture. Both editions
+passed menu/skirmish raw-pixel comparisons through WebGL2 and the 2D fallback,
+with HD off and on. Movie playback advanced, but no PAL8 frame was published
+during the capture window, so movie pixel comparison was skipped. Build IDs,
+FPS bars, and memory results are in `docs/web/progress.md` and the plan's final
+results section. YR performance bars remain unmet; RA2 has no edition-specific
+baseline.
+
+`pnpm test` passes (39 files / 340 tests), typecheck passes, and lint has zero
+errors with the existing `Play.tsx:337` warning. The focused harness tests pass
+13/13. Final profile-cache cleanup removed 437,030,375 bytes while preserving
+OPFS, IndexedDB, local storage, imported game data, and saves. The save-list
+harness fix has a regression test ensuring runtime deletion does not delete the
+OPFS save. Final two-axis review against `1981765` found no documented-standard
+violations and no remaining spec findings. The standards review noted the
+existing duplicated frame-lease logic in the two presenters as a judgment-call
+smell. The final changes are committed as part of Task 12 closeout.

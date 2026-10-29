@@ -272,6 +272,12 @@ export async function startBattle(t) {
 /** Where the busy save is put in the game's file system: the game lists every SAVE*.SAV there. */
 export const SAVE_NAME = "SAVE0001.SAV";
 
+/** Paths from the game directory that must be removed before the runner stages its sole save. */
+export const savePathsToClear = (paths) => paths.filter((path) => /\.sav$/i.test(path));
+
+/** A Library card may show either edition as selected while both share one imported installation. */
+export const hasImportedGame = (gameIds) => gameIds.some((id) => id === "ra2md" || id === "ra2");
+
 /**
  * The busy save's load: the save is written into the game's file system, then the game's own screens are used
  * (Single Player, Load Saved Game, the save in the list, Load). Assumes the main menu is up, at the size set by
@@ -280,6 +286,34 @@ export const SAVE_NAME = "SAVE0001.SAV";
  */
 export async function loadBusySave(t, savePath, { log = console.log, battleSize = null } = {}) {
   const base64 = readFileSync(savePath).toString("base64");
+  const existingPaths = await t.page.evaluate(() => {
+    const fs = window.Module.FS;
+    const paths = [];
+    for (const dir of ["/game", "/game/Saved Games"]) {
+      let names;
+      try {
+        names = fs.readdir(dir);
+      } catch {
+        continue;
+      }
+      for (const name of names) {
+        if (name === "." || name === "..") continue;
+        const path = `${dir}/${name}`;
+        try {
+          if (!(fs.stat(path).mode & 0o040000)) paths.push(path);
+        } catch {
+          // A file may disappear while the runner enumerates the directory.
+        }
+      }
+    }
+    return paths;
+  });
+  const oldSaves = savePathsToClear(existingPaths);
+  if (oldSaves.length)
+    await t.page.evaluate(
+      (paths) => paths.forEach((path) => window.Module.FS.unlink(path)),
+      oldSaves,
+    );
   const writtenSize = await t.page.evaluate(
     ([name, text]) => {
       const bin = atob(text);
@@ -287,7 +321,6 @@ export async function loadBusySave(t, savePath, { log = console.log, battleSize 
       for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
       const fs = window.Module.FS;
       const path = `/game/${name}`;
-      if (fs.readdir("/game").includes(name)) fs.unlink(path);
       fs.writeFile(path, bytes);
       return fs.stat(path).size;
     },
