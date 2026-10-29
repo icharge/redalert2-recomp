@@ -52,25 +52,36 @@ so it is the last resort, not the plan ([decisions.md](decisions.md), D4).
 
 The game thread never touches a canvas. `win32hle/screen.c` runs headless (no
 SDL window): it builds each frame from the game's primary surface and calls
-`hle_screen_frame_hook`. `src/web/presenter.c` is that hook. It converts the
-frame (RGB565, 8-bit with a palette, or 32-bit) to RGBA in one of two buffers
-in shared memory and publishes it in `ra2_shared_t` (picture pointer, size, a
-sequence number; [protocol.md](protocol.md)). The page's `presenter.ts` reads
-the struct once per animation frame and, when the sequence moved, copies the
-pixels into an `ImageData` and draws them on a 2D canvas. The canvas is the
-picture's size, and CSS fits it to the window (`object-fit: contain`), so a
-resize costs the game nothing and the bars are the page's.
+`hle_screen_frame_hook`. `src/web/presenter.c` is that hook. It publishes the
+game's RGB565, indexed 8-bit with palette, or RGBA pixels into one of three
+shared-memory frame slots. A sequence lock brackets each publication; the
+page names the slot it is reading, and replaced buffers are reclaimed only
+after they are neither newest nor in use. The metadata and ownership fields
+live in `ra2_shared_t` ([protocol.md](protocol.md)).
+
+The page uses the WebGL2 presenter when available. It uploads a changed frame
+to a texture and draws it with the selected scaling mode (sharp, smooth, CRT,
+nearest, or integer); the shader draws the optional blurred bars. Heap views
+are reused until WebAssembly memory grows, and WebGL2 source offsets keep frame
+uploads on the shared heap. The 2D presenter remains available through
+`?presenter=2d` and is the fallback when WebGL2 is unavailable. It requests
+RGBA frames, draws them to an `ImageData`, and uses a page canvas for the
+blurred backdrop. Neither path makes a canvas resize part of game rendering.
+
+The cursor overlay is positioned from cached canvas bounds refreshed by a
+`ResizeObserver`; draw ticks do not read layout. The experimental HD vehicle
+composition is deferred (Task 5), so the current picture path does not compose
+separate HD layers. Live Yuri's Revenge checks confirm WebGL rendering and
+pixel parity for the menu and a skirmish frame. Red Alert 2's retained build
+also matches the menu and skirmish captures; its current-source release build
+has not completed. The final both-edition presenter matrix and performance
+acceptance gates remain open in the frame-performance plan.
 
 Why not SDL's renderer, as on Linux ([decisions.md](decisions.md), D10): the
 game's loop never returns to the browser, and a GL context made on that thread
 never presents (an OffscreenCanvas commits when its thread yields), or, with
 `OFFSCREEN_FRAMEBUFFER`, needs a context shared between threads that SDL does
 not set up. Both were tried in a small program first.
-
-What the Linux presenter does that is not here yet: its scaling modes (sharp,
-smooth, CRT: F12), the blurred bars, the HD-vehicle layer's 2x picture. The
-page scales with the browser's own filter. They come back as page settings
-(stage 9).
 
 The menu cursor: in the menus the game uses the Windows cursor from its
 resources, and in a battle it draws its own. `presenter.c` turns the cursor

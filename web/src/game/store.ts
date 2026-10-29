@@ -91,7 +91,7 @@ export class GameStore {
   }
 
   loading(what: string): void {
-    this.set({ phase: "loading", loading: what });
+    this.set({ phase: "loading", loading: what, copy: null });
   }
 
   /** The copy of the game files moved on. */

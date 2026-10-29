@@ -60,9 +60,83 @@ export function replaceFile(fs: FsLike, path: string, data: Uint8Array): void {
 }
 
 const GAME = "/game";
+const PROFILE_INI_COMPACT_THRESHOLD = 1024 * 1024;
+
+/**
+ * The current Yuri HLE profile reader uses the first section and key match. Keep those original lines and
+ * discard later duplicate sections/keys from oversized saved RA2MD.INI files. The raw byte slices preserve
+ * the game's ANSI values; only ASCII section and key names are decoded for comparison.
+ */
+function compactProfileIni(data: Uint8Array): Uint8Array {
+  const decoder = new TextDecoder();
+  const chunks: Uint8Array[] = [];
+  const sections = new Set<string>();
+  let sectionDuplicate = false;
+  let keys = new Set<string>();
+  let size = 0;
+
+  const keep = (start: number, end: number) => {
+    const chunk = data.subarray(start, end);
+    chunks.push(chunk);
+    size += chunk.byteLength;
+  };
+
+  for (let start = 0; start < data.byteLength;) {
+    let end = start;
+    while (end < data.byteLength && data[end] !== 0x0a) end++;
+    if (end < data.byteLength) end++;
+
+    const contentEnd = end > start && data[end - 1] === 0x0a ? end - 1 : end;
+    const lineEnd =
+      contentEnd > start && data[contentEnd - 1] === 0x0d ? contentEnd - 1 : contentEnd;
+    const lineBytes = data.subarray(start, lineEnd);
+    const line = lineBytes.byteLength <= 4096 ? decoder.decode(lineBytes) : "";
+    const header = /^\[([^\]]+)\]$/.exec(line);
+
+    if (header) {
+      const section = header[1]?.toLowerCase() ?? "";
+      sectionDuplicate = sections.has(section);
+      if (!sectionDuplicate) {
+        sections.add(section);
+        keys = new Set();
+        keep(start, end);
+      }
+    } else if (!sectionDuplicate) {
+      const key = /^([^=\s]+)=/.exec(line)?.[1]?.toLowerCase();
+      if (!key || !keys.has(key)) {
+        if (key) keys.add(key);
+        keep(start, end);
+      }
+    }
+
+    // No useful compaction is possible once the retained prefix is already large.
+    if (size > PROFILE_INI_COMPACT_THRESHOLD) return data;
+    start = end;
+  }
+
+  if (size >= data.byteLength) return data;
+  const compacted = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    compacted.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return compacted;
+}
 
 /** Files the game writes that are not worth keeping. */
 const IGNORED = /^(debug\.log|.*\.tmp)$/i;
+
+function isMissingDirectory(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  const detail = error as { code?: unknown; errno?: unknown; message?: unknown };
+  return (
+    detail.code === "ENOENT" ||
+    detail.errno === 44 ||
+    (typeof detail.message === "string" &&
+      /no such directory|no such file or directory/i.test(detail.message))
+  );
+}
 
 interface Seen {
   size: number;
@@ -70,10 +144,19 @@ interface Seen {
 }
 
 /** Every file of the game's folder with its size and time: `Saved Games/` and the top level only. */
-function scan(fs: FsLike): Map<string, Seen> {
+function scan(fs: FsLike, retryMissingRoot = false): Map<string, Seen> {
   const out = new Map<string, Seen>();
   const walk = (dir: string, prefix: string, deep: boolean) => {
-    for (const name of fs.readdir(dir)) {
+    let names: string[];
+    try {
+      names = fs.readdir(dir);
+    } catch (error) {
+      // A save/mod folder can disappear between parent listing and this read. During later
+      // scans, the game root can also be briefly unavailable; the next look will retry it.
+      if ((dir !== GAME || retryMissingRoot) && isMissingDirectory(error)) return;
+      throw error;
+    }
+    for (const name of names) {
       if (name === "." || name === "..") continue;
       const path = `${dir}/${name}`;
       let stat;
@@ -148,7 +231,15 @@ export async function restoreSaves(
         // already there
       }
     }
-    replaceFile(fs, `${GAME}/${file.path}`, await file.read());
+    const original = await file.read();
+    const isYuriIni =
+      game.toLowerCase().endsWith("ra2md") && file.path.toLowerCase() === "ra2md.ini";
+    const data =
+      isYuriIni && original.byteLength > PROFILE_INI_COMPACT_THRESHOLD
+        ? compactProfileIni(original)
+        : original;
+    if (data !== original) await repair?.write(`save/${game}/${file.path}`, bytesStream(data));
+    replaceFile(fs, `${GAME}/${file.path}`, data);
     restored++;
   }
   return restored;
@@ -176,7 +267,7 @@ export function startSaveSync(
   let running: Promise<number> | null = null;
 
   async function once(): Promise<number> {
-    const now = scan(fs);
+    const now = scan(fs, true);
     const next = new Map<string, Seen>();
     let copied = 0;
     for (const [path, seen] of now) {

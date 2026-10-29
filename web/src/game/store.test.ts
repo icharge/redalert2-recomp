@@ -43,6 +43,26 @@ describe("GameStore", () => {
     expect(store.getSnapshot().copy).toBeNull();
   });
 
+  it("clears completed file-copy progress when game startup begins", () => {
+    const store = new GameStore();
+    store.begin();
+    store.copying({
+      doneBytes: 99,
+      totalBytes: 100,
+      doneFiles: 25,
+      totalFiles: 26,
+      file: "wolinfo.ini",
+    });
+
+    store.loading("the game");
+
+    expect(store.getSnapshot()).toMatchObject({
+      phase: "loading",
+      loading: "the game",
+      copy: null,
+    });
+  });
+
   it("exits with the code", () => {
     const store = new GameStore();
     store.begin();

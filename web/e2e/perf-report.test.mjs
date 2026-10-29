@@ -3,7 +3,8 @@
 //   cd web && node --test e2e/perf-report.test.mjs
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { compare, mergeCases, summarize, thaiFixState } from "./perf-report.mjs";
+import path from "node:path";
+import { compare, mergeCases, resolveRepoPath, summarize, thaiFixState } from "./perf-report.mjs";
 
 /** A sample with every field null except the ones given. */
 const sample = (fields) => ({
@@ -20,6 +21,13 @@ const sample = (fields) => ({
 });
 
 const row = (rows, measure) => rows.find((r) => r.measure === measure);
+
+test("resolves a relative baseline from the repository root", () => {
+  assert.equal(
+    resolveRepoPath("C:/projects/redalert2-recomp", "work/perf/baseline/run.json"),
+    path.resolve("C:/projects/redalert2-recomp", "work/perf/baseline/run.json"),
+  );
+});
 
 test("fps1Low is the 1st percentile", () => {
   const samples = Array.from({ length: 100 }, (_, i) => sample({ fps: i + 1 }));
@@ -59,12 +67,12 @@ test("compare marks the fps bar", () => {
   const run = {
     date: "2026-10-26",
     build: "test",
-    cases: { "1920x1080/hd-on/busy": { ...empty(), ...busy } },
+    cases: { "1920x1080/hd-off/busy": { ...empty(), ...busy } },
   };
-  const base = { date: "x", build: "base", cases: { "1920x1080/hd-on/busy": empty() } };
+  const base = { date: "x", build: "base", cases: { "1920x1080/hd-off/busy": empty() } };
   assert.equal(row(compare(run, base), "fpsMedian").pass, false);
 
-  run.cases["1920x1080/hd-on/busy"] = { ...empty(), fpsMedian: 60, fps1Low: 55 };
+  run.cases["1920x1080/hd-off/busy"] = { ...empty(), fpsMedian: 60, fps1Low: 55 };
   const rows = compare(run, base);
   assert.equal(row(rows, "fpsMedian").pass, true);
   assert.equal(row(rows, "fps1Low").pass, true);

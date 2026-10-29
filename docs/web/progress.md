@@ -1,3 +1,61 @@
+# Browser frame-performance update, 29 October 2026
+
+The target remains a busy match at 720p–1440p with HD vehicles off. Task 5 is
+deferred. Task 8 is skipped because the measured wait margin is `M = 16 ms`.
+Task 9 is skipped because its entry gate requires a second with at least 1,000
+clock reads and both sleep counters at zero; every observed second had at least
+91 `Sleep(n)` calls. A later profile found `wait_ms` polling
+`clock_gettime`, a separate wait path that the proposed QPC shim would not
+affect.
+
+- Task 6 is committed as `df45ca4`: the WebGL2 presenter has five scaling
+  modes and shader-rendered blurred bars. Unit and type checks pass. A live
+  pixel comparison matches both the 800×600 menu and active skirmish for YR
+  and RA2 through both WebGL and the 2D fallback. Every capture has zero
+  differing pixels; the YR skirmish is 1920×1080 and the RA2 skirmish is
+  1280×720. Each menu movie produced 24 changing captures.
+- Task 7's current YR busy HD-off matrix reports 62/60 fps at 720p, 61/44 at
+  1080p, 50/34 at 1440p, and 38/23 at 4K (median/1% low). Worst frame gaps
+  are 33, 127, 57, and 68 ms. The 720p median/low bars pass; 1080p misses the
+  low bar; 1440p misses both FPS bars. The 33 ms gap bar passes only at 720p.
+  4K is record-only. Idle-menu CPU remains 4.2% below baseline, short of its
+  40% target.
+- Task 10's futex candidate failed the repeated browser keep gate and was
+  reverted. The mixer used 13.3% of one core (3.24% in `mix`); its wake was
+  changed from 5 ms to 10 ms and the five-minute audio/skirmish check passed
+  with zero underruns. A high-uptime FPS deadline sentinel bug was fixed; the
+  current YR browser now emits FPS telemetry. Main-thread traces measured
+  0.789 ms/task frame at 1080p and 1.067 ms at 1440p, under the 4 ms bar.
+- Task 11's HD-off 1440p ten-minute soak now passes the Wasm growth gate after
+  the 640 MiB initial-memory rebuild: 640 MiB peak, zero Wasm growth after
+  60 seconds, 2,571,580 bytes JS heap growth, and no seconds without a published
+  picture. The earlier 4K soak peaked at 442.5 MiB with zero post-minute Wasm
+  growth. The current 4K soak is still outstanding.
+- Task 12 remains incomplete. The current YR busy matrix and 1440p soak were
+  run using the sole imported profile, `work/perf/profile-fresh`, at its
+  original 5173 origin. RA2 menu and skirmish pixel captures pass with zero
+  differing pixels on the retained RA2 build; a current-source RA2 link has
+  not completed. The full current release matrix for both editions, 4K soaks,
+  final full presenter suite, final docs, and final branch review remain open.
+  No additional game import was made. After measurements, 380,258,388 bytes of
+  regenerable caches were cleared from the retained profile while preserving
+  its IndexedDB/OPFS. A mistakenly created empty 77,537,983-byte profile was
+  removed; it contained no game import.
+
+Before/after comparison (baseline values are from the 26 October Release run):
+
+| Case | Before | After current changes | Evidence state |
+|---|---:|---:|---|
+| 1280×720 busy save, HD off | 23 fps median / 22 1% low; 82 ms worst gap; 256.15% CPU | 62 / 60; 33 ms; 256.99% CPU | FPS and gap bars pass; CPU is 0.3% above baseline. |
+| 1920×1080 busy save, HD off | 20 / 18; 83 ms; 276.98% CPU | 61 / 44; 127 ms; 257.65% CPU | Median passes; 1% low and gap bars fail. |
+| 2560×1440 busy save, HD off | 18 / 15; 99 ms; 306.07% CPU | 50 / 34; 57 ms; 258.13% CPU | FPS and gap bars fail; CPU is lower. |
+| Idle main menu | 247% CPU | 236.15% CPU | 4.2% lower; misses the 40% reduction target. |
+| 2560×1440, 10-minute busy soak, HD off | 768 MiB peak; 137.7 MiB growth after 60 s | 50 / 28 fps; 86 ms worst gap; 640 MiB peak; 0 Wasm growth after 60 s; 2,571,580 bytes JS heap growth | Wasm growth gate passes; FPS is recorded without a soak target. |
+| 3840×2160 busy, HD off | Could not be selected | 38 / 23 fps; 68 ms worst gap; 640 MiB peak | Record-only current 60 s case. |
+| 3840×2160 soak, HD off | Could not be selected | Earlier run: 442.5 MiB peak; zero Wasm growth after 60 s | Previous-build record only; repeat on the current build. |
+
+Exact run files and baseline rows remain in the [plan results](../superpowers/plans/2026-10-26-web-frame-performance.md).
+
 # Browser implementation and verification, 23 October 2026
 
 This is a working verification ledger; an implementation without its runtime

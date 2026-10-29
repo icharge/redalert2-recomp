@@ -4,6 +4,12 @@
 //   import { summarize, compare } from "./perf-report.mjs";
 //
 // A case is keyed "WxH/hd-on|hd-off/early|busy", "menu/idle", or "soak/WxH/hd-on/busy".
+import path from "node:path";
+
+/** Resolve an optional repository-relative path, matching --save, --profile and --out. */
+export function resolveRepoPath(repo, value) {
+  return value == null ? null : path.resolve(repo, value);
+}
 
 /** The samples are one a second; the first minute is the warm-up for the memory measures. */
 const WARM_SAMPLES = 60;
@@ -115,7 +121,7 @@ function bar(key, measure, now, base, nowCase, baseCase) {
   // 4K is recorded, with no target and no verdict
   if (size === "3840x2160") return null;
   const target = TARGET_SIZES.has(size) && !isSoak;
-  const busyHd = target && hd === "hd-on" && moment === "busy";
+  const busyHd = target && hd === "hd-off" && moment === "busy";
   switch (measure) {
     case "fpsMedian":
       return busyHd ? now >= 60 : null;

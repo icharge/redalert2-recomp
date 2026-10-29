@@ -222,19 +222,22 @@ Playwright runs Chromium headless, with GPU or SwiftShader for WebGL2.
 `--jobs N` runs N browser contexts, as `playtest.py` runs N games today.
 Use `--headed` with `--web` to show Chromium for a local interactive run.
 
-The WebGL pixel comparison uses the persistent imported game profile so Yuri's
+The pixel comparison uses the persistent imported-game profile so Yuri's
 Revenge reads its large files from OPFS instead of copying the installation
 into the page's memory. Run it from the repository root with
-`node web/e2e/gl-pixels.mjs --profile work/perf/profile-fresh --build work/build-web-t3`;
-add `--headed` to show Chromium. `--build` points at the current Emscripten
-output so the browser page and game module use the same protocol. It checks the
-main menu, samples the running menu movie for animation and pixel formats
-(including PAL8 when published), then checks a skirmish frame. The profile must
-already contain an imported Yuri's Revenge installation.
+`node web/e2e/gl-pixels.mjs --profile work/perf/profile-fresh --build <YR-build>`;
+add `--headed` to show Chromium. `--build` must point at a protocol-compatible
+Emscripten output. The check compares the main menu and an active skirmish,
+samples the menu movie for animation and pixel formats (including PAL8 when
+published), and checks the source frame against the selected presenter.
 
-The default target is Yuri's Revenge. To run the same suite on Red Alert 2,
-build its module with `RA2_TARGET=game` and use `RA2_TARGET=game` when invoking
-`tools/playtest.py --web`; the page then loads `/game/ra2.js`.
+The default edition and presenter are Yuri's Revenge and WebGL. Use
+`--edition ra2 --build <RA2-build>` for Red Alert 2. To select the 2D fallback,
+put `?presenter=2d` in the base URL, for example
+`--url 'http://127.0.0.1:5173/?presenter=2d'`; this is a URL option, not a game
+argument. The profile must already contain an imported installation for the
+selected edition. The live check has passed for both editions and both
+presenters using the same imported-game profile.
 
 A case fails in the browser and passes on Linux: then it's a browser bug
 (the host, `win32hle` under Emscripten, or the page), not a lift bug.
@@ -341,6 +344,14 @@ mkdir -p work/t3
 node work/t3/frame-buffers-selftest.js   # frame_buffers selftest: ok
 ```
 
+The game-side resolution list has a plain C selftest. It keeps the web host's
+allowlist aligned with the resolutions used by the benchmark:
+
+```sh
+../emsdk/upstream/emscripten/emcc.exe src/web/video_modes_selftest.c -sENVIRONMENT=node -sEXIT_RUNTIME=1 -o work/t11/video-modes-selftest.js
+node work/t11/video-modes-selftest.js   # video modes selftest: ok
+```
+
 With Vite on `http://localhost:5173`, local RA2Web on `127.0.0.1:19090`, and the
 game modules built, run the original menu smoke check from `web/`:
 
@@ -443,7 +454,9 @@ holds the pure summary and comparison (`node --test e2e/perf-report.test.mjs` in
 - **Run.** `node e2e/perf.mjs --headed --out work/perf/<name>` measures the matrix: 1280x720, 1920x1080 and
   2560x1440, the skirmish early in the match, with HD vehicles off then on (60 s each: 30 s untouched, then 30 s
   of right-button panning), and the main menu untouched for 30 s. Cases are keyed `WxH/hd-off|hd-on/early` and
-  `menu/idle`. Pass `--sizes`, `--hd`, `--moments` (`early`, `busy`, `menu`), `--repeats`, `--save`, `--soak-minutes` and `--seconds` to run a part of it. Every
+  `menu/idle`. Add `3840x2160` to `--sizes` to record 4K cases; they have no performance target. Pass `--sizes`,
+  `--hd`, `--moments` (`early`, `busy`, `menu`), `--repeats`, `--save`, `--soak-minutes`, `--soak-size` and
+  `--seconds` to run a part of it. Every
   command must finish within 10 minutes, so add the rest with `--append` (the same build only):
   `node e2e/perf.mjs --sizes 1920x1080 --moments early --append --out work/perf/<name>`.
 - **Results.** `run.json` holds one summary per case (median and 1% low fps, worst frame gap, late frames,
@@ -454,7 +467,8 @@ holds the pure summary and comparison (`node --test e2e/perf-report.test.mjs` in
 - **The busy save.** The design's busy case loads a save of an eight-player match with many units and
   buildings (`work/perf/busy.sav`, not in version control, like all of `work/`). Make it with
   `node e2e/make-busy-save.mjs --headed --minutes 5 --scroll "<arrow key>=<ms>,..."` (about 7 minutes; it needs the
-  imported Yuri's Revenge in the profile, as perf.mjs does). The match is Team Alliance on Territorial Imperative
+  imported Yuri's Revenge in the profile, as perf.mjs does). For Red Alert 2, pass
+  `--edition ra2 --out work/perf/busy-ra2.sav`; both editions reuse the same imported profile. The match is Team Alliance on Territorial Imperative
   (2-8): the human and six Brutal AIs on team A against one Easy AI on team B, game speed 5, Short Game off. Nothing
   threatens the human, so the match lasts while the allied AIs build up (Free For All lost the idle human at 1:39,
   four against four ended at 2:14 to 8:08, and the first attempts at the in-game menu never hit its buttons: see the
@@ -485,10 +499,10 @@ holds the pure summary and comparison (`node --test e2e/perf-report.test.mjs` in
   game's screens: Single Player, Load Saved Game (719,263), the save in the list (300,135), Load (719,221). It
   returns when the game's frame rate is above 0 for three samples and the picture changes, and leaves
   `busy-loaded.png` in the shots folder. `--moments busy` loads it at each size, with each HD state, and samples
-  60 s; `--soak-minutes N` runs it at 2560x1440 for N minutes (HD on; off at 20%, on at 40%; the presenter's scale
-  mode switched at 60% and 80%; if the match ends the save is loaded again and the next sample has
-  `"reloaded": true`). Resolution is a launcher setting for the next launch, not a switch in a running game, so
-  the soak's mode switches are scale-mode switches and HD off and on.
+  60 s; `--soak-minutes N` runs it at 2560x1440 by default, or at `--soak-size WxH` for N minutes with HD
+  vehicles off throughout. The presenter's scale mode switches at 60% and 80%. If the match ends, including a
+  return to the known 800x600 menu shell, the save is loaded again and the next sample has `"reloaded": true`.
+  Resolution is a launcher setting for the next launch, not a switch in a running game.
 - **Failures.** `run.json` is written after every finished case, so a later failure keeps the earlier ones; a case
   that failed (a size mismatch, a crash) is listed under `failures` and the exit code is 1. The menu case expects
   the game's 800x600 menu shell, not the requested size. `PERF_TEST_RELOAD_AT=<second>` forces the soak's reload
@@ -497,10 +511,11 @@ holds the pure summary and comparison (`node --test e2e/perf-report.test.mjs` in
   A repeat that failed leaves the case in `run.json` with `complete: false` and `runsDone: "1 of 2"`, and its failure
   stays listed; a game failure's reason is carried into `failures`. A case also fails if the picture size changes while
   the game runs.
-- **3840x2160 cannot be measured.** The game's resolution setting (`src/web/settings.c`) lists sizes up to
-  2560x1440 and ignores the rest; `?video=3840x2160` and a hand-edited RA2MD.INI were tried too, and the battle
-  still reported 1920x1080. The 4K cases therefore fail with that message in `failures`; they need a game-side
-  change (a size the setting accepts).
+- **3840x2160.** The game's resolution setting accepts this size, and the perf runner can select it with
+  `--soak-size 3840x2160`. Its rows are recorded with no performance target. The 1440p soak remains the default.
+  The 28 October 10-minute HD-off record soak completed at 3840×2160: 442.5 MiB Wasm peak, zero growth after
+  60 seconds, 1.4 MB JS-heap growth, and no missing-picture seconds. It reloaded the save once after returning
+  to the 800×600 shell; the run wrote 599 measured rows. The 4K peak is record-only.
 - **A frozen picture.** Each case counts the seconds in which the game ran but the page was handed no picture
   (`pacing.published` 0) and lists them as `pictureFrozen`. With the busy save at 2560x1440 and HD vehicles on, the
   wasm memory is at its 768 MiB cap and no picture is published at all (the screen keeps the last one); the case's
@@ -529,10 +544,10 @@ plan (Task 2). Run them with the Vite dev server up, bound to IPv4 (see "The fra
   `$env:CMAKE_ARGS='-DWEB_LINK_OPT=-O1 -DWEB_OUT=C:/…/work/web-out-probe'`, then `cmd /c build-web.cmd` from the repo root.
   `WEB_OUT` must stay outside `web/public/game`, or the fast module replaces the one the page serves. The RA2
   build (`RA2_TARGET=game`) is a separate build directory; this runner plays Yuri's Revenge only.
-- **Reading the verdict.** `spin: no` means no second had 1,000 or more clock reads with no `Sleep`, so the timed
-  waits in the frame loop are not spinning on the clock. `spin: YES` names the seconds; Task 9 runs only then.
-  The verdict does not see a `Sleep` that polls the clock inside itself: the profile below shows pcrecomp's
-  `wait_ms` doing that, so the probe's "no" is not the whole answer.
+- **Reading the verdict.** `spin: no` means no second had 1,000 or more game-issued clock reads with no `Sleep`;
+  it does not show whether a `Sleep` implementation polls the clock internally. `spin: YES` names the seconds; Task 9
+  runs only then. A separate worker profile found pcrecomp's `wait_ms` polling `clock_gettime` inside `Sleep`, so the
+  probe's "no" is limited to the game-issued clock-call pattern and does not rule out wait-path polling.
 
 ### The Thai picture check: `e2e/thai-shots.mjs`
 

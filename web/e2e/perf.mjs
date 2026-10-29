@@ -3,22 +3,23 @@
 //
 //   node e2e/perf.mjs [--sizes 1280x720,1920x1080,2560x1440,3840x2160] [--hd off,on]
 //                     [--moments early,busy,menu] [--repeats 2] [--seconds 60] [--save work/perf/busy.sav]
-//                     [--soak-minutes 0] [--out work/perf/<date>] [--baseline <run.json>] [--append]
-//                     [--profile work/perf/profile-fresh] [--game game] [--headed]
+//                     [--soak-minutes 0] [--soak-size 2560x1440] [--out work/perf/<date>] [--baseline <run.json>] [--append]
+//                     [--profile work/perf/profile-fresh] [--game game] [--edition ra2|ra2md] [--headed]
 //
 // The defaults are early skirmishes and the main menu at 720p, 1080p and 1440p, HD vehicles off and on
 // (60 s each: 30 s untouched, then 30 s of right-button panning), the main menu untouched for 30 s. Each
 // early case is run --repeats times (default 2, each a new launch); run.json holds the last run, and the
 // first run's summary is kept beside it as firstRun. Every skirmish sets game speed 5 on the setup screen,
 // and each case records the speed and the picture size the game reported.
-// --moments busy loads --save (made by make-busy-save.mjs) through the game's Load Saved Game at each size,
-// 4K included, with each HD state; the case is 60 s of the loaded battle, panned like the early cases. The
-// menu case expects the game's 800x600 menu shell. Every case also fails when the game reports a picture size
+// --moments busy loads --save (made by make-busy-save.mjs) through the game's Load Saved Game at each requested
+// --sizes value, including 4K when 3840x2160 is listed, with each HD state; the case is 60 s of the loaded
+// battle, panned like the early cases. The menu case expects the game's 800x600 menu shell. Every case also fails
+// when the game reports a picture size
 // other than the requested one.
-// --soak-minutes N runs the busy save at 2560x1440 for N minutes with HD vehicles on, off at 20%, on again at
-// 40%, and the presenter's scale mode switched at 60% and 80%; if the match ends (no game frames for 5 s) the
-// save is loaded again (resolution set, size checked) and the sample after it is marked reloaded.
-// Cases are keyed "WxH/hd-on|hd-off/early|busy", "menu/idle" and "soak/2560x1440/hd-on/busy".
+// --soak-minutes N runs the busy save at --soak-size (default 2560x1440) for N minutes with HD vehicles off
+// and the presenter's scale mode switched at 60% and 80%; if the match ends (no game frames for 5 s), the save is
+// loaded again (resolution set, size checked, HD kept off) and the sample after it is marked reloaded.
+// Cases are keyed "WxH/hd-on|hd-off/early|busy", "menu/idle" and "soak/<size>/hd-off/busy".
 // run.json is written after every finished case, so a later failure keeps the earlier cases; a case that
 // failed is listed under "failures" (and the exit code is 1). --append merges this run's cases into the
 // run.json at --out (for the same build only). Relative paths are the repo root's. Each command must finish
@@ -35,15 +36,20 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { lastFailure, options, startPage } from "./lib.mjs";
-import { compare, mergeCases, thaiFixState } from "./perf-report.mjs";
+import { compare, mergeCases, resolveRepoPath, thaiFixState } from "./perf-report.mjs";
 import {
   at,
+  enterSinglePlayerAtSize,
   gameUrl,
+  isMenuShellPicture,
   loadBusySave,
   openGame,
-  setGameSpeedFive,
+  prepareEarlySkirmish,
+  resolveSoakSize,
+  SOAK_HD,
   setResolution,
   settle,
+  waitForEarlyBattle,
   waitState,
 } from "./perf-nav.mjs";
 
@@ -57,6 +63,7 @@ const VALUE_FLAGS = new Set([
   "--moments",
   "--seconds",
   "--soak-minutes",
+  "--soak-size",
   "--repeats",
   "--save",
   "--out",
@@ -67,6 +74,7 @@ const VALUE_FLAGS = new Set([
   "--shots",
   "--arg",
   "--build",
+  "--edition",
   "--thai-fix",
 ]);
 const BOOLEAN_FLAGS = new Set(["--append", "--headed"]);
@@ -92,13 +100,15 @@ const hdStates = list("--hd", "off,on");
 const moments = list("--moments", "early,menu");
 const seconds = Number(flag("--seconds", 60));
 const soakMinutes = Number(flag("--soak-minutes", 0));
+const soak = resolveSoakSize(flag("--soak-size", "2560x1440"));
 const repeats = Number(flag("--repeats", 2));
+const edition = flag("--edition", "ra2md");
 const savePath = path.resolve(repo, flag("--save", "work/perf/busy.sav"));
 const today = new Date().toLocaleDateString("en-CA"); // the local date, YYYY-MM-DD
 const outDir = path.resolve(repo, flag("--out", `work/perf/${today}`));
 const profile = path.resolve(repo, flag("--profile", "work/perf/profile-fresh"));
 const gameDir = path.resolve(repo, flag("--game", "game"));
-const baselinePath = flag("--baseline", null);
+const baselinePath = resolveRepoPath(repo, flag("--baseline", null));
 const append = argv.includes("--append");
 // --thai-fix on|off: how the run was launched (the stored Thai preference set beforehand). A run launched with
 // the fix off records "off" when the game logs no [thaifont] line; otherwise a missing line is "unknown".
@@ -111,6 +121,8 @@ for (const m of moments)
     throw new Error(`--moments ${m}: use early, busy or menu`);
 for (const h of hdStates)
   if (!["off", "on"].includes(h)) throw new Error(`--hd ${h}: use off or on`);
+if (edition !== "ra2" && edition !== "ra2md")
+  throw new Error(`--edition ${edition}: use ra2 or ra2md`);
 if (!(repeats >= 1)) throw new Error(`--repeats ${repeats}: use 1 or more`);
 if ((moments.includes("busy") || soakMinutes > 0) && !existsSync(savePath))
   throw new Error(`no save at ${savePath}: make it with e2e/make-busy-save.mjs`);
@@ -149,7 +161,7 @@ function buildOf(dir) {
   if (!buildType.startsWith("Release"))
     console.warn(`warning: the build type is ${buildType}, not Release (${cachePath})`);
   return {
-    id: `${path.basename(dir)}: ${info.build} (ra2md ${info.games?.ra2md?.build ?? "?"}), wasm ${sha}`,
+    id: `${path.basename(dir)}: ${info.build} (${edition} ${info.games?.[edition]?.build ?? "?"}), wasm ${sha}`,
     buildType,
   };
 }
@@ -166,7 +178,7 @@ function build() {
   }
   if (buildType !== "Release")
     console.warn(`warning: the build type is ${buildType}, not Release (build-web/CMakeCache.txt)`);
-  return { id: `${info.build} (ra2md ${info.games?.ra2md?.build ?? "?"})`, buildType };
+  return { id: `${info.build} (${edition} ${info.games?.[edition]?.build ?? "?"})`, buildType };
 }
 
 /**
@@ -214,6 +226,7 @@ async function readSample(t, cdp, last) {
     return {
       fps: snapshot?.fps ?? null,
       size: snapshot?.size ? `${snapshot.size.w}x${snapshot.size.h}` : null,
+      hd: snapshot?.settings?.hd ?? null,
       worstMs: snapshot?.pacing?.worstMs ?? null,
       late: snapshot?.pacing?.late ?? null,
       publishMs: snapshot?.pacing?.publishMs ?? null,
@@ -304,11 +317,28 @@ async function sample(t, { total, pan = null, actions = [], reload = null }) {
       if (stopPanning?.failure()) throw stopPanning.failure();
       await t.page.waitForTimeout(1000);
       const row = await readSample(t, cdp, last);
+      const menuShell = reload && isMenuShellPicture(size, row.size);
       // the picture size is the case's: a change while the game runs (a menu has none) is not a measurement
-      if (row.fps > 0 && row.size && row.size !== `${size.w}x${size.h}`)
+      if (row.fps > 0 && row.size && row.size !== `${size.w}x${size.h}` && !menuShell)
         throw new Error(
           `the game's picture changed from ${size.w}x${size.h} to ${row.size} during the case`,
         );
+      if (menuShell) {
+        log("the match ended (returned to the 800x600 menu shell): reloading the save");
+        if (stopPanning) {
+          await stopPanning.stop();
+          if (stopPanning.failure()) throw stopPanning.failure();
+        }
+        stopPanning = null;
+        await cdp.detach();
+        await reload();
+        cdp = await t.page.context().newCDPSession(t.page);
+        last = { cpu: sampler.latest(), counters: null };
+        zeroFrames = 0;
+        reloaded = true;
+        if (pan !== null) stopPanning = startPanning(t, size);
+        continue;
+      }
       if (reloaded) {
         row.reloaded = true;
         reloaded = false;
@@ -391,15 +421,19 @@ async function closingOnError(t, steps) {
 async function openEarly(video) {
   const t = await openGame(base, { video });
   return closingOnError(t, async () => {
-    await settle(t, 5000);
-    await setResolution(t, parseSize(video));
-    await t.clickGame(...at.singlePlayer);
-    await t.page.waitForTimeout(4000);
+    const screenDelay = base.edition === "ra2" ? 2000 : 4000;
+    await settle(t, base.edition === "ra2" ? 1000 : 5000);
+    if (base.edition === "ra2") await enterSinglePlayerAtSize(t, parseSize(video));
+    else {
+      await setResolution(t, parseSize(video));
+      await t.clickGame(...at.singlePlayer);
+      await t.page.waitForTimeout(screenDelay);
+    }
     await t.clickGame(...at.skirmish);
-    await t.page.waitForTimeout(4000);
-    await setGameSpeedFive(t);
+    await t.page.waitForTimeout(screenDelay);
+    await prepareEarlySkirmish(t);
     await t.clickGame(...at.startGame);
-    await t.waitFor("the battle", (s) => (s?.fps ?? 0) > 0, 240);
+    await waitForEarlyBattle(t, parseSize(video), 240);
     await t.page.waitForTimeout(5000); // the load's own frames are over
   });
 }
@@ -409,8 +443,11 @@ async function openBusy(video) {
   const t = await openGame(base, { video });
   return closingOnError(t, async () => {
     await settle(t, 3000);
-    await setResolution(t, parseSize(video));
-    await loadBusySave(t, savePath, { log });
+    if (base.edition !== "ra2") await setResolution(t, parseSize(video));
+    await loadBusySave(t, savePath, {
+      log,
+      ...(base.edition === "ra2" ? { battleSize: parseSize(video) } : {}),
+    });
   });
 }
 
@@ -492,39 +529,24 @@ async function runMenu() {
 }
 
 /**
- * The soak: N minutes of the busy save at 2560x1440. HD vehicles on; off at 20% and on again at 40%; the
- * scale mode switched to 1 at 60% and to 2 at 80%. The save is reloaded if the match ends (five seconds with
- * no game frames), with the HD and scale settings put back.
+ * The soak: N minutes of the busy save at `size`, HD vehicles off, with the scale mode switched to 1 at 60%
+ * and to 2 at 80%. The save is reloaded if the match ends (five seconds with no game frames), with HD kept off
+ * and the scale setting restored.
  */
-async function runSoak(minutes) {
+async function runSoak(minutes, size) {
   const total = minutes * 60;
-  const key = "soak/2560x1440/hd-on/busy";
+  const { video, caseKey: key } = size;
   return withGame(
-    () => openBusy("2560x1440"),
+    () => openBusy(video),
     async (t) => {
-      let hd = true;
       let scale = 0;
-      const reported = await checkSize(t, "2560x1440");
-      await setHd(t, true);
+      const reported = await checkSize(t, video);
+      await setHd(t, SOAK_HD);
       log(`case ${key}: ${minutes} min`);
       const rows = await sample(t, {
         total,
         pan: 0,
         actions: [
-          {
-            at: total * 0.2,
-            run: async () => {
-              hd = false;
-              await setHd(t, false);
-            },
-          },
-          {
-            at: total * 0.4,
-            run: async () => {
-              hd = true;
-              await setHd(t, true);
-            },
-          },
           {
             at: total * 0.6,
             run: async () => {
@@ -541,20 +563,26 @@ async function runSoak(minutes) {
           },
         ],
         reload: async () => {
-          await t.page.goto(gameUrl(base, "2560x1440"));
+          await t.page.goto(gameUrl(base, video));
           await waitState(t, "the main menu", (s) => s?.phase === "running", 300);
           await settle(t, 3000);
-          await setResolution(t, parseSize("2560x1440"));
-          await loadBusySave(t, savePath, { log });
-          await checkSize(t, "2560x1440");
-          await setHd(t, hd);
+          if (base.edition !== "ra2") await setResolution(t, parseSize(video));
+          await loadBusySave(t, savePath, {
+            log,
+            ...(base.edition === "ra2" ? { battleSize: parseSize(video) } : {}),
+          });
+          await checkSize(t, video);
+          await setHd(t, SOAK_HD);
           await setScaleMode(t, scale);
         },
       });
+      if (rows.some((row) => row.hd !== SOAK_HD))
+        throw new Error(`the soak changed HD mode; expected ${SOAK_HD ? "on" : "off"} throughout`);
       return {
         [key]: {
           runs: [rows],
           gameSpeed: "5 (in the save)",
+          hd: SOAK_HD ? "on" : "off",
           size: reported,
         },
       };
@@ -593,7 +621,7 @@ function writeRun() {
     finished,
     failures,
   });
-  const run = { date: baseRun.date, build: id, buildType, cases: merged.cases };
+  const run = { date: baseRun.date, build: id, buildType, edition, cases: merged.cases };
   for (const [key, result] of Object.entries(finished)) {
     const stem = key.replaceAll("/", "_");
     result.runs.forEach((rows, i) => {
@@ -693,12 +721,12 @@ try {
   }
   if (moments.includes("menu")) await part(["menu/idle"], async () => record(await runMenu()));
   if (soakMinutes > 0)
-    await part(["soak/2560x1440/hd-on/busy"], async () => record(await runSoak(soakMinutes)));
+    await part([soak.caseKey], async () => record(await runSoak(soakMinutes, soak)));
   const run = writeRun();
   log(`wrote ${path.join(outDir, "run.json")}: ${Object.keys(run.cases).length} cases`);
   if (Object.keys(failures).length)
     log(`FAILED cases: ${Object.keys(failures).join(", ")} (listed under failures in run.json)`);
-  if (baselinePath) printCompare(run, JSON.parse(readFileSync(path.resolve(baselinePath), "utf8")));
+  if (baselinePath) printCompare(run, JSON.parse(readFileSync(baselinePath, "utf8")));
 } catch (error) {
   console.error(`FAILED: ${error?.stack ?? error}`);
   exitCode = 1;

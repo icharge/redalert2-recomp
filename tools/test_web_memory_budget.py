@@ -18,8 +18,8 @@ class WebMemoryBudgetTests(unittest.TestCase):
         cmake = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
         initial = memory_bytes(cmake, "INITIAL_MEMORY")
         maximum = memory_bytes(cmake, "MAXIMUM_MEMORY")
-        self.assertLessEqual(initial, 256 * 1024**2)
-        self.assertLessEqual(maximum, 768 * 1024**2)
+        self.assertEqual(initial, 640 * 1024**2)
+        self.assertEqual(maximum, 768 * 1024**2)
         self.assertLessEqual(initial, maximum)
 
 

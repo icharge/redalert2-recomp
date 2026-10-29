@@ -14,13 +14,20 @@ async function compare(label) {
     const shared = m.cwrap("ra2_shared", "number", [])() >>> 2;
     const words = new Int32Array(m.HEAPU8.buffer);
     const u8 = m.HEAPU8;
-    let snapshot;
+    let result;
+    const diagnostic = {
+      oddSeq: 0,
+      sourceChanged: 0,
+      noContext: 0,
+      presenterSeqMismatch: 0,
+      canvasSizeMismatch: 0,
+      changedDuringRead: 0,
+      last: null,
+    };
     for (let attempt = 0; attempt < 100; attempt++) {
-      // Keep the texture capture paired with the raw snapshot attempt. A live
-      // game may publish another frame while the previous attempt waits.
-      const capture = await window.ra2Presenter.capture();
       const seq = Atomics.load(words, shared + 1);
-      if (seq !== capture.frameSeq || seq < 0 || seq & 1) {
+      if (seq < 0 || seq & 1) {
+        diagnostic.oddSeq++;
         await new Promise((resolve) => setTimeout(resolve, 0));
         continue;
       }
@@ -32,60 +39,128 @@ async function compare(label) {
       const pal = Atomics.load(words, shared + 1046) >>> 0;
       const frameIndex = Atomics.load(words, shared + 1048);
       Atomics.store(words, shared + 1047, frameIndex);
+      let snapshot;
       try {
         if (
           Atomics.load(words, shared + 1) !== seq ||
           Atomics.load(words, shared + 1048) !== frameIndex ||
           Atomics.load(words, shared + 2) >>> 0 !== ptr
-        )
+        ) {
+          diagnostic.sourceChanged++;
           continue;
+        }
         const expected = new Uint8Array(width * height * 4);
-        for (let y = 0; y < height; y++)
-          for (let x = 0; x < width; x++) {
-            const to = (y * width + x) * 4;
-            if (format === 1) {
-              const v = u8[ptr + y * pitch + x * 2] | (u8[ptr + y * pitch + x * 2 + 1] << 8);
-              const r = (v >>> 11) & 31,
-                g = (v >>> 5) & 63,
-                b = v & 31;
-              expected[to] = (r << 3) | (r >>> 2);
-              expected[to + 1] = (g << 2) | (g >>> 4);
-              expected[to + 2] = (b << 3) | (b >>> 2);
-              expected[to + 3] = 255;
-            } else if (format === 2) {
-              const i = u8[ptr + y * pitch + x],
-                p = pal + i * 4;
-              expected[to] = u8[p];
-              expected[to + 1] = u8[p + 1];
-              expected[to + 2] = u8[p + 2];
-              expected[to + 3] = 255;
-            } else if (format === 3) {
-              const i = ptr + y * pitch + x * 4;
-              expected[to] = u8[i + 2];
-              expected[to + 1] = u8[i + 1];
-              expected[to + 2] = u8[i];
-              expected[to + 3] = 255;
-            } else {
-              const i = ptr + y * pitch + x * 4;
-              expected.set(u8.subarray(i, i + 4), to);
+        if (format === 0) {
+          for (let y = 0; y < height; y++)
+            expected.set(u8.subarray(ptr + y * pitch, ptr + y * pitch + width * 4), y * width * 4);
+        } else {
+          for (let y = 0; y < height; y++)
+            for (let x = 0; x < width; x++) {
+              const to = (y * width + x) * 4;
+              if (format === 1) {
+                const v = u8[ptr + y * pitch + x * 2] | (u8[ptr + y * pitch + x * 2 + 1] << 8);
+                const r = (v >>> 11) & 31,
+                  g = (v >>> 5) & 63,
+                  b = v & 31;
+                expected[to] = (r << 3) | (r >>> 2);
+                expected[to + 1] = (g << 2) | (g >>> 4);
+                expected[to + 2] = (b << 3) | (b >>> 2);
+                expected[to + 3] = 255;
+              } else if (format === 2) {
+                const i = u8[ptr + y * pitch + x],
+                  p = pal + i * 4;
+                expected[to] = u8[p];
+                expected[to + 1] = u8[p + 1];
+                expected[to + 2] = u8[p + 2];
+                expected[to + 3] = 255;
+              } else if (format === 3) {
+                const i = ptr + y * pitch + x * 4;
+                expected[to] = u8[i + 2];
+                expected[to + 1] = u8[i + 1];
+                expected[to + 2] = u8[i];
+                expected[to + 3] = 255;
+              }
             }
-          }
-        if (Atomics.load(words, shared + 1) === seq) snapshot = { width, height, format, expected };
+        }
+        if (Atomics.load(words, shared + 1) === seq)
+          snapshot = { width, height, format, seq, expected };
+        else diagnostic.sourceChanged++;
       } finally {
         Atomics.store(words, shared + 1047, -1);
       }
-      if (snapshot) {
-        snapshot.capture = capture;
+      if (!snapshot) continue;
+
+      if (snapshot.format === 0) {
+        // The 2D presenter draws into a stable canvas bitmap. Let its next
+        // animation-frame draw catch up when the copied source was newer.
+        const presenter = window.ra2Presenter;
+        const canvas = presenter?.canvas;
+        const context = canvas?.getContext("2d");
+        diagnostic.last = {
+          seq: snapshot.seq,
+          sharedSeq: Atomics.load(words, shared + 1),
+          presenterSeq: presenter?.frameSeq,
+          width: snapshot.width,
+          height: snapshot.height,
+          canvasWidth: canvas?.width,
+          canvasHeight: canvas?.height,
+          context: context?.constructor?.name ?? null,
+        };
+        if (
+          !context ||
+          presenter.frameSeq !== snapshot.seq ||
+          canvas.width !== snapshot.width ||
+          canvas.height !== snapshot.height
+        ) {
+          if (!context) diagnostic.noContext++;
+          if (presenter?.frameSeq !== snapshot.seq) diagnostic.presenterSeqMismatch++;
+          if (canvas?.width !== snapshot.width || canvas?.height !== snapshot.height)
+            diagnostic.canvasSizeMismatch++;
+          await new Promise((resolve) => requestAnimationFrame(resolve));
+          continue;
+        }
+        const actual = context.getImageData(0, 0, canvas.width, canvas.height).data;
+        if (presenter.frameSeq !== snapshot.seq) {
+          diagnostic.changedDuringRead++;
+          await new Promise((resolve) => requestAnimationFrame(resolve));
+          continue;
+        }
+        let different = 0;
+        for (let i = 0; i < snapshot.expected.length; i++)
+          if (snapshot.expected[i] !== actual[i]) different++;
+        result = {
+          width: snapshot.width,
+          height: snapshot.height,
+          cw: canvas.width,
+          ch: canvas.height,
+          format: snapshot.format,
+          different,
+        };
         break;
       }
-      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      // Pin and copy the source before GPU readback. A live game may publish
+      // another frame while readPixels blocks the page thread.
+      const capture = await window.ra2Presenter.capture();
+      if (capture.frameSeq !== snapshot.seq) continue;
+      let different = 0;
+      for (let i = 0; i < snapshot.expected.length; i++)
+        if (snapshot.expected[i] !== capture.data[i]) different++;
+      result = {
+        width: snapshot.width,
+        height: snapshot.height,
+        cw: capture.width,
+        ch: capture.height,
+        format: snapshot.format,
+        different,
+      };
+      break;
     }
-    if (!snapshot) throw new Error("Could not snapshot raw pixels for the captured frame");
-    const { width, height, format, expected } = snapshot;
-    const { width: cw, height: ch, data } = snapshot.capture;
-    let different = 0;
-    for (let i = 0; i < expected.length; i++) if (expected[i] !== data[i]) different++;
-    return { width, height, cw, ch, format, different, pixels: width * height };
+    if (!result)
+      throw new Error(
+        `Could not snapshot raw pixels for the captured frame: ${JSON.stringify(diagnostic)}`,
+      );
+    return { ...result, pixels: result.width * result.height };
   });
   assert.equal(result.cw, result.width, `${label}: capture width`);
   assert.equal(result.ch, result.height, `${label}: capture height`);
@@ -137,6 +212,11 @@ try {
   await waitDialog("0x102");
   await run.clickGame(719, 263);
   await run.page.waitForTimeout(15000);
+  const battleState = await run.state();
+  const fpsEvents = run.all.filter((line) => /@ra2 \{"e":"fps"/.test(line)).length;
+  console.log(
+    `skirmish telemetry: state fps ${battleState?.fps ?? "null"}; ${fpsEvents} fps events`,
+  );
   await compare("skirmish frame");
 } finally {
   await run.browser.close();

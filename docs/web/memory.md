@@ -63,7 +63,7 @@ the fallback, not the plan ([decisions.md](decisions.md), D2).
 
 ## Memory size
 
-- `-sINITIAL_MEMORY=256MB`, `-sALLOW_MEMORY_GROWTH=1`,
+- `-sINITIAL_MEMORY=640MB`, `-sALLOW_MEMORY_GROWTH=1`,
   `-sMAXIMUM_MEMORY=768MB`. This caps Wasm linear memory below 1 GiB, leaving
   room for compiled code and small browser-side buffers. This is not a total
   browser-process cap. To keep the game within that total budget the archives
@@ -76,6 +76,37 @@ the fallback, not the plan ([decisions.md](decisions.md), D2).
   `-sDEFAULT_PTHREAD_STACK_SIZE=8MB`, as on Linux. Every `RECOMP_CALL` is a
   real C call, and the game's call chains are deep. The guest's own stack
   (`esp`) is guest memory, allocated by `CreateThread` as now.
+
+## Bounded caches
+
+- `src/web/read_cache.c` holds at most eight 1 MiB blocks (8 MiB of payload)
+  and 64 small per-file trackers.
+- `src/runtime/hdvox.c` holds two record arenas, each capped at 24 MiB
+  (48 MiB total).
+- The 2x image memo has 1,024 round-robin entries. A source rectangle is at
+  most 256x256; each stored 2x image takes `4 * w * h` bytes, so memo pixel
+  payload is capped at 256 MiB, plus the entry metadata.
+- The picture publisher has three current frame slots. Each slot's payload is
+  `w * h * bytes_per_pixel`; replacement buffers remain alive while the page
+  reads or displays them, then are collected. Both WebGL and 2D presenters
+  publish `readIndex`, so collection does not depend on the presenter mode.
+  During replacement, up to three prior slot buffers may also be awaiting
+  release.
+- HD composition layers are not allocated by the current browser build; Task
+  5's GPU HD layer implementation is deferred. Its proposed upper bound, if
+  implemented later, is `w * h * 4 + 4 * w * h * 2` bytes.
+
+These are source-level caps, not measured process peaks. The HD-off 1440p
+ten-minute soak ran in headed Chrome at 2560×1440 and completed after one
+automatic reload when the match returned to the 800×600 menu shell. With
+`INITIAL_MEMORY=640MB`, Wasm peaked at 640 MiB and grew by 0 bytes after the
+first 60 seconds; the zero-growth gate passes. JS heap growth was 2,571,580
+bytes, and every running-game sample published a picture. The previous run
+with 256 MiB initial memory grew 137.7 MiB after the automatic save reload and
+reached 768 MiB. The main-menu peak was 627.5 MiB, which rounds to 640 MiB for
+`INITIAL_MEMORY`. An earlier 4K HD-off soak peaked at 442.5 MiB with no Wasm
+growth after the first minute. Its peak plus 25% is below the 768 MiB floor,
+so `MAXIMUM_MEMORY` remains 768 MiB. Repeat the 4K soak on the final build.
 
 ## Check
 

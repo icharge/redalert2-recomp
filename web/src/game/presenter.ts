@@ -55,6 +55,12 @@ export class Presenter2d implements GamePresenter {
   private ticks = 0;
   private drawMs = 0;
   private scale: Scale = "sharp";
+  private cursorRect: DOMRect | null = null;
+  private cursorObserver: ResizeObserver | null = null;
+  private cursorWidth = Number.NaN;
+  private cursorHeight = Number.NaN;
+  private cursorLeft = Number.NaN;
+  private cursorTop = Number.NaN;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -69,6 +75,19 @@ export class Presenter2d implements GamePresenter {
     if (!context) throw new Error("this browser gave no 2D canvas");
     this.context = context;
     this.backdrop = backdrop ?? this.createBackdrop();
+    if (cursorOverlay) {
+      this.cursorRect = canvas.getBoundingClientRect();
+      if (typeof ResizeObserver !== "undefined") {
+        this.cursorObserver = new ResizeObserver(() => {
+          this.cursorRect = canvas.getBoundingClientRect();
+        });
+        this.cursorObserver.observe(canvas);
+      }
+    }
+  }
+
+  private word(heap: Int32Array, index: number): number {
+    return Atomics.load(heap, (this.shared >> 2) + index);
   }
 
   /** Running totals, for the frame-time overlay: pictures put on the canvas, animation frames, time spent drawing. */
@@ -140,27 +159,28 @@ export class Presenter2d implements GamePresenter {
 
   stop(): void {
     cancelAnimationFrame(this.raf);
+    this.cursorObserver?.disconnect();
+    this.cursorObserver = null;
   }
 
   /** One animation frame: the picture if it changed, the cursor if it changed. */
   draw(): void {
     const { HEAP32, HEAPU8 } = this.memory();
     const base = this.shared >> 2;
-    const word = (index: number) => Atomics.load(HEAP32, base + index);
 
     // frame_seq is a seqlock: an odd value means the game is publishing, so only even values are pictures
-    const seq = word(Shared.frameSeq);
+    const seq = this.word(HEAP32, Shared.frameSeq);
     if ((seq & 1) === 0 && seq !== this.frameSeq) {
-      const width = word(Shared.frameW);
-      const height = word(Shared.frameH);
-      const pointer = word(Shared.framePtr) >>> 0;
-      const frameIndex = word(Shared.frameIndex);
+      const width = this.word(HEAP32, Shared.frameW);
+      const height = this.word(HEAP32, Shared.frameH);
+      const pointer = this.word(HEAP32, Shared.framePtr) >>> 0;
+      const frameIndex = this.word(HEAP32, Shared.frameIndex);
       if (width > 0 && height > 0 && pointer > 0) {
         Atomics.store(HEAP32, base + Shared.readIndex, frameIndex);
         if (
-          word(Shared.frameSeq) !== seq ||
-          word(Shared.frameIndex) !== frameIndex ||
-          word(Shared.framePtr) >>> 0 !== pointer
+          this.word(HEAP32, Shared.frameSeq) !== seq ||
+          this.word(HEAP32, Shared.frameIndex) !== frameIndex ||
+          this.word(HEAP32, Shared.framePtr) >>> 0 !== pointer
         ) {
           Atomics.store(HEAP32, base + Shared.readIndex, -1);
           return;
@@ -171,13 +191,13 @@ export class Presenter2d implements GamePresenter {
           this.image = null;
         }
         this.image ??= this.context.createImageData(width, height);
-        const format = word(Shared.format);
+        const format = this.word(HEAP32, Shared.format);
         if (format === PixelFormat.Rgba) {
           // a view on shared memory cannot back an ImageData, so the pixels are copied
           this.image.data.set(HEAPU8.subarray(pointer, pointer + width * height * 4));
         } else {
-          const pitch = word(Shared.framePitch);
-          const palette = word(Shared.palettePtr) >>> 0;
+          const pitch = this.word(HEAP32, Shared.framePitch);
+          const palette = this.word(HEAP32, Shared.palettePtr) >>> 0;
           for (let y = 0; y < height; y++) {
             for (let x = 0; x < width; x++) {
               const to = (y * width + x) * 4;
@@ -205,7 +225,7 @@ export class Presenter2d implements GamePresenter {
             }
           }
         }
-        if (word(Shared.frameSeq) === seq) {
+        if (this.word(HEAP32, Shared.frameSeq) === seq) {
           this.frameSeq = seq;
           this.render(this.image, width, height);
           if (this.backdrop) {
@@ -221,18 +241,21 @@ export class Presenter2d implements GamePresenter {
       }
     }
 
-    const cursorSeq = word(Shared.cursorSeq);
+    const cursorSeq = this.word(HEAP32, Shared.cursorSeq);
     if (cursorSeq !== this.cursorSeq) {
       this.cursorSeq = cursorSeq;
       this.setCursor(
-        word(Shared.cursorKind),
-        word(Shared.cursorHotX),
-        word(Shared.cursorHotY),
+        this.word(HEAP32, Shared.cursorKind),
+        this.word(HEAP32, Shared.cursorHotX),
+        this.word(HEAP32, Shared.cursorHotY),
         HEAPU8,
       );
     }
-    this.drawCursorOverlay(word);
-    this.capturePointer?.(word(Shared.frameW) > 0 && word(Shared.cursorKind) === CursorKind.None);
+    this.drawCursorOverlay(HEAP32);
+    this.capturePointer?.(
+      this.word(HEAP32, Shared.frameW) > 0 &&
+        this.word(HEAP32, Shared.cursorKind) === CursorKind.None,
+    );
   }
 
   async capture(): Promise<{ width: number; height: number; frameSeq: number; data: Uint8Array }> {
@@ -279,28 +302,50 @@ export class Presenter2d implements GamePresenter {
     return 0;
   }
 
-  private drawCursorOverlay(word: (index: number) => number): void {
+  private drawCursorOverlay(heap: Int32Array): void {
     const cursor = this.cursorOverlay;
     if (!cursor) return;
-    if (word(Shared.cursorKind) !== CursorKind.Overlay) {
-      cursor.style.display = "none";
+    if (this.word(heap, Shared.cursorKind) !== CursorKind.Overlay) {
+      if (cursor.style.display !== "none") cursor.style.display = "none";
       return;
     }
-    const gameWidth = word(Shared.gameW) || this.canvas.width;
-    const gameHeight = word(Shared.gameH) || this.canvas.height;
-    const rect = this.canvas.getBoundingClientRect();
+    const gameWidth = this.word(heap, Shared.gameW) || this.canvas.width;
+    const gameHeight = this.word(heap, Shared.gameH) || this.canvas.height;
+    const rect = this.cursorRect;
+    if (!rect) {
+      if (cursor.style.display !== "none") cursor.style.display = "none";
+      return;
+    }
     if (gameWidth <= 0 || gameHeight <= 0 || rect.width <= 0 || rect.height <= 0) {
-      cursor.style.display = "none";
+      if (cursor.style.display !== "none") cursor.style.display = "none";
       return;
     }
     const scale = Math.min(rect.width / gameWidth, rect.height / gameHeight);
     const left = rect.left + (rect.width - gameWidth * scale) / 2;
     const top = rect.top + (rect.height - gameHeight * scale) / 2;
-    cursor.style.width = `${CURSOR_PX * scale}px`;
-    cursor.style.height = `${CURSOR_PX * scale}px`;
-    cursor.style.left = `${left + (word(Shared.pointerX) - word(Shared.cursorHotX)) * scale}px`;
-    cursor.style.top = `${top + (word(Shared.pointerY) - word(Shared.cursorHotY)) * scale}px`;
-    cursor.style.display = "block";
+    const width = CURSOR_PX * scale;
+    const height = CURSOR_PX * scale;
+    const cursorLeft =
+      left + (this.word(heap, Shared.pointerX) - this.word(heap, Shared.cursorHotX)) * scale;
+    const cursorTop =
+      top + (this.word(heap, Shared.pointerY) - this.word(heap, Shared.cursorHotY)) * scale;
+    if (width !== this.cursorWidth) {
+      cursor.style.setProperty("width", `${width}px`);
+      this.cursorWidth = width;
+    }
+    if (height !== this.cursorHeight) {
+      cursor.style.setProperty("height", `${height}px`);
+      this.cursorHeight = height;
+    }
+    if (cursorLeft !== this.cursorLeft) {
+      cursor.style.setProperty("left", `${cursorLeft}px`);
+      this.cursorLeft = cursorLeft;
+    }
+    if (cursorTop !== this.cursorTop) {
+      cursor.style.setProperty("top", `${cursorTop}px`);
+      this.cursorTop = cursorTop;
+    }
+    if (cursor.style.display !== "block") cursor.style.display = "block";
   }
 
   private render(image: ImageData, width: number, height: number): void {

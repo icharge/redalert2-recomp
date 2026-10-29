@@ -86,6 +86,8 @@ static const char *g_scale;
 static const char *g_mod;              /* --mod NAME */
 static int g_thai_font_fix;
 static const char *g_thai_font_id;
+static int g_speed_control;            /* forwards the guest's -SPEEDCONTROL switch */
+static char g_guest_command_line[256];
 
 /* ---- what the lift calls into ---------------------------------------------
  * run_lift.py PATCHES and HOOKS. */
@@ -672,6 +674,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--heartbeat") && i + 1 < argc) g_heartbeat_s = (unsigned)strtoul(argv[++i], NULL, 0);
         else if (!strcmp(argv[i], "--trap") && i + 1 < argc) g_trap_after = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--hd-voxels")) hdvox_configure(1, NULL);
+        else if (!strcmp(argv[i], "--speedcontrol")) g_speed_control = 1;
         else if (!strcmp(argv[i], "--hd-voxels-dump") && i + 1 < argc) {
             static char dir[PATH_MAX];               /* absolute: the run chdirs into the game folder */
             const char *p = argv[++i];
@@ -686,7 +689,7 @@ int main(int argc, char **argv) {
             g_dump_dir = dir;                /* the run chdirs into the game folder */
         }
         else {
-            printf("usage: ra2 [--run] [--headless | --fullscreen] [--scale sharp|smooth|crt|nearest|integer] [--game DIR] [--mod NAME|none] [--thai-font-fix --thai-font-id ID] [--debuglog] [--mute] [--trace] [--heartbeat S] [--memfs] [--intro] [--trap N] [--dump-frames DIR] [--hd-voxels] [--hd-voxels-dump DIR] [--clockstats]\n"
+            printf("usage: ra2 [--run] [--headless | --fullscreen] [--scale sharp|smooth|crt|nearest|integer] [--game DIR] [--mod NAME|none] [--thai-font-fix --thai-font-id ID] [--debuglog] [--mute] [--trace] [--heartbeat S] [--memfs] [--intro] [--trap N] [--dump-frames DIR] [--hd-voxels] [--hd-voxels-dump DIR] [--clockstats] [--speedcontrol]\n"
                    "           [--press DLG:CTRL@s] [--select DLG:CTRL=N@s] [--waitlog TEXT@s] [--move|--click x,y@s]\n"
                    "           [--key [c][s][a]+vk@s] [--wait VA@s] [--drag x1,y1,x2,y2@s]\n");
             return !strcmp(argv[i], "--help") || !strcmp(argv[i], "-h") ? 0 : 1;
@@ -727,7 +730,9 @@ int main(int argc, char **argv) {
     hle_module_add("C:\\" RA2_EXE_NAME, img.base, img.resource_rva, img.resource_size, 1);
     int unresolved = recomp_pe_bind(&img, hle_resolve_or_stub);
     printf("  mapped %s: 0x%08X-0x%08X, %d imports not implemented yet\n", exe_host, img.base, img.base + img.span, unresolved);
-    hle_set_command_line("\"C:\\" RA2_EXE_NAME "\"");
+    snprintf(g_guest_command_line, sizeof g_guest_command_line, "\"C:\\%s\"%s",
+             RA2_EXE_NAME, g_speed_control ? " -SPEEDCONTROL" : "");
+    hle_set_command_line(g_guest_command_line);
     web_event_boot(RA2_TITLE, RA2_EXE_NAME, stamp);
 
     if (!run) {

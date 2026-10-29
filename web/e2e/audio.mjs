@@ -1,6 +1,7 @@
 // Stage 7, in a real Chrome: the sound ring and the worklet that plays it.
 //
-//   node e2e/audio.mjs [--minutes 5] [--skirmish] [--url http://127.0.0.1:5173/]
+//   node e2e/audio.mjs [--minutes 5] [--skirmish] [--profile work/perf/profile-fresh]
+//                      [--build work/build-task7-yr-escalated] [--url http://127.0.0.1:5173/]
 //
 // 1. a test tone: a sine written into a ring in shared memory, played by public/audio-worklet.js in an
 //    offline context, with no game; the output has the tone's frequency and the ring was read.
@@ -8,6 +9,7 @@
 //    fed (frames mixed go on at the sample rate) and the worklet drains it with no underrun.
 // 3. with --skirmish --minutes N: the same over N minutes of a skirmish (W7.4); the game's own frame rate is
 //    printed beside it. Plays through the dev server, so the page's address needs `dev`.
+import { openGame } from "./perf-nav.mjs";
 import { options, picture, startPage } from "./lib.mjs";
 
 const argv = process.argv.slice(2);
@@ -25,11 +27,13 @@ const check = (ok, what) => {
   if (!ok) failures.push(what);
 };
 
-const t = await startPage({ ...base, url: new URL("/?e2e", base.url).toString() });
+const t = base.profile
+  ? await openGame(base)
+  : await startPage({ ...base, url: new URL("/?e2e", base.url).toString() });
 
 // ---- 1. the tone, in a page of the dev server that is isolated, so it can have a SharedArrayBuffer ----------------
 {
-  const page = await t.browser.newPage();
+  const page = await t.page.context().newPage();
   await page.goto(new URL("/icons/icon.svg", base.url).toString());
   const result = await page.evaluate(async () => {
     if (!crossOriginIsolated) return { isolated: false };

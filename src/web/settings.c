@@ -13,6 +13,7 @@
 #include "hdvox.h"
 #include "mods.h"
 #include "web_api.h"
+#include "video_modes.h"
 
 static const char *scales[] = { "sharp", "smooth", "crt", "nearest", "integer" };
 static int scale_mode, blur_bars = 1, modern, menu_open, video_w = 800, video_h = 600;
@@ -122,10 +123,7 @@ void web_settings_command(int key, int value, int extra) {
     case RA2_SETTING_HD: hdvox_configure(value != 0, NULL); break;
     case RA2_SETTING_MODERN: modern = value != 0; web_modern_configure(modern); break;
     case RA2_SETTING_RESOLUTION: {
-        static const int sizes[][2] = { {800,600}, {1024,768}, {1280,720}, {1366,768}, {1600,900}, {1920,1080}, {2560,1440} };
-        int valid = 0;
-        for (unsigned i = 0; i < sizeof sizes / sizeof sizes[0]; i++) if (value == sizes[i][0] && extra == sizes[i][1]) valid = 1;
-        if (!valid) return;
+        if (!web_video_size_allowed(value, extra)) return;
         if (!video_ini(value, extra)) { web_event_error("Could not save the game resolution."); return; }
         video_w = value; video_h = extra;
         if (MEM32(OPTIONS_W) >= 320 && MEM32(OPTIONS_W) <= 8192 && MEM32(OPTIONS_W + 4) >= 200 && MEM32(OPTIONS_W + 4) <= 8192) {

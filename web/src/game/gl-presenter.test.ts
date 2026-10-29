@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { GlPresenter } from "./gl-presenter";
-import { PixelFormat, PresentMode, Shared } from "./protocol";
+import { CursorKind, PixelFormat, PresentMode, Shared } from "./protocol";
 import type { WasmMemory } from "./presenter";
 
 const SHARED = 256;
 const FRAME = 4096;
 
-function setup() {
+function setup(cursorOverlay: HTMLImageElement | null = null) {
   const buffer = new ArrayBuffer(2 << 20);
   let memory: WasmMemory = { HEAPU8: new Uint8Array(buffer), HEAP32: new Int32Array(buffer) };
   let memorySource = () => memory;
@@ -14,6 +14,7 @@ function setup() {
   const word = (index: number, value: number) => (words[(SHARED >> 2) + index] = value);
   const calls: [string, ...unknown[]][] = [];
   let duringUpload: (() => void) | null = null;
+  let bounds = { left: 100, top: 50, width: 400, height: 300 };
   const fallback = vi.fn();
   let id = 0;
   const gl = new Proxy(
@@ -75,11 +76,14 @@ function setup() {
     kind === "webgl2" ? gl : null,
   );
   const canvas = document.createElement("canvas");
+  const getRect = vi
+    .spyOn(canvas, "getBoundingClientRect")
+    .mockImplementation(() => bounds as DOMRect);
   const presenter = new GlPresenter(
     canvas,
     () => memorySource(),
     SHARED,
-    null,
+    cursorOverlay,
     undefined,
     fallback,
   );
@@ -94,6 +98,8 @@ function setup() {
   };
   return {
     calls,
+    getRect,
+    setBounds: (next: typeof bounds) => (bounds = next),
     duringUpload: (callback: () => void) => (duringUpload = callback),
     canvas,
     fallback,
@@ -115,12 +121,20 @@ afterEach(() => vi.restoreAllMocks());
 afterEach(() => {
   FakeResizeObserver.width = 400;
   FakeResizeObserver.height = 300;
+  FakeResizeObserver.deferInitial = false;
 });
 class FakeResizeObserver {
+  static latest: FakeResizeObserver | null = null;
   static width = 400;
   static height = 300;
-  constructor(private readonly callback: ResizeObserverCallback) {}
+  static deferInitial = false;
+  constructor(private readonly callback: ResizeObserverCallback) {
+    FakeResizeObserver.latest = this;
+  }
   observe(): void {
+    if (!FakeResizeObserver.deferInitial) this.resize();
+  }
+  resize(): void {
     this.callback(
       [
         {
@@ -201,8 +215,154 @@ describe("GlPresenter", () => {
     expect(upload).toContain(4);
     expect(upload).toContain(2);
     expect(upload).toContain(0x8363);
-    expect(upload?.at(-1)).toBeInstanceOf(Uint16Array);
-    expect((upload?.at(-1) as Uint16Array).byteOffset).toBe(FRAME);
+    expect(upload?.at(-2)).toBeInstanceOf(Uint16Array);
+    expect(upload?.at(-1)).toBe(FRAME / 2);
+  });
+
+  it("reuses one RGB565 heap view with element offsets across frame uploads", () => {
+    const { calls, frame, memory, presenter } = setup();
+    memory().HEAPU8.set([0x00, 0xf8], FRAME);
+    frame(PixelFormat.Rgb565, 1, 1, 2);
+    presenter.draw();
+    const first = calls.find((call) => call[0] === "texSubImage2D");
+    const firstPixels = first?.at(-2);
+
+    frame(PixelFormat.Rgb565, 1, 1, 2);
+    presenter.draw();
+    const uploads = calls.filter((call) => call[0] === "texSubImage2D");
+    const second = uploads[1];
+
+    expect(firstPixels).toBeInstanceOf(Uint16Array);
+    expect(first?.at(-1)).toBe(FRAME / 2);
+    expect(second?.at(-2)).toBe(firstPixels);
+    expect(second?.at(-1)).toBe(FRAME / 2);
+    expect((firstPixels as Uint16Array).byteOffset).toBe(0);
+    expect((firstPixels as Uint16Array)[FRAME / 2]).toBe(0xf800);
+  });
+
+  it("uses the shared byte heap with source offsets for RGBA pixels and the palette", () => {
+    const { calls, frame, memory, presenter, word } = setup();
+    const palette = 16384;
+    word(Shared.palettePtr, palette);
+    memory().HEAPU8.set([9, 8, 7, 255], FRAME);
+    memory().HEAPU8.set([1, 2, 3, 4], palette);
+    frame(PixelFormat.Rgba, 1, 1, 4);
+
+    presenter.draw();
+
+    const imageUpload = calls.find((call) => call[0] === "texSubImage2D");
+    expect(imageUpload?.at(-2)).toBe(memory().HEAPU8);
+    expect(imageUpload?.at(-1)).toBe(FRAME);
+    expect(memory().HEAPU8.slice(FRAME, FRAME + 4)).toEqual(new Uint8Array([9, 8, 7, 255]));
+
+    frame(PixelFormat.Rgba, 1, 1, 4);
+    presenter.draw();
+    const imageUploads = calls.filter((call) => call[0] === "texSubImage2D");
+    expect(imageUploads[1]?.at(-2)).toBe(imageUpload?.at(-2));
+    expect(imageUploads[1]?.at(-1)).toBe(FRAME);
+
+    frame(PixelFormat.Pal8, 1, 1, 1);
+    presenter.draw();
+    frame(PixelFormat.Pal8, 1, 1, 1);
+    presenter.draw();
+    const paletteUpload = calls.find(
+      (call) => call[0] === "texImage2D" && call[4] === 256 && call[5] === 1,
+    );
+    const paletteUploads = calls.filter(
+      (call) => call[0] === "texImage2D" && call[4] === 256 && call[5] === 1,
+    );
+    expect(paletteUpload?.at(-2)).toBe(memory().HEAPU8);
+    expect(paletteUpload?.at(-1)).toBe(palette);
+    expect(paletteUploads[1]?.at(-2)).toBe(paletteUpload?.at(-2));
+    expect(paletteUploads[1]?.at(-1)).toBe(palette);
+    expect(memory().HEAPU8.slice(palette, palette + 4)).toEqual(new Uint8Array([1, 2, 3, 4]));
+  });
+
+  it("mutates its letterbox rectangle instead of replacing it per frame", () => {
+    const { frame, presenter } = setup();
+    frame(PixelFormat.Rgb565, 4, 2, 8);
+    presenter.draw();
+    const rect = (presenter as unknown as { rect: object }).rect;
+
+    frame(PixelFormat.Rgb565, 4, 2, 8);
+    presenter.draw();
+
+    expect((presenter as unknown as { rect: object }).rect).toBe(rect);
+  });
+
+  it("uses cached cursor bounds during draw and refreshes them after resize", () => {
+    const cursor = document.createElement("img");
+    const { getRect, presenter, setBounds, word } = setup(cursor);
+    word(Shared.gameW, 200);
+    word(Shared.gameH, 100);
+    word(Shared.cursorKind, CursorKind.Overlay);
+    word(Shared.pointerX, 100);
+    word(Shared.pointerY, 50);
+    word(Shared.cursorHotX, 0);
+    word(Shared.cursorHotY, 0);
+    expect(getRect).toHaveBeenCalledTimes(2);
+    getRect.mockClear();
+
+    for (let i = 0; i < 10; i++) presenter.draw();
+
+    expect(getRect).not.toHaveBeenCalled();
+    expect(cursor.style.left).toBe("300px");
+    expect(cursor.style.top).toBe("200px");
+
+    setBounds({ left: 200, top: 100, width: 800, height: 600 });
+    FakeResizeObserver.width = 800;
+    FakeResizeObserver.height = 600;
+    FakeResizeObserver.latest?.resize();
+    presenter.draw();
+
+    expect(getRect).toHaveBeenCalledOnce();
+    expect(cursor.style.left).toBe("600px");
+    expect(cursor.style.top).toBe("400px");
+  });
+
+  it("only rewrites cursor position and size styles when their numeric values change", () => {
+    const cursor = document.createElement("img");
+    const { presenter, word } = setup(cursor);
+    word(Shared.gameW, 200);
+    word(Shared.gameH, 100);
+    word(Shared.cursorKind, CursorKind.Overlay);
+    word(Shared.pointerX, 100);
+    word(Shared.pointerY, 50);
+    const setProperty = vi.spyOn(cursor.style, "setProperty");
+
+    presenter.draw();
+    setProperty.mockClear();
+    for (let i = 0; i < 10; i++) presenter.draw();
+
+    expect(setProperty).not.toHaveBeenCalled();
+
+    word(Shared.pointerX, 101);
+    presenter.draw();
+
+    expect(setProperty).toHaveBeenCalledOnce();
+    expect(setProperty.mock.calls[0]?.[0]).toBe("left");
+  });
+
+  it("refreshes cursor bounds on the delayed initial ResizeObserver delivery", () => {
+    FakeResizeObserver.deferInitial = true;
+    const cursor = document.createElement("img");
+    const { presenter, setBounds, word } = setup(cursor);
+    word(Shared.gameW, 200);
+    word(Shared.gameH, 100);
+    word(Shared.cursorKind, CursorKind.Overlay);
+    word(Shared.pointerX, 100);
+    word(Shared.pointerY, 50);
+    word(Shared.cursorHotX, 0);
+    word(Shared.cursorHotY, 0);
+    setBounds({ left: 200, top: 100, width: 800, height: 600 });
+    FakeResizeObserver.width = 800;
+    FakeResizeObserver.height = 600;
+
+    FakeResizeObserver.latest?.resize();
+    presenter.draw();
+
+    expect(cursor.style.left).toBe("600px");
+    expect(cursor.style.top).toBe("400px");
   });
 
   it("uploads PAL8 as R8 and a 256x1 palette", () => {
@@ -310,8 +470,8 @@ describe("GlPresenter", () => {
 
     expect(() => state.presenter.draw()).not.toThrow();
     const upload = state.calls.find((call) => call[0] === "texSubImage2D");
-    expect(upload?.at(-1)).toBeInstanceOf(Uint16Array);
-    expect((upload?.at(-1) as Uint16Array).buffer).toBe(grownBuffer);
+    expect(upload?.at(-2)).toBeInstanceOf(Uint16Array);
+    expect((upload?.at(-2) as Uint16Array).buffer).toBe(grownBuffer);
     expect(state.words[(SHARED >> 2) + Shared.readIndex]).toBe(-1);
   });
 

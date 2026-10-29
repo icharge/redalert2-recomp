@@ -92,6 +92,40 @@ describe("startSaveSync", () => {
     expect([...target.files.keys()]).toEqual(["save/ra2md/SAVE0001.sav"]);
   });
 
+  it("keeps scanning when a game directory disappears between looks", async () => {
+    const game = fakeFs({ "/game/Saved Games/one.sav": "existing save" });
+    const target = memoryTarget();
+    const readdir = game.fs.readdir.bind(game.fs);
+    let disappeared = false;
+    game.fs.readdir = (path) => {
+      if (disappeared && path === "/game/Saved Games")
+        throw Object.assign(new Error("No such directory"), { code: "ENOENT" });
+      return readdir(path);
+    };
+    const sync = startSaveSync(game.fs, target, "ra2md", 1e9);
+    stop = sync.stop;
+
+    disappeared = true;
+    await expect(sync.flush()).resolves.toBe(0);
+  });
+
+  it("keeps the app alive when the game root is temporarily unavailable", async () => {
+    const game = fakeFs({ "/game/SAVE0001.sav": "existing save" });
+    const target = memoryTarget();
+    const readdir = game.fs.readdir.bind(game.fs);
+    let unavailable = false;
+    game.fs.readdir = (path) => {
+      if (unavailable && path === "/game")
+        throw Object.assign(new Error("No such directory"), { code: "ENOENT" });
+      return readdir(path);
+    };
+    const sync = startSaveSync(game.fs, target, "ra2md", 1e9);
+    stop = sync.stop;
+
+    unavailable = true;
+    await expect(sync.flush()).resolves.toBe(0);
+  });
+
   it("persists host settings separately from the game's RA2.INI", async () => {
     const game = fakeFs({ "/game/RA2.INI": "[Video]" });
     const target = memoryTarget();
@@ -156,6 +190,25 @@ describe("startSaveSync", () => {
 });
 
 describe("restoreSaves", () => {
+  it("compacts and repairs an oversized saved Yuri INI before restoring it", async () => {
+    const compact =
+      "[Video]\r\nScreenWidth=1920\r\nScreenHeight=1080\r\n[Options]\r\nGameSpeed=1\r\n";
+    const repeated =
+      "[Video]\r\nScreenWidth=1280\r\nScreenHeight=720\r\n[Options]\r\nGameSpeed=5\r\n";
+    const bytes = new TextEncoder().encode(compact + repeated.repeat(20_000));
+    const game = fakeFs();
+    const target = memoryTarget();
+    const store: SaveStore = {
+      async list() {
+        return [{ path: "RA2MD.INI", size: bytes.length, read: async () => bytes }];
+      },
+    };
+
+    expect(await restoreSaves(game.fs, store, "slot-1-ra2md", undefined, target)).toBe(1);
+    expect(new TextDecoder().decode(game.fs.readFile("/game/RA2MD.INI"))).toBe(compact);
+    expect(target.files.get("save/slot-1-ra2md/RA2MD.INI")).toBe(compact);
+  });
+
   it("removes stale runtime binaries from the save store without restoring them", async () => {
     const game = fakeFs({ "/game/gamemd.exe": "current runtime" });
     const target = memoryTarget();

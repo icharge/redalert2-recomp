@@ -197,6 +197,23 @@ bundled.
 | W14.4 | Add independent RA2 and Yuri's Revenge content-readiness reports to Import and Library | here | W14.1, W14.3 | M | reports distinguish runtime-not-built, ready, missing required content, and optional movie omissions; shared content is counted for both editions |
 | W14.5 | Verify bundled runtime and readiness in both browser targets | here | W14.2, W14.3, W14.4 | M | both editions reach the menu and a scripted skirmish without imported EXE/DLL files; incomplete-content cases show the exact edition-specific missing files |
 
+## Frame performance
+
+Detailed scope and measurements: [browser frame-performance plan](../superpowers/plans/2026-10-26-web-frame-performance.md).
+
+| Task | State | Evidence or remaining gate |
+|---|---|---|
+| 3. Raw publish, three frame slots, protocol 8 | Done | Seqlock publication and page read ownership are documented and covered by the frame-buffer selftest. |
+| 4. WebGL2 presenter, HD off | Implemented; current YR and retained RA2 live checks pass | Presenter tests pass, including heap-growth recovery. YR and RA2 menu/skirmish comparisons have zero differing pixels; the RA2 check used the retained pre-final-build binary. |
+| 5. HD vehicle layers | Deferred | Separate HD composition remains outside the current target. |
+| 6. Scaling modes and blurred bars | Implemented; YR and retained RA2 visual checks pass | Commit `df45ca4`; focused and full web tests pass. Live menu and skirmish captures for both editions have zero differing pixels; the RA2 check used the retained pre-final-build binary. |
+| 7. Rendering checkpoint | Measured; performance pass bar not met | Current YR busy HD-off medians/1% lows are 62/60, 61/44, and 50/34 fps at 720p/1080p/1440p. Worst gaps are 33/127/57 ms. Only 720p meets both FPS and gap bars; 1080p misses low/gap, 1440p misses median/low/gap. Idle CPU fell 4.2%, short of 40%. |
+| 8. Sleep margin | Skipped by measured condition | Probe margin `M = 16 ms`; p99 lateness was 7–15 ms at 1–16 ms targets, so the plan's skip condition applies. |
+| 9. Clock damper | Skipped by measured condition | No second met the probe's 1,000 game-issued clock reads with zero sleep calls gate. A worker profile separately found clock polling inside `wait_ms`; the Task 9 QPC shim does not intercept that wait path. |
+| 10. Futex, mixer, page frame loop | Partial | Futex candidate failed the repeated browser keep gate and was reverted. Mixer share was 13.3% of one core (3.24% in `mix`); changing wake to 10 ms passed the five-minute audio/skirmish check with zero underruns. The FPS deadline sentinel fix restored telemetry. Main-thread captures measured 0.789 ms/frame at 1080p and 1.067 ms at 1440p. Current-source RA2 release link remains incomplete. |
+| 11. Memory bounds and limits | Partial; 1440p gate passes | Source cache bounds and frame-buffer reclamation are tested. The 1440p HD-off soak with 640 MiB initial memory peaked at 640 MiB and had zero Wasm growth after 60 seconds. The earlier 4K soak peaked at 442.5 MiB with zero post-minute growth; repeat 4K on the current build. Maximum remains 768 MiB. |
+| 12. Final benchmark and docs | Incomplete | Current YR busy HD-off matrix and 1440p soak are recorded on the one reusable profile. RA2 menu/skirmish pixels pass on the retained build, but current-source RA2 release link, full release matrices and soaks for both editions, final both-presenter suite, docs audit, and final branch review remain open. |
+
 ## Open, before the page ships to a public host
 
 | ID | Task | Needs | Done when |

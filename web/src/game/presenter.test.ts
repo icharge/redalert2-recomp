@@ -347,6 +347,100 @@ describe("Presenter2d", () => {
     expect(canvas.style.cursor).toBe("none");
   });
 
+  it("does not read layout during draw", () => {
+    const { presenter, word, canvas } = setup({ width: 400, height: 300 });
+    word(Shared.gameW, 200);
+    word(Shared.gameH, 100);
+    word(Shared.cursorKind, CursorKind.Overlay);
+    word(Shared.cursorSeq, 1);
+    const rect = vi.mocked(canvas.getBoundingClientRect);
+    rect.mockClear();
+
+    for (let i = 0; i < 10; i++) presenter.draw();
+
+    expect(rect).not.toHaveBeenCalled();
+  });
+
+  it("only rewrites cursor position and size styles when their numeric values change", () => {
+    const { presenter, word, cursor } = setup({ width: 400, height: 300 });
+    vi.spyOn(HTMLCanvasElement.prototype, "toDataURL").mockReturnValue(
+      "data:image/png;base64,AAAA",
+    );
+    word(Shared.gameW, 200);
+    word(Shared.gameH, 100);
+    word(Shared.cursorKind, CursorKind.Overlay);
+    word(Shared.cursorSeq, 1);
+    word(Shared.pointerX, 100);
+    word(Shared.pointerY, 50);
+    const setProperty = vi.spyOn(cursor.style, "setProperty");
+
+    presenter.draw();
+    setProperty.mockClear();
+    for (let i = 0; i < 10; i++) presenter.draw();
+
+    expect(setProperty).not.toHaveBeenCalled();
+
+    word(Shared.pointerX, 101);
+    presenter.draw();
+
+    expect(setProperty).toHaveBeenCalledOnce();
+    expect(setProperty.mock.calls[0]?.[0]).toBe("left");
+  });
+
+  it("updates cached cursor bounds when the canvas resizes", () => {
+    let resize: ResizeObserverCallback | undefined;
+    class FakeResizeObserver {
+      constructor(callback: ResizeObserverCallback) {
+        resize = callback;
+      }
+      observe() {}
+      disconnect() {}
+      unobserve() {}
+    }
+    vi.stubGlobal("ResizeObserver", FakeResizeObserver);
+
+    const { presenter, word, canvas, cursor } = setup({ width: 400, height: 300 });
+    vi.spyOn(HTMLCanvasElement.prototype, "toDataURL").mockReturnValue(
+      "data:image/png;base64,AAAA",
+    );
+    vi.mocked(canvas.getBoundingClientRect).mockReturnValue({
+      left: 20,
+      top: 30,
+      width: 800,
+      height: 600,
+    } as DOMRect);
+    resize?.([], {} as ResizeObserver);
+    word(Shared.cursorKind, CursorKind.Overlay);
+    word(Shared.cursorSeq, 1);
+    word(Shared.gameW, 200);
+    word(Shared.gameH, 100);
+    word(Shared.pointerX, 100);
+    word(Shared.pointerY, 50);
+    word(Shared.cursorHotX, 3);
+    word(Shared.cursorHotY, 4);
+
+    presenter.draw();
+
+    expect(cursor.style.left).toBe("408px");
+    expect(cursor.style.top).toBe("314px");
+  });
+
+  it("disconnects the cursor bounds observer when stopped", () => {
+    const disconnect = vi.fn();
+    class FakeResizeObserver {
+      constructor() {}
+      observe() {}
+      disconnect = disconnect;
+      unobserve() {}
+    }
+    vi.stubGlobal("ResizeObserver", FakeResizeObserver);
+    const { presenter } = setup();
+
+    presenter.stop();
+
+    expect(disconnect).toHaveBeenCalledOnce();
+  });
+
   it("keeps a pause cursor inside the sidebar when the full game is letterboxed", () => {
     const { presenter, word, cursor } = setup({ width: 1280, height: 720 });
     vi.spyOn(HTMLCanvasElement.prototype, "toDataURL").mockReturnValue(

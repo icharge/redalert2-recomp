@@ -273,11 +273,14 @@ export function gameArguments(
   extra: string[] = [],
   thaiFontFix: ThaiFontPreference = { enabled: false, fontId: "" },
 ): string[] {
+  const hostArgs = extra.map((arg) =>
+    arg.toLowerCase() === "-speedcontrol" ? "--speedcontrol" : arg,
+  );
   return [
     "--run",
     "--game",
     "/game",
-    ...extra,
+    ...hostArgs,
     ...(thaiFontFix.enabled ? ["--thai-font-fix", "--thai-font-id", thaiFontFix.fontId] : []),
   ];
 }

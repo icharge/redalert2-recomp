@@ -61,6 +61,7 @@ if (!base.gameBuild)
   throw new Error("--build <dir>: the build directory with ra2.js, ra2.wasm and ra2.data");
 if (!base.profile) base.profile = "../work/perf/profile-fresh";
 const buildDir = path.resolve(base.gameBuild);
+const symbolsFrom = path.resolve(option("--symbols-from", buildDir));
 const outDir = path.resolve("../work/perf");
 mkdirSync(outDir, { recursive: true });
 
@@ -144,8 +145,8 @@ const RECOMPILED = /^sub_[0-9A-Fa-f]{8}$/;
 const CLOCK = /^(_emscripten_get_now|now|_clock_time_get|__clock_gettime)$/;
 
 /** function name -> group, from the build's object files: each defined symbol's group is its object's source tree. */
-function symbolGroups() {
-  const objDir = path.join(buildDir, "CMakeFiles", "ra2.dir");
+function symbolGroups(from = buildDir) {
+  const objDir = path.join(from, "CMakeFiles", "ra2.dir");
   const objects = [];
   const walk = (dir) => {
     for (const entry of readdirSync(dir)) {
@@ -311,7 +312,7 @@ function reanalyze() {
   const cpuprofile = path.join(outDir, `${name}.cpuprofile`);
   const prior = JSON.parse(readFileSync(jsonPath, "utf8"));
   const profile = JSON.parse(readFileSync(cpuprofile, "utf8"));
-  const symbols = symbolGroups();
+  const symbols = symbolGroups(symbolsFrom);
   const summary = summarize(profile, symbols);
   const b = breakdown(profile, symbols);
   const gameEntry = {
@@ -362,8 +363,22 @@ function fpsEventsIn(lines) {
   return { frames, events };
 }
 
-const t = await openGame(base, { video: sizeArg, shots: base.shots, headed: base.headed });
+// Keep the game install on the persistent profile's original origin, and let the game's own setting choose size.
+// A `?video=` launch parameter can leave the startup menu in a mismatched mode on a reused profile.
+const t = await openGame(base, { shots: base.shots, headed: base.headed });
 try {
+  await settle(t, 3000);
+  await setResolution(t, size);
+  await loadBusySave(t, savePath, { log: console.log });
+  // HD vehicles off, as perf.mjs's setHd does it (the setting, then the store's copy of it)
+  await t.page.evaluate(() =>
+    window.Module.cwrap("ra2_setting", null, ["number", "number", "number"])(2, 0, 0),
+  );
+  await t.page.waitForFunction(() => window.ra2Store?.getSnapshot().settings?.hd === false, null, {
+    timeout: 30_000,
+  });
+  await t.page.waitForTimeout(settleSeconds * 1000);
+
   const cdp = await t.page.context().newCDPSession(t.page);
   const root = makeSession({ cdp, onAttach });
   for (const method of [
@@ -377,18 +392,6 @@ try {
     waitForDebuggerOnStart: false,
     flatten: false,
   });
-
-  await settle(t, 3000);
-  await setResolution(t, size);
-  await loadBusySave(t, savePath, { log: console.log });
-  // HD vehicles off, as perf.mjs's setHd does it (the setting, then the store's copy of it)
-  await t.page.evaluate(() =>
-    window.Module.cwrap("ra2_setting", null, ["number", "number", "number"])(2, 0, 0),
-  );
-  await t.page.waitForFunction(() => window.ra2Store?.getSnapshot().settings?.hd === false, null, {
-    timeout: 30_000,
-  });
-  await t.page.waitForTimeout(settleSeconds * 1000);
 
   const before = (await t.state()) ?? {};
   console.log(
@@ -420,6 +423,7 @@ try {
   const tapEnd = t.all.length;
   const windowEnd = Date.now();
   const counted = fpsEventsIn(t.all.slice(tapStart, tapEnd));
+  const measuredFps = fps.filter((value) => value != null);
   const windowSeconds = +((windowEnd - windowStart) / 1000).toFixed(2);
   const stopped = [];
   for (const w of workers) {
@@ -430,7 +434,7 @@ try {
     if (result?.profile) stopped.push({ session: w, profile: result.profile });
   }
 
-  const symbols = symbolGroups();
+  const symbols = symbolGroups(symbolsFrom);
   const ranked = stopped
     .map((s) => ({ ...s, busy: busyMicros(s.profile, symbols) }))
     .sort((a, b) => b.busy - a.busy);
@@ -448,8 +452,12 @@ try {
     .filter((s) => s.busy >= ranked[0].busy * 0.01)
     .map((s) => {
       const b = breakdown(s.profile, symbols);
+      const profileName = `${name}-worker-${s.session.sessionId}`;
+      const workerProfilePath = path.join(outDir, `${profileName}.cpuprofile`);
+      writeFileSync(workerProfilePath, JSON.stringify(s.profile));
       return {
         sessionId: s.session.sessionId,
+        profileName,
         totalMs: +(b.grand / 1000).toFixed(1),
         shares: Object.fromEntries(
           Object.entries(b.totals).map(([k, v]) => [k, +(v / b.grand).toFixed(4)]),
@@ -472,7 +480,7 @@ try {
     fps: {
       perSecond: fps,
       median: median(fps),
-      min: Math.min(...fps.filter((x) => x != null)),
+      min: measuredFps.length ? Math.min(...measuredFps) : null,
     },
     // the sample's frames (the fps events counted above) and the game worker's work per frame (busy time / frames)
     frames: counted.frames,

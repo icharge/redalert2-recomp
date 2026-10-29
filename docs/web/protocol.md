@@ -30,9 +30,12 @@ document.head.append(Object.assign(document.createElement("script"), { src: game
 The module is built with `noInitialRun`: once the runtime is up the page puts the game's files in
 place (WasmFS's calls into the file system abort in `preRun`) and then calls `callMain` itself.
 `main()` runs on the game's thread (`PROXY_TO_PTHREAD`).
-The game folder is passed with `--game`, as on Linux; any `arg=` in the page's
-URL query (`?arg=--hd-voxels`, for tests and debugging) is appended. The
-canvas is not handed over: the picture comes back through shared memory.
+The game folder is passed with `--game`, as on Linux; each `arg=` in the page
+URL query is passed to the web host (`?arg=--hd-voxels`, for tests and
+debugging). The game's legacy `?arg=-SPEEDCONTROL` switch is translated into
+the host's `--speedcontrol` option and added to the Windows game's command
+line. Other arguments must be recognized by the web host. The canvas is not
+handed over: the picture comes back through shared memory.
 
 Where `/game` comes from: the import in OPFS (big files linked and read in place from the
 `/opfs` mount, small ones copied into memory; [storage.md](storage.md), "How the game reads its
@@ -60,24 +63,25 @@ and the page reads it each animation frame.
 | 1044 | `format` | raw picture: `PixelFormat` (0 RGBA, 1 RGB565, 2 PAL8, 3 BGRX as the game's 32-bit screen stores them) |
 | 1045 | `framePitch` | raw picture: bytes per row |
 | 1046 | `palettePtr` | PAL8: 256 words, `r \| g << 8 \| b << 16` |
-| 1047 | `readIndex` | written by the page with `Atomics.store`: the buffer (0 to 2) it is reading, -1 for none. The page's read: read `frame_seq` s1 and retry while it is odd; read the metadata, `frame_ptr` and `frameIndex`; `Atomics.store` `readIndex` = `frameIndex`; read `frame_seq` s2 and retry if s2 != s1; copy the pixels and, for PAL8, the 256 palette words; read `frame_seq` s3 and retry if s3 != s1; store -1 (or the next index) when done. The game never writes the buffer `readIndex` names. Set to -1 at start-up. In presentMode 0 the 2D page does not set it yet (Task 4), so the game frees no replaced buffer there |
+| 1047 | `readIndex` | written by the page with `Atomics.store`: the buffer (0 to 2) it is reading, -1 for none. The page's read: read `frame_seq` s1 and retry while it is odd; read the metadata, `frame_ptr` and `frameIndex`; `Atomics.store` `readIndex` = `frameIndex`; read `frame_seq` s2 and retry if s2 != s1; copy the pixels and, for PAL8, the 256 palette words; read `frame_seq` s3 and retry if s3 != s1; store -1 (or the next index) when done. The game never writes the buffer `readIndex` names. Set to -1 at start-up. Both 2D and WebGL presenters announce reads, regardless of `presentMode` |
 | 1048 | `frameIndex` | the buffer `frame_ptr` is in (0 to 2), -1 before the first picture. The game stores it between the odd and even `frame_seq` stores; the page reads it with `Atomics.load` |
 | 1049, 1050 | `hdLayer1x`, `hdLayer2x` | the HD vehicle layers; filled by the GPU path, 0 until then |
 | 1051, 1052 | `hdRects`, `hdRectCount` | the HD layers' rectangles; the same |
 | 1053 | `hdSeq` | goes up when the HD layers change; the same |
 | 1054 | `republish` | the page sets 1 (`Atomics.store`) to ask for a full picture; the game takes it with an exchange to 0 |
-| 1055 | `presentMode` | written by the page with `Atomics.store`: 0 publishes RGBA as before (the default), 1 publishes the game's format unconverted. Read at each publish. The page finishes any picture read before it stores `presentMode`. With 1 and HD vehicles on, the 1x frame goes out and the HD layers stay 0. Replaced buffers are freed only with 1, where the page announces `readIndex`; with 0 each resize leaks one buffer for the rest of the session (the old code did the same) until Task 4 has both presenters set `readIndex` |
+| 1055 | `presentMode` | written by the page with `Atomics.store`: 0 publishes RGBA as before (the default), 1 publishes the game's format unconverted. Read at each publish. The page finishes any picture read before it stores `presentMode`. With 1 and HD vehicles on, the 1x frame goes out and the HD layers stay 0. Replaced buffers are collected once neither `readIndex` nor `frameIndex` refers to them in either mode |
 
 The game keeps three buffers for the picture. It writes into the one that is
 neither the newest published nor `readIndex`. After acquiring that writable
 buffer, the game makes `frame_seq` odd before writing any pixels, then writes
-the published metadata and makes `frame_seq` even. A buffer it has outgrown is freed once no slot
-reads or publishes it, but only when the page announces its reads (`presentMode` 1); with
-`presentMode` 0 it is never freed: each resize leaks one buffer for the rest of the session, as
-the old code did, until Task 4 makes both presenters set `readIndex` (`src/web/frame_buffers.c`).
-The published words (`format`, `framePitch`, the frame and game sizes, `palettePtr`), then
-`framePtr` and `frameIndex` are stored, each with an atomic store. The page verifies the
-sequence again after copying the pixels, so a buffer recycled during the copy is discarded.
+the published metadata and makes `frame_seq` even. At the next publish, a
+replaced buffer is freed once its slot is neither the newest published nor
+named by `readIndex`; this applies in both presenter modes because both page
+presenters announce reads (`src/web/frame_buffers.c`). The published words
+(`format`, `framePitch`, the frame and game sizes, `palettePtr`), then
+`framePtr` and `frameIndex` are stored, each with an atomic store. The page
+verifies the sequence again after copying the pixels, so a buffer recycled
+during the copy is discarded.
 
 ## Page to game: exported functions
 

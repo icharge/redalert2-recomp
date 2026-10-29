@@ -6,7 +6,7 @@
 //
 //   node e2e/make-busy-save.mjs [--minutes 5] [--scroll "ArrowUp=2000,ArrowRight=1500"]
 //                               [--out work/perf/busy.sav] [--profile work/perf/profile-fresh]
-//                               [--shots DIR] [--headed]
+//                               [--shots DIR] [--headed] [--edition ra2|ra2md]
 //
 // --scroll holds arrow keys for the milliseconds given, in order, once the minutes are over. The players'
 // start positions are random, so where the busiest base is differs from match to match: look at the
@@ -19,7 +19,7 @@
 // screenshots (Save Game 1194,289; Save 1194,239; the "Mission Saved" box's OK 787,493), and the script stops
 // when the battle is at another size.
 //
-// It needs the imported Yuri's Revenge in --profile: perf.mjs's first run imports the game folder (game/).
+// It needs the selected edition in --profile: perf.mjs's first run imports the game folder (game/).
 // Relative --out and --profile paths are the repo root's. Screenshots go to --shots.
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -36,7 +36,16 @@ import {
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const argv = process.argv.slice(2);
 
-const VALUE_FLAGS = new Set(["--minutes", "--scroll", "--out", "--profile", "--shots", "--url"]);
+const VALUE_FLAGS = new Set([
+  "--minutes",
+  "--scroll",
+  "--out",
+  "--profile",
+  "--shots",
+  "--url",
+  "--build",
+  "--edition",
+]);
 const BOOLEAN_FLAGS = new Set(["--headed"]);
 for (let i = 0; i < argv.length; i++) {
   if (BOOLEAN_FLAGS.has(argv[i])) continue;
@@ -54,6 +63,9 @@ const flag = (name, fallback) => {
   return at >= 0 ? argv[at + 1] : fallback;
 };
 const minutes = Number(flag("--minutes", 5));
+const edition = flag("--edition", "ra2md");
+if (edition !== "ra2" && edition !== "ra2md")
+  throw new Error(`--edition ${edition}: use ra2 or ra2md`);
 const scroll = flag("--scroll", "")
   .split(",")
   .filter(Boolean)
@@ -69,13 +81,20 @@ const shots = path.resolve(flag("--shots", "e2e/shots/busy-save"));
 mkdirSync(shots, { recursive: true });
 mkdirSync(path.dirname(out), { recursive: true });
 
-const base = { ...options(argv), profile, shots, testGame: null, gameBuild: null };
+const build = flag("--build", null);
+const base = {
+  ...options(argv),
+  profile,
+  shots,
+  testGame: null,
+  gameBuild: build ? path.resolve(repo, build) : null,
+};
 const started = Date.now();
 const log = (line) => console.log(`${((Date.now() - started) / 1000).toFixed(0)}s  ${line}`);
 
 let t = null;
 try {
-  t = await openGame(base, { video: "1280x720" });
+  t = await openGame(base);
   await setResolution(t, { w: 1280, h: 720 });
   await setUpBusySkirmish(t, { log });
   await startBattle(t);

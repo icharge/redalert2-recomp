@@ -25,6 +25,7 @@
 #include "recomp_target.h"
 #include "web_api.h"
 #include "frame_buffers.h"
+#include "frame_clock.h"
 #include "hdvox.h"
 #include "mods.h"
 
@@ -96,9 +97,8 @@ EMSCRIPTEN_KEEPALIVE ra2_shared_t *ra2_shared(void) { return &g_sh; }
 /* The primary surface, into the buffer the page is not reading: RGBA bytes (R lowest) with presentMode 0, the
  * game's own format unconverted with presentMode 1. Raw mode publishes the 1x frame even with HD vehicles on:
  * the HD layers are not composed here (the GPU path, Task 5, will fill hd_* and draw them).
- * With presentMode 0 the page does not announce readIndex yet, so frame_collect frees nothing there and each
- * resize leaks one buffer for the rest of the session (frame_buffers.h); the old code leaked the same way.
- * Task 4 makes the 2D presenter set readIndex, and then presentMode 0 can free too. */
+ * Both page presenters announce readIndex, so replaced buffers are reclaimed only after the reader and newest
+ * frame move on. */
 static void publish(const uint8_t *px, int w, int h, int pitch, int bpp, const uint32_t *pal) {
     static uint32_t last_w, last_h;
     double began = emscripten_get_now();
@@ -110,8 +110,7 @@ static void publish(const uint8_t *px, int w, int h, int pitch, int bpp, const u
     uint32_t seq;
     uint8_t *out;
     if (bpp == 8 && !pal) return;
-    /* Replaced buffers are freed only when the page announces its reads (mode 1; frame_buffers.h). */
-    frame_collect(&g_frames, reading, raw);
+    frame_collect(&g_frames, reading);
     if (raw) {
         format = bpp == 16 ? RA2_FMT_RGB565 : bpp == 8 ? RA2_FMT_PAL8 : RA2_FMT_BGRX;
         row = (uint32_t)w * (bpp == 16 ? 2u : bpp == 8 ? 1u : 4u);
@@ -470,6 +469,7 @@ void web_presenter_start(int (*menus_use_windows_cursor)(void)) {
 
 void web_presenter_pump(void) {
     static uint32_t next_fps, last_frames;
+    static int fps_started;
     drain_input();
     update_cursor();
     /* Dialog paints can finish without a primary Unlock. Sample the game's
@@ -487,9 +487,9 @@ void web_presenter_pump(void) {
         }
         g_frame_at = at, g_frame_seen = seen;
     }
-    if ((int32_t)(now - next_fps) >= 0) {
+    if (web_fps_deadline_due(now, next_fps, fps_started)) {
         uint32_t frames = MEM32(RA2_GAME_FRAME_VA);
-        if (next_fps) {
+        if (fps_started) {
             uint32_t dt = now - (next_fps - 1000), fps = dt ? (frames - last_frames) * 1000u / dt : 0;
             char line[96];
             snprintf(line, sizeof line,
@@ -512,6 +512,7 @@ void web_presenter_pump(void) {
             ra2_clockstats_take(discard);
         }
         last_frames = frames;
-        next_fps = now + 1000;
+        next_fps = now + 1000u;
+        fps_started = 1;
     }
 }

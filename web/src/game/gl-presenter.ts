@@ -26,6 +26,14 @@ export class GlPresenter implements GamePresenter {
   private cssSize = { width: 1, height: 1 };
   private drawMemory: WasmMemory | null = null;
   private rect = { x: 0, y: 0, width: 1, height: 1 };
+  private cursorBounds: DOMRect | null = null;
+  private uploadBuffer: ArrayBufferLike | null = null;
+  private uploadBytes: Uint8Array | null = null;
+  private uploadWords: Uint16Array | null = null;
+  private cursorWidth = Number.NaN;
+  private cursorHeight = Number.NaN;
+  private cursorLeft = Number.NaN;
+  private cursorTop = Number.NaN;
   private observer: ResizeObserver;
 
   constructor(
@@ -52,9 +60,11 @@ export class GlPresenter implements GamePresenter {
     this.paletteTexture = this.createTexture();
     this.canvas.style.width = this.canvas.style.height = "100%";
     this.canvas.style.objectFit = "fill";
+    if (cursorOverlay) this.cursorBounds = canvas.getBoundingClientRect();
     this.observer = new ResizeObserver(([entry]) => {
       if (!entry) return;
       this.cssSize = { width: entry.contentRect.width, height: entry.contentRect.height };
+      if (this.cursorOverlay) this.cursorBounds = canvas.getBoundingClientRect();
       this.resize();
     });
     this.observer.observe(canvas);
@@ -64,6 +74,13 @@ export class GlPresenter implements GamePresenter {
 
   private word(index: number): number {
     return Atomics.load((this.drawMemory ?? this.memory()).HEAP32, (this.shared >> 2) + index);
+  }
+  private cacheUploadViews(memory: WasmMemory): void {
+    const buffer = memory.HEAPU8.buffer;
+    if (buffer === this.uploadBuffer) return;
+    this.uploadBuffer = buffer;
+    this.uploadBytes = memory.HEAPU8;
+    this.uploadWords = new Uint16Array(buffer);
   }
   private createTexture(): WebGLTexture {
     const texture = this.gl.createTexture();
@@ -176,21 +193,20 @@ export class GlPresenter implements GamePresenter {
     this.drawMemory = mem;
     const words = mem.HEAP32;
     const base = this.shared >> 2;
-    const word = (i: number) => Atomics.load(words, base + i);
-    const seq = word(Shared.frameSeq);
+    const seq = this.word(Shared.frameSeq);
     if (!this.lost && seq >= 0 && !(seq & 1) && seq !== this.frameSeq) {
-      const w = word(Shared.frameW),
-        h = word(Shared.frameH),
-        ptr = word(Shared.framePtr) >>> 0;
-      const pitch = word(Shared.framePitch),
-        fmt = word(Shared.format),
-        index = word(Shared.frameIndex);
-      if (w > 0 && h > 0 && ptr > 0 && [0, 1, 2, 3].includes(fmt)) {
+      const w = this.word(Shared.frameW),
+        h = this.word(Shared.frameH),
+        ptr = this.word(Shared.framePtr) >>> 0;
+      const pitch = this.word(Shared.framePitch),
+        fmt = this.word(Shared.format),
+        index = this.word(Shared.frameIndex);
+      if (w > 0 && h > 0 && ptr > 0 && fmt >= 0 && fmt <= 3) {
         Atomics.store(words, base + Shared.readIndex, index);
         if (
-          word(Shared.frameSeq) !== seq ||
-          word(Shared.frameIndex) !== index ||
-          word(Shared.framePtr) >>> 0 !== ptr
+          this.word(Shared.frameSeq) !== seq ||
+          this.word(Shared.frameIndex) !== index ||
+          this.word(Shared.framePtr) >>> 0 !== ptr
         ) {
           Atomics.store(words, base + Shared.readIndex, -1);
           this.drawMemory = null;
@@ -210,7 +226,7 @@ export class GlPresenter implements GamePresenter {
             // game publishes another frame concurrently, the texture now contains
             // this sequence and capture() must report that sequence for its pixels.
             this.uploadedSeq = seq;
-            if (word(Shared.frameSeq) === seq) {
+            if (this.word(Shared.frameSeq) === seq) {
               this.frameSeq = seq;
               this.paint(w, h, fmt);
               this.pictures++;
@@ -219,7 +235,7 @@ export class GlPresenter implements GamePresenter {
         } finally {
           Atomics.store(words, base + Shared.readIndex, -1);
         }
-      } else if (![0, 1, 2, 3].includes(fmt)) {
+      } else if (fmt < 0 || fmt > 3) {
         if (!this.errorReported) {
           this.errorReported = true;
           console.error(`Unsupported game pixel format ${fmt}`);
@@ -227,18 +243,20 @@ export class GlPresenter implements GamePresenter {
         }
       }
     }
-    const cursorSeq = word(Shared.cursorSeq);
+    const cursorSeq = this.word(Shared.cursorSeq);
     if (cursorSeq !== this.cursorSeq) {
       this.cursorSeq = cursorSeq;
       this.setCursor(
-        word(Shared.cursorKind),
-        word(Shared.cursorHotX),
-        word(Shared.cursorHotY),
+        this.word(Shared.cursorKind),
+        this.word(Shared.cursorHotX),
+        this.word(Shared.cursorHotY),
         mem.HEAPU8,
       );
     }
-    this.drawCursorOverlay(word);
-    this.capturePointer?.(word(Shared.frameW) > 0 && word(Shared.cursorKind) === CursorKind.None);
+    this.drawCursorOverlay();
+    this.capturePointer?.(
+      this.word(Shared.frameW) > 0 && this.word(Shared.cursorKind) === CursorKind.None,
+    );
     this.drawMemory = null;
   }
 
@@ -249,6 +267,10 @@ export class GlPresenter implements GamePresenter {
     // next animation tick instead of constructing an out-of-bounds typed array.
     const uploadMemory = this.memory();
     this.drawMemory = uploadMemory;
+    this.cacheUploadViews(uploadMemory);
+    const uploadBytes = this.uploadBytes;
+    const uploadWords = this.uploadWords;
+    if (!uploadBytes || !uploadWords) return false;
     const bytesPerPixel = fmt === PixelFormat.Rgb565 ? 2 : fmt === PixelFormat.Pal8 ? 1 : 4;
     const needed = pitch * h;
     if (
@@ -256,7 +278,7 @@ export class GlPresenter implements GamePresenter {
       !Number.isSafeInteger(needed) ||
       ptr < 0 ||
       needed < 0 ||
-      ptr + needed > uploadMemory.HEAPU8.byteLength
+      ptr + needed > uploadBytes.byteLength
     )
       return false;
 
@@ -275,14 +297,23 @@ export class GlPresenter implements GamePresenter {
       gl.texImage2D(gl.TEXTURE_2D, 0, internal, w, h, 0, format, type, null);
     }
     gl.pixelStorei(gl.UNPACK_ROW_LENGTH, pitch / bytesPerPixel);
-    const pixels =
-      fmt === PixelFormat.Rgb565
-        ? new Uint16Array(uploadMemory.HEAPU8.buffer, ptr, (pitch / 2) * h)
-        : uploadMemory.HEAPU8.subarray(ptr, ptr + needed);
-    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, w, h, format, type, pixels);
+    const pixels = fmt === PixelFormat.Rgb565 ? uploadWords : uploadBytes;
+    gl.texSubImage2D(
+      gl.TEXTURE_2D,
+      0,
+      0,
+      0,
+      w,
+      h,
+      format,
+      type,
+      pixels,
+      fmt === PixelFormat.Rgb565 ? ptr / 2 : ptr,
+    );
     gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 0);
     if (fmt === PixelFormat.Pal8) {
       const palette = wordFrom(uploadMemory.HEAP32, this.shared, Shared.palettePtr) >>> 0;
+      if (palette + 256 * 4 > uploadBytes.byteLength) return false;
       gl.bindTexture(gl.TEXTURE_2D, this.paletteTexture);
       gl.texImage2D(
         gl.TEXTURE_2D,
@@ -293,7 +324,8 @@ export class GlPresenter implements GamePresenter {
         0,
         gl.RGBA,
         gl.UNSIGNED_BYTE,
-        new Uint8Array(uploadMemory.HEAPU8.buffer, palette, 256 * 4),
+        uploadBytes,
+        palette,
       );
     }
     return true;
@@ -335,7 +367,10 @@ export class GlPresenter implements GamePresenter {
     const scale = this.scale === "integer" ? Math.max(1, Math.floor(factor)) : factor;
     const rw = capture ? 1 : (w * scale) / (box.width || 1);
     const rh = capture ? 1 : (h * scale) / (box.height || 1);
-    this.rect = { x: (1 - rw) / 2, y: (1 - rh) / 2, width: rw, height: rh };
+    this.rect.x = (1 - rw) / 2;
+    this.rect.y = (1 - rh) / 2;
+    this.rect.width = rw;
+    this.rect.height = rh;
     const barsVisible = !capture && this.bars && (rw < 1 || rh < 1);
     if (
       !capture &&
@@ -407,22 +442,48 @@ export class GlPresenter implements GamePresenter {
     gl.deleteTexture(target);
     return { width, height, frameSeq, data };
   }
-  private drawCursorOverlay(word: (i: number) => number): void {
+  private drawCursorOverlay(): void {
     const cursor = this.cursorOverlay;
     if (!cursor) return;
-    if (word(Shared.cursorKind) !== CursorKind.Overlay) {
-      cursor.style.display = "none";
+    if (this.word(Shared.cursorKind) !== CursorKind.Overlay) {
+      if (cursor.style.display !== "none") cursor.style.display = "none";
       return;
     }
-    const w = word(Shared.gameW) || this.word(Shared.frameW),
-      h = word(Shared.gameH) || this.word(Shared.frameH);
-    const rect = this.canvas.getBoundingClientRect();
+    const w = this.word(Shared.gameW) || this.word(Shared.frameW),
+      h = this.word(Shared.gameH) || this.word(Shared.frameH);
+    const rect = this.cursorBounds;
+    if (!rect) {
+      if (cursor.style.display !== "none") cursor.style.display = "none";
+      return;
+    }
     const s = Math.min(rect.width / w, rect.height / h);
-    cursor.style.width = `${CURSOR_PX * s}px`;
-    cursor.style.height = `${CURSOR_PX * s}px`;
-    cursor.style.left = `${rect.left + (rect.width - w * s) / 2 + (word(Shared.pointerX) - word(Shared.cursorHotX)) * s}px`;
-    cursor.style.top = `${rect.top + (rect.height - h * s) / 2 + (word(Shared.pointerY) - word(Shared.cursorHotY)) * s}px`;
-    cursor.style.display = "block";
+    const width = CURSOR_PX * s;
+    const height = CURSOR_PX * s;
+    const left =
+      rect.left +
+      (rect.width - w * s) / 2 +
+      (this.word(Shared.pointerX) - this.word(Shared.cursorHotX)) * s;
+    const top =
+      rect.top +
+      (rect.height - h * s) / 2 +
+      (this.word(Shared.pointerY) - this.word(Shared.cursorHotY)) * s;
+    if (width !== this.cursorWidth) {
+      cursor.style.setProperty("width", `${width}px`);
+      this.cursorWidth = width;
+    }
+    if (height !== this.cursorHeight) {
+      cursor.style.setProperty("height", `${height}px`);
+      this.cursorHeight = height;
+    }
+    if (left !== this.cursorLeft) {
+      cursor.style.setProperty("left", `${left}px`);
+      this.cursorLeft = left;
+    }
+    if (top !== this.cursorTop) {
+      cursor.style.setProperty("top", `${top}px`);
+      this.cursorTop = top;
+    }
+    if (cursor.style.display !== "block") cursor.style.display = "block";
   }
   private setCursor(kind: number, hotX: number, hotY: number, heap: Uint8Array): void {
     if (this.cursorOverlay) this.cursorOverlay.style.display = "none";

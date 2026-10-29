@@ -93,6 +93,21 @@ describe("arguments", () => {
     ]);
   });
 
+  it("maps the legacy game speed-control flag to the web host option", () => {
+    expect(gameArguments(["-SPEEDCONTROL"])).toEqual([
+      "--run",
+      "--game",
+      "/game",
+      "--speedcontrol",
+    ]);
+    expect(gameArguments(["-speedcontrol"])).toEqual([
+      "--run",
+      "--game",
+      "/game",
+      "--speedcontrol",
+    ]);
+  });
+
   it("takes arg= values from the URL query, in order", () => {
     expect(argsFromQuery("?arg=--hd-voxels&x=1&arg=--debuglog")).toEqual([
       "--hd-voxels",

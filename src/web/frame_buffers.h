@@ -9,7 +9,7 @@
  * game makes frame_seq odd before writing pixels, then writes the published
  * words (format, pitch, sizes, palette_ptr, framePtr, frameIndex), then makes
  * frame_seq even. The page checks the sequence again after copying pixels.
- * The page's reads, which Task 4 implements (protocol.md): read frame_seq s1
+ * The page's reads (protocol.md): read frame_seq s1
  * and retry while it is odd; read the metadata, framePtr and frameIndex; store
  * readIndex = frameIndex (Atomics.store); read frame_seq s2 and retry if
  * s2 != s1; only then read the pixels; store -1 (or the next index) when done.
@@ -18,16 +18,13 @@
  * consistent atomics on them.
  *
  * Replaced buffers. A resize moves a slot to a bigger buffer and keeps the old
- * one in old[] until frame_collect frees it. frame_collect frees only when the
- * page announces its reads (presentMode 1). In presentMode 0 the page does not
- * set readIndex yet (the 2D presenter, Task 4), so a replaced buffer may still
- * be read: it is never freed. Each resize leaks one buffer for the rest of the
- * session, as the old code did. Task 4 makes both presenters set readIndex;
- * then presentMode 0 can free too.
+ * one in old[] until frame_collect sees that the page is no longer reading it
+ * and it is no longer newest. Both presenters announce readIndex, independent
+ * of presentMode, so this rule applies to RGBA and raw frames.
  *
  * frame_acquire never frees. The game calls frame_collect before frame_acquire
  * at each publish, with the same reading, so a slot it picks has nothing pending
- * when it is mode 1.
+ * before choosing a buffer to replace.
  *
  * Only the game's thread calls these. Plain C with no Emscripten headers, so
  * frame_buffers_selftest.c runs under node.
@@ -40,7 +37,7 @@ typedef struct {
     uint8_t *ptr[3];        /* the buffer of each slot, NULL until the slot is first used */
     size_t cap[3];          /* bytes ptr[i] holds */
     int newest;             /* the slot frame_publish last named; -1 before the first */
-    uint8_t *old[3];        /* a slot's buffer replaced by a bigger one: freed by frame_collect (mode 1 only) */
+    uint8_t *old[3];        /* a slot's replaced buffer: freed when it is no longer read or newest */
 } frame_bufs_t;
 
 /* The slot that is neither newest nor reading (either may be -1). */
@@ -60,9 +57,8 @@ void frame_publish(frame_bufs_t *b, int index);
 uint32_t frame_publish_begin(volatile uint32_t *sequence);
 void frame_publish_end(volatile uint32_t *sequence, uint32_t previous);
 
-/* Frees the replaced buffers that no slot reads or publishes any more. Frees nothing unless
- * page_announces_reads (presentMode 1): see the comment above. */
-void frame_collect(frame_bufs_t *b, int reading, int page_announces_reads);
+/* Frees replaced buffers that are neither being read nor currently published. */
+void frame_collect(frame_bufs_t *b, int reading);
 
 #ifdef FRAME_BUFFERS_SELFTEST
 /* The selftest counts the frees (its own build only). */

@@ -23,6 +23,7 @@ export function options(argv) {
     pageArgs: argv.filter((a, i) => argv[i - 1] === "--arg"),
     testGame: option("--game", null),
     gameBuild: option("--build", null),
+    edition: option("--edition", "ra2md"),
     // a persistent Chrome profile: an import (OPFS) survives between runs (perf.mjs)
     profile: option("--profile", null),
   };

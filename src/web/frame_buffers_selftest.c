@@ -26,8 +26,9 @@ static void publication_sequence_brackets_pixel_writes(void) {
 }
 
 /* What the presenter does for one frame: collect, take a buffer, "write" it, publish it. */
-static uint8_t *make(frame_bufs_t *b, int reading, size_t bytes, int announces, int *index) {
-    frame_collect(b, reading, announces);
+static uint8_t *make(frame_bufs_t *b, int reading, size_t bytes, int present_mode, int *index) {
+    (void)present_mode; /* both page presenters announce readIndex regardless of present mode */
+    frame_collect(b, reading);
     uint8_t *p = frame_acquire(b, reading, bytes);
     assert(p);
     *index = frame_index_of(b, p);
@@ -111,41 +112,37 @@ static void pending_reading_slot_survives_collect(void) {
     make(&b, 0, 400, 1, &i);                             /* the page reads 0; picks 1, replacing bb; newest 1 */
     assert(i == 1 && b.old[0] == a && b.old[1] == bb && frees == 0);
 
-    frame_collect(&b, 0, 1);                             /* slot 0 is read: a survives */
+    frame_collect(&b, 0);                                /* slot 0 is read: a survives */
     assert(b.old[0] == a && frees == 0);
 
     /* the page moves on to slot 2; slot 0 is released, but a frame_acquire alone frees nothing */
     frame_acquire(&b, 2, 100);
     assert(b.old[0] == a && frees == 0);
-    frame_collect(&b, 2, 1);                             /* the next collect frees a; slot 1 is newest and kept */
+    frame_collect(&b, 2);                                /* the next collect frees a; slot 1 is newest and kept */
     assert(b.old[0] == NULL && frees == 1 && b.old[1] == bb);
 
-    frame_collect(&b, 2, 1);
+    frame_collect(&b, 2);
     assert(frees == 1);
     for (int k = 0; k < 3; k++) free(b.ptr[k]);
     free(b.old[1]);
 }
 
-/* presentMode 0: the page does not announce its reads, so nothing is freed; the replaced buffers are kept
- * (the one leak per resize the ruling allows). */
-static void presentmode0_never_frees(void) {
+/* The 2D presenter announces reads too. A replaced slot stays alive while it
+ * is newest or being read, then is reclaimed once both have moved elsewhere. */
+static void rgba_resize_reclaims_after_release(void) {
     frame_bufs_t b = { .newest = -1 };
     frees = 0;
     int i;
     uint8_t *a = make(&b, -1, 100, 0, &i);               /* 0 */
     make(&b, -1, 100, 0, &i);                            /* 1 */
-    uint8_t *c = make(&b, 0, 100, 0, &i);                /* 2 */
+    make(&b, 0, 100, 0, &i);                             /* 2 */
     make(&b, 1, 400, 0, &i);                             /* slot 0 replaced: a waits */
     assert(i == 0 && b.old[0] == a);
-    make(&b, 1, 400, 0, &i);                             /* slot 2 replaced: c waits; a is never freed */
-    assert(i == 2 && b.old[2] == c && b.old[0] == a && frees == 0);
-    make(&b, 1, 400, 0, &i);                             /* room in slot 0: nothing is replaced or freed */
-    assert(i == 0 && b.old[0] == a && frees == 0);
-    frame_collect(&b, -1, 0);
-    assert(frees == 0);
-    free(a);                                             /* replaced: waiting in old[] */
-    free(c);
-    for (int k = 0; k < 3; k++) free(b.ptr[k]);          /* includes bb, which slot 1 still holds */
+    make(&b, 0, 400, 0, &i);                            /* slot 0 is still being read */
+    assert(b.old[0] == a && frees == 0);
+    make(&b, 1, 400, 0, &i);                            /* slot 0 released: old buffer is reclaimed */
+    assert(b.old[0] == NULL && frees == 1);
+    for (int k = 0; k < 3; k++) free(b.ptr[k]);
 }
 
 int main(void) {
@@ -154,7 +151,7 @@ int main(void) {
     acquire_never_returns_the_read_buffer();
     resize_frees_only_after_release();
     pending_reading_slot_survives_collect();
-    presentmode0_never_frees();
+    rgba_resize_reclaims_after_release();
     printf("frame_buffers selftest: ok\n");
     return 0;
 }
