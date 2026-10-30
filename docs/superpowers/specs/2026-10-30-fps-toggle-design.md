@@ -46,3 +46,10 @@ overlay”; the in-game dialog also explains the existing Alt+Shift+F shortcut.
 Update `FrameStats`, `SettingsDialog`, `LauncherGameSettings`, and their `Play`
 wiring, plus focused tests for preference persistence and live control
 synchronization. No game protocol changes are needed.
+
+## Visual capture
+
+[FPS toggle in Game settings](assets/2026-10-30-fps-toggle/fps-toggle-settings-preview.png)
+shows the actual `SettingsDialog` component with the FPS overlay enabled, over
+an existing Red Alert 2 main-menu capture. This is a component preview, not a
+live game-session screenshot.
