@@ -4,6 +4,10 @@ import type { GamePresenter, PresenterCounters } from "../game/presenter";
 import { useGameState } from "../game/store";
 import styles from "./FrameStats.module.css";
 
+// Keep the original imports available for existing diagnostic consumers.
+export { statsWanted } from "../storage/stats-preferences";
+export { writeStatsPreference as rememberStats } from "../storage/stats-preferences";
+
 /** What the overlay shows, from two samples of the presenter's totals a second or so apart. */
 export interface FrameRates {
   /** pictures the game published and the page drew, per second */
@@ -49,37 +53,16 @@ export function describeFrameStats(
   ];
 }
 
-const KEY = "ra2-stats";
-
-/** Whether the overlay was asked for: `?stats` in the address, or switched on last time. */
-export function statsWanted(search: string, storage: Pick<Storage, "getItem"> | null): boolean {
-  if (new URLSearchParams(search).has("stats")) return true;
-  try {
-    return storage?.getItem(KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-
-export function rememberStats(on: boolean, storage: Pick<Storage, "setItem"> | null): void {
-  try {
-    storage?.setItem(KEY, on ? "1" : "0");
-  } catch {
-    // no storage (a private window): the choice just does not last
-  }
-}
-
-function localStorageOrNull(): Storage | null {
-  try {
-    return window.localStorage;
-  } catch {
-    return null;
-  }
-}
-
 /** A small readout over the picture: Alt+Shift+F shows or hides it. */
-export function FrameStats({ presenter }: { presenter: GamePresenter | null }) {
-  const [on, setOn] = useState(() => statsWanted(window.location.search, localStorageOrNull()));
+export function FrameStats({
+  presenter,
+  on,
+  onToggle,
+}: {
+  presenter: GamePresenter | null;
+  on: boolean;
+  onToggle(): void;
+}) {
   const [rates, setRates] = useState<FrameRates>({ pictures: 0, ticks: 0, drawMs: 0 });
   const fps = useGameState((s) => s.fps);
   const ms = useGameState((s) => s.ms);
@@ -90,15 +73,12 @@ export function FrameStats({ presenter }: { presenter: GamePresenter | null }) {
     const onKey = (event: KeyboardEvent) => {
       if (event.altKey && event.shiftKey && event.code === "KeyF") {
         event.preventDefault();
-        setOn((was) => {
-          rememberStats(!was, localStorageOrNull());
-          return !was;
-        });
+        onToggle();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [onToggle]);
 
   useEffect(() => {
     if (!on || !presenter) return;

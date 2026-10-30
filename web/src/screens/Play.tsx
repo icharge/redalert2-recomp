@@ -39,6 +39,7 @@ import { FrameStats } from "./FrameStats";
 import { LoadingScreen } from "./LoadingScreen";
 import styles from "./Play.module.css";
 import { leaveGame } from "../game/lifecycle";
+import { statsWanted, writeStatsPreference } from "../storage/stats-preferences";
 
 const runtimeLive = () => !["exited", "crashed"].includes(gameStore.getSnapshot().phase);
 
@@ -58,6 +59,14 @@ function startOnce(files: FileSource, thaiFontFix: ThaiFontPreference): Promise<
   return window.ra2Session;
 }
 
+function browserStorage(): Storage | null {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
 /** The canvas fills the window; the game draws into it through shared memory. React never touches it again. */
 export function Play({ files }: { files: FileSource }) {
   const stage = useRef<HTMLDivElement>(null);
@@ -65,6 +74,9 @@ export function Play({ files }: { files: FileSource }) {
   const textInput = useRef<HTMLTextAreaElement>(null);
   const cursor = useRef<HTMLImageElement>(null);
   const [startError, setStartError] = useState<Error | null>(null);
+  const [statsOn, setStatsOn] = useState(() =>
+    statsWanted(window.location.search, browserStorage()),
+  );
   const [presenter, setPresenter] = useState<GamePresenter | null>(null);
   const [audio, setAudio] = useState<GameAudio | null>(null);
   const [volume, setVolume] = useState(1);
@@ -87,6 +99,11 @@ export function Play({ files }: { files: FileSource }) {
   const settings = useGameState((s) => s.settings);
   const restart = useGameState((s) => s.restart);
   const [exitError, setExitError] = useState<string | null>(null);
+  const updateStats = useCallback((on: boolean) => {
+    setStatsOn(on);
+    writeStatsPreference(on, browserStorage());
+  }, []);
+  const toggleStats = useCallback(() => updateStats(!statsOn), [statsOn, updateStats]);
   const leaving = useRef(false);
   const returnToLauncher = useCallback(() => {
     if (leaving.current) return;
@@ -441,6 +458,8 @@ export function Play({ files }: { files: FileSource }) {
       </Dialog.Root>
       <SettingsDialog
         settings={settings}
+        statsOn={statsOn}
+        onStatsChange={updateStats}
         fullscreen={fullscreen}
         pointerLocked={pointerLocked}
         onFullscreen={toggleFullscreen}
@@ -466,7 +485,7 @@ export function Play({ files }: { files: FileSource }) {
           </Button>
         </Callout.Root>
       )}
-      <FrameStats presenter={presenter} />
+      <FrameStats presenter={presenter} on={statsOn} onToggle={toggleStats} />
       {audio && (
         <SoundControl
           audio={audio}

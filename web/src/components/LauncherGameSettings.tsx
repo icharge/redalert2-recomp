@@ -12,12 +12,14 @@ import {
   writeVideoPreference,
 } from "../storage/video-preferences";
 import styles from "./LauncherGameSettings.module.css";
+import { readStatsPreference, writeStatsPreference } from "../storage/stats-preferences";
 
 const thaiFonts = [...BUILT_IN_THAI_FONTS].sort((a, b) => a.name.localeCompare(b.name));
 
 export function LauncherGameSettings({ game, onClose }: { game: GameRecord; onClose(): void }) {
   const [preference, setPreference] = useState(() => readThaiFontPreference(game.storage));
   const [videoPreference, setVideoPreference] = useState(() => readVideoPreference(game.storage));
+  const [fpsOverlay, setFpsOverlay] = useState(() => readStatsPreference());
   const selectedFont = thaiFonts.find((font) => font.id === preference.fontId) ?? thaiFonts[0]!;
   const fontPreview = (asset: string) =>
     `${import.meta.env.BASE_URL}thai-font-previews/font-preview-${asset}.png`;
@@ -39,6 +41,19 @@ export function LauncherGameSettings({ game, onClose }: { game: GameRecord; onCl
           Set the game resolution and Thai font fix for the next launch.
         </Dialog.Description>
         <Flex direction="column" gap="4">
+          <Flex justify="between" align="center" gap="3">
+            <Text as="label" htmlFor={`launcher-fps-overlay-${game.slot}-${game.id}`}>
+              FPS overlay
+            </Text>
+            <Switch
+              id={`launcher-fps-overlay-${game.slot}-${game.id}`}
+              checked={fpsOverlay}
+              onCheckedChange={(on) => {
+                setFpsOverlay(on);
+                writeStatsPreference(on);
+              }}
+            />
+          </Flex>
           <Flex justify="between" align="center" gap="3">
             <Text as="label" htmlFor={`launcher-resolution-${game.slot}-${game.id}`}>
               Resolution

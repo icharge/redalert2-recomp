@@ -11,6 +11,8 @@ export function SettingsDialog({
   pointerLocked,
   onFullscreen,
   onPointerLock,
+  statsOn,
+  onStatsChange,
 }: {
   settings: HostSettings | null;
   command(key: number, value: number, extra?: number): void;
@@ -19,6 +21,8 @@ export function SettingsDialog({
   pointerLocked?: boolean;
   onFullscreen?(): void;
   onPointerLock?(): void;
+  statsOn: boolean;
+  onStatsChange(on: boolean): void;
 }) {
   if (!settings) return null;
   return (
@@ -88,6 +92,15 @@ export function SettingsDialog({
           <Text size="1" color="gray">
             Modern controls: left-click to select, right-click to order. Shift-click a build icon to
             queue five.
+          </Text>
+          <Flex justify="between" align="center" gap="3">
+            <Text as="label" htmlFor="setting-fps-overlay">
+              FPS overlay
+            </Text>
+            <Switch id="setting-fps-overlay" checked={statsOn} onCheckedChange={onStatsChange} />
+          </Flex>
+          <Text size="1" color="gray">
+            Press Alt+Shift+F to toggle the FPS overlay.
           </Text>
           <Text size="2">
             Mod: {settings.mod || "Original game"}. Press F9 at the main menu to switch.
