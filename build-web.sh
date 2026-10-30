@@ -3,9 +3,10 @@
 # runtime/win32hle, compiled to WebAssembly by Emscripten (src/web,
 # cmake/emscripten.cmake, docs/web/toolchain.md).
 #
-#   ./build-web.sh            # build-web/ra2.js + ra2.wasm: Yuri's Revenge
-#   RA2_TARGET=game ./build-web.sh   # Red Alert 2, alongside Yuri's Revenge
-#   node build-web/ra2.js --run --game ./game --headless --mute
+#   ./build-web.sh            # both editions into build-web/: ra2md.* and ra2.*
+#   RA2_TARGET=gamemd ./build-web.sh # Yuri's Revenge only
+#   RA2_TARGET=game ./build-web.sh   # Red Alert 2 only (build-web-game/)
+#   node build-web/ra2md.js --run --game ./game --headless --mute
 #
 # Needs a lift (run_lift.py), cmake, ninja and emsdk, which it finds through
 # $EMSDK, else ../emsdk. On Windows use build-web.cmd.
@@ -14,11 +15,12 @@ cd "$(dirname "$0")"
 # The Emscripten this was built and tested with: another one may work, but a
 # bug report should say which.
 EMSCRIPTEN_VERSION=6.0.12
-RA2_TARGET=${RA2_TARGET:-gamemd}
+RA2_TARGET=${RA2_TARGET:-both}
 case "$RA2_TARGET" in
   gamemd) BUILD_DIR=${BUILD_DIR:-build-web} ;;
   game) BUILD_DIR=${BUILD_DIR:-build-web-game} ;;
-  *) echo "RA2_TARGET must be gamemd or game" >&2; exit 1 ;;
+  both) BUILD_DIR=${BUILD_DIR:-build-web} ;;
+  *) echo "RA2_TARGET must be gamemd, game or both" >&2; exit 1 ;;
 esac
 if [ -z "$PCRECOMP" ]; then
   if [ ! -d ../pcrecomp ] && [ -d ../tools/runtime/win32hle ]; then PCRECOMP=$(cd ../tools && pwd)

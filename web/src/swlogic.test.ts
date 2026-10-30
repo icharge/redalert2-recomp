@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   buildIdOf,
+  clearIsolationReload,
   gameCacheName,
   isGameBuildFile,
-  shouldReloadForIsolation,
+  isolationReloadAllowed,
+  markIsolationReload,
+  MAX_ISOLATION_RELOADS,
+  RELOAD_WINDOW_MS,
   staleGameCaches,
   withIsolation,
 } from "./swlogic";
@@ -79,11 +83,44 @@ describe("withIsolation", () => {
   });
 });
 
-describe("shouldReloadForIsolation", () => {
-  it("reloads once, when a worker is in charge and the page was loaded without the headers", () => {
-    expect(shouldReloadForIsolation(false, false, true)).toBe(true);
-    expect(shouldReloadForIsolation(true, false, true)).toBe(false);
-    expect(shouldReloadForIsolation(false, true, true)).toBe(false);
-    expect(shouldReloadForIsolation(false, false, false)).toBe(false);
+function attemptStore() {
+  const items = new Map<string, string>();
+  return {
+    getItem: (key: string) => items.get(key) ?? null,
+    setItem: (key: string, value: string) => void items.set(key, value),
+    removeItem: (key: string) => void items.delete(key),
+  };
+}
+
+describe("isolation reload policy", () => {
+  it("allows the first attempt, then waits before another", () => {
+    const storage = attemptStore();
+    const key = "ra2-isolation-reload:/emu/";
+    expect(isolationReloadAllowed(storage, key, 0)).toBe(true);
+    markIsolationReload(storage, key, 1_000);
+    expect(isolationReloadAllowed(storage, key, 1_000)).toBe(false);
+    expect(isolationReloadAllowed(storage, key, 1_000 + RELOAD_WINDOW_MS - 1)).toBe(false);
+    expect(isolationReloadAllowed(storage, key, 1_000 + RELOAD_WINDOW_MS)).toBe(true);
+  });
+
+  it("stops after the last attempt, and starts over once the page is isolated", () => {
+    const storage = attemptStore();
+    const key = "ra2-isolation-reload:/emu/";
+    for (let i = 0; i < MAX_ISOLATION_RELOADS; i++) {
+      expect(isolationReloadAllowed(storage, key, i * RELOAD_WINDOW_MS)).toBe(true);
+      markIsolationReload(storage, key, i * RELOAD_WINDOW_MS);
+    }
+    const later = MAX_ISOLATION_RELOADS * RELOAD_WINDOW_MS + RELOAD_WINDOW_MS;
+    expect(isolationReloadAllowed(storage, key, later)).toBe(false);
+    clearIsolationReload(storage, key);
+    expect(isolationReloadAllowed(storage, key, later)).toBe(true);
+  });
+
+  it("keeps deployments on one origin apart, and ignores a bad record", () => {
+    const storage = attemptStore();
+    markIsolationReload(storage, "ra2-isolation-reload:/emu/", 1_000);
+    expect(isolationReloadAllowed(storage, "ra2-isolation-reload:/", 1_000)).toBe(true);
+    storage.setItem("ra2-isolation-reload:/", "not json");
+    expect(isolationReloadAllowed(storage, "ra2-isolation-reload:/", 1_000)).toBe(true);
   });
 });

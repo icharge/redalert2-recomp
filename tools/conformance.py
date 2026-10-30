@@ -19,7 +19,7 @@ with a message and exits 0, so it can sit in CI without the corpus.
     py -3 tools/conformance.py --host web   # the browser build (build-web.sh) under Node
     py -3 tools/conformance.py --host web --memfs   # ...with the files in memory, as in a browser
 
---host web boots build-web/ra2.js (or build-web-game/ for RA2_TARGET=game)
+--host web boots build-web/ra2md.js (or build-web/ra2.js for RA2_TARGET=game)
 under Node with game/ mounted, headless, and stops the moment the main menu
 opens. Its milestones are the lines the web host prints (the intro is a Bink
 movie, which the browser build does not play yet, so that milestone is the
@@ -86,7 +86,25 @@ WEB_MILESTONES = [
     ('game init completed', r'Game Init Completed'),
     ('main menu reached', r'\[dialog\] open 0xE2'),
 ]
-WEB_HOST = os.path.join(ROOT, 'build-web-game' if GAME else 'build-web', 'ra2.js')
+def _web_host():
+    """The Node-runnable module. A tree that builds both editions names them
+    after the edition (ra2md.js for Yuri's Revenge, ra2.js for Red Alert 2); an
+    older single-edition tree holds ra2.js for either."""
+    both_tree = os.path.join(ROOT, 'build-web', 'ra2md.js')
+    if GAME:
+        if os.path.exists(os.path.join(ROOT, 'build-web-game', 'ra2.js')):
+            return os.path.join(ROOT, 'build-web-game', 'ra2.js')
+        # A lone build-web/ra2.js is an older Yuri's Revenge build, not this one.
+        if os.path.exists(both_tree):
+            return os.path.join(ROOT, 'build-web', 'ra2.js')
+        return os.path.join(ROOT, 'build-web-game', 'ra2.js')
+    preferred = os.path.join(ROOT, 'build-web', 'ra2md.js')
+    if os.path.exists(preferred):
+        return preferred
+    return os.path.join(ROOT, 'build-web', 'ra2.js')
+
+
+WEB_HOST = _web_host()
 
 
 def boot_web(seconds, memfs=False):
@@ -167,7 +185,7 @@ def main():
     milestones = WEB_MILESTONES if web else MILESTONES
     if not (os.path.exists(host) and os.path.isdir(os.path.join(ROOT, 'game'))):
         print('conformance: skipped -- needs game/ (your copy) and %s '
-              '(README, Building from source)' % ('build-web/ra2.js (build-web.sh)' if web else 'build/ra2.exe'))
+              '(README, Building from source)' % (host.replace(ROOT + os.sep, '') if web else 'build/ra2.exe'))
         return 0
 
     passed, code, last = boot_web(min(args.seconds, 120), args.memfs) if web else boot(args.seconds)

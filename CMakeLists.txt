@@ -30,17 +30,41 @@ if(NOT EXISTS "${CMAKE_SOURCE_DIR}/../pcrecomp" AND EXISTS "${CMAKE_SOURCE_DIR}/
 else()
   set(PCRECOMP "${CMAKE_SOURCE_DIR}/../pcrecomp" CACHE PATH "pcrecomp checkout")
 endif()
-# RA2_TARGET: gamemd (Yuri's Revenge, the default) or game (Red Alert 2), the
-# lift run_lift.py --target made; build each in its own folder.
-set(RA2_TARGET "gamemd" CACHE STRING "gamemd (Yuri's Revenge) or game (Red Alert 2)")
-if(RA2_TARGET STREQUAL "game")
-  set(GEN_DIR src/recomp/gen_game)
+# RA2_TARGET: gamemd (Yuri's Revenge) or game (Red Alert 2), the lift
+# run_lift.py --target made. The browser build compiles both modules in one tree
+# ("both", its default); the native host takes one.
+if(EMSCRIPTEN)
+  set(_ra2_target_default both)
 else()
-  set(GEN_DIR src/recomp/gen)
+  set(_ra2_target_default gamemd)
 endif()
-file(GLOB GEN_SOURCES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/${GEN_DIR}/*.c")
-if(NOT GEN_SOURCES)
-  message(FATAL_ERROR "${GEN_DIR} is empty -- run ./setup.sh (Setup.cmd on Windows) first: it lifts each game")
+set(RA2_TARGET "${_ra2_target_default}" CACHE STRING "gamemd (Yuri's Revenge), game (Red Alert 2), or both (web build)")
+if(RA2_TARGET STREQUAL "both")
+  if(NOT EMSCRIPTEN)
+    message(FATAL_ERROR "RA2_TARGET=both is for the web build; set gamemd or game for the native host")
+  endif()
+  set(RA2_EDITIONS gamemd game)
+elseif(RA2_TARGET STREQUAL "gamemd" OR RA2_TARGET STREQUAL "game")
+  set(RA2_EDITIONS ${RA2_TARGET})
+else()
+  message(FATAL_ERROR "RA2_TARGET must be gamemd, game or both")
+endif()
+
+# The lifted C for one edition: gen/ is Yuri's Revenge, gen_game/ is Red Alert 2.
+function(ra2_gen_dir edition out_var)
+  if(edition STREQUAL "game")
+    set(${out_var} src/recomp/gen_game PARENT_SCOPE)
+  else()
+    set(${out_var} src/recomp/gen PARENT_SCOPE)
+  endif()
+endfunction()
+
+if(NOT EMSCRIPTEN)
+  ra2_gen_dir(${RA2_EDITIONS} GEN_DIR)
+  file(GLOB GEN_SOURCES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/${GEN_DIR}/*.c")
+  if(NOT GEN_SOURCES)
+    message(FATAL_ERROR "${GEN_DIR} is empty -- run ./setup.sh (Setup.cmd on Windows) first: it lifts each game")
+  endif()
 endif()
 
 # ---- native Linux: the lifted C on runtime/win32hle (cmake/linux-i386.cmake)
@@ -67,9 +91,11 @@ if(EMSCRIPTEN)
   set(HLE ${PCRECOMP}/runtime/win32hle)
   file(GLOB HLE_SOURCES CONFIGURE_DEPENDS "${HLE}/*.c")
   list(FILTER HLE_SOURCES EXCLUDE REGEX "_selftest\.c$")
-  add_executable(ra2 src/web/main.c src/web/read_cache.c src/web/wolapi.c src/web/presenter.c src/web/frame_buffers.c src/web/settings.c src/web/modern.c src/linux/launcher.c src/linux/blowfish.c src/linux/script.c src/linux/mods.c src/runtime/hdvox.c src/runtime/queuefive.c src/runtime/thai_font.c ${HLE_SOURCES} ${GEN_SOURCES})
-  target_include_directories(ra2 PRIVATE src/web src/linux src/runtime ${GEN_DIR} ${HLE} ${PCRECOMP}/runtime/recomp32)
-  target_compile_definitions(ra2 PRIVATE RECOMP_RETADDR=0u RECOMP_FLAT_MEMORY RECOMP_LOCAL_REGS)
+  set(WEB_SOURCES
+    src/web/main.c src/web/read_cache.c src/web/wolapi.c src/web/presenter.c
+    src/web/frame_buffers.c src/web/settings.c src/web/modern.c
+    src/linux/launcher.c src/linux/blowfish.c src/linux/script.c src/linux/mods.c
+    src/runtime/hdvox.c src/runtime/queuefive.c src/runtime/thai_font.c)
   # Movies: with FFmpeg's Bink decoder (tools/build-ffmpeg-web.sh configures FFmpeg in ../ffmpeg-src/build and lists
   # the files; -DFFMPEG_WEB_DIR names another), else empty and short, see pcrecomp bink.c
   set(FFMPEG_WEB_DIR "${CMAKE_SOURCE_DIR}/../ffmpeg-src/build" CACHE PATH "a configured FFmpeg build (tools/build-ffmpeg-web.sh); without it movies are skipped")
@@ -80,18 +106,14 @@ if(EMSCRIPTEN)
     target_include_directories(ffmpeg_web PRIVATE ${FFMPEG_SRC}/compat/stdbit)
     target_compile_definitions(ffmpeg_web PRIVATE HAVE_AV_CONFIG_H _ISOC11_SOURCE _FILE_OFFSET_BITS=64 _LARGEFILE_SOURCE _POSIX_C_SOURCE=200112 _XOPEN_SOURCE=600)
     target_compile_options(ffmpeg_web PRIVATE -w -O2 -std=c17 -pthread -msimd128 -fwasm-exceptions -fno-math-errno -fno-signed-zeros -fomit-frame-pointer)
-    target_link_libraries(ra2 PRIVATE ffmpeg_web)
-    target_compile_definitions(ra2 PRIVATE HLE_WITH_FFMPEG)
   else()
     set_source_files_properties(${HLE}/bink.c PROPERTIES COMPILE_DEFINITIONS HLE_BINK_SKIP)
   endif()
   set(GEN_OPT "-O2" CACHE STRING "optimisation for the generated C")
   set(WEB_COMPILE -pthread -msimd128 -fwasm-exceptions -sSUPPORT_LONGJMP=wasm -sUSE_SDL=2 -sUSE_SDL_TTF=2)
-  set_source_files_properties(${GEN_SOURCES} PROPERTIES COMPILE_OPTIONS "-w;${GEN_OPT};-fno-strict-aliasing;-fwrapv;${WEB_COMPILE}")
-  target_compile_options(ra2 PRIVATE -fno-strict-aliasing -fwrapv ${WEB_COMPILE})
   # The link flags, and why: docs/web/toolchain.md. GLOBAL_BASE keeps the
   # guest's 0x00400000..0x00B93000 clear of the host's own data and stack.
-  target_link_options(ra2 PRIVATE
+  set(WEB_LINK_FLAGS
     -pthread -fwasm-exceptions -sSUPPORT_LONGJMP=wasm -sPROXY_TO_PTHREAD -sPTHREAD_POOL_SIZE=8
     -sUSE_SDL=2 -sUSE_SDL_TTF=2
     -sGLOBAL_BASE=16MB
@@ -110,72 +132,91 @@ if(EMSCRIPTEN)
   # wasm-opt at -O3 takes about ten minutes on this much code: -DWEB_LINK_OPT=-O1 skips it,
   # for a quick link while trying a change (the release build leaves it empty)
   set(WEB_LINK_OPT "" CACHE STRING "an optimisation level to link with instead of the build type's, e.g. -O1")
-  if(WEB_LINK_OPT)
-    target_link_options(ra2 PRIVATE ${WEB_LINK_OPT})
-  endif()
-  set_target_properties(ra2 PROPERTIES SUFFIX ".js" LINK_DEPENDS "${CMAKE_SOURCE_DIR}/src/web/pre.js;${CMAKE_SOURCE_DIR}/src/web/extern-pre.js;${CMAKE_SOURCE_DIR}/src/web/opfs_read.js;${CMAKE_SOURCE_DIR}/tools/compress-wasm.mjs")
-  # Put both classic Emscripten modules in one flat served directory and give
-  # their JS, Wasm, and data files edition-specific names.
+  # Both classic Emscripten modules go in one flat served directory, each named
+  # after its edition's module stem (ra2md.* for Yuri's Revenge, ra2.* for Red
+  # Alert 2; docs/web/deploy.md). Find the runtime inputs once.
   set(WEB_OUT ${CMAKE_SOURCE_DIR}/web/public/game CACHE PATH "root of the page's game modules")
   set(RA2_GAME_DIR "${CMAKE_SOURCE_DIR}/game" CACHE PATH "local licensed game install used for runtime inputs")
-  set(_module_out ${WEB_OUT})
-  set(_runtime_id ra2md)
-  set(_module_stem ra2md)
-  if(RA2_TARGET STREQUAL "game")
-    set(_runtime_id ra2)
-    set(_module_stem ra2)
-  endif()
-  # The browser maps the original PE image and reads the Blowfish tables at
-  # runtime. Package those exact build inputs alongside the generated module.
-  # Resolve names case-insensitively because supported installs differ in case.
-  if(RA2_TARGET STREQUAL "game")
-    set(_runtime_exe_name game.exe)
-  else()
-    set(_runtime_exe_name gamemd.exe)
-  endif()
   file(GLOB _runtime_candidates LIST_DIRECTORIES false "${RA2_GAME_DIR}/*")
-  set(_runtime_exe_source "")
-  set(_runtime_blowfish_source "")
-  foreach(_candidate IN LISTS _runtime_candidates)
-    get_filename_component(_candidate_name "${_candidate}" NAME)
-    string(TOLOWER "${_candidate_name}" _candidate_lower)
-    if(_candidate_lower STREQUAL _runtime_exe_name)
-      set(_runtime_exe_source "${_candidate}")
-    elseif(_candidate_lower STREQUAL "blowfish.dll")
-      set(_runtime_blowfish_source "${_candidate}")
-    endif()
-  endforeach()
-  if(NOT _runtime_exe_source OR NOT _runtime_blowfish_source)
-    message(FATAL_ERROR "Runtime bundle inputs are missing from ${RA2_GAME_DIR}: need ${_runtime_exe_name} and Blowfish.dll")
-  endif()
-  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-    "${_runtime_exe_source}" "${_runtime_blowfish_source}")
-  set(_runtime_out ${WEB_OUT}/runtime/${_runtime_id})
   find_program(NODE_EXECUTABLE node REQUIRED)
-  add_custom_command(TARGET ra2 POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${_module_out}
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:ra2> ${_module_out}/${_module_stem}.js
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE_DIR:ra2>/ra2.wasm ${_module_out}/${_module_stem}.wasm
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE_DIR:ra2>/ra2.data ${_module_out}/${_module_stem}.data
-    COMMAND ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/compress-wasm.mjs
-            ${_module_out}/${_module_stem}.wasm
-            ${_module_out}/${_module_stem}.wasm.br
-            ${_module_out}/${_module_stem}.wasm.gz
-    VERBATIM)
-  if(RA2_TARGET STREQUAL "game")
-    add_custom_command(TARGET ra2 POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E rm -rf ${WEB_OUT}/ra2
+
+  # One module per listed edition: its own lifted C, its own runtime bundle, and
+  # its own publish step. "all" builds every edition in RA2_EDITIONS.
+  function(ra2_add_web_module edition)
+    if(edition STREQUAL "game")
+      set(target ra2)
+      set(exe_name game.exe)
+    else()
+      set(target ra2md)
+      set(exe_name gamemd.exe)
+    endif()
+    ra2_gen_dir(${edition} gen_dir)
+    file(GLOB gen_sources CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/${gen_dir}/*.c")
+    if(NOT gen_sources)
+      message(FATAL_ERROR "${gen_dir} is empty -- run ./setup.sh (Setup.cmd on Windows) first: it lifts each game")
+    endif()
+    add_executable(${target} ${WEB_SOURCES} ${HLE_SOURCES} ${gen_sources})
+    target_include_directories(${target} PRIVATE src/web src/linux src/runtime ${gen_dir} ${HLE} ${PCRECOMP}/runtime/recomp32)
+    target_compile_definitions(${target} PRIVATE RECOMP_RETADDR=0u RECOMP_FLAT_MEMORY RECOMP_LOCAL_REGS)
+    if(TARGET ffmpeg_web)
+      target_link_libraries(${target} PRIVATE ffmpeg_web)
+      target_compile_definitions(${target} PRIVATE HLE_WITH_FFMPEG)
+    endif()
+    set_source_files_properties(${gen_sources} PROPERTIES COMPILE_OPTIONS "-w;${GEN_OPT};-fno-strict-aliasing;-fwrapv;${WEB_COMPILE}")
+    target_compile_options(${target} PRIVATE -fno-strict-aliasing -fwrapv ${WEB_COMPILE})
+    target_link_options(${target} PRIVATE ${WEB_LINK_FLAGS})
+    if(WEB_LINK_OPT)
+      target_link_options(${target} PRIVATE ${WEB_LINK_OPT})
+    endif()
+    set_target_properties(${target} PROPERTIES SUFFIX ".js" LINK_DEPENDS "${CMAKE_SOURCE_DIR}/src/web/pre.js;${CMAKE_SOURCE_DIR}/src/web/extern-pre.js;${CMAKE_SOURCE_DIR}/src/web/opfs_read.js;${CMAKE_SOURCE_DIR}/tools/compress-wasm.mjs")
+    # The browser maps the original PE image and reads the Blowfish tables at
+    # runtime. Package those exact build inputs alongside the generated module.
+    # Resolve names case-insensitively because supported installs differ in case.
+    set(exe_source "")
+    set(blowfish_source "")
+    foreach(candidate IN LISTS _runtime_candidates)
+      get_filename_component(candidate_name "${candidate}" NAME)
+      string(TOLOWER "${candidate_name}" candidate_lower)
+      if("${candidate_lower}" STREQUAL "${exe_name}")
+        set(exe_source "${candidate}")
+      elseif("${candidate_lower}" STREQUAL "blowfish.dll")
+        set(blowfish_source "${candidate}")
+      endif()
+    endforeach()
+    if(NOT exe_source OR NOT blowfish_source)
+      message(FATAL_ERROR "Runtime bundle inputs are missing from ${RA2_GAME_DIR}: need ${exe_name} and Blowfish.dll")
+    endif()
+    add_custom_command(TARGET ${target} POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E make_directory ${WEB_OUT}
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:${target}> ${WEB_OUT}/${target}.js
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE_DIR:${target}>/${target}.wasm ${WEB_OUT}/${target}.wasm
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE_DIR:${target}>/${target}.data ${WEB_OUT}/${target}.data
+      COMMAND ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/compress-wasm.mjs
+              ${WEB_OUT}/${target}.wasm
+              ${WEB_OUT}/${target}.wasm.br
+              ${WEB_OUT}/${target}.wasm.gz
       VERBATIM)
-  endif()
-  # build.json: which game this build runs, the exe it was lifted from, and an id for this build
-  # (cmake/build_json.cmake). Written when cmake configures, and again after each link, which is when
-  # there is a ra2.wasm to take the id from. A change to the lifted target header configures again.
-  set(_target_h ${CMAKE_SOURCE_DIR}/${GEN_DIR}/recomp_target.h)
-  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${_target_h})
-  set(_build_json ${CMAKE_COMMAND} -DTARGET_H=${_target_h} -DOUT=${WEB_OUT}/build.json -DLOCK=${CMAKE_SOURCE_DIR}/.build-json.publish-lock -DRUNTIME_EXE_SOURCE=${_runtime_exe_source} -DRUNTIME_EXE_NAME=${_runtime_exe_name} -DRUNTIME_BLOWFISH_SOURCE=${_runtime_blowfish_source} -DRUNTIME_DIR=${_runtime_out})
-  # Advertise a module only after a successful link and copy.
-  add_custom_command(TARGET ra2 POST_BUILD
-    COMMAND ${_build_json} -DWASM=$<TARGET_FILE_DIR:ra2>/ra2.wasm -P ${CMAKE_SOURCE_DIR}/cmake/build_json.cmake)
+    if(edition STREQUAL "game")
+      add_custom_command(TARGET ${target} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E rm -rf ${WEB_OUT}/ra2
+        VERBATIM)
+    endif()
+    # build.json: which games this build runs, the exe each was lifted from, and
+    # an id for each build (cmake/build_json.cmake). Written when cmake
+    # configures, and again after each link, which is when there is a module to
+    # take the id from; the lock lets both editions publish in either order.
+    set(target_h ${CMAKE_SOURCE_DIR}/${gen_dir}/recomp_target.h)
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+      ${target_h} "${exe_source}" "${blowfish_source}")
+    set(build_json ${CMAKE_COMMAND} -DTARGET_H=${target_h} -DOUT=${WEB_OUT}/build.json -DLOCK=${CMAKE_SOURCE_DIR}/.build-json.publish-lock -DRUNTIME_EXE_SOURCE=${exe_source} -DRUNTIME_EXE_NAME=${exe_name} -DRUNTIME_BLOWFISH_SOURCE=${blowfish_source} -DRUNTIME_DIR=${WEB_OUT}/runtime/${target})
+    # Advertise a module only after a successful link and copy.
+    add_custom_command(TARGET ${target} POST_BUILD
+      COMMAND ${build_json} -DWASM=$<TARGET_FILE_DIR:${target}>/${target}.wasm -P ${CMAKE_SOURCE_DIR}/cmake/build_json.cmake)
+  endfunction()
+
+  foreach(edition IN LISTS RA2_EDITIONS)
+    ra2_add_web_module(${edition})
+  endforeach()
   return()
 endif()
 

@@ -7,6 +7,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && tsc --noEmit -p tsconfig.sw.json && vite build",
+    "build:prod": "tsc --noEmit && tsc --noEmit -p tsconfig.sw.json && vite build --mode production",
+    "build:mode": "tsc --noEmit && tsc --noEmit -p tsconfig.sw.json && vite build --mode",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.sw.json",
     "lint": "eslint .",

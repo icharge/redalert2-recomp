@@ -28,7 +28,9 @@ export function checkBrowser(env: BrowserEnv = globalThis as unknown as BrowserE
       required: true,
       help:
         "The game runs on its own thread, which needs a page the browser treats as cross-origin isolated. " +
-        "Open it from the site as served (it sends the headers), not from a file, and use a current Chrome, Edge, Firefox or Safari.",
+        "A host that sends no headers gets them from the page's service worker, which reloads the page once; " +
+        "reload if this screen stays. Serve the site over HTTPS (or localhost), not from a file, and use a " +
+        "current Chrome, Edge, Firefox or Safari.",
     },
     {
       id: "storage",

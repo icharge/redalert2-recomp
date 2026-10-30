@@ -1,5 +1,5 @@
 import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
-import { Callout, Flex, Heading, Text } from "@radix-ui/themes";
+import { Button, Callout, Flex, Heading, Text } from "@radix-ui/themes";
 import type { Requirement } from "./features";
 
 /** What this browser lacks, and what that means. Shown only when something required is missing. */
@@ -20,6 +20,11 @@ export function BrowserCheck({ requirements }: { requirements: Requirement[] }) 
           </Callout.Text>
         </Callout.Root>
       ))}
+      {missing.some((r) => r.id === "threads") && (
+        <Button onClick={() => window.location.reload()} style={{ alignSelf: "flex-start" }}>
+          Reload
+        </Button>
+      )}
     </Flex>
   );
 }

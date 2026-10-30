@@ -1,5 +1,5 @@
 # Publish one successfully linked module without removing the other game.
-# cmake -DTARGET_H=... -DOUT=.../build.json -DLOCK=... -DWASM=.../ra2.wasm -P build_json.cmake
+# cmake -DTARGET_H=... -DOUT=.../build.json -DLOCK=... -DWASM=.../ra2md.wasm -P build_json.cmake
 file(READ "${TARGET_H}" _target)
 foreach(_field EXE_NAME INI_NAME TITLE)
   string(REGEX MATCH "define RA2_${_field} \"([^\"]+)\"" _m "${_target}")
@@ -55,9 +55,12 @@ endif()
 file(SHA256 "${RUNTIME_DIR}/${RUNTIME_EXE_NAME}" _exe_sha)
 file(SHA256 "${RUNTIME_DIR}/Blowfish.dll" _blowfish_sha)
 get_filename_component(_module_dir "${WASM}" DIRECTORY)
+# The module stem is the edition's name (ra2md for Yuri's Revenge, ra2 for Red
+# Alert 2), so the build directory's sidecars follow it too.
+get_filename_component(_module_stem "${WASM}" NAME_WE)
 set(_hashes "")
 foreach(_ext js wasm data)
-  file(SHA256 "${_module_dir}/ra2.${_ext}" _sha)
+  file(SHA256 "${_module_dir}/${_module_stem}.${_ext}" _sha)
   string(APPEND _hashes "${_sha}")
 endforeach()
 string(SHA256 _sha "${_hashes}${_exe_sha}${_blowfish_sha}")

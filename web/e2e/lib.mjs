@@ -1,7 +1,7 @@
 // Shared by the local end-to-end checks: a Chrome on the dev server's page, the game's
 // state, screenshots, and clicks in the game's own pixels.
 import { chromium } from "playwright-core";
-import { createReadStream, mkdirSync, statSync } from "node:fs";
+import { createReadStream, existsSync, mkdirSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import path from "node:path";
 import { serveGame } from "./files-server.mjs";
@@ -81,12 +81,13 @@ export async function startPage(opts) {
       server.listen(0, "127.0.0.1", resolve);
     });
     browser.on("disconnected", () => server.close());
-    // The page asks for the Yuri's Revenge module as ra2md.* (loader.ts); a build dir holds it as ra2.*.
+    // A tree that builds both editions holds ra2md.* and ra2.* (the names the
+    // page asks for, loader.ts); a single-edition tree holds ra2.* for either.
     await context.route(/\/game\/(?:ra2\/)?ra2(?:md)?\.(js|wasm|data)(?:\?.*)?$/, (route) => {
-      const name = new URL(route.request().url()).pathname
-        .split("/")
-        .at(-1)
-        .replace(/^ra2md\./, "ra2.");
+      const requested = new URL(route.request().url()).pathname.split("/").at(-1);
+      const name = existsSync(path.join(opts.gameBuild, requested))
+        ? requested
+        : requested.replace(/^ra2md\./, "ra2.");
       return route.continue({ url: `http://127.0.0.1:${server.address().port}/${name}` });
     });
   }

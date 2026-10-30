@@ -45,6 +45,37 @@ script/WASM/data, file-browser assets, fonts, audio worklet, and service
 worker scope all use this base. OPFS and IndexedDB remain origin-wide;
 moving the app to a context path on the same origin retains its imports.
 
+### Build-time settings from `.env` files
+
+Vite reads `web/.env`, `.env.local`, `.env.<mode>` and `.env.<mode>.local`
+(later files win), so these settings can live in a file instead of the shell;
+a variable already set in the environment still wins over all of them. The mode
+picks the file:
+
+| Command                        | Mode         | Reads             |
+| ------------------------------ | ------------ | ----------------- |
+| `pnpm build`                   | `production` | `.env.production` |
+| `pnpm build:prod`              | `production` | `.env.production` |
+| `pnpm build:mode staging`      | `staging`    | `.env.staging`    |
+| `pnpm build -- --mode staging` | `staging`    | `.env.staging`    |
+
+`pnpm build:prod` is the deployment build: the same typecheck and build as
+`pnpm build`, pinned to mode `production`, so it reads `.env.production` and not
+a `.env.prod` file. `pnpm build:mode <name>` (or `pnpm build -- --mode <name>`)
+is the same build with another mode, reading `.env.<name>`.
+
+```sh
+# web/.env.production
+RA2_BASE=/emu/
+VITE_WOL_HTTP_URL=https://service.example/
+VITE_WOL_SOCKET_URL=wss://service.example/wol
+```
+
+`RA2_BASE` is read by `vite.config.ts` and drives `base` (and everything above);
+the `VITE_*` values are inlined at build time. All of these are public endpoint
+configuration, not secrets: don't put secrets in these files. `.env*.local` is
+for machine-specific overrides and stays out of git.
+
 A production server must serve the application HTML for clean routes and
 preserve existing asset files. For nginx with the build mounted at `/emu/`:
 
@@ -55,6 +86,11 @@ location /emu/ {
     add_header Cross-Origin-Embedder-Policy require-corp always;
 }
 ```
+
+A complete server block — clean routes, the wasm type, cache lifetimes for the
+shell and the hashed assets, the service worker, and the precompressed sidecars
+— is [nginx.conf](nginx.conf); copy `web/dist/*` into its `root`'s `/emu/`
+directory and adjust `server_name`/`root`.
 
 Direct requests and refreshes of `/emu/game/1` must return that HTML. An
 initial deep link still requires this server rewrite before a service
@@ -148,7 +184,9 @@ pnpm dev
 ```
 
 Restart Vite after changing these settings. For a production frontend, set them
-before `pnpm build`. Both are public endpoint configuration, not secrets. The
+before `pnpm build` — in the environment or in `web/.env.production` (see
+[Build-time settings from `.env` files](#build-time-settings-from-env-files)).
+Both are public endpoint configuration, not secrets. The
 HTTP base serves `register` and `login`; the WebSocket URL is independent so
 authentication does not accidentally go to `/wol/register`. Both support a
 server context path, independently of the frontend's `RA2_BASE`. Without an
@@ -183,7 +221,11 @@ Cross-Origin-Embedder-Policy: require-corp
 - The local server (`vite preview`, `build-web.sh --serve`) sends them.
 - On a static host that can't set headers (GitHub Pages), the service
   worker adds them to every response it serves (the `coi-serviceworker`
-  approach). The first load then reloads once.
+  approach). The first load then reloads once. The attempt is recorded per
+  deployment base and only for a short time (and cleared once the page is
+  isolated), so a reload that came back without the headers — or another app
+  on the same origin — cannot leave the tab stuck on the browser check; it
+  offers a Reload button too.
 - Everything the page loads is same-origin, so `require-corp` doesn't block
   anything. Don't add third-party scripts, fonts or analytics.
 

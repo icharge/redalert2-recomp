@@ -43,24 +43,26 @@ The lift is the same as for Windows and Linux. `src/recomp/gen/` from
 | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `cmake/emscripten.cmake`                                    | toolchain file: wraps emsdk's `Emscripten.cmake` and sets the flags below                                                                                                                                                                                                          |
 | `CMakeLists.txt`                                            | an `if(EMSCRIPTEN)` branch beside the Linux one: `src/web/*.c`, `win32hle`, the generated C                                                                                                                                                                                        |
-| `build-web.sh`, `build-web.cmd`                             | configure and build into `build-web/` (Yuri's Revenge) or `build-web-game/` (Red Alert 2); copy both edition-specific module sets into the flat `web/public/game/` directory and update the shared `build.json` (post-build steps in `CMakeLists.txt`; `WEB_OUT` changes the root) |
+| `build-web.sh`, `build-web.cmd`                             | configure and build both edition modules in one tree into `build-web/` (`RA2_TARGET=gamemd` or `game` builds one, `game` into `build-web-game/`); copy each module set into the flat `web/public/game/` directory and merge it into the shared `build.json` (post-build steps in `CMakeLists.txt`; `WEB_OUT` changes the root) |
 | `tools/build-ffmpeg-web.sh`, `.cmd`, `tools/ffmpeg-web.mjs` | configure FFmpeg for the Bink decoder and list the files to compile (no GNU make here)                                                                                                                                                                                             |
 | `src/web/main.c`                                            | the browser host: `src/linux/main.c` without signals, `popen` or the watchdog, plus the exported functions in [protocol.md](protocol.md)                                                                                                                                           |
 
-Build Yuri's Revenge with the default target. To build the separate Red Alert 2
-module as well, run `RA2_TARGET=game ./build-web.sh` on Linux/macOS, or set
-`RA2_TARGET=game` and run `build-web.cmd` from Command Prompt on Windows. Each
-target has its own CMake directory and lifted sources (`src/recomp/gen/` for
-Yuri's Revenge, `src/recomp/gen_game/` for Red Alert 2); building one does not
-replace the other. The page loads the matching module for each imported game.
+`build-web.sh` and `build-web.cmd` build both editions in one CMake tree by
+default: the `all` targets `ra2md` (Yuri's Revenge) and `ra2` (Red Alert 2),
+each from its own lifted sources (`src/recomp/gen/` and `src/recomp/gen_game/`).
+Set `RA2_TARGET=gamemd` or `RA2_TARGET=game` to build one, for iteration or when
+`game/` holds only that install. Both targets share the `win32hle` and FFmpeg
+objects, so the second edition costs its generated C and its link, not the host.
 
-After linking, CMake copies `ra2.js/.wasm/.data` for Red Alert 2 and
-`ra2md.js/.wasm/.data` for Yuri's Revenge into `web/public/game/`. It runs
-`tools/compress-wasm.mjs` to add matching Brotli quality 9 and gzip level 9
-sidecars. The loader selects the edition-specific JS and maps its Wasm/data
-requests to the matching names. `build.json` hashes the original, uncompressed
-files. These generated game files stay in the ignored local build output and
-must not be copied into a public deployment.
+After linking, each target copies its files into the flat `web/public/game/`
+directory, named after the edition: `ra2md.js/.wasm/.data` for Yuri's Revenge,
+`ra2.js/.wasm/.data` for Red Alert 2. `tools/compress-wasm.mjs` adds matching
+Brotli quality 9 and gzip level 9 sidecars, and the build merges that edition
+into the shared `build.json` (the lock lets either link publish first). The
+loader selects the edition-specific JS and maps its Wasm/data requests to the
+matching names. `build.json` hashes the original, uncompressed files. These
+generated game files stay in the ignored local build output and must not be
+copied into a public deployment.
 
 ## Compile flags
 
@@ -148,7 +150,7 @@ measurement from the release row above:
 
 ```
 ./build-web.sh
-node build-web/ra2.js --run --game /path/to/game --headless --mute
+node build-web/ra2md.js --run --game /path/to/game --headless --mute
 ```
 
 Under Node the game folder is a WasmFS Node-backend mount at `/game` (`src/web/main.c`; `Module.ra2MountGame` in

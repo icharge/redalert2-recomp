@@ -62,9 +62,8 @@ scripts. This is the base `tools/playtest.py --web` grows from (stage 10).
 ## Exit confirmation: game to web and back
 
 Regenerate the lifts after changing the call patch (`python run_lift.py --all`
-and `python run_lift.py --target game --all`), then build both modules
-(`cmake --build build-web` and `cmake --build build-web-game`). With Vite
-running, from `web/`:
+and `python run_lift.py --target game --all`), then build both modules in one
+tree (`cmake --build build-web`). With Vite running, from `web/`:
 
 ```powershell
 $env:CHROME_PATH = 'C:\path\to\chrome.exe'
@@ -161,8 +160,10 @@ More steps and switches, from chasing the first play's issues ([issues.md](issue
 ## The game without a browser: Node
 
 ```
-node build-web/ra2.js --run --game ./game --headless --mute --debuglog
+node build-web/ra2md.js --run --game ./game --headless --mute --debuglog
 ```
+
+(Yuri's Revenge; `build-web/ra2.js` is Red Alert 2 in a both-edition tree.)
 
 The game's `getenv` does not see the shell's environment under Node: pass
 `--env NAME=VALUE` (once per variable) for a host or win32hle debugging switch.
@@ -172,7 +173,8 @@ it and scores eight boot milestones from the lines the host prints (the image
 mapped and bound, the entry point, the launcher's answer, the display mode, the
 primary surface, the first frame, the game's init, the main menu's dialog
 0xE2), stopping as soon as the menu opens. Its baseline is
-`conformance-web.json`; `RA2_TARGET=game` uses `build-web-game/` and
+`conformance-web.json`; with `RA2_TARGET=game` it runs `build-web/ra2.js`
+(or a single-edition `build-web-game/ra2.js`) against
 `conformance-web-game.json`. This check stops at the main menu before starting
 the game's intro movie, so the intro milestone of the Windows list is the
 launcher's answer here. Bink playback is covered separately by
@@ -195,7 +197,7 @@ top of the guest stack; the process exits with code 3. (The label reads
 `uncaught: unreachable`: the error loses its type crossing from the worker.)
 In a page the same report goes to the console through `window.onerror`.
 
-**V8's limits.** `node tools/wasm-sizes.js build-web/ra2.wasm` lists the
+**V8's limits.** `node tools/wasm-sizes.js build-web/ra2md.wasm` lists the
 largest function bodies and local counts. In Yuri's Revenge's 27,884 functions
 the largest body is 312 KB (V8 refuses 7.6 MB) and the most locals in one is
 1,450 (it refuses 50,000), so the lifter need not split anything. Chrome 155
@@ -540,10 +542,10 @@ plan (Task 2). Run them with the Vite dev server up, bound to IPv4 (see "The fra
   the imported Yuri's Revenge from `work/perf/profile-fresh` with `?arg=--clockstats`: 25 s at the main menu, then
   Single Player > Skirmish > Start Game and 30 s of battle (`--menu-seconds`, `--match-seconds`). It prints the
   medians of each phase (per second), the fewest `Sleep` calls in a second, and the spin verdict, and writes
-  `work/perf/clock-probe.json`. The build is the `-O1` probe build: `$env:BUILD_DIR='build-web-probe'`, and
+  `work/perf/clock-probe.json`. The build is the `-O1` probe build: `$env:BUILD_DIR='build-web-probe'`,
+  `$env:RA2_TARGET='gamemd'` (this runner plays Yuri's Revenge only), and
   `$env:CMAKE_ARGS='-DWEB_LINK_OPT=-O1 -DWEB_OUT=C:/…/work/web-out-probe'`, then `cmd /c build-web.cmd` from the repo root.
-  `WEB_OUT` must stay outside `web/public/game`, or the fast module replaces the one the page serves. The RA2
-  build (`RA2_TARGET=game`) is a separate build directory; this runner plays Yuri's Revenge only.
+  `WEB_OUT` must stay outside `web/public/game`, or the fast module replaces the one the page serves.
 - **Reading the verdict.** `spin: no` means no second had 1,000 or more game-issued clock reads with no `Sleep`;
   it does not show whether a `Sleep` implementation polls the clock internally. `spin: YES` names the seconds; Task 9
   runs only then. A separate worker profile found pcrecomp's `wait_ms` polling `clock_gettime` inside `Sleep`, so the
@@ -605,5 +607,6 @@ The build is a release link with names: `cmake -S . -B work/build-web-prof -G Ni
 -DPCRECOMP=<pcrecomp> -DRA2_TARGET=gamemd "-DWEB_LINK_OPT=-O3;--profiling-funcs" "-DWEB_OUT=<repo>/work/web-out-prof"`,
 then `cmake --build work/build-web-prof` (about ten minutes at `-O3`). `WEB_OUT` stays under `work/`.
 
-`--build <dir>` takes a build directory holding `ra2.js`, `ra2.wasm` and `ra2.data` (CMake's own names), and
-the e2e scripts serve them for the page's `ra2md.*` (Yuri's Revenge) or `ra2.*` (Red Alert 2) requests.
+`--build <dir>` takes a build directory holding the edition's module files. A both-edition tree has
+`ra2md.*` (Yuri's Revenge) and `ra2.*` (Red Alert 2); a single-edition tree holds `ra2.*` for either,
+and the e2e scripts serve it for the page's `ra2md.*` request too.
