@@ -59,14 +59,6 @@ function startOnce(files: FileSource, thaiFontFix: ThaiFontPreference): Promise<
   return window.ra2Session;
 }
 
-function browserStorage(): Storage | null {
-  try {
-    return window.localStorage;
-  } catch {
-    return null;
-  }
-}
-
 /** The canvas fills the window; the game draws into it through shared memory. React never touches it again. */
 export function Play({ files }: { files: FileSource }) {
   const stage = useRef<HTMLDivElement>(null);
@@ -74,9 +66,7 @@ export function Play({ files }: { files: FileSource }) {
   const textInput = useRef<HTMLTextAreaElement>(null);
   const cursor = useRef<HTMLImageElement>(null);
   const [startError, setStartError] = useState<Error | null>(null);
-  const [statsOn, setStatsOn] = useState(() =>
-    statsWanted(window.location.search, browserStorage()),
-  );
+  const [statsOn, setStatsOn] = useState(() => statsWanted(window.location.search));
   const [presenter, setPresenter] = useState<GamePresenter | null>(null);
   const [audio, setAudio] = useState<GameAudio | null>(null);
   const [volume, setVolume] = useState(1);
@@ -101,7 +91,7 @@ export function Play({ files }: { files: FileSource }) {
   const [exitError, setExitError] = useState<string | null>(null);
   const updateStats = useCallback((on: boolean) => {
     setStatsOn(on);
-    writeStatsPreference(on, browserStorage());
+    writeStatsPreference(on);
   }, []);
   const toggleStats = useCallback(() => updateStats(!statsOn), [statsOn, updateStats]);
   const leaving = useRef(false);
