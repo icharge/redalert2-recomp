@@ -1,6 +1,16 @@
 const KEY = "ra2-stats";
 
-export function readStatsPreference(storage?: Pick<Storage, "getItem"> | null): boolean {
+function browserStorage(): Storage | null {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+export function readStatsPreference(
+  storage: Pick<Storage, "getItem"> | null = browserStorage(),
+): boolean {
   try {
     return storage?.getItem(KEY) === "1";
   } catch {
@@ -8,7 +18,10 @@ export function readStatsPreference(storage?: Pick<Storage, "getItem"> | null): 
   }
 }
 
-export function writeStatsPreference(on: boolean, storage?: Pick<Storage, "setItem"> | null): void {
+export function writeStatsPreference(
+  on: boolean,
+  storage: Pick<Storage, "setItem"> | null = browserStorage(),
+): void {
   try {
     storage?.setItem(KEY, on ? "1" : "0");
   } catch {
