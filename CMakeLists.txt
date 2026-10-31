@@ -93,7 +93,7 @@ if(EMSCRIPTEN)
   list(FILTER HLE_SOURCES EXCLUDE REGEX "_selftest\.c$")
   set(WEB_SOURCES
     src/web/main.c src/web/read_cache.c src/web/wolapi.c src/web/presenter.c
-    src/web/frame_buffers.c src/web/settings.c src/web/modern.c
+    src/web/frame_buffers.c src/web/settings.c src/web/modern.c src/web/net_tuning.c
     src/linux/launcher.c src/linux/blowfish.c src/linux/script.c src/linux/mods.c
     src/runtime/hdvox.c src/runtime/page_cursor.c src/runtime/queuefive.c src/runtime/startup_order.c
     src/runtime/thai_font.c src/runtime/woltext.c)

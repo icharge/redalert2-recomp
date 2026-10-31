@@ -103,6 +103,7 @@ static ra2_wolapi_session g_session;
 EMSCRIPTEN_KEEPALIVE const ra2_wolapi_session *ra2_wolapi_current_session(void) {
     return g_session.game_id[0] && strcmp(g_session.channel, g_current_channel) == 0 ? &g_session : NULL;
 }
+int ra2_wolapi_match_active(void) { return g_session.game_id[0] != 0; }
 /* Locale enum from Wolapi.dll's type library, in its original numeric order. */
 static const struct { const char *name, *code; } g_locales[] = {
     { "Unknown", "" }, { "Other", "" }, { "USA", "en-US" }, { "Canada", "en-CA" },
@@ -953,7 +954,8 @@ static void m_stub_11(void) { RET(E_NOTIMPL, 11); }
 static void m_idle_pump(void) { RET(S_OK, 1); }
 
 static void m_chat_pump(void) { pump_lines(); RET(S_OK, 1); }
-static void m_net_pump(void) { pump_lines(); RET(S_OK, 1); }
+static void m_net_pump_pings(void);
+static void m_net_pump(void) { pump_lines(); m_net_pump_pings(); RET(S_OK, 1); }
 static uint32_t read_be32(const uint8_t *p) {
     return (uint32_t)p[0] << 24 | (uint32_t)p[1] << 16 | (uint32_t)p[2] << 8 | p[3];
 }
@@ -1230,7 +1232,7 @@ static void m_net_request_ping(void) {
     RET(S_OK, 4);
 }
 
-static void m_net_pump(void) {
+static void m_net_pump_pings(void) {
     /* OnPing may ask for another ping; that one waits for the next pump. */
     uint32_t count = g_ping_count;
     struct { uint32_t ip, handle; } pings[sizeof g_pings / sizeof g_pings[0]];
@@ -1243,7 +1245,6 @@ static void m_net_pump(void) {
         uint32_t args[] = { sink, time < 0 ? E_FAIL : S_OK, (uint32_t)time, pings[i].ip, pings[i].handle };
         hle_call_guest(MEM32(MEM32(sink) + 3u * 4u), 5, args); /* INetUtilEvent::OnPing */
     }
-    RET(S_OK, 1);
 }
 
 /* IChat is IUnknown followed by the 64 methods from the embedded type library. */

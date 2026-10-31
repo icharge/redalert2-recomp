@@ -397,6 +397,51 @@ uses `VITE_WOL_HTTP_URL`, independently of the frontend context path. Accounts,
 IP fields and unknown fields are stripped before archival. Never include Bearer
 tokens or STARTG tickets when sharing logs.
 
+### Command delay for Internet matches
+
+`src/web/net_tuning.c` lowers the lockstep command delay (MaxAhead) of a WOL
+match from the stock online floor of 30 frames (500 ms at 60 fps). It picks a
+profile from the measured path ping and holds `Session.MaxAhead` and
+`Session.FrameSendRate` for the match, because the game's own timing events
+recompute the stock floor within about a second. Late-packet and wait-loop
+lines raise the profile one frame at a time, so a slow link degrades instead of
+desyncing. The default target is 90 ms; `--net-delay MS` changes it, and
+`--classic-latency` disables the module.
+
+The start of every tuned match logs one line:
+
+```
+[net] WOL command delay: max ping 17 ms, MaxAhead 40 -> 4 frames (66 ms at 60 fps), sending every 2 frames
+```
+
+The game then logs `MaxAhead is 4` (not 40/30). A match that needs more room
+logs `[net] late packet at frame N: MaxAhead 4 -> 5 frames (83 ms)`, at most once
+per 1.5 s. Under 100 ms needs a path ping of roughly 80 ms or less; a slower
+link climbs above the target rather than stalling.
+
+Selftest (from the repository root, with the private pcrecomp checkout):
+
+```powershell
+emcc src/web/net_tuning_selftest.c src/web/net_tuning.c `
+  -I../pcrecomp/runtime/recomp32 -DRECOMP_FLAT_MEMORY `
+  -sENVIRONMENT=node -sEXIT_RUNTIME=1 -o build-web/net-tuning-selftest.js
+node build-web/net-tuning-selftest.js   # net tuning: PASS
+```
+
+Two-client check, with the local RA2Web server delaying every relay datagram by
+40 ms to stand in for a nearby but not loopback link:
+
+```powershell
+# server: SERVER_PORT=19090 EXTERNAL_URL=ws://127.0.0.1:19090 NATIVE_RELAY_TEST_DELAY_MS=40
+node e2e/wol.mjs --url 'http://localhost:5173/' --build ../build-web-wol `
+  --shots ../work/wol-latency-slow --arg --intro --play --hold 30
+```
+
+Expected: both logs show the `[net] WOL command delay` line, `MaxAhead is 4`
+or `5`, no `Packet received too late` after the first four seconds, and `--play`
+still reaches its frame target. Remove the delay for the normal loopback run;
+`--classic-latency` must produce `MaxAhead is 40` and then `30` as before.
+
 Automated result checks (no game launch): `bun test test/nativeResults.test.ts
 test/nativeRelay.test.ts test/wgameres.test.ts test/ladderService.test.ts` in the
 server, focused `wol.test.ts`/`loader.test.ts` in the frontend, and both editions

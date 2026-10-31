@@ -376,9 +376,40 @@ git commit -m "Record WOL latency measurements and the match transport decision"
 - The in-game **Connection** slider (`LATENCYFUDGE` events, "Ignoring latency change to avoid cheating"): separate investigation.
 - Relay rate limiting and send-buffer caps (tracked in `handoff-wolapi.md`).
 
+## Implementation note (31 October)
+
+Task 5 landed as `src/web/net_tuning.c` on the rebased `wol-latency` branch, with
+three deliberate differences from the text above:
+
+- It holds `Session.MaxAhead` (`0xA8B550` YR, `0xA3D560` RA2) every frame, not
+  just `PrecalcMaxAhead` once. The precalc timing event is only one input: the
+  game's Queue.CPP timing events overwrite MaxAhead with the 30-frame online
+  floor about once a second, so a one-shot write is undone.
+- It also sets `Session.FrameSendRate` to 2 frames. A packet is sent only every
+  FrameSendRate frames, so MaxAhead cannot be smaller than that cadence; the
+  plan's `+ frame_send_rate + 5` term had a 10-frame floor that caps the delay
+  at 167 ms.
+- The default target is 90 ms (`--net-delay MS`), not the formula's floor.
+  A late-packet/wait loop raises MaxAhead one frame at a time (1.5 s cooldown)
+  so a slower link climbs above the target instead of stalling; the self-test
+  covers the profile, clamp, ladder and `--classic-latency`.
+
+Addresses were read from the lifted code: YR `0xA8B550/0xA8B554/0xA8B56C/
+0xA8B570/0xB7790C`, RA2 `0xA3D560/0xA3D564/0xA3D57C/0xA3D580/0xB2A734`.
+
 ## Results
 
 | Run | Client | ping available | max ping | PrecalcMaxAhead | MaxAhead series | worst frame | notes |
 |---|---|---|---|---|---|---|---|
 | baseline `speed-yr3` | host | | | | | | |
 | baseline `speed-yr3` | guest | | | | | | |
+| `wol-latency-loop6` (66 ms profile, loopback relay) | host | yes | 17 | 4 | 4 (sustained) | 29 | 7008 frames, 1 FRAMESYNC, 0 late, 0 wait, 0 bumps |
+| `wol-latency-loop6` (66 ms profile, loopback relay) | guest | yes | 17 | 4 | 4 (sustained) | 26 | 7016 frames, 1 FRAMESYNC, 0 late, 0 wait, 0 bumps |
+| `wol-latency-slow3` (40 ms each way through the relay) | host | yes | 17 | 4 | 4 (sustained) | - | 680 frames, 0 late/moved/out-of-sync, 1 FRAMESYNC |
+| `wol-latency-slow3` (40 ms each way through the relay) | guest | yes | 17 | 4 | 4 (sustained) | - | 688 frames, 0 late/moved/out-of-sync, 1 FRAMESYNC |
+
+Both runs used the loopback RA2Web test server; the 40 ms run delays every
+native-relay datagram, i.e. about an 80 ms path round trip. The automatic
+upward ladder is covered by `net_tuning_selftest.c` but was not exercised by
+these runs (no late packets), so a separate-network run is still needed to see
+whether a real link needs the 5/6-frame steps.

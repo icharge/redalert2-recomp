@@ -231,7 +231,9 @@ int main(void) {
     /* The game's NetUtil GetAvgPing sums our RA2Web round trip and the peer's.
      * Events queued by these lines are drained and forgotten: later checks count them. */
     uint32_t events_before_pings = test_event_count;
-    receive_pumped(":wol 353 testuser = #Lob_41_0 :@testuser,0,40,1 other,0,35,1 late,0,0,1");
+    snprintf(lobby_line, sizeof lobby_line,
+             ":wol 353 testuser = %s :@testuser,0,40,1 other,0,35,1 late,0,0,1", lobby_channel);
+    receive_pumped(lobby_line);
     int32_t avg = 7;
     uint32_t other_ip = virtual_ip("other"), late_ip = virtual_ip("late"), stranger_ip = virtual_ip("stranger");
     uint32_t ask_other[] = { other_ip, (uint32_t)(uintptr_t)&avg };
@@ -245,30 +247,43 @@ int main(void) {
     uint32_t ask_null[] = { other_ip, 0 };
     assert(invoke(g_channel.chat, 8, 2, ask_null) == E_POINTER);
     /* The game treats 1000 as "no answer": never report it. */
-    receive_pumped(":wol 353 testuser = #Lob_41_0 :@testuser,0,1,1 other,0,999,1");
+    snprintf(lobby_line, sizeof lobby_line,
+             ":wol 353 testuser = %s :@testuser,0,1,1 other,0,999,1", lobby_channel);
+    receive_pumped(lobby_line);
     assert(invoke(g_channel.chat, 8, 2, ask_other) == S_OK && avg == 1001);
     /* Our own ping unknown, or a roster entry without metadata, also fails. */
-    receive_pumped(":wol 353 testuser = #Lob_41_0 :@testuser,0,0,1 other,0,10,1 bare");
+    snprintf(lobby_line, sizeof lobby_line,
+             ":wol 353 testuser = %s :@testuser,0,0,1 other,0,10,1 bare", lobby_channel);
+    receive_pumped(lobby_line);
     avg = 7;
     assert(invoke(g_channel.chat, 8, 2, ask_other) == E_FAIL && avg == -1);
     uint32_t ask_bare[] = { virtual_ip("bare"), (uint32_t)(uintptr_t)&avg };
-    receive_pumped(":wol 353 testuser = #Lob_41_0 :@testuser,0,5,1 other,0,10,1 bare");
+    snprintf(lobby_line, sizeof lobby_line,
+             ":wol 353 testuser = %s :@testuser,0,5,1 other,0,10,1 bare", lobby_channel);
+    receive_pumped(lobby_line);
     avg = 7;
     assert(invoke(g_channel.chat, 8, 2, ask_bare) == E_FAIL && avg == -1);
     assert(invoke(g_channel.chat, 8, 2, ask_other) == S_OK && avg == 17); /* 5 + 10 is below the 17 ms floor */
     /* JOIN and JOINGAME carry the newcomer's ping too. */
-    receive_pumped(":third!local JOINGAME 0 0 0 0 0 20 0 :#Lob_41_0");
+    snprintf(lobby_line, sizeof lobby_line, ":third!local JOINGAME 0 0 0 0 0 20 0 :%s", lobby_channel);
+    receive_pumped(lobby_line);
     uint32_t ask_third[] = { virtual_ip("third"), (uint32_t)(uintptr_t)&avg };
     assert(invoke(g_channel.chat, 8, 2, ask_third) == S_OK && avg == 25);
-    receive_pumped(":joiner!local JOIN :0,30,0,1 #Lob_41_0");
+    snprintf(lobby_line, sizeof lobby_line, ":joiner!local JOIN :0,30,0,1 %s", lobby_channel);
+    receive_pumped(lobby_line);
     uint32_t ask_joiner[] = { virtual_ip("joiner"), (uint32_t)(uintptr_t)&avg };
     assert(invoke(g_channel.chat, 8, 2, ask_joiner) == S_OK && avg == 35);
-    receive_pumped(":joiner!local JOIN :0,0,0,1 #Lob_41_0");
+    snprintf(lobby_line, sizeof lobby_line, ":joiner!local JOIN :0,0,0,1 %s", lobby_channel);
+    receive_pumped(lobby_line);
     assert(invoke(g_channel.chat, 8, 2, ask_joiner) == E_FAIL && avg == -1);
     /* A path faster than the game's 1 tick of IPX timing reports the floor, never 0 ticks. */
-    receive_pumped(":wol 353 testuser = #Lob_41_0 :@testuser,0,1,1 other,0,1,1");
+    snprintf(lobby_line, sizeof lobby_line,
+             ":wol 353 testuser = %s :@testuser,0,1,1 other,0,1,1", lobby_channel);
+    receive_pumped(lobby_line);
     assert(invoke(g_channel.chat, 8, 2, ask_other) == S_OK && avg == 17);
-    receive_pumped(":wol 353 testuser = #Lob_41_0 :@testuser,0,1,1 other,0,0,1");
+    snprintf(lobby_line, sizeof lobby_line,
+             ":wol 353 testuser = %s :@testuser,0,1,1 other,0,0,1", lobby_channel);
+    receive_pumped(lobby_line);
     test_event_count = events_before_pings;
     assert(g_user_count == 2 && strcmp(g_users[1].name, "other") == 0);
     assert(invoke(g_chat.chat, 9, 0, NULL) == S_OK);

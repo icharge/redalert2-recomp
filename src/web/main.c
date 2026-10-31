@@ -34,6 +34,7 @@
 #include "web_api.h"
 #include "thai_font.h"
 #include "wolapi.h"
+#include "net_tuning.h"
 extern const uint32_t ra2_entry_va;   /* recomp_dispatch.c */
 extern int hle_ws_webrtc_pop(uint8_t *packet, uint32_t capacity);
 extern int hle_ws_webrtc_push(const uint8_t *packet, uint32_t length);
@@ -99,7 +100,19 @@ static const char *g_mod;              /* --mod NAME */
 static int g_thai_font_fix;
 static const char *g_thai_font_id;
 static int g_speed_control;            /* forwards the guest's -SPEEDCONTROL switch */
+static int g_classic_latency;          /* --classic-latency: keep the game's stock MaxAhead */
+static int g_net_delay_ms;             /* --net-delay MS: command-delay target for WOL matches */
 static char g_guest_command_line[256];
+
+#ifdef RA2_TARGET_GAME
+static const ra2_net_tuning_addrs g_net_addrs = {
+    0x00A3D560u, 0x00A3D564u, 0x00A3D57Cu, 0x00A3D580u, 0x00B2A734u, RA2_GAME_FRAME_VA
+};
+#else
+static const ra2_net_tuning_addrs g_net_addrs = {
+    0x00A8B550u, 0x00A8B554u, 0x00A8B56Cu, 0x00A8B570u, 0x00B7790Cu, RA2_GAME_FRAME_VA
+};
+#endif
 
 /* ---- what the lift calls into ---------------------------------------------
  * run_lift.py PATCHES and HOOKS. */
@@ -124,6 +137,7 @@ void ra2_hook_debuglog(void) {
                   !strncmp(theme, "Capture_Mouse", 13)))
         web_presenter_scenario_start(1);
     else if (theme && !strncmp(theme, "Release_Mouse", 13)) web_presenter_scenario_start(0);
+    ra2_net_tuning_on_debuglog(MEM32(g_esp + 4), g_esp, ra2_wolapi_match_active());
     if (g_debuglog || script_active()) {
         char buf[1024];
         const char *fmt = (const char *)(uintptr_t)MEM32(g_esp + 4);
@@ -426,6 +440,7 @@ static void frame_pump(void) {
     hle_screen_pump();
     ra2_launcher_poll();
     ra2_wolapi_poll();
+    ra2_net_tuning_frame(ra2_wolapi_match_active());
     web_presenter_pump();
     g_pumps++;
     if (g_trap_after && ++pumps == g_trap_after) __builtin_trap();
@@ -718,6 +733,8 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--trap") && i + 1 < argc) g_trap_after = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--hd-voxels")) hdvox_configure(1, NULL);
         else if (!strcmp(argv[i], "--speedcontrol")) g_speed_control = 1;
+        else if (!strcmp(argv[i], "--classic-latency")) g_classic_latency = 1;
+        else if (!strcmp(argv[i], "--net-delay") && i + 1 < argc) g_net_delay_ms = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--hd-voxels-dump") && i + 1 < argc) {
             static char dir[PATH_MAX];               /* absolute: the run chdirs into the game folder */
             const char *p = argv[++i];
@@ -732,7 +749,7 @@ int main(int argc, char **argv) {
             g_dump_dir = dir;                /* the run chdirs into the game folder */
         }
         else {
-            printf("usage: ra2 [--run] [--headless | --fullscreen] [--scale sharp|smooth|crt|nearest|integer] [--game DIR] [--mod NAME|none] [--thai-font-fix --thai-font-id ID] [--debuglog] [--mute] [--trace] [--heartbeat S] [--memfs] [--intro | --no-intro] [--trap N] [--dump-frames DIR] [--hd-voxels] [--hd-voxels-dump DIR] [--clockstats] [--speedcontrol]\n"
+            printf("usage: ra2 [--run] [--headless | --fullscreen] [--scale sharp|smooth|crt|nearest|integer] [--game DIR] [--mod NAME|none] [--thai-font-fix --thai-font-id ID] [--debuglog] [--mute] [--trace] [--heartbeat S] [--memfs] [--intro | --no-intro] [--trap N] [--dump-frames DIR] [--hd-voxels] [--hd-voxels-dump DIR] [--clockstats] [--speedcontrol] [--classic-latency] [--net-delay MS]\n"
                    "           [--press DLG:CTRL@s] [--select DLG:CTRL=N@s] [--waitlog TEXT@s] [--move|--click x,y@s]\n"
                    "           [--key [c][s][a]+vk@s] [--wait VA@s] [--drag x1,y1,x2,y2@s]\n");
             return !strcmp(argv[i], "--help") || !strcmp(argv[i], "-h") ? 0 : 1;
@@ -791,6 +808,7 @@ int main(int argc, char **argv) {
     ra2_wolapi_set_ipx_manager(0x00A8E9C0u);
 #endif
     ra2_wolapi_register();
+    ra2_net_tuning_init(&g_net_addrs, !g_classic_latency, g_net_delay_ms);
     printf(RA2_TITLE " recomp host (browser)\n  lifted functions in dispatch: %u\n", recomp_dispatch_count);
 
     pe_image img;

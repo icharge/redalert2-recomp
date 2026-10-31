@@ -12,6 +12,10 @@ typedef struct {
 void ra2_wolapi_register(void);
 const ra2_wolapi_session *ra2_wolapi_current_session(void);
 
+/* 1 while a STARTG match owns the session: the browser match launch and the
+ * net tuning only apply to that path, not to skirmish or campaign. */
+int ra2_wolapi_match_active(void);
+
 /* Guest address of the game's "packet router allowed" byte (Session+0x3038 in
  * Red Alert 2, +0x3090 in Yuri's Revenge), or 0. Once a match has started the
  * bridge keeps it cleared: the game otherwise has the host spawn Westwood's mph.exe
