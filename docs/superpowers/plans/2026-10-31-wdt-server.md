@@ -200,6 +200,12 @@ call). No state codec or server model exists yet.
   0x75E08F sees every entry, but GAM handling sits behind `[esp+0x20]` state and an earlier
   service branch; trace `[esp+0x20]` writes (0x75E5D2, 0x75E6C1) and the selected-server flag
   to learn which entry order/fields the client needs before it counts a mangler.
+- **Mangler receive validator located**: the matchmaker reply is checked at `0x5BA194`:
+  `cmp word [esp+0xe], 0xAA03` (magic) and `cmp dword [esp+0x3c], 0x2C` (payload length 44),
+  after which it logs `Mangler is seeing packets from port %d as coming from port %d` and calls
+  `0x525B30`. The captured request carries the same magic (`03 aa` = 0xAA03) and a `0x2B` (43)
+  field, so the answer frame must be a 44-byte-payload packet with magic 0xAA03 — not the 76-byte
+  echo (the request is a larger frame; the reply the client accepts is the short one).
 - **Mangler reply opcode probe (negative)**: answering the `0xFE` probe with `0xFF` in the first
   byte (instead of an echo) is also ignored; the client keeps pinging and still ends at `0xD0`.
   So the reply is not a simple opcode flip: the 76-byte frame's matchmaker answer (probably the
