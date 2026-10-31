@@ -8,6 +8,7 @@
 
 import type { CopyTarget } from "./opfs";
 import { isRuntimeInput } from "./install";
+import { isProfileIniPath, isSettingsPath } from "./settings-files";
 
 /** What FS.stat answers: WasmFS gives the time in seconds as a number, the older file system a Date. */
 export interface StatLike {
@@ -63,11 +64,16 @@ const GAME = "/game";
 const PROFILE_INI_COMPACT_THRESHOLD = 1024 * 1024;
 
 /**
- * The current Yuri HLE profile reader uses the first section and key match. Keep those original lines and
- * discard later duplicate sections/keys from oversized saved RA2MD.INI files. The raw byte slices preserve
- * the game's ANSI values; only ASCII section and key names are decoded for comparison.
+ * Which duplicate the game's INI reader uses. Yuri's Revenge takes the first section and key match; Red
+ * Alert 2 takes the last (a duplicated RA2.INI with 640x480 then 800x600 started at 800x600). Each edition
+ * reads its own file, so the name picks the rule. The raw byte slices preserve the game's ANSI values;
+ * only ASCII section and key names are decoded for comparison.
  */
-function compactProfileIni(data: Uint8Array): Uint8Array {
+type IniOrder = "first" | "last";
+const profileIniOrder = (path: string): IniOrder => (/^ra2\.ini$/i.test(path) ? "last" : "first");
+
+/** Keep the first copy of each section and key (Yuri's Revenge). */
+function compactProfileIniFirst(data: Uint8Array): Uint8Array {
   const decoder = new TextDecoder();
   const chunks: Uint8Array[] = [];
   const sections = new Set<string>();
@@ -124,6 +130,77 @@ function compactProfileIni(data: Uint8Array): Uint8Array {
   return compacted;
 }
 
+interface ProfileSection {
+  header: Uint8Array;
+  keys: Map<string, Uint8Array>;
+  order: string[];
+}
+
+/** Keep the last value of each key in each section (Red Alert 2), in the order the keys first appeared. */
+function compactProfileIniLast(data: Uint8Array): Uint8Array {
+  const decoder = new TextDecoder();
+  const sections = new Map<string, ProfileSection>();
+  let section: ProfileSection | null = null;
+
+  for (let start = 0; start < data.byteLength;) {
+    let end = start;
+    while (end < data.byteLength && data[end] !== 0x0a) end++;
+    if (end < data.byteLength) end++;
+
+    const contentEnd = end > start && data[end - 1] === 0x0a ? end - 1 : end;
+    const lineEnd =
+      contentEnd > start && data[contentEnd - 1] === 0x0d ? contentEnd - 1 : contentEnd;
+    const lineBytes = data.subarray(start, lineEnd);
+    const line = lineBytes.byteLength <= 4096 ? decoder.decode(lineBytes) : "";
+    const header = /^\[([^\]]+)\]$/.exec(line);
+
+    if (header) {
+      const name = header[1]?.toLowerCase() ?? "";
+      section = sections.get(name) ?? null;
+      if (!section) {
+        section = { header: data.subarray(start, end), keys: new Map(), order: [] };
+        sections.set(name, section);
+      }
+    } else if (section) {
+      const key = /^([^=\s]+)=/.exec(line)?.[1]?.toLowerCase();
+      if (key) {
+        if (!section.keys.has(key)) section.order.push(key);
+        section.keys.set(key, data.subarray(start, end));
+      }
+    }
+    start = end;
+  }
+
+  let size = 0;
+  for (const kept of sections.values()) {
+    size += kept.header.byteLength;
+    for (const key of kept.order) size += kept.keys.get(key)?.byteLength ?? 0;
+  }
+  if (size >= data.byteLength) return data;
+
+  const compacted = new Uint8Array(size);
+  let offset = 0;
+  for (const kept of sections.values()) {
+    compacted.set(kept.header, offset);
+    offset += kept.header.byteLength;
+    for (const key of kept.order) {
+      const value = kept.keys.get(key);
+      if (!value) continue;
+      compacted.set(value, offset);
+      offset += value.byteLength;
+    }
+  }
+  return compacted;
+}
+
+/** An oversized profile INI without its repeated copies; anything else unchanged. */
+function storedBytes(path: string, data: Uint8Array): Uint8Array {
+  if (!isProfileIniPath(path) || data.byteLength <= PROFILE_INI_COMPACT_THRESHOLD) return data;
+  return profileIniOrder(path) === "last"
+    ? compactProfileIniLast(data)
+    : compactProfileIniFirst(data);
+}
+
 /** Files the game writes that are not worth keeping. */
 const IGNORED = /^(debug\.log|.*\.tmp)$/i;
 
@@ -144,7 +221,12 @@ interface Seen {
 }
 
 /** Every file of the game's folder with its size and time: `Saved Games/` and the top level only. */
-function scan(fs: FsLike, retryMissingRoot = false): Map<string, Seen> {
+function scan(
+  fs: FsLike,
+  retryMissingRoot = false,
+  accept: (path: string) => boolean = () => true,
+  skipSaves = false,
+): Map<string, Seen> {
   const out = new Map<string, Seen>();
   const walk = (dir: string, prefix: string, deep: boolean) => {
     let names: string[];
@@ -168,6 +250,7 @@ function scan(fs: FsLike, retryMissingRoot = false): Map<string, Seen> {
         continue;
       }
       if (isDirectory(fs, stat.mode)) {
+        if (skipSaves && name.toLowerCase() === "saved games") continue;
         if (
           deep &&
           (name.toLowerCase() === "saved games" ||
@@ -177,7 +260,8 @@ function scan(fs: FsLike, retryMissingRoot = false): Map<string, Seen> {
         )
           walk(path, `${prefix}${name}/`, name.toLowerCase() !== "saved games");
       } else if (!IGNORED.test(name) && !(prefix === "" && isRuntimeInput(name))) {
-        out.set(`${prefix}${name}`, { size: stat.size, mtime: modifiedMs(stat.mtime) });
+        const relative = `${prefix}${name}`;
+        if (accept(relative)) out.set(relative, { size: stat.size, mtime: modifiedMs(stat.mtime) });
       }
     }
   };
@@ -232,12 +316,7 @@ export async function restoreSaves(
       }
     }
     const original = await file.read();
-    const isYuriIni =
-      game.toLowerCase().endsWith("ra2md") && file.path.toLowerCase() === "ra2md.ini";
-    const data =
-      isYuriIni && original.byteLength > PROFILE_INI_COMPACT_THRESHOLD
-        ? compactProfileIni(original)
-        : original;
+    const data = storedBytes(file.path, original);
     if (data !== original) await repair?.write(`save/${game}/${file.path}`, bytesStream(data));
     replaceFile(fs, `${GAME}/${file.path}`, data);
     restored++;
@@ -248,6 +327,8 @@ export async function restoreSaves(
 export interface SaveSync {
   /** look now: copies what changed. Resolves when it is in OPFS. */
   flush(): Promise<number>;
+  /** look now at only the settings files, waiting only for their writes. */
+  flushSettings(): Promise<number>;
   stop(): void;
 }
 
@@ -255,52 +336,80 @@ export interface SaveSync {
  * Watches the game's folder from now on, copying a file to OPFS when it is new or has changed. The
  * files there at the moment of the call count as unchanged. A flush runs every `everyMs`, and on
  * `flush()`; a file still being written (its size moved since the last look) waits for the next look.
+ * Settings files get their own, faster look so a value changed before a tab closes is kept; they wait
+ * for one stable look rather than two, since the game writes them small and often.
  */
 export function startSaveSync(
   fs: FsLike,
   target: CopyTarget,
   game: string,
   everyMs = 2000,
+  settingsEveryMs = 250,
 ): SaveSync {
   const kept = scan(fs);
   let pending = new Map<string, Seen>();
+  let settingsPending = new Map<string, Seen>();
   let running: Promise<number> | null = null;
 
-  async function once(): Promise<number> {
-    const now = scan(fs, true);
+  async function once(settingsOnly = false): Promise<number> {
+    const now = scan(fs, true, settingsOnly ? isSettingsPath : undefined, settingsOnly);
     const next = new Map<string, Seen>();
+    const earlierMap = settingsOnly ? settingsPending : pending;
     let copied = 0;
     for (const [path, seen] of now) {
       const before = kept.get(path);
       if (before && before.size === seen.size && before.mtime === seen.mtime) continue;
-      const earlier = pending.get(path);
+      const earlier = earlierMap.get(path);
       next.set(path, seen);
-      // wait until two looks agree, so a file the game is still writing is not cut short
+      // wait until the looks agree, so a file the game is still writing is not cut short
       if (!earlier || earlier.size !== seen.size || earlier.mtime !== seen.mtime) continue;
-      await target.write(`save/${game}/${path}`, bytesStream(fs.readFile(`${GAME}/${path}`)));
+      const bytes = storedBytes(path, fs.readFile(`${GAME}/${path}`));
+      await target.write(`save/${game}/${path}`, bytesStream(bytes));
       kept.set(path, seen);
       next.delete(path);
+      pending.delete(path);
+      settingsPending.delete(path);
       copied++;
     }
-    pending = next;
+    if (settingsOnly) settingsPending = next;
+    else pending = next;
     return copied;
   }
 
-  const timer = setInterval(() => {
-    running ??= once().finally(() => {
+  const run = (settingsOnly: boolean) => {
+    if (running) return;
+    running = once(settingsOnly).finally(() => {
       running = null;
     });
-  }, everyMs);
+    void running.catch(() => {});
+  };
+
+  const timer = setInterval(() => run(false), everyMs);
+  const settingsTimer = settingsEveryMs > 0 ? setInterval(() => run(true), settingsEveryMs) : null;
 
   return {
     async flush() {
       // two looks, as the timer would take: the first notes what changed, the second copies it
       await (running ?? Promise.resolve(0));
-      const first = await once();
-      return first + (await once());
+      running = once()
+        .then(() => once())
+        .finally(() => {
+          running = null;
+        });
+      return running;
+    },
+    async flushSettings() {
+      await (running ?? Promise.resolve(0));
+      running = once(true)
+        .then(() => once(true))
+        .finally(() => {
+          running = null;
+        });
+      return running;
     },
     stop() {
       clearInterval(timer);
+      if (settingsTimer) clearInterval(settingsTimer);
     },
   };
 }

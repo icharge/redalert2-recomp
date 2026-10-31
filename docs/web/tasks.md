@@ -215,6 +215,18 @@ Detailed scope and measurements: [browser frame-performance plan](../superpowers
 | 11. Memory bounds and limits | Done for planned HD-off checks | Source cache bounds and frame-buffer reclamation are tested. Current-build 1440p and 4K HD-off soaks for both editions peaked at 640 MiB and had zero Wasm growth after 60 seconds. JS heap growth was 2,571,580 bytes (YR 1440p), 748,740 (YR 4K), 1,052,716 (RA2 1440p), and 136,452 (RA2 4K). Maximum remains 768 MiB. |
 | 12. Final benchmark and docs | Done; performance bars reported | Both current Release editions have 15-case matrices, 1440p/4K ten-minute soaks, and the WebGL2/2D x HD-off/on suite. Menu and skirmish raw-pixel comparisons report zero differences; movie playback advanced but emitted no PAL8 frame to compare. Task 7's YR FPS/gap failures remain visible in [progress.md](progress.md); RA2 has no edition-specific baseline and is reported as current measurements only. All browser runs reused `work/perf/profile-fresh`; profile cache cleanup preserved OPFS and saves. |
 
+## Launcher game settings and fast exit
+
+Plan: [launcher settings and fast save](../superpowers/plans/2026-10-31-launcher-settings-and-fast-save.md).
+
+| Task | State | Evidence or remaining gate |
+|---|---|---|
+| Launcher Gameplay/Audio/Video/Keyboard tabs edit `RA2.INI`/`RA2MD.INI` and `KEYBOARD*` in the save store | Done | `LauncherGameSettings` component tests cover switch, select, slider, hotkey and write-error paths; `game-settings.test.ts` covers INI/hotkey parsing. |
+| Settings save immediately, not only on exit | Done | 250 ms settings pass plus `flushSettings()`; `settingsSaved` from `win32hle`; `pagehide` fallback. `kernel32_ext_selftest` passes. |
+| Edition-specific host settings | Done | `src/web/settings.c` writes `.host/ra2.ini` for RA2 and `.host/ra2md.ini` for Yuri; Yuri migrates the old file once. |
+| Fast Exit returns without guest save/teardown | Done | `ra2_web_exit_confirmation` and `IN_QUIT` call `hle_exit(0)` after the page's full flush; `leaveGame(..., flush=false)` skips a second scan. |
+| Exit timing and settings-survival e2e | Done | `exit-confirm.mjs --profile ../work/perf/profile-fresh` passes with `exitMs: 152`. `launcher-settings.mjs` changes Auto scroll, volume and a hotkey, starts either edition, exits, and reads all three back. The game's own Options-screen drag is not automated. |
+
 ## Open, before the page ships to a public host
 
 | ID | Task | Needs | Done when |

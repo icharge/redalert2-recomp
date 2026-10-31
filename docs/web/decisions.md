@@ -76,17 +76,23 @@ Primitives, built with Vite ([frontend.md](frontend.md)).
 progress and sliders without styling them from scratch, and React only runs
 the screens around the game, so it costs nothing during play.
 
-## D7. Game settings stay in the game
+## D7. Game settings stay in the game (the launcher edits the same files)
 
 **Decided.** The game's F10 menu keeps resolution, scaling, HD vehicles,
-controls and mods. The page's Settings has only browser-side settings.
+controls and mods. The page's in-game Settings has only browser-side
+settings. The launcher's game-settings dialog is the one exception: its
+Gameplay, Audio, Video and Keyboard tabs read and write the edition's own
+saved `RA2.INI`/`RA2MD.INI` and `KEYBOARD.INI`/`KEYBOARDMD.INI` in
+`save/<storage>/`. It does not keep a second copy.
 
-**Why.** One copy of each setting, the same on every platform. The page
-would otherwise have to mirror the host's settings and keep them in step.
+**Why.** One copy of each setting, the same on every platform. The launcher
+view is a convenience over the game's files: `restoreSaves` lays them over
+the import at the next start, and the save watcher persists changes from
+either side.
 
 **Would change if.** The F10 menu turns out hard to use in a browser (for
 example with pointer lock). Even then, the page would call the host's
-settings, not keep its own.
+settings or edit the game's files, not keep its own copy.
 
 ## D8. Player-supplied files only, through OPFS
 

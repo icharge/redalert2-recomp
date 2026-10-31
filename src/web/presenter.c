@@ -29,7 +29,6 @@
 #include "hdvox.h"
 #include "mods.h"
 
-#define WM_CLOSE        0x0010u
 #define WM_CHAR         0x0102u
 #define WM_ACTIVATEAPP  0x001Cu
 #define WM_MOUSEMOVE    0x0200u
@@ -423,11 +422,10 @@ static void drain_input(void) {
             break;
         }
         case IN_SETTING: web_settings_command((int)e.a, (int)e.b, (int)e.c); break;
-        case IN_QUIT: {
-            uint32_t h = hle_first_hwnd();
-            if (h) hle_post_message(h, WM_CLOSE, 0, 0); else hle_exit(0);
+        case IN_QUIT:
+            /* The page has flushed what it keeps; skip the guest's close path. */
+            hle_exit(0);
             break;
-        }
         case IN_FOCUS: {
             uint32_t h = hle_first_hwnd();
             /* The game is always the active application, as in the native build (host.c, bringup.md 7).

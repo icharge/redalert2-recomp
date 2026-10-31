@@ -1,14 +1,17 @@
 // Intercept Exit before native dialog creation and return the web choice to the game.
-// Start Vite first, then pass the locally owned game folder with --game.
+// Start Vite first, then pass either --game <folder> (a test folder, small) or
+// --profile <persistent Chrome profile with an imported game> (the fast path).
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import path from "node:path";
 import { options, startPage } from "./lib.mjs";
+import { openGame } from "./perf-nav.mjs";
 
 const opts = options(process.argv.slice(2));
-if (!opts.testGame) throw new Error("Pass --game <local game folder>.");
+if (!opts.testGame && !opts.profile)
+  throw new Error("Pass --game <local game folder> or --profile <imported profile>.");
 opts.pageArgs.push("--mute");
-const run = await startPage(opts);
+const run = opts.testGame ? await startPage(opts) : await openGame(opts, { shots: opts.shots });
 const report = {};
 const requests = [];
 
@@ -96,10 +99,16 @@ try {
   for (const worker of workers) worker.on("close", () => workers.delete(worker));
   run.page.on("worker", (worker) => worker.on("close", () => workers.delete(worker)));
   assert.ok(workers.size > 0, "the running game must have worker threads");
+  const exitStarted = Date.now();
   await run.page.getByRole("button", { name: "Exit game" }).click();
   await run.page.waitForURL(
     (url) => !url.searchParams.has("test") && !url.searchParams.has("dev"),
     { timeout: 30_000 },
+  );
+  report.exitMs = Date.now() - exitStarted;
+  assert.ok(
+    report.exitMs < 4000,
+    `Exit took ${report.exitMs} ms; the fast path should not wait for guest teardown`,
   );
   await run.page
     .getByRole("heading", { name: /Your games|Bring your game/ })

@@ -8,6 +8,7 @@
 #include <string.h>
 #include <strings.h>
 #include <sys/stat.h>
+#include <unistd.h>
 #include "win32hle.h"
 #include "recomp_target.h"
 #include "hdvox.h"
@@ -18,7 +19,12 @@
 static const char *scales[] = { "sharp", "smooth", "crt", "nearest", "integer" };
 static int scale_mode, blur_bars = 1, modern, menu_open, video_w = 800, video_h = 600;
 static char remembered_mod[128];
+#ifdef RA2_TARGET_GAME
 #define HOST_INI ".host/ra2.ini"
+#else
+#define HOST_INI ".host/ra2md.ini"
+#define LEGACY_HOST_INI ".host/ra2.ini"
+#endif
 void web_modern_configure(int on);
 
 #ifdef RA2_TARGET_GAME
@@ -86,6 +92,19 @@ const char *web_settings_mod(void) { return remembered_mod; }
 void web_settings_start(const char *override_scale) {
     /* Keep host settings separate from the base game's case-insensitive RA2.INI. */
     mkdir(".host", 0777);
+#ifdef LEGACY_HOST_INI
+    if (access(HOST_INI, F_OK) != 0 && access(LEGACY_HOST_INI, F_OK) == 0) {
+        FILE *old = fopen(LEGACY_HOST_INI, "r");
+        FILE *next = fopen(HOST_INI, "w");
+        if (old && next) {
+            char copy[512];
+            size_t n;
+            while ((n = fread(copy, 1, sizeof copy, old)) > 0) fwrite(copy, 1, n, next);
+        }
+        if (old) fclose(old);
+        if (next) fclose(next);
+    }
+#endif
     char line[256], section[64] = "", key[64], value[128];
     FILE *f = fopen(HOST_INI, "r");
     while (f && fgets(line, sizeof line, f)) {

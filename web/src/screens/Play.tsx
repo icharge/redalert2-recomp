@@ -40,6 +40,8 @@ import { LoadingScreen } from "./LoadingScreen";
 import styles from "./Play.module.css";
 import { leaveGame } from "../game/lifecycle";
 import { statsWanted, writeStatsPreference } from "../storage/stats-preferences";
+import { introArguments } from "../storage/intro-preferences";
+import { speedControlArguments } from "../storage/speed-control-preferences";
 
 const runtimeLive = () => !["exited", "crashed"].includes(gameStore.getSnapshot().phase);
 
@@ -51,11 +53,13 @@ declare global {
   }
 }
 function startOnce(files: FileSource, thaiFontFix: ThaiFontPreference): Promise<GameHandle> {
-  window.ra2Session ??= startGame({
-    files,
-    thaiFontFix,
-    args: argsFromQuery(window.location.search),
-  });
+  const game = sourceStorage(files);
+  const args = argsFromQuery(window.location.search);
+  if (!args.some((arg) => arg.toLowerCase() === "--intro"))
+    args.push(...introArguments(window.location.search, game));
+  if (!args.some((arg) => /^-{1,2}speedcontrol$/i.test(arg)))
+    args.push(...speedControlArguments(window.location.search, game));
+  window.ra2Session ??= startGame({ files, thaiFontFix, args });
   return window.ra2Session;
 }
 
@@ -95,14 +99,18 @@ export function Play({ files }: { files: FileSource }) {
   }, []);
   const toggleStats = useCallback(() => updateStats(!statsOn), [statsOn, updateStats]);
   const leaving = useRef(false);
+  const fastExit = useRef(false);
+  const exitFlushing = useRef(false);
   const returnToLauncher = useCallback(() => {
     if (leaving.current) return;
     leaving.current = true;
     setExitError(null);
-    void leaveGame(window.ra2Session).catch((reason: unknown) => {
-      leaving.current = false;
-      setExitError(`Could not save before leaving: ${String(reason)}`);
-    });
+    void leaveGame(window.ra2Session, undefined, undefined, !fastExit.current).catch(
+      (reason: unknown) => {
+        leaving.current = false;
+        setExitError(`Could not save before leaving: ${String(reason)}`);
+      },
+    );
   }, []);
 
   useEffect(() => {
@@ -153,11 +161,31 @@ export function Play({ files }: { files: FileSource }) {
     const pending = gameStore.getSnapshot().exitConfirmation;
     const game = handle.current;
     if (!pending || !game) return;
-    if (!game.exports.ra2_exit_confirmation_reply(pending.request, Number(exitGame))) {
-      setBrowserError("The game's Exit Game confirmation is no longer open.");
+    const reply = () => {
+      if (!game.exports.ra2_exit_confirmation_reply(pending.request, Number(exitGame))) {
+        setBrowserError("The game's Exit Game confirmation is no longer open.");
+        return;
+      }
+      gameStore.resolveExitConfirmation(pending.request);
+    };
+    if (!exitGame) {
+      reply();
       return;
     }
-    gameStore.resolveExitConfirmation(pending.request);
+    if (exitFlushing.current) return;
+    exitFlushing.current = true;
+    const flush = game.saves ? game.saves.flush() : Promise.resolve(0);
+    void flush
+      .then(() => {
+        fastExit.current = true;
+        reply();
+      })
+      .catch((reason: unknown) =>
+        setBrowserError(`Could not save before leaving: ${String(reason)}`),
+      )
+      .finally(() => {
+        exitFlushing.current = false;
+      });
   };
   useEffect(() => {
     const full = () => setFullscreen(!!document.fullscreenElement);
@@ -312,7 +340,11 @@ export function Play({ files }: { files: FileSource }) {
             if (document.hasFocus()) game.exports.ra2_focus(1);
           }
         };
+        const onPageHide = () => {
+          void game.saves?.flushSettings().catch((e: unknown) => setBrowserError(String(e)));
+        };
         document.addEventListener("visibilitychange", onHidden);
+        document.addEventListener("pagehide", onPageHide, true);
         let stopped = false;
         stop = () => {
           if (stopped) return;
@@ -325,6 +357,7 @@ export function Play({ files }: { files: FileSource }) {
           detach();
           observer?.disconnect();
           document.removeEventListener("visibilitychange", onHidden);
+          document.removeEventListener("pagehide", onPageHide, true);
           delete window.ra2Presenter;
           releaseBrowserControls();
         };

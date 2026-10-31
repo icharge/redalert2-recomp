@@ -118,8 +118,26 @@ is never reused for another slot. Mod/font restarts reload the same game URL.
 
 Game settings (resolution, scaling, HD vehicles, controls, mods) stay in the
 game's own F10 menu, drawn by the host as on Linux, so each setting has one
-copy. The page's Settings dialog (Radix Dialog with Tabs) has only what
-belongs to the browser:
+copy. The launcher's `LauncherGameSettings` dialog adds Gameplay, Audio,
+Video and Keyboard tabs that read and write the same per-edition
+`RA2.INI`/`RA2MD.INI` and `KEYBOARD.INI`/`KEYBOARDMD.INI` in
+`save/<storage>/`; they are a convenience over the game's files, not a second
+copy. The Video tab also holds the launcher's resolution override. The
+Keyboard tab follows the game's own Customize Keyboard layout: pick a
+category, pick a command, read its description, then capture and assign a key
+(or reset every binding to the game's defaults). With no keyboard file in the
+import, it starts from the game's standard bindings and writes a complete file
+on the first change. Gameplay is grouped into Player, Match, Campaign, Camera,
+Controls and Interface; Player holds the name written to `[MultiPlayer] Handle`,
+Campaign has the `-SPEEDCONTROL` switch that puts the speed slider in campaign
+missions, Controls has the MOBA-style right-click-to-order toggle (`.host`
+settings), and each settings tab can restore its section's defaults. The Import
+screen leaves
+the folder's settings files out unless "Bring my settings and hotkeys" is
+ticked, so a fresh import starts from `web/src/storage/game-settings-defaults.ts`;
+`ensureDefaultMainSettings` writes that profile into the save store before the
+first launch. The page's in-game Settings dialog (Radix Dialog with Tabs) has only
+what belongs to the browser:
 
 | Setting | Where it's kept |
 |---|---|

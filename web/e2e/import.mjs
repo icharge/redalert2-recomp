@@ -122,6 +122,9 @@ check(true, "the folder is read, and each available exe passes the build check")
 
 if (argv.includes("--movies"))
   await page.getByRole("checkbox", { name: /Include the movies/ }).click();
+// this check reads the imported RA2MD.INI, so bring the folder's settings once
+const settingsBox = page.getByRole("checkbox", { name: /Bring my settings and hotkeys/ });
+if (await settingsBox.isEnabled()) await settingsBox.click();
 await page.waitForTimeout(500);
 const started = Date.now();
 await page.getByRole("button", { name: /^Import / }).click();

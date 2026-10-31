@@ -440,3 +440,38 @@ and settle. The remaining W13.3 gate is separate-network verification, with a
 staging-endpoint question pending. No generated game build is to be published.
 The final fixture additionally waits for both native lobby callbacks and passed
 again (`build-web/wol-yr-finish-final`, frame samples [413,421] -> [585,588]).
+
+## Launcher game settings and fast exit, 31 October 2026
+
+The launcher's `LauncherGameSettings` dialog now has Launcher, Gameplay, Audio,
+Video and Keyboard tabs. The game tabs read and write the edition's own
+`RA2.INI`/`RA2MD.INI` and `KEYBOARD.INI`/`KEYBOARDMD.INI` in
+`save/<storage>/`; the Launcher tab keeps the existing Thai-font, resolution,
+skip-intro and FPS preferences. `game-settings.ts` handles Latin-1 INI edits,
+hotkey values and OPFS reads/writes, with 12 unit tests, and the component has
+5 tests including a rejected write.
+
+Settings no longer wait for Exit. `startSaveSync` has a 250 ms settings pass
+with a one-stable-look rule; `flushSettings()` covers the pagehide and
+`settingsSaved` paths. The `win32hle` file hook reports `RA2.INI`, `RA2MD.INI`,
+`KEYBOARD.INI` and `KEYBOARDMD.INI` writes; `kernel32_ext_selftest` passes under
+Node. The host's own file is now `.host/ra2.ini` for RA2 and `.host/ra2md.ini`
+for Yuri, with a one-time copy from the old Yuri name.
+
+Exit now flushes the page's saves and settings, then `ra2_web_exit_confirmation`
+and `IN_QUIT` end the runtime with `hle_exit(0)` instead of returning to the
+guest's save-and-teardown path. `leaveGame(..., flush=false)` skips the
+duplicate scan. Both editions build and boot to the menu headless;
+`pnpm typecheck`, the full frontend suite (42 files / 370 tests) and the web
+selftests pass. `exit-confirm.mjs --profile ../work/perf/profile-fresh` now
+passes without the 1.1 GB test-folder load: Exit reaches the launcher in
+**152 ms**, with no native dialog and no workers left. `launcher-settings.mjs`
+changes Auto scroll, volume and a hotkey, starts either edition, reads the
+restored `RA2.INI`/`RA2MD.INI` and keyboard file, exits, and confirms the
+launcher reads all three back. The game's own Options-screen mouse drag is not
+automated; the launcher path covers the same files. Fast-build runs must
+replace the `ra2md.wasm.br`/`.gz` sidecars with the same build, or the page
+loads a mismatched wasm. The host hook is in `../pcrecomp` commit `3f78d82`
+(`kernel32: keep profile writes in place and notify settings changes`); this
+repo needs that commit (and the sibling working tree's remaining edits) to
+build.

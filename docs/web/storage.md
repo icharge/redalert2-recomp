@@ -27,13 +27,21 @@ level:
 | User game content | `*.mix` (but not `*.mix.bak`), sound banks, INI and map/data files |
 | Local runtime bundle | The web build's matching `game.exe` or `gamemd.exe`, plus `Blowfish.dll`; neither is imported into OPFS |
 | Sound | `audio.bag`, `audio.idx`, `audiomd.bag`, `audiomd.idx` |
-| Data | `*.ini`, `*.csf`, `*.fnt`, `*.mmx`, `*.map`, `*.mpr`, `*.yrm` |
+| Data | `*.ini`, `*.csf`, `*.fnt`, `*.mmx`, `*.map`, `*.mpr`, `*.yrm` (except the settings files below) |
+| Settings | `RA2.INI`, `RA2MD.INI`, `KEYBOARD.INI`, `KEYBOARDMD.INI`: left out by default so a fresh import starts from the game's own defaults; offered as "bring my settings and hotkeys" |
 | Movies | `movies*.mix`, `movmd*.mix`: optional. If the source has no `MOVIES01.MIX` or `MOVMD03.MIX`, Import creates an empty 12-byte startup placeholder; when movies are skipped, available movie packs are replaced with empty archives. Without the real archives, video cutscenes are skipped; static loading-screen images are separate game assets. The Import screen shows their size and lets the player skip them; the menu's own movies are in `ra2md.mix`. |
 | Saves | `*.sav` at the top level (the game writes `SAVE0001.sav` beside its exe), and `Saved Games/*` of an older layout, if present: offered as "bring your saves" |
 
 A loose `game.fnt` placed at the top of the selected game folder is imported and
 read by the game before its MIX archive copy. Font overrides take effect on the
 next game start; re-import the folder after adding or replacing the font.
+
+A fresh import deliberately leaves out `RA2.INI`, `RA2MD.INI`, `KEYBOARD.INI` and
+`KEYBOARDMD.INI`, so a new browser profile does not inherit another machine's
+options or hotkeys. The launcher then shows the defaults in
+`web/src/storage/game-settings-defaults.ts`, and the first change writes a new file
+to `save/<storage>/`. Tick "Bring my settings and hotkeys" to copy the folder's
+files instead.
 
 Anything else is skipped. The list lives in `web/src/storage/install.ts` (`classify`);
 the dev server serves the same list, so a run from the local folder has what an import
@@ -141,6 +149,13 @@ imported file in the slot instead.
 The save watcher starts after the matching runtime bundle is staged. It ignores the bundle's
 executables and DLLs. At launch, restore also removes any such files left in the save store by
 older versions, without copying them into the game's memory.
+
+Settings files (`RA2.INI`/`RA2MD.INI`, `KEYBOARD.INI`/`KEYBOARDMD.INI`, and the host's
+`.host/ra2.ini`/`.host/ra2md.ini`) get a faster pass: every ~250 ms, and a file is copied after one
+stable size/time observation instead of the two looks a save needs. `flushSettings()` does two
+settings looks and is used on `pagehide` and when the game reports `settingsSaved`. The host now
+writes `.host/ra2.ini` for Red Alert 2 and `.host/ra2md.ini` for Yuri; an existing Yuri
+`.host/ra2.ini` is copied to the new name once at startup.
 
 The Library card offers "download saves": every `.sav` in `save/<edition-storage>/` (and any in an
 older `Saved Games/` folder there), plus the saves that came with the import, zipped under the names

@@ -82,7 +82,7 @@ describe("startSaveSync", () => {
   it("never saves runtime binaries staged after the watcher starts", async () => {
     const game = fakeFs();
     const target = memoryTarget();
-    const sync = startSaveSync(game.fs, target, "ra2md", 1e9);
+    const sync = startSaveSync(game.fs, target, "ra2md", 1e9, 0);
     stop = sync.stop;
     game.put("/game/GAMEMD.EXE", "bundled runtime");
     game.put("/game/Blowfish.dll", "bundled tables");
@@ -96,7 +96,7 @@ describe("startSaveSync", () => {
     const game = fakeFs({ "/game/SAVE2132.SAV": "imported match" });
     const target = memoryTarget();
     target.files.set("save/ra2/SAVE2132.SAV", "imported match");
-    const sync = startSaveSync(game.fs, target, "ra2", 1e9);
+    const sync = startSaveSync(game.fs, target, "ra2", 1e9, 0);
     stop = sync.stop;
 
     game.files.delete("/game/SAVE2132.SAV");
@@ -115,7 +115,7 @@ describe("startSaveSync", () => {
         throw Object.assign(new Error("No such directory"), { code: "ENOENT" });
       return readdir(path);
     };
-    const sync = startSaveSync(game.fs, target, "ra2md", 1e9);
+    const sync = startSaveSync(game.fs, target, "ra2md", 1e9, 0);
     stop = sync.stop;
 
     disappeared = true;
@@ -132,17 +132,35 @@ describe("startSaveSync", () => {
         throw Object.assign(new Error("No such directory"), { code: "ENOENT" });
       return readdir(path);
     };
-    const sync = startSaveSync(game.fs, target, "ra2md", 1e9);
+    const sync = startSaveSync(game.fs, target, "ra2md", 1e9, 0);
     stop = sync.stop;
 
     unavailable = true;
     await expect(sync.flush()).resolves.toBe(0);
   });
 
+  it("copies settings on their own pass and leaves saves for the full flush", async () => {
+    const game = fakeFs();
+    const target = memoryTarget();
+    const sync = startSaveSync(game.fs, target, "ra2md", 1e9, 0);
+    stop = sync.stop;
+    game.put("/game/RA2MD.INI", "[Options]\nGameSpeed=5\n");
+    game.put("/game/KeyboardMD.INI", "[Hotkey]\nOptions=27\n");
+    game.put("/game/.host/ra2md.ini", "[present]\n");
+    game.put("/game/SAVE0001.sav", "a save");
+
+    expect(await sync.flushSettings()).toBe(3);
+    expect([...target.files.keys()].sort()).toEqual([
+      "save/ra2md/.host/ra2md.ini",
+      "save/ra2md/KeyboardMD.INI",
+      "save/ra2md/RA2MD.INI",
+    ]);
+  });
+
   it("persists host settings separately from the game's RA2.INI", async () => {
     const game = fakeFs({ "/game/RA2.INI": "[Video]" });
     const target = memoryTarget();
-    const sync = startSaveSync(game.fs, target, "ra2");
+    const sync = startSaveSync(game.fs, target, "ra2", 2000, 0);
     stop = sync.stop;
     game.put("/game/.host/ra2.ini", "[present]\ncontrols=modern");
     await sync.flush();
@@ -152,7 +170,7 @@ describe("startSaveSync", () => {
   it("keeps each mod's saves and settings apart from the base game and other mods", async () => {
     const game = fakeFs({ "/game/mods/Alpha/rulesmd.ini": "rules" });
     const target = memoryTarget();
-    const sync = startSaveSync(game.fs, target, "ra2md");
+    const sync = startSaveSync(game.fs, target, "ra2md", 2000, 0);
     stop = sync.stop;
     game.put("/game/mods/Alpha/RA2MD.INI", "alpha settings");
     game.put("/game/mods/Alpha/Saved Games/slot.sav", "alpha save");
@@ -167,7 +185,7 @@ describe("startSaveSync", () => {
   it("keeps a new or changed file, not the game's own, and not a log", async () => {
     const game = fakeFs({ "/game/ra2.mix": "archive", "/game/RA2MD.INI": "[Video]" });
     const target = memoryTarget();
-    const sync = startSaveSync(game.fs, target, "ra2md", 1e9);
+    const sync = startSaveSync(game.fs, target, "ra2md", 1e9, 0);
     stop = sync.stop;
     expect(await sync.flush()).toBe(0);
 
@@ -191,7 +209,7 @@ describe("startSaveSync", () => {
   it("leaves a file the game is still writing for the next look", async () => {
     const game = fakeFs();
     const target = memoryTarget();
-    const sync = startSaveSync(game.fs, target, "ra2md", 1e9);
+    const sync = startSaveSync(game.fs, target, "ra2md", 1e9, 0);
     stop = sync.stop;
     game.put("/game/Saved Games/big.sav", "part");
     await sync.flush(); // first look notes it; the second would copy it if nothing moved
@@ -199,6 +217,21 @@ describe("startSaveSync", () => {
     // the file moved between looks: this flush's first look sees a change, its second agrees with the first
     expect(await sync.flush()).toBe(1);
     expect(target.files.get("save/ra2md/Saved Games/big.sav")).toBe("part and more");
+  });
+
+  it("stores an oversized profile INI without the copies the game appended", async () => {
+    const first =
+      "[Video]\r\nScreenWidth=1920\r\nScreenHeight=1080\r\n[Options]\r\nGameSpeed=1\r\n";
+    const repeated =
+      "[Video]\r\nScreenWidth=1280\r\nScreenHeight=720\r\n[Options]\r\nGameSpeed=5\r\n";
+    const game = fakeFs({ "/game/RA2.INI": first + repeated.repeat(20_000) });
+    const target = memoryTarget();
+    const sync = startSaveSync(game.fs, target, "ra2", 1e9, 0);
+    stop = sync.stop;
+
+    game.put("/game/RA2.INI", first + repeated.repeat(20_001));
+    expect(await sync.flush()).toBe(1);
+    expect(target.files.get("save/ra2/RA2.INI")).toBe(repeated);
   });
 });
 
@@ -220,6 +253,25 @@ describe("restoreSaves", () => {
     expect(await restoreSaves(game.fs, store, "slot-1-ra2md", undefined, target)).toBe(1);
     expect(new TextDecoder().decode(game.fs.readFile("/game/RA2MD.INI"))).toBe(compact);
     expect(target.files.get("save/slot-1-ra2md/RA2MD.INI")).toBe(compact);
+  });
+
+  it("keeps the last copy of an oversized saved Red Alert 2 INI before restoring it", async () => {
+    const first =
+      "[Video]\r\nScreenWidth=1920\r\nScreenHeight=1080\r\n[Options]\r\nGameSpeed=1\r\n";
+    const repeated =
+      "[Video]\r\nScreenWidth=1280\r\nScreenHeight=720\r\n[Options]\r\nGameSpeed=5\r\n";
+    const bytes = new TextEncoder().encode(first + repeated.repeat(20_000));
+    const game = fakeFs();
+    const target = memoryTarget();
+    const store: SaveStore = {
+      async list() {
+        return [{ path: "RA2.INI", size: bytes.length, read: async () => bytes }];
+      },
+    };
+
+    expect(await restoreSaves(game.fs, store, "slot-1-ra2", undefined, target)).toBe(1);
+    expect(new TextDecoder().decode(game.fs.readFile("/game/RA2.INI"))).toBe(repeated);
+    expect(target.files.get("save/slot-1-ra2/RA2.INI")).toBe(repeated);
   });
 
   it("removes stale runtime binaries from the save store without restoring them", async () => {
@@ -384,7 +436,7 @@ describe("a game folder whose big files are links into the import", () => {
     game.links.set("/game/ra2.mix", "/opfs/game/slot-1/ra2.mix");
     game.files.set("/game/ra2md.ini", "[Video]");
     const target = memoryTarget();
-    const sync = startSaveSync(game.fs, target, "slot-1-ra2md");
+    const sync = startSaveSync(game.fs, target, "slot-1-ra2md", 2000, 0);
     stop = () => sync.stop();
     game.files.set("/game/SAVE0001.sav", "a save");
     await sync.flush();

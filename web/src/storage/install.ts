@@ -31,7 +31,10 @@ export interface BuildInfo {
   >;
 }
 
-export type FileKind = "archive" | "movie" | "sound" | "data" | "save";
+export type FileKind = "archive" | "movie" | "sound" | "data" | "settings" | "save";
+
+/** The files the game writes for its own options and hotkeys; a fresh import leaves them out. */
+const SETTINGS_FILES = new Set(["ra2.ini", "ra2md.ini", "keyboard.ini", "keyboardmd.ini"]);
 
 export interface InstallFile {
   /** relative to the install folder, `/` or `\` between parts */
@@ -79,6 +82,7 @@ export function classify(path: string): Classified | null {
   if (/^(movies|movmd)[^/]*\.mix$/.test(name)) return { kind: "movie", needs: md };
   if (name.endsWith(".mix")) return { kind: "archive", needs: md };
   if (/^audio(md)?\.(bag|idx)$/.test(name)) return { kind: "sound", needs: md };
+  if (SETTINGS_FILES.has(name)) return { kind: "settings", needs: md };
   if (/\.(ini|csf|fnt|mmx|map|mpr|yrm)$/.test(name)) return { kind: "data", needs: md };
   return null;
 }
@@ -88,6 +92,8 @@ export interface ImportOptions {
   movies: boolean;
   /** bring `Saved Games/` along */
   saves: boolean;
+  /** bring the folder's RA2.INI / KEYBOARD.INI; off means a fresh start from the game's defaults */
+  settings: boolean;
 }
 
 /**
@@ -166,6 +172,7 @@ export function planImport(
       !!classified &&
       classified.kind !== "save" &&
       classified.kind !== "movie" &&
+      classified.kind !== "settings" &&
       classified.needs.includes("ra2")
     );
   });
@@ -175,6 +182,7 @@ export function planImport(
       !!classified &&
       classified.kind !== "save" &&
       classified.kind !== "movie" &&
+      classified.kind !== "settings" &&
       classified.needs.length === 1 &&
       classified.needs[0] === "ra2md"
     );
@@ -225,6 +233,8 @@ export function planImport(
       plan.bytes += EMPTY_ARCHIVE.length;
     } else if (what.kind === "save" && !options.saves) {
       plan.skipped.push({ path: file.path, reason: "saves not brought" });
+    } else if (what.kind === "settings" && !options.settings) {
+      plan.skipped.push({ path: file.path, reason: "settings not brought" });
     } else {
       plan.copy.push({ ...file, ...what });
       plan.bytes += file.size;

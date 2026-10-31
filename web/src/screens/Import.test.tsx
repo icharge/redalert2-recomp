@@ -144,6 +144,33 @@ describe("Import", () => {
     expect(target.files.get("game/slot-1/movmd03.mix")).toBe(5000);
   });
 
+  it("leaves the folder's settings out unless they are asked for", async () => {
+    const source: FolderSource = {
+      name: "RA2",
+      list: async () => [...(await folder().list()), file("RA2MD.INI", 20)],
+    };
+    const { user, target, onDone } = await setup(source);
+    await user.click(screen.getByRole("button", { name: "Choose folder…" }));
+    await screen.findByText(/Found Yuri's Revenge/);
+    await user.click(screen.getByRole("button", { name: /^Import / }));
+    await waitFor(() => expect(onDone).toHaveBeenCalled());
+    expect(target.files.has("game/slot-1/RA2MD.INI")).toBe(false);
+  });
+
+  it("brings the folder's settings when asked", async () => {
+    const source: FolderSource = {
+      name: "RA2",
+      list: async () => [...(await folder().list()), file("RA2MD.INI", 20)],
+    };
+    const { user, target, onDone } = await setup(source);
+    await user.click(screen.getByRole("button", { name: "Choose folder…" }));
+    await screen.findByText(/Found Yuri's Revenge/);
+    await user.click(screen.getByRole("checkbox", { name: /Bring my settings and hotkeys/ }));
+    await user.click(screen.getByRole("button", { name: /^Import / }));
+    await waitFor(() => expect(onDone).toHaveBeenCalled());
+    expect(target.files.get("game/slot-1/RA2MD.INI")).toBe(20);
+  });
+
   it("does not require a matching user executable when importing content", async () => {
     const { user } = await setup(folder(0x11111111));
     await user.click(screen.getByRole("button", { name: "Choose folder…" }));

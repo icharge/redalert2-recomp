@@ -29,6 +29,7 @@ import {
   type GameId,
 } from "../storage/install";
 import { liveGameFileSource, type ReadOnlyFileSource } from "../storage/file-browser";
+import { ensureDefaultMainSettings } from "../storage/game-settings";
 import {
   readThaiFont,
   shouldLoadImportedGameFile,
@@ -462,6 +463,8 @@ async function loadOpfsFiles(
     excludeGameFont: thaiFontFix.enabled,
     inPlace: true,
   });
+  // A fresh import has no settings of its own; give the game the launcher's defaults first.
+  await ensureDefaultMainSettings(record);
   await restoreSaves(
     fs,
     opfsSaveStore(),
@@ -522,18 +525,22 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
       reject(error instanceof Error ? error : new Error(message));
     };
 
+    let saves: SaveSync | null = null;
+    const onLine = (line: string) => {
+      const event = store.line(line);
+      if (event?.e === "settingsSaved") void saves?.flushSettings().catch(() => {});
+    };
+
     const module = {
       arguments: gameArguments(options.args, thaiFontFix),
-      print: (line: string) => store.line(line),
-      printErr: (line: string) => store.line(line),
+      print: onLine,
+      printErr: onLine,
       onAbort: (what: unknown) => {
         if (store.getSnapshot().phase !== "exited")
           fail(new Error(`The game aborted: ${String(what)}`));
       },
       locateFile: (path: string) => gameModuleFile(game, moduleBase, path),
     } as Partial<Ra2Module> as Ra2Module;
-
-    let saves: SaveSync | null = null;
     let wolClient: WolClient | null = null;
     let udpRelay: UdpRelay | null = null;
     const wolResultGames = new Map<number, string>();

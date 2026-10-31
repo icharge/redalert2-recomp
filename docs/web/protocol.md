@@ -104,8 +104,8 @@ hook (`hle_set_pump_hook`).
 | `ra2_audio_live` | `int live` | 1 while the page's audio context runs and the worklet reads the ring (the ring is emptied first); 0 and the game's mixer drops what it mixes |
 | `ra2_focus` | `int focused` | the window gained or lost focus: the game's window always gets `WM_ACTIVATEAPP` active (as in the native build: a game told it lost focus idles and half-repaints on return); losing focus during a match (the game's frame count moved in the last second, its own cursor, no pause menu yet) presses Escape for the game, which opens its menu (so does opening Settings, F10, in a match; the page also sends 0 when the game area loses focus to anything but the text box); gaining focus also does what the game's own `Focus_Restore` ends with (`GScreenClass::Flag_To_Redraw(2)`, a complete redraw), has every showing window paint in full and a new picture published at once |
 | `ra2_set_menu_music` | `int allowed` | 1 (the default) lets the game's music play anywhere; 0 keeps it for matches: the mixer silences the buffer the host marked as music (`hle_dsound_mark_music`, called when the game prints `Theme::PlaySong`) unless the game's frames are moving or its pause menu is up. The song goes on playing, so nothing in the game waits |
-| `ra2_quit` | none | posts `WM_CLOSE` to the game's window |
-| `ra2_exit_confirmation_reply` | `uint32 request, int exit_game` → `int` | replies to the intercepted Exit confirmation; 0 means Stay, 1 means Exit; returns 1 if the pending request matched |
+| `ra2_quit` | none | ends the runtime with `hle_exit(0)` (the page has already flushed settings and saves) |
+| `ra2_exit_confirmation_reply` | `uint32 request, int exit_game` → `int` | replies to the intercepted Exit confirmation; 0 means Stay, 1 means Exit; returns 1 if the pending request matched. Exit ends the runtime after the reply, without the guest's save-and-teardown path |
 | `ra2_crash_report` | `const char *why` | prints the lifted function, the registers, the indirect-call ring and the guest stack to stderr. Safe after the game thread has died, because it only reads memory |
 
 There is no `ra2_script`: a test's scripted events (`--press`, `--click`, ...)
@@ -135,6 +135,7 @@ in test logs.
 | `fps` | `fps`, `ms`, and `worst`, `late`, `pub`, `pubms` | once a second: the game's own frames per second, the longest gap between two game frames (ms), how many came more than 25 ms after the one before, how many pictures were published and the mean ms to make one. The page shows them only if the overlay is on |
 | `exit` | `code` | the game's entry returned |
 | `exitConfirm` | `request` | the main menu's Exit confirmation call was intercepted before native dialog creation; reply using `ra2_exit_confirmation_reply` |
+| `settingsSaved` | `path` | the game closed or rewrote a settings file; the page flushes its waiting settings copy |
 | `error` | `message` | something the player should see that isn't a crash (a missing file) |
 
 Example: `@ra2 {"e":"mode","w":1280,"h":720}`.
@@ -154,11 +155,13 @@ resource `0x120` dialog or native controls are created or painted.
 
 `ra2_exit_confirmation_reply(request, 0)` chooses Stay, and value 1 chooses
 Exit. A zero, stale or unmatched request, an invalid choice, or a second
-reply returns 0; a matching reply returns 1. The waiting hook returns the
-game helper's original result (0 for OK/Exit, 1 for Cancel/Stay), and the
-lift discards the original 20 argument bytes. The game's caller performs
-its normal exit or main-menu branch. Escape in the browser is Stay, and
-focus returns to the canvas afterwards. Exit or crash clears the prompt.
+reply returns 0; a matching reply returns 1. The page flushes settings and
+saves before it replies. Stay returns 1 (Cancel/Stay) to the game and keeps
+the main menu. Exit calls `hle_exit(0)` after the page's flush, skipping the
+guest's save-and-teardown path; the page still receives `exit` and returns
+to the launcher. The lift discards the original 20 argument bytes. Escape in
+the browser is Stay, and focus returns to the canvas afterwards. Exit or
+crash clears the prompt.
 
 This is a focused game-to-web-to-game hook, not yet a general replacement
 for native dialogs or the Online lobby. Protocol 5's HWND-based overlay is

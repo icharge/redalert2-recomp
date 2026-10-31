@@ -27,6 +27,21 @@ describe("leaving the runtime document", () => {
     expect(sessionStorage.getItem("ra2-resume-game")).toBeNull();
   });
 
+  it("skips the second flush when the exit path already saved", async () => {
+    const order: string[] = [];
+    const game = {
+      saves: {
+        stop: () => order.push("stop"),
+        flush: () => {
+          order.push("flush");
+          return Promise.resolve(0);
+        },
+      },
+    } as unknown as GameHandle;
+    await leaveGame(Promise.resolve(game), "/", (url) => order.push(url), false);
+    expect(order).toEqual(["stop", "/"]);
+  });
+
   it("keeps the document if saving fails and permits a retry", async () => {
     let attempt = 0;
     const destinations: string[] = [];

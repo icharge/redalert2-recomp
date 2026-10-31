@@ -27,7 +27,13 @@ import {
   type FolderSource,
   type Prepared,
 } from "../storage/importer";
-import { GAME_TITLE, type BuildInfo, type GameId, type ImportOptions } from "../storage/install";
+import {
+  classify,
+  GAME_TITLE,
+  type BuildInfo,
+  type GameId,
+  type ImportOptions,
+} from "../storage/install";
 import type { Manifest } from "../storage/manifest";
 import { CopyCancelled, type CopyProgress, type CopyTarget } from "../storage/opfs";
 import styles from "./Import.module.css";
@@ -76,7 +82,7 @@ type Stage =
   | { name: "copying"; progress: CopyProgress | null; persistent: boolean | null }
   | { name: "failed"; message: string };
 
-const FIRST: ImportOptions = { movies: false, saves: true };
+const FIRST: ImportOptions = { movies: false, saves: true, settings: false };
 
 export function Import({
   deps,
@@ -284,6 +290,9 @@ function Review({
   const { plan } = prepared;
   const stopped = blocker(prepared);
   const saveCount = plan.copy.filter((file) => file.kind === "save").length;
+  const settingCount = [...prepared.files.keys()].filter(
+    (path) => classify(path)?.kind === "settings",
+  ).length;
   const titleById = Object.fromEntries(
     Object.keys(plan.readiness).map((id) => [
       id,
@@ -354,7 +363,21 @@ function Review({
             Bring my saved games
           </Flex>
         </Text>
+        <Text as="label" size="2">
+          <Flex gap="2" align="center">
+            <Checkbox
+              checked={options.settings}
+              disabled={settingCount === 0 && !options.settings}
+              onCheckedChange={(checked) => onOptions({ ...options, settings: checked === true })}
+            />
+            Bring my settings and hotkeys
+          </Flex>
+        </Text>
       </Flex>
+      <Text size="1" color="gray">
+        A fresh import starts from the game's own settings. Leave the box clear unless you want the
+        RA2.INI, RA2MD.INI, KEYBOARD.INI or KEYBOARDMD.INI already in the folder.
+      </Text>
       <Text size="1" color="gray">
         {plan.skipped.length} files in the folder are left out: tools, other games and mods, and
         what the game does not read.

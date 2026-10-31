@@ -37,6 +37,10 @@ describe("parseEventLine", () => {
       e: "exitConfirm",
       request: 123,
     });
+    expect(parseEventLine('@ra2 {"e":"settingsSaved","path":"/opfs/game/RA2MD.INI"}')).toEqual({
+      e: "settingsSaved",
+      path: "/opfs/game/RA2MD.INI",
+    });
     expect(parseEventLine('@ra2 {"e":"error","message":"no gamemd.exe in /game"}')).toEqual({
       e: "error",
       message: "no gamemd.exe in /game",
@@ -59,5 +63,6 @@ describe("parseEventLine", () => {
       expect(parseEventLine(`@ra2 ${JSON.stringify({ e: "exitConfirm", request })}`)).toBeNull();
     expect(parseEventLine('@ra2 {"e":"exitConfirm","hwnd":123}')).toBeNull();
     expect(parseEventLine('@ra2 {"e":"boot","protocol":1}')).toBeNull();
+    expect(parseEventLine('@ra2 {"e":"settingsSaved"}')).toBeNull();
   });
 });

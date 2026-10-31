@@ -269,7 +269,13 @@ uint32_t ra2_web_exit_confirmation(void) {
     while (!(answer = __atomic_load_n(&g_exit_confirm_answer, __ATOMIC_ACQUIRE)))
         usleep(10000);
     hle_block_end();
-    return answer == 2 ? 0u : 1u;
+    if (answer == 2) {
+        /* The page has already flushed settings and saves; skip the guest's
+         * save-and-teardown path, which is what made Exit slow in a browser. */
+        hle_exit(0);
+        return 0;
+    }
+    return 1;
 }
 
 EMSCRIPTEN_KEEPALIVE int ra2_exit_confirmation_reply(uint32_t request, int exit_game) {
@@ -620,6 +626,12 @@ static int thai_font_check(void) {
     return 0;
 }
 static void on_exit_event(int code) { web_event_exit(code); }
+static void on_file_written(const char *path) {
+    char escaped[1024], event[1200];
+    web_json_escape(escaped, sizeof escaped, path);
+    snprintf(event, sizeof event, "{\"e\":\"settingsSaved\",\"path\":\"%s\"}", escaped);
+    web_event_json(event);
+}
 
 int main(int argc, char **argv) {
     const char *game = "game";
@@ -753,6 +765,7 @@ int main(int argc, char **argv) {
     hle_set_pump_hook(frame_pump);
     hle_screen_compose_hook = compose_hd;
     hle_on_exit = on_exit_event;
+    hle_on_file_written = on_file_written;
     ra2_launcher_start();
     script_start();
     if (g_heartbeat_s) {

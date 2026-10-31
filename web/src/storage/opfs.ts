@@ -242,6 +242,35 @@ export async function readGameFile(
   return new Uint8Array(await file.arrayBuffer());
 }
 
+export interface SavedSettingsFile {
+  /** The name as it is stored, which may differ in case from the requested one. */
+  name: string;
+  data: Uint8Array;
+}
+
+/**
+ * One file of `save/<storage>/`, matched without regard to case; null when absent. `name` may hold
+ * a path (`‎.host/ra2md.ini`) as well as a top-level file name.
+ */
+export async function readSaveFile(
+  storage: string,
+  name: string,
+  root: Promise<FileSystemDirectoryHandle> = navigator.storage.getDirectory(),
+): Promise<SavedSettingsFile | null> {
+  const parts = name.split("/").filter(Boolean);
+  const wanted = parts.pop()?.toLowerCase();
+  if (!wanted) return null;
+  const dir = await openFolder(root, ["save", storage, ...parts].join("/"));
+  if (!dir) return null;
+  const entries = (dir as unknown as { values(): AsyncIterable<FileSystemHandle> }).values();
+  for await (const entry of entries) {
+    if (entry.kind !== "file" || entry.name.toLowerCase() !== wanted) continue;
+    const file = await (entry as FileSystemFileHandle).getFile();
+    return { name: entry.name, data: new Uint8Array(await file.arrayBuffer()) };
+  }
+  return null;
+}
+
 /** What the game saved last time, in OPFS under `save/<game>/`. */
 export function opfsSaveStore(
   root: Promise<FileSystemDirectoryHandle> = navigator.storage.getDirectory(),

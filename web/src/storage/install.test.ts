@@ -30,6 +30,10 @@ describe("classify", () => {
     expect(classify("audiomd.idx")).toEqual({ kind: "sound", needs: ["ra2md"] });
     expect(classify("rulesmd.ini")).toEqual({ kind: "data", needs: ["ra2md"] });
     expect(classify("rules.ini")).toEqual({ kind: "data", needs: ["ra2", "ra2md"] });
+    expect(classify("RA2.INI")).toEqual({ kind: "settings", needs: ["ra2", "ra2md"] });
+    expect(classify("RA2MD.INI")).toEqual({ kind: "settings", needs: ["ra2md"] });
+    expect(classify("Keyboard.INI")).toEqual({ kind: "settings", needs: ["ra2", "ra2md"] });
+    expect(classify("KeyboardMD.INI")).toEqual({ kind: "settings", needs: ["ra2md"] });
     expect(classify("game.fnt")).toEqual({ kind: "data", needs: ["ra2", "ra2md"] });
     expect(classify("GAME.FNT")).toEqual({ kind: "data", needs: ["ra2", "ra2md"] });
     expect(classify("GameMD.exe")).toBeNull();
@@ -81,6 +85,7 @@ describe("planImport", () => {
     const plan = planImport([...folder, { path: "GAME.FNT", size: 131100 }], yuri, {
       movies: false,
       saves: false,
+      settings: false,
     });
     expect(plan.error).toBeNull();
     expect(plan.copy).toContainEqual({
@@ -95,7 +100,7 @@ describe("planImport", () => {
   });
 
   it("copies what the game reads for the game this build runs", () => {
-    const plan = planImport(folder, yuri, { movies: true, saves: true });
+    const plan = planImport(folder, yuri, { movies: true, saves: true, settings: false });
     expect(plan.error).toBeNull();
     expect(plan.games).toEqual(["ra2md"]);
     expect(plan.copy.map((f) => f.path).sort()).toEqual(
@@ -130,7 +135,7 @@ describe("planImport", () => {
   });
 
   it("leaves the movies and the saves out when asked, and says how big the movies are", () => {
-    const plan = planImport(folder, yuri, { movies: false, saves: false });
+    const plan = planImport(folder, yuri, { movies: false, saves: false, settings: false });
     expect(plan.copy.some((f) => f.kind === "save")).toBe(false);
     // the game stops at start without the archive, so an empty one is written in its place
     expect(plan.copy.find((f) => f.path === "movmd03.mix")).toMatchObject({ size: 12, stub: true });
@@ -138,11 +143,28 @@ describe("planImport", () => {
     expect(plan.bytes).toBeLessThan(plan.movieBytes + 1_000_000_000 - 280_000_000);
   });
 
+  it("starts a fresh import without the folder's settings, unless they are asked for", () => {
+    const withSettings = [
+      ...folder,
+      { path: "RA2MD.INI", size: 2_000 },
+      { path: "KEYBOARDMD.INI", size: 1_500 },
+    ];
+    const fresh = planImport(withSettings, yuri, { movies: false, saves: true, settings: false });
+    expect(fresh.copy.some((file) => file.kind === "settings")).toBe(false);
+    expect(fresh.skipped.filter((file) => file.reason === "settings not brought")).toHaveLength(2);
+
+    const kept = planImport(withSettings, yuri, { movies: false, saves: true, settings: true });
+    expect(kept.copy.filter((file) => file.kind === "settings").map((file) => file.path)).toEqual([
+      "RA2MD.INI",
+      "KEYBOARDMD.INI",
+    ]);
+  });
+
   it("creates startup movie stubs even when the source install has no movie packs", () => {
     const plan = planImport(
       ["ra2.mix", "ra2md.mix", "maps01.mix", "multi.mix"].map((path) => ({ path, size: 100 })),
       yuri,
-      { movies: true, saves: true },
+      { movies: true, saves: true, settings: false },
     );
     expect(
       plan.copy
@@ -154,14 +176,22 @@ describe("planImport", () => {
   });
 
   it("reports missing required content and optional movies without requiring runtime binaries", () => {
-    const thin = planImport([{ path: "ra2md.mix", size: 1 }], yuri, { movies: true, saves: true });
+    const thin = planImport([{ path: "ra2md.mix", size: 1 }], yuri, {
+      movies: true,
+      saves: true,
+      settings: false,
+    });
     expect(thin.error).toBeNull();
     expect(thin.readiness.ra2md).toMatchObject({
       status: "missing-content",
       missing: ["ra2.mix", "maps01.mix", "multi.mix"],
       moviesMissing: true,
     });
-    const none = planImport([{ path: "readme.txt", size: 1 }], yuri, { movies: true, saves: true });
+    const none = planImport([{ path: "readme.txt", size: 1 }], yuri, {
+      movies: true,
+      saves: true,
+      settings: false,
+    });
     expect(none.error).toMatch(/no Red Alert 2 game data/i);
     const complete = planImport(
       ["ra2.mix", "ra2md.mix", "maps01.mix", "multi.mix", "movies01.mix", "movmd03.mix"].map(
@@ -171,7 +201,7 @@ describe("planImport", () => {
         }),
       ),
       yuri,
-      { movies: true, saves: true },
+      { movies: true, saves: true, settings: false },
     );
     expect(complete.readiness.ra2md).toEqual({
       status: "ready",
@@ -181,7 +211,7 @@ describe("planImport", () => {
     const unsupported = planImport(
       ["ra2.mix", "maps01.mix", "multi.mix"].map((path) => ({ path, size: 1 })),
       yuri,
-      { movies: true, saves: true },
+      { movies: true, saves: true, settings: false },
     );
     expect(unsupported.error).toMatch(/Red Alert 2 runtime/);
     expect(unsupported.readiness.ra2?.status).toBe("runtime-not-built");

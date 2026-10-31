@@ -40,6 +40,7 @@ export type GameEvent =
   | { e: "fps"; fps: number; ms: number; pacing: Pacing | null }
   | { e: "exit"; code: number }
   | { e: "exitConfirm"; request: number }
+  | { e: "settingsSaved"; path: string }
   | { e: "error"; message: string };
 
 const PREFIX = "@ra2 ";
@@ -128,6 +129,8 @@ export function parseEventLine(line: string): GameEvent | null {
         Number(value.request) <= 0xffffffff
         ? { e: "exitConfirm", request: Number(value.request) }
         : null;
+    case "settingsSaved":
+      return typeof value.path === "string" ? { e: "settingsSaved", path: value.path } : null;
     case "error":
       return typeof value.message === "string" ? { e: "error", message: value.message } : null;
     default:

@@ -104,12 +104,13 @@ export class GameStore {
   }
 
   /** One line of the game's output: logged, and applied if it is an event. */
-  line(text: string): void {
+  line(text: string): GameEvent | null {
     this.lines.push(text);
     (globalThis as { ra2Tap?: (line: string) => void }).ra2Tap?.(text); // the e2e scripts keep every line
     if (this.lines.length > LOG_LINES) this.lines.splice(0, this.lines.length - LOG_LINES);
     const event = parseEventLine(text);
     if (event) this.apply(event);
+    return event;
   }
 
   apply(event: GameEvent): void {
@@ -148,6 +149,8 @@ export class GameStore {
         return;
       case "exitConfirm":
         this.set({ exitConfirmation: { request: event.request } });
+        return;
+      case "settingsSaved":
         return;
       case "error":
         this.set({ error: event.message });
