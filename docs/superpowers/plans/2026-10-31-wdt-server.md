@@ -108,13 +108,17 @@ call). No state codec or server model exists yet.
     `run_lift.py`; `--check` is stale again until that unrelated feature's
     `ra2_page_cursor_*` sources land. Do not regenerate against the half-applied
     feature.
-- **Known limitation**: the WDT map screen (`0x125`) opens but its map art is
-  blank; the client logs `***NO_STRING***` from `WDTProps.cpp` while reading the
-  state description/territory buffers. The side click is accepted (state
-  requests continue, no `0xD0`), so this is a client-side buffer/lifecycle issue,
-  not a missing server packet.
-- **Next**: WDT-0b/3 native request capture and native-client check; fix the
-  `WDTProps.cpp` buffer lifetime so the map art renders.
+- **Instrumentation (WDTProps.cpp)**: `WDTState+8/+0xC` are read as `char*` but point at
+  heap objects, not the parsed description text — the server strings are freed/reused by the
+  time the campaign properties are built. Forcing the client's fallback to the **unquoted** CSF
+  keys (`WDT:DefaultShortDescription` / `WDT:DefaultLongDescription`) removes the
+  `***NO_STRING***` log entirely; the exe's own fallback literals include quote characters and
+  fail the lookup. The server now sends the unquoted keys and places territories on the map
+  grid instead of `-1,-1`, but the **map art is still blank**, so the client state lifetime
+  (or map-data loading) remains the open blocker.
+- **Next**: keep the parsed `WDTState` string/territory buffers alive past `OnWDTState`
+  (the refcount is 3 but the buffers are dangling), or make the WDT screen read the packet
+  buffers directly; then WDT-0b/3 native request capture and native-client check.
 
 ### First finding: the browser does not use the raw TCP path
 
