@@ -47,6 +47,8 @@ web/
       StorageMeter.tsx
       SoundControl.tsx      the "click to start sound" bar, the volume and the two switches about when the game is heard
       LanPanel.tsx          one-peer LAN setup through a manual WebRTC offer/answer
+      LinkDialog.tsx        a WOL-era link: iframe or confirmation, in game chrome
+      GameDialogChrome.tsx  the game's frame, title strip and button plates
       ImportProgress.tsx
       CrashReport.tsx
       BrowserCheck.tsx      what this browser lacks, and what that means
@@ -176,6 +178,30 @@ clears the field, so the game keeps running. `openLink` is mapped by
 `link-targets.ts` into a topic, the original URL, and whether the page may be
 framed or offered as an outbound link ([protocol.md](protocol.md), "Web
 links").
+
+### Link dialog art
+
+The link dialog is skinned as one of the game's own panels: `GameDialogChrome`
+draws the metal frame, the embedded WOL browser's title strip and the red
+button plates, while Radix's `Dialog` keeps focus management, Escape and the
+`aria-labelledby` label. Text is always real DOM text; the exported button
+plate has the game's baked "Cancel" lettering painted out.
+
+The retail images are not in the repository (REPO_RULES section 3), so
+`web/public/dialog-art/` is ignored. Run the exporter once against your own
+game folder:
+
+```powershell
+py -3 tools/export_dialog_art.py
+py -3 tools/export_dialog_art.py --selftest
+```
+
+It writes `title.png` (a 9-slice strip from `HTML/assets/navbar_bkgd.jpg`),
+`button.png` / `button-hover.png` (from `navcancel0/1.jpg`), `background.jpg`
+(from `standard_bkg.jpg`) and `dialog-art.json` (the cuts), and regenerates
+`components/game-dialog-palette.ts` with the colours sampled from those
+plates. Every CSS layer has a gradient under it, so a checkout without the art
+still shows the game's palette and bevels; the component tests cover both.
 
 ## Look
 

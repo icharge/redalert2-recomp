@@ -1,0 +1,112 @@
+/* The game's link dialog. The art variables come from GameDialogChrome.tsx;
+   every background has a gradient under it, so the skin still reads as the
+   game's when web/public/dialog-art/ (regenerated from your own game folder)
+   is absent. docs/web/frontend.md. */
+
+.chrome {
+  position: relative;
+  overflow: hidden;
+  border: 2px solid var(--gd-ink, #060000);
+  border-radius: 5px;
+  color: #f7edd2;
+  background-color: var(--gd-ink, #060000);
+  background-image: var(--gd-background-art, none),
+    linear-gradient(160deg, #17243c 0%, #0a1222 45%, #05070d 100%);
+  background-position: center;
+  background-size: cover;
+  box-shadow:
+    0 0 0 2px var(--gd-metal, #9a9da6),
+    0 0 0 4px var(--gd-metal-light, #fdfcff),
+    0 0 0 5px var(--gd-metal-dark, #544e50),
+    0 18px 50px rgb(0 0 0 / 0.65);
+  font-family: var(--default-font-family);
+}
+
+.titleBar {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 4px 20px;
+  /* The exported strip is a 9-slice: 16px caps and a stretchable middle. */
+  border-width: 0 16px;
+  border-style: solid;
+  border-color: transparent;
+  border-image: var(--gd-title-art, none) 0 16 0 16 fill stretch;
+  background: linear-gradient(
+      to bottom,
+      var(--gd-metal-light, #fdfcff) 0,
+      var(--gd-metal, #9a9da6) 12%,
+      var(--gd-ink, #060000) 26%,
+      var(--gd-accent, #4a1a16) 55%,
+      var(--gd-ink, #060000) 80%,
+      var(--gd-metal-dark, #544e50) 92%,
+      var(--gd-metal, #9a9da6) 100%
+    )
+    border-box;
+}
+
+.title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #fff4d6;
+  text-shadow:
+    1px 1px 0 #000,
+    -1px -1px 0 #000;
+}
+
+.body {
+  padding: 16px 18px 18px;
+  background: linear-gradient(rgb(5 8 14 / 0.15), rgb(5 8 14 / 0.55));
+}
+
+/* Game button plate: real text over the exported plate with its baked
+   lettering removed (tools/export_dialog_art.py). */
+.plate {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  padding: 3px 16px;
+  border-width: 6px;
+  border-style: solid;
+  border-color: transparent;
+  border-image: var(--gd-button-art, none) 6 fill stretch;
+  border-radius: 3px;
+  background: linear-gradient(
+      to bottom,
+      var(--gd-plate-light, #b03c03) 0,
+      var(--gd-plate, #af0505) 42%,
+      var(--gd-plate-dark, #7a090d) 100%
+    )
+    border-box;
+  color: #ffe9a0;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  line-height: 1.2;
+  text-decoration: none;
+  text-shadow: 1px 1px 0 #000;
+  cursor: pointer;
+}
+
+.plate:hover {
+  border-image-source: var(--gd-button-hover-art, none);
+  filter: brightness(1.12);
+}
+
+.plate:active {
+  filter: brightness(0.85);
+}
+
+.plate:focus-visible {
+  outline: 2px solid var(--gd-metal-light, #fdfcff);
+  outline-offset: 2px;
+}
+
+.plate:disabled {
+  filter: grayscale(0.6) brightness(0.8);
+  cursor: default;
+}

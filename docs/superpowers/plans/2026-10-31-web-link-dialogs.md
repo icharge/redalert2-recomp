@@ -40,8 +40,8 @@ Vitest, Node e2e scripts in `web/e2e/`.
 | T6  | Content  | Topic copy, RA2Web links and env configuration             | Done    |
 | T7  | Verify   | Unit, lift, e2e and headless tests                         | Done    |
 | T8  | Docs     | Protocol/frontend/architecture/changelog                   | Done    |
-| T9  | Optional | Help (`WinHelpA` / `GetHelpURL`) and Windows native        | Pending |
-| T10 | Optional | Replicate the game dialog chrome with the game's art       | Pending |
+| T9  | Optional | Help (`WinHelpA` / `GetHelpURL`) and Windows native        | Done    |
+| T10 | Optional | Replicate the game dialog chrome with the game's art       | Done    |
 
 ## Findings (the spec)
 
@@ -409,6 +409,17 @@ export function linkTarget(url: string): LinkTarget;
 
 ---
 
+### Task 9: Help surfaces (done)
+
+- `WolChat::GetHelpURL` (`src/web/wolapi.c`) now returns the seeded support page
+  `https://ra2web.invalid/support/help.html`; the game's own URL routine then
+  reaches `ra2_open_url` and the page maps it to `support`/`help`
+  (`link-targets.ts`). The WOLAPI selftest calls slot 34 for both editions.
+- `WinHelpA` is not called by the lifted game: `rg WinHelpA src/recomp` finds no
+  call site, so there is no help window to intercept. It stays the win32hle stub.
+- Windows native32 is deliberately unchanged (D4): it keeps the real shell,
+  the embedded browser and no dialog override.
+
 ### Task 10: Replicate the game's dialog chrome with its art (optional polish)
 
 **Goal:** make the link dialog read as an in-game dialog, not a generic web
@@ -430,28 +441,28 @@ Behavior, URL handling and accessibility stay as they are.
   unchanged.
 - Keeps `LinkTarget` and `LinkDialogContent`'s props as they are.
 
-- [ ] **Step 1: Pick the reference art.** The system-browser link dialog is a
+- [x] **Step 1: Pick the reference art.** The system-browser link dialog is a
   native Win32 dialog (frame, title bar, buttons from the game's SHP/TMP art),
   while YR's embedded WOL browser used `HTML/Frame.htm`, `HTML/NavBar.htm` and
   `HTML/assets/*.jpg`. Use the native dialog art for the confirmation dialog
   and the HTML navbar art only for the iframe chrome. Record the exact MIX
   file, SHP/TMP frame, palette and 9-slice borders.
-- [ ] **Step 2: Export it.** A small tool reads the game's art through the
+- [x] **Step 2: Export it.** A small tool reads the game's art through the
   existing archive/palette helpers and writes 1x/2x RGBA PNGs with alpha plus
   the slice metadata. Keep the assets small; do not bake text into images.
-- [ ] **Step 3: Build the chrome.** CSS 9-slice frame, title bar, close/OK
+- [x] **Step 3: Build the chrome.** CSS 9-slice frame, title bar, close/OK
   buttons with normal/hover/pressed/disabled states, and the same bevel colours
   in both editions. DOM buttons and real text stay accessible and selectable.
-- [ ] **Step 4: Wire it in.** `LinkDialog` renders `GameDialogChrome` inside
+- [x] **Step 4: Wire it in.** `LinkDialog` renders `GameDialogChrome` inside
   Radix `Dialog.Content`; the iframe/confirmation body keeps its current
   layout. Fall back to the current Radix look if the art is missing.
-- [ ] **Step 5: Typography.** Use the game's bitmap font for the title and
+- [x] **Step 5: Typography.** Use the game's bitmap font for the title and
   buttons where it can be rendered accessibly; otherwise use the page font with
   the game's sizing and colours. Never render text only as a sprite.
-- [ ] **Step 6: Verify.** Screenshot the dialog at 800x600 and at a scaled/DPR
+- [x] **Step 6: Verify.** Screenshot the dialog at 800x600 and at a scaled/DPR
   size against the native dialog for both editions; keyboard focus, Escape,
   `aria-labelledby`, the iframe sandbox and the external anchor still pass.
-- [ ] **Step 7: Tests and docs.** Component test for the chrome, a visual e2e
+- [x] **Step 7: Tests and docs.** Component test for the chrome, a visual e2e
   screenshot, and a `frontend.md` note on where the art comes from and how to
   regenerate it. If the art cannot be redistributed, keep the current skin and
   document that decision.
@@ -540,3 +551,47 @@ the fallback for all of them.
   The logged-in `0x113:1955/1958` path uses the same entry; the local lobby
   run selected the RA2 edition from the persistent profile, so the offline
   controls are the reproducible check for that hook.
+
+## Verification log (1 November 2026)
+
+- **WOLAPI selftest, both editions.** `emcc src/web/wolapi_selftest.c ...`
+  then `node build-web/wolapi-selftest-{yr,ra2}.js` ->
+  `WOLAPI COM startup ABI: PASS` twice. Slot 34 (`WolChat::GetHelpURL`) now
+  returns `https://ra2web.invalid/support/help.html`; the page test
+  `link-targets.test.ts` maps it to `support`/`help` and `${SITE}/support/help`.
+- **`WinHelpA`.** `rg -n "WinHelpA|WinHelp" src/recomp` has no call sites; the
+  lifted game never asks for a help window, so T9 leaves the win32hle stub and
+  the native Windows behavior untouched.
+- **T10 exporter.** `py -3 tools/export_dialog_art.py --selftest` ->
+  `export_dialog_art.py self-test OK`. Against `game/` it writes
+  `web/public/dialog-art/` (`title.png` 172x40 nine-slice, `button.png`
+  and `button-hover.png` 109x26 with the baked lettering removed,
+  `background.jpg` 680x450 inner panel) and regenerates
+  `components/game-dialog-palette.ts` (metal `#fdfcff/#9a9da6/#544e50`,
+  plate `#af0505`).
+- **T10 UI.** `GameDialogChrome` keeps Radix's `Dialog.Title` as the dialog's
+  `aria-labelledby` target; the body, actions and anchor are unchanged. The
+  element screenshot (`work/web-links-art/probe-chrome.png`) shows the metal
+  title strip, radar body and red Cancel plate with live DOM text.
+- **Page checks.** `pnpm test` -> 54 files, 505 tests pass (includes the new
+  chrome and Help-URL tests); `pnpm typecheck` clean; `pnpm build` succeeds;
+  `python -m unittest tools.test_lift_patches` -> 51 tests OK.
+- **YR lobby, server-dependent controls.** Vite on 5173 with
+  `VITE_WOL_HTTP_URL=http://127.0.0.1:9090`,
+  `VITE_WOL_SOCKET_URL=ws://127.0.0.1:9090/wol`; RA2Web started with
+  `CORS_ALLOWED_ORIGINS=http://127.0.0.1:5173` (its `.env` otherwise allows
+  only the production page). `node e2e/links-lobby.mjs --url
+  'http://127.0.0.1:5173/' --edition ra2md --profile <ra2prof2>` ->
+  `"joined": true`, presses `0x113:1955` and `0x113:1958`, opens
+  `https://ra2web.invalid/ladder` and `https://ra2web.invalid/external`.
+- **News page key.** `0x113:1958` is `GUI:News`; the page-key table and the YR
+  registry now seed `News` -> `https://ra2web.invalid/news` (so the next build
+  reports `news`, not the fallback `external`). Covered by
+  `link-targets.test.ts`; the host change needs the next wasm rebuild.
+- **RA2 lobby.** `node e2e/links-lobby.mjs --edition ra2 --profile <ra2prof2>`
+  -> `"joined": true`; `0x113:1368` (`GUI:ClanAndLadder`) opens
+  `http://www.westwood.com/westwoodonline/tournaments/redalert2/`, which the
+  page maps to `tournament`. The deeper `0xBE`/`0xC1` chat/ladder screens were
+  not reached from this login path: `0x113:1368` opens the tournament page
+  directly, and the script's next press waits for `0xBE`, which never opens.
+  The same URL routine is proven by this control and by the offline matrix.

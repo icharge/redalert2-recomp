@@ -10,16 +10,20 @@
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import path from "node:path";
-import { options } from "./lib.mjs";
+import { options, startPage } from "./lib.mjs";
 import { openGame } from "./perf-nav.mjs";
 
 const opts = options(process.argv.slice(2));
-if (!opts.profile) throw new Error("Pass --profile <an imported-game Chrome profile>.");
+if (!opts.profile && !opts.testGame)
+  throw new Error("Pass --profile <an imported-game Chrome profile> or --game <local game folder>.");
 const ra2 = opts.edition === "ra2";
 opts.pageArgs.push("--mute", "--debuglog");
 // Each press waits for its dialog, so the order matters, not the seconds.
+// RA2's clan/tournament web controls live two dialogs deep: the custom-match
+// lobby (0x113) opens the WOL chat (0xBE) with ClanAndLadder, and 0xBE's
+// ViewTourLadder opens the ladder screen (0xC1) with its two web buttons.
 let presses = ra2
-  ? ["0xBE:1368@5", "0xC1:1004@8", "0xC1:1005@11", "0xBE:1398@14"]
+  ? ["0x113:1368@5", "0xBE:1368@8", "0xC1:1004@11", "0xC1:1005@14", "0xBE:1398@17"]
   : ["0x113:1955@5", "0x113:1958@8"];
 const extra = [];
 for (let i = 0; i < process.argv.length; i++)
@@ -27,8 +31,12 @@ for (let i = 0; i < process.argv.length; i++)
 if (extra.length) presses = extra;
 for (const press of presses) opts.pageArgs.push("--press", press);
 
-const run = await openGame(opts, { shots: opts.shots, video: "800x600" });
-const report = { edition: opts.edition };
+// A local folder (Yuri's Revenge fits the dev heap) or the imported-game profile
+// (Red Alert 2's large MIX files are read in place from OPFS).
+const run = opts.profile
+  ? await openGame(opts, { shots: opts.shots, video: "800x600" })
+  : await startPage(opts);
+const report = { edition: opts.edition, url: run.page.url() };
 const waitNative = async (text, timeout = 60_000) => {
   const until = Date.now() + timeout;
   while (!run.all.some((line) => line.includes(text))) {
@@ -39,6 +47,7 @@ const waitNative = async (text, timeout = 60_000) => {
 const waitDialog = (id) => waitNative(`[dialog] open ${id}`, 120_000);
 
 try {
+  await run.waitFor("the main menu", (state) => state?.phase === "running", 300);
   await run.page.waitForTimeout(1000);
   await run.clickGame(720, 263); // Internet
   await waitDialog("0x10E");
@@ -46,6 +55,7 @@ try {
   await run.clickGame(720, ra2 ? 263 : 305); // Custom Match
   await waitDialog("0x10F");
   await run.page.waitForTimeout(1200);
+  await run.shot("login");
   // The two text fields, then Login. Same layout in both editions.
   for (const [y, text] of [
     [ra2 ? 167 : 250, "woltst1"],
@@ -57,7 +67,10 @@ try {
     await run.page.keyboard.type(text, { delay: 80 });
     await run.page.waitForTimeout(200);
   }
+  await run.shot("login-filled");
   await run.clickGame(720, 220); // Login
+  await run.page.waitForTimeout(1500);
+  await run.shot("after-login");
   await waitNative("Joined Channel", 120_000);
   report.joined = true;
 
@@ -89,5 +102,9 @@ try {
 } finally {
   writeFileSync(path.join(opts.shots, "links-lobby.json"), JSON.stringify(report, null, 2));
   writeFileSync(path.join(opts.shots, "links-lobby.log"), run.all.join("\n"));
+  writeFileSync(
+    path.join(opts.shots, "links-lobby.console.log"),
+    run.lines.map((line) => `[page] ${line}`).join("\n"),
+  );
   await run.browser.close();
 }

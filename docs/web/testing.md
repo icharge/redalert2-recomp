@@ -93,18 +93,38 @@ that Cancel closes the dialog while the game keeps running.
 The server-only lobby controls need the local RA2Web (`../ra2web/server`,
 `bun run dev`, port 9090) and Vite started with
 `VITE_WOL_HTTP_URL=http://127.0.0.1:9090` and
-`VITE_WOL_SOCKET_URL=ws://127.0.0.1:9090/wol`:
+`VITE_WOL_SOCKET_URL=ws://127.0.0.1:9090/wol`. Start the server for this page
+origin too: its `.env` lists only the production page under
+`CORS_ALLOWED_ORIGINS`, so the browser otherwise rejects `/login` and
+`/wdt/state` before the game can ask for a URL:
 
 ```powershell
+cd ../ra2web/server
+$env:CORS_ALLOWED_ORIGINS='http://127.0.0.1:5173'
+$env:EXTERNAL_URL='ws://127.0.0.1:9090'
+bun run dev
+```
+
+```powershell
+# profile: an imported game in OPFS at the same 127.0.0.1:5173 origin
 node e2e/links-lobby.mjs --url 'http://127.0.0.1:5173/' --edition ra2md --profile <imported profile>
+# or a local folder (Yuri's Revenge fits the dev heap; RA2 does not)
+node e2e/links-lobby.mjs --url 'http://127.0.0.1:5173/?target=yuri' --edition ra2md --game ../game
 ```
 
 It logs in and presses the lobby controls; `--press DLG:CTRL@s` replaces the
 defaults. YR's `0x113` Tournament/News use the embedded WOL browser
 (`DoWebPageDialog`, `HTML\frame.htm`), which `web_url_patches` intercepts by
-page key. The offline `0x114` Manage Account/Tournament controls
-(`0x114:1772`/`1955`) exercise that same path without a server:
-`[url] https://ra2web.invalid/account` and `.../ladder`.
+page key: `1955` â†’ `https://ra2web.invalid/ladder`, `1958` â†’ `.../news`. The
+offline `0x114` Manage Account/Tournament controls (`0x114:1772`/`1955`)
+exercise that same path without a server: `[url]
+https://ra2web.invalid/account` and `.../ladder`.
+
+RA2's ladder controls are reached through the custom-match lobby:
+`0x113:1368` (`GUI:ClanAndLadder`) opens the tournament page
+(`http://www.westwood.com/westwoodonline/tournaments/redalert2/`, mapped to
+`tournament`). The deeper `0xBE`/`0xC1` chat/ladder screens are not opened by
+this path; the run's next press waits for `0xBE` and never reaches it.
 
 ## Exit confirmation: game to web and back
 

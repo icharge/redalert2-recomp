@@ -103,8 +103,8 @@ void ra2_open_url(uint32_t url_va, uint32_t ask) {
  * the host maps the key to the same sentinel the registry is seeded with; the
  * page maps the path to a topic. */
 void ra2_open_wol_page(uint32_t key_va) {
-    static const char *const names[] = { "Community", "Ladder", "Manage", "Battleclans", "NetStatus" };
-    static const char *const paths[] = { "community", "ladder", "account", "clans", "status" };
+    static const char *const names[] = { "Community", "Ladder", "Manage", "Battleclans", "NetStatus", "News" };
+    static const char *const paths[] = { "community", "ladder", "account", "clans", "status", "news" };
     const char *key = key_va ? (const char *)(uintptr_t)key_va : "";
     const char *path = "external";
     char url[256];

@@ -1,5 +1,6 @@
-import { Button, Dialog, Flex, Text } from "@radix-ui/themes";
+import { Dialog, Flex, Text } from "@radix-ui/themes";
 import { linkCopy, sitePageUrl, type LinkTarget } from "../game/link-targets";
+import { gameDialogButtonClass, GameDialogChrome } from "./GameDialogChrome";
 import styles from "./LinkDialogContent.module.css";
 
 /**
@@ -19,9 +20,8 @@ export function LinkDialogContent({ target, onClose }: { target: LinkTarget; onC
   const outbound = frameUrl ?? (target.external ? target.url : null);
 
   return (
-    <>
-      <Dialog.Title>{copy.title}</Dialog.Title>
-      <Dialog.Description size="2" mb="3">
+    <GameDialogChrome title={copy.title}>
+      <Dialog.Description size="2" className={styles.body}>
         {copy.body}
       </Dialog.Description>
       {frameUrl && (
@@ -33,7 +33,7 @@ export function LinkDialogContent({ target, onClose }: { target: LinkTarget; onC
           referrerPolicy="no-referrer"
         />
       )}
-      <Text as="p" size="1" color="gray" mt="3" mb="1">
+      <Text as="p" size="1" className={styles.label}>
         The game asked for:
       </Text>
       <Text as="p" size="1" className={styles.url}>
@@ -41,16 +41,19 @@ export function LinkDialogContent({ target, onClose }: { target: LinkTarget; onC
       </Text>
       <Flex justify="end" gap="2" mt="4">
         {outbound && (
-          <Button asChild color="red">
-            <a href={outbound} target="_blank" rel="noopener noreferrer">
-              Open in browser
-            </a>
-          </Button>
+          <a
+            className={gameDialogButtonClass}
+            href={outbound}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Open in browser
+          </a>
         )}
-        <Button variant="soft" onClick={onClose}>
+        <button type="button" className={gameDialogButtonClass} onClick={onClose}>
           {target.embed ? "Close" : "Cancel"}
-        </Button>
+        </button>
       </Flex>
-    </>
+    </GameDialogChrome>
   );
 }

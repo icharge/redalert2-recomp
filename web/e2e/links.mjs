@@ -80,6 +80,7 @@ try {
     assert.ok(!/westwood\.com/i.test(report.outbound), "no dead Westwood link may be offered");
   }
 
+  await run.page.waitForTimeout(500); // let the dialog's fade-in finish for the screenshot
   await run.shot("link-dialog");
 
   // Closing only dismisses the dialog; the game keeps running.
