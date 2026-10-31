@@ -333,7 +333,17 @@ try {
         await waitNative(guest, "[dialog] open 0xFB");
         await guest.page.waitForTimeout(500);
         await dump("guest", "resolution-confirm");
-        await guest.clickGame(720, 220); // Yes: store 1920x1080.
+        await guest.clickGame(711, 241); // Yes: store 1920x1080.
+        let stored = [];
+        for (let i = 0; i < 15; i++) {
+          stored = await guest.page.evaluate(() => [
+            window.Module.HEAPU32[0xa8eb84 / 4],
+            window.Module.HEAPU32[0xa8eb88 / 4],
+          ]);
+          if (stored[0] === 1920) break;
+          await guest.page.waitForTimeout(200);
+        }
+        assert.deepEqual(stored, [1920, 1080], "accepting stores 1920x1080");
       }
     }
     if (roomPassword) {
