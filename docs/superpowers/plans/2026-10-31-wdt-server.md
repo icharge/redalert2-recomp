@@ -104,6 +104,10 @@ call). No state codec or server model exists yet.
     `work/wdt-e2e-final/wdt-screen.png`.
   - **Lift**: `python run_lift.py --target game --all` lifted 23,125 functions
     (0 errors), `--check` exit 0, `tools/test_lift_patches.py` → `Ran 46 tests — OK`.
+    After that run a concurrent page-cursor change (`PAGE_CURSOR_SITES`) landed in
+    `run_lift.py`; `--check` is stale again until that unrelated feature's
+    `ra2_page_cursor_*` sources land. Do not regenerate against the half-applied
+    feature.
 - **Known limitation**: the WDT map screen (`0x125`) opens but its map art is
   blank; the client logs `***NO_STRING***` from `WDTProps.cpp` while reading the
   state description/territory buffers. The side click is accepted (state
