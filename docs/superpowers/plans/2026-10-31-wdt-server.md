@@ -7,32 +7,36 @@
 chooses a side, a WDT match starts, the result is reported, and the next state reflects territory
 control, points and history.
 
-**Architecture:** A new WDT module in the sibling `ra2web/server` owns the cycle/territory model
-and speaks the legacy WDT TCP protocol. It runs in the **same Bun process and deployment as the
-WOL lobby**, sharing accounts, sessions, storage, logging and admin. It is a separate *listener*
-because the client opens a separate raw TCP socket, not because it is a separate server. Native
-clients connect to it directly (`WDTHost`/`WDTPort` in the game's registry key). Browser clients
-reach the same listener through a TCP-over-WebSocket bridge in `win32hle`/the page, because a
-browser cannot open the raw TCP socket the game uses. The WOL lobby handles `MatchWDT`/`WDT=`
-match requests and the existing native relay/game-result path supplies identity and completion;
-the WDT module does not duplicate them.
+**Architecture:** A new WDT module in the sibling `ra2web/server` owns the cycle/territory model.
+It runs in the **same Bun process and deployment as the WOL lobby**, sharing accounts, sessions,
+storage, logging and admin. The two client paths differ:
+
+- **Browser:** the faction click calls `WolChannel::RequestWDTState` in the WOLAPI COM bridge
+  (`src/web/wolapi.c`), so the bridge fetches the state from the same RA2Web server and delivers
+  `OnWDTState`. No raw TCP listener or TCP-over-WebSocket bridge is needed for the web client.
+- **Native:** `wonline.cpp` opens the server-list TCP endpoint (`MGL entry in server list`, host
+  at `0xB73B34`, port at `0xB76B0C`), so a native TCP listener is still required.
+
+The WOL lobby handles `MatchWDT`/`WDT=` match requests and the existing native relay/game-result
+path supplies identity and completion; the WDT module does not duplicate them.
 
 ## Why not just implement it in the WOL lobby?
 
 The WOL lobby is a **text, line-oriented WebSocket protocol** (`/wol`, `WolServer.ts`): the game
 sends `LOGIN`, `JOIN`, `CREATE`, `GAMEOPT`, `MATCH`, and similar lines, and the server answers in
-the same framing. The WDT state fetch is not one of those lines. The client's `wonline.cpp` WDT
-code (`sub_00797800`) reads `WDTHost`/`WDTPort` from the registry and opens a **raw TCP socket**
-itself, then exchanges a small binary/tagged packet. It never sends that request over the WOL
-socket, and the WOLAPI `WolChannel::RequestWDTState` stub is not the path the WDT screen uses.
+the same framing. The **native** WDT state fetch is not one of those lines: `wonline.cpp`
+(`sub_00797800`) opens the server-list TCP endpoint and exchanges a binary/tagged packet. The
+**browser** is different: its faction click calls the WOLAPI COM method
+`WolChannel::RequestWDTState`, which is the bridge already used for WOL. That is why the web path
+can be implemented in the same WOL process without a new transport.
 
 So the split is:
 
-| Concern | WOL lobby | WDT listener |
+| Concern | WOL lobby / bridge | Native WDT listener |
 | --- | --- | --- |
-| Transport | WebSocket, text lines | TCP (native) / WebSocket bridge (browser), binary tagged packet |
-| Address | `/wol`, advertised by the server list | `WDTHost`/`WDTPort`, configured in the game's registry |
-| Game code | `wolapi` / WOL line handlers | `wonline.cpp` WDT fetch, `OnWDTState`, `WDTState` parser |
+| Transport | WebSocket, text lines; browser WDT via WOLAPI COM | TCP, binary tagged packet |
+| Address | `/wol`; the bridge is already connected | server-list `MGL` endpoint (`0xB73B34` / `0xB76B0C`) |
+| Game code | `wolapi.c` (`RequestWDTState`) / WOL line handlers | `wonline.cpp` fetch, `OnWDTState`, `WDTState` parser |
 | Match request | `MatchWDT `, `, WDS=0|1`, `, WDT=` lines | supplies the conflict/territory assignment |
 | Results | normal native game-res path | reads the `WDTT`/WDT fields from the same report |
 
@@ -45,22 +49,22 @@ Running both in one process is the recommended deployment: the WDT service is st
 `WolServer` in `server/src/index.ts`, uses the same `SessionManager` and `AccountStore`, and
 persists through the same storage. Only the socket/codec path differs.
 
-**Why not multiplex one port?** The WOL endpoint is already a WebSocket upgrade; the WDT client
-starts with its own binary header. Protocol sniffing on one port is possible but fragile, and the
-game reads a dedicated `WDTPort` anyway. A separate port (native) plus a separate WS path
-(browser) is simpler and testable.
+**Why not multiplex one port?** The native WDT client opens its own TCP endpoint from the
+server-list entry; the endpoint is effectively dedicated. The browser never opens it, because it
+uses the WOLAPI bridge. No protocol sniffing is needed.
 
-**Why the registry is the hard part.** The lobby cannot tell the client where the WDT listener is:
-the client reads `WDTHost`/`WDTPort` from `SOFTWARE\Westwood\<game>` before it talks to the
-lobby. Native installs need a registry setup script; the browser needs the HLE to map that
-virtual connection to the `/wdt` WebSocket. This is configuration, not a reason to put the state
-in the lobby protocol.
+**Why native still needs an endpoint.** Native `wonline.cpp` reads the WDT host/port from the
+server-list `MGL` entry (`0xB73B34`/`0xB76B0C`), not from a WOL line. The WOL bridge can advertise
+that entry, but the native client still opens a TCP connection to it. The browser avoids this
+entirely by using the WOLAPI method. That is the only reason the native listener remains in the
+plan after the browser finding.
 
 **Tech stack:** TypeScript/Bun in `../ra2web/server`, Vitest, SQLite and memory storage; C/Emscripten
 in this repo and `../pcrecomp` for the web transport; RA2/YR lifted C for protocol evidence; a
 Python/TypeScript fake TCP server for packet capture.
 
-**Status:** planning only. No server or transport code exists yet.
+**Status:** WDT-0a done (browser request shape captured); WDT-2 started (bridge method logs the
+call). No state codec or server model exists yet.
 
 ## Task breakdown and progress
 
@@ -94,9 +98,12 @@ browser TCP bridge is required for the web client. Native clients still need the
 
 ## What the client does (evidence)
 
-- WDT is a **separate TCP service**, not the WOL lobby. `Get_WDT_State_Silent` reads
-  `SOFTWARE\Westwood\Yuri's Revenge` / `SOFTWARE\Westwood\Red Alert 2` (`WDTHost`, `WDTPort`) and
-  logs `WDTHost is %s, port is %d`.
+- **Native** WDT state uses a separate TCP endpoint. `Get_WDT_State_Silent` parses the WOL
+  server-list `MGL` entry (host copied to `0xB73B34`, port to `0xB76B0C`) and logs
+  `WDTHost is %s, port is %d`; it is not a WOL text line.
+- **Browser** WDT state uses `WolChannel::RequestWDTState` in the WOLAPI COM bridge. A probe
+  logged the call args (`0C058240 00B269AC 0 3`) and the sink (`0BF5B910`); the current stub
+  returns `E_NOTIMPL`, which produces the `0xD0` dialog.
 - `wonline.cpp`'s WDT fetch (`sub_00797800`, YR `0x00797800`) connects, sends a small request,
   then reads an `0x12`-byte header. It retries while the socket reports `0x102` and logs
   `Requesting current WDT cycle` / `Requesting Previous Cycle`.
@@ -130,8 +137,8 @@ browser TCP bridge is required for the web client. Native clients still need the
 - Reuse WOL account/session identity. Do not add a second login.
 - Keep normal WOL, skirmish, campaign and native-result behaviour unchanged.
 - Keep the WDT wire format in one codec; the server, tests and fake clients share it.
-- The browser transport must be bounded, authenticated, timeout-aware and must not block the
-  game thread while waiting for the server.
+- The browser bridge must be bounded, authenticated, timeout-aware and must not block the game
+  thread while waiting for the server.
 - Changes in `../pcrecomp` are separate commits with their own selftests.
 - Generated lift output is never committed; protocol fixes belong in `run_lift.py` and its tests.
 - Record captured packets as derived evidence under `work/`, never commit retail payloads.
@@ -142,14 +149,14 @@ browser TCP bridge is required for the web client. Native clients still need the
 
 **Files:** `work/wdt/` capture scripts and logs; no product code yet.
 
-The original servers are gone, so the only trustworthy reference is the client. Point a native
-build at a local listener by writing the game's registry key (`WDTHost=127.0.0.1`,
-`WDTPort=<port>`); for Wine/Linux use a `.reg` file, for Windows a `reg add` script.
+The original servers are gone, so the only trustworthy reference is the client. The browser path
+is already partly captured (WDT-0a). For the native path, point the WOL server-list `MGL` entry
+at a local listener and run the native client through the WOL login.
 
 - [ ] Write a minimal TCP listener that accepts one connection, logs every byte in both
       directions with timestamps, and can reply with a candidate packet from a file.
-- [ ] Run the recompiled YR and RA2 clients against it, once for the current cycle and once for
-      the previous cycle, and save the request bytes and the client log lines.
+- [ ] Run the recompiled native YR and RA2 clients against it, once for the current cycle and once
+      for the previous cycle, and save the request bytes and the client log lines.
 - [ ] Identify the request framing: fixed 16/18-byte header, tag, cycle selector, nickname/ticket,
       byte order and any terminator.
 - [ ] Identify the response envelope: how the `0x12`-byte header relates to the tagged body,
@@ -179,44 +186,40 @@ build at a local listener by writing the game's registry key (`WDTHost=127.0.0.1
 - [ ] Add a fixture state with at least two territories per side, one neutral territory, one open
       conflict and a non-empty history.
 
-### WDT-2: TCP WDT service
+### WDT-2: Browser `RequestWDTState` bridge (started)
 
-**Files:** `../ra2web/server/src/wdt/server.ts`, `service.ts`, `config.ts`, `index.ts`, tests.
+**Files:** `src/web/wolapi.c`, `src/web/pre.js` or `web/src/game/wol.ts`, `web/src/game/protocol.ts`,
+`../ra2web/server/src/wdt/*`, tests.
+
+The browser does not use the raw TCP path. `WolChannel::RequestWDTState` is the seam.
+
+- [ ] Decode the four arguments and the memory at `0x0C058240` / `0x00B269AC`; record which is the
+      request object, which is a buffer/string, and what `3` selects (current/previous cycle).
+- [ ] Find and verify the `OnWDTState` event ordinal/vtable slot (`CNetUtilEventSink__virtual_8`);
+      send a minimal `NACK` and verify the game logs `NACK received from server`.
+- [ ] Add a bounded JS bridge (`ra2WdtState`/HTTP fetch) from the page to the RA2Web server; never
+      block the game thread.
+- [ ] Encode a minimal current-cycle fixture and deliver it through `OnWDTState`; verify the
+      faction screen stays open instead of opening `0xD0`.
+- [ ] Add a browser e2e assertion on `[wdt] RequestWDTState`, `Current cycle data received`, and
+      the absence of `[dialog] open 0xD0`.
+- [ ] Keep the native TCP path out of this task.
+
+### WDT-3: Native TCP WDT listener
+
+**Files:** `../ra2web/server/src/wdt/server.ts`, `service.ts`, `config.ts`, `index.ts`, tests;
+native setup helper.
 
 - [ ] Add `WDT_ENABLED`, `WDT_PORT` (default a free port), `WDT_HOST` and
       `WDT_SOCKET_PATH` configuration; do not disturb the WOL/gserv ports.
 - [ ] Start `WdtServer` beside `WolServer` in the same `server/src/index.ts` process; pass the
-      existing `SessionManager`, `AccountStore`, `Storage` and logger, so no second login or
-      database is introduced.
-- [ ] Serve the current and previous cycle state from one in-memory `WdtService`; answer `NACK`
-      with a bounded reason when no state exists.
-- [ ] Bound every read (header, body, fields), time out idle clients and close cleanly on
-      shutdown.
-- [ ] Add a native-client setup helper (`reg add` / `.reg`) and document the exact keys.
-- [ ] Integration test: a fake client sends the captured request and receives a decodable
-      response; unknown clients get a clean close.
-- [ ] Run the actual native client against the service; acceptance is the faction screen opening
-      without `TXT_WDT_NET_ERR` and a side click being accepted.
-
-### WDT-3: Browser transport
-
-**Files:** `../pcrecomp/runtime/win32hle/wsock32.c`, its selftests; `web/src/game/wdt.ts` and
-tests; `../ra2web/server/src/wdt/ws.ts`.
-
-The game's WDT client calls Winsock `connect`/`send`/`recv` directly, so `WolChannel::RequestWDTState`
-is not the path to implement. The browser needs a TCP substitute.
-
-- [ ] Decide the seam: a `wtcp_*` transport in `wsock32.c` for the WDT host/port, or a page-level
-      interception of the socket pair. Prefer the HLE transport so the guest code is unchanged.
-- [ ] Add a WebSocket endpoint (`/wdt`) that carries length-prefixed TCP frames both ways.
-- [ ] Implement connect/send/recv readiness, partial reads, backpressure, reconnect policy and
-      `WSAEWOULDBLOCK` semantics; no busy-wait on the game thread.
-- [ ] Selftest: a paired in-memory socket echoes a frame, returns `WSAEWOULDBLOCK` when empty,
-      and recovers from a closed peer.
-- [ ] Browser e2e: launch the imported game, open World Domination, verify the faction screen and
-      a side click reach the server.
-- [ ] Document the transport in `docs/web/protocol.md` and the server endpoint in
-      `docs/web/deploy.md`.
+      existing `SessionManager`, `AccountStore`, `Storage` and logger.
+- [ ] Advertise the endpoint in the WOL `MGL` server-list entry and document how the native
+      client is pointed at it.
+- [ ] Serve the current and previous cycle with the same codec; bound every read, time out idle
+      clients and close cleanly.
+- [ ] Capture the native request bytes (`sub_00797800`) and add a fake-client integration test.
+- [ ] Run the actual native client: faction screen without `TXT_WDT_NET_ERR`, side click accepted.
 
 ### WDT-4: Match flow and results
 
