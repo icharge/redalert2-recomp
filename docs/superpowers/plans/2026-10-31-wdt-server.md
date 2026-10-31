@@ -159,9 +159,22 @@ call). No state codec or server model exists yet.
   it shows dialog `0xD0` (**"Error : Matching Server Not Found"**, CSF
   `WOL:MatchGameChannelNotFound`). Evidence: `work/wdt-final2/territory-click-game.png`
   (selected Black Hills), `work/wdt-fix5/game.log` (match start + 0xD0).
-- **Next**: answer the type-33 game-list request with a WDT matching game so the client can
-  join it instead of showing `0xD0`, then verify a live `MatchWDT`/`WDT=` conflict and result.
-  WDT-0b/3 (native) still needs the WOL TCP gateway.
+- **Match start transport (decoded)**: after the second click the client asks for the game
+  list (`list 33 33`), parts the lobby and tries the **mangler** (GameSpy matchmaking)
+  connection. The server-list parser (`CComObject_VCChatEventSink_ATL__virtual_3`, 0x75E000)
+  recognises labelled service entries `IRC`, `GAM`, `LAD`, `WDT` (exe strings at
+  0x7FDC80..0x7FDC8C). The `WDT` entry fills `WDTHost`/`WDTPort` (0xB269AC/0xB299BC), the
+  address the client uses for `Get_WDT_State_Silent`; `GAM` fills the mangler list
+  (0xB2AC34). The browser bridge supplies only a single `IRC` entry
+  (`"TCP;127.0.0.1;19090"`), so the log shows `Got 0 mangler servers` / `CurrentManglerServer = 0`
+  and `WDTHost is , port is 0`, then the client returns to login and shows `0xD0`
+  ("Matching Server Not Found"). Replacing the entry with `WDT` alone breaks login, so the
+  multi-service encoding of the 0xF8-byte server-list entry still has to be decoded.
+- **Next**: decode the 0xF8-byte server-list entry so the bridge can publish `IRC`, `GAM` and
+  `WDT` entries together (WDT -> the `WdtTcpServer` port), then serve the mangler/`Start <game>`
+  flow (0x75B910 handles `Start <name>`, `Fail...`, `PingFail...`, `RankFail...`). With a
+  matching game in the type-33 list the client can join it and the existing `WDT=`/STARTG
+  assignment can run. WDT-0b/3 (native) still needs the WOL TCP gateway.
 
 ### First finding: the browser does not use the raw TCP path
 
