@@ -103,11 +103,8 @@ call). No state codec or server model exists yet.
     after the Allied click, game still `running` 60 s later. Screenshot:
     `work/wdt-e2e-final/wdt-screen.png`.
   - **Lift**: `python run_lift.py --target game --all` lifted 23,125 functions
-    (0 errors), `--check` exit 0, `tools/test_lift_patches.py` → `Ran 46 tests — OK`.
-    After that run a concurrent page-cursor change (`PAGE_CURSOR_SITES`) landed in
-    `run_lift.py`; `--check` is stale again until that unrelated feature's
-    `ra2_page_cursor_*` sources land. Do not regenerate against the half-applied
-    feature.
+    (0 errors). The later concurrent page-cursor feature has landed: `--check` exits 0
+    again and `tools/test_lift_patches.py` reports `Ran 51 tests - OK`.
 - **Instrumentation (WDTProps.cpp)**: `WDTState+8/+0xC` are read as `char*` but point at
   heap objects, not the parsed description text — the server strings are freed/reused by the
   time the campaign properties are built. Forcing the client's fallback to the **unquoted** CSF
@@ -135,18 +132,22 @@ call). No state codec or server model exists yet.
   "Click on a white territory to engage in battle" render at 1280x720:
   `work/wdt-art640/tick19.png` (848 KB). The 640 layout is drawn at 472x448 inside the wider
   window; scaling it is a later polish item.
-- **Map input**: instrumenting the map's update proc (`sub_0072E050`) shows it receives only
-  message **0** on each tick; neither the territory hit test (`sub_0072A770`) nor the click
-  helper (`sub_0072E430`) runs for a page click. The commit path is therefore not a
-  `WM_LBUTTONDOWN` handled by that dialog proc — it depends on the map control's own state
-  (`[control+0x68]`, `[screen+0x454]`) and the mouse object. Next: instrument that control
-  state/button flag and inject the click where the control reads it.
-- **Direct `sub_0072E430` injection**: hooking the start of `sub_0072E050` to publish its `ecx`
-  for the host never fired either — that function is not the active WDT map update path in this
-  build. The map screen's real object/proc and its selected-territory state still have to be
-  identified before a UI click can be driven.
-- **Next**: find the active map screen object (the one that owns `+0x454`/`+0x45C`) from the
-  `0x73004B` call site or the screen manager, then inject the selection/commit; then WDT-0b/3.
+- **Map input (corrected)**: dialog `0x125` is the **side-select overlay**, not the map. Its
+  Allied click is delivered to the dialog and tears it down; the map is drawn afterwards by the
+  main window through the WDT screen update (`sub_0072FFC0` → `sub_0072F5A0` +
+  `sub_0072E050`). Page clicks do reach it: HLE trace shows `WM_LBUTTONDOWN` on the main window,
+  the WWMouse WndProc (`0x532A60`) queues it, and `sub_0072E050` receives
+  `map msg=1` then `map msg=0x801`. At map (200,250) the territory lookup (`0x72A660`) returns
+  **id 18**; the select panel (`0x72ED80`) is skipped because the id equals the previous value
+  (`pick id=18 previous=18`). So the click reaches the map and picks a territory; the missing
+  piece is the commit/challenge transition, not input routing.
+- **WDT screen object**: `sub_0072FFC0`’s `ecx` is not a persistent screen — its `+0x454`/
+  `+0x45C` fields are per-frame stack scratch, and `+0x45C` is the **Back button**
+  (rect 570,475 136x25 at 1280x720), which is why direct injection from the host is useless.
+- **Next**: locate the transition that starts a match from a selected territory (the
+  `[screen+0x454] == 2` branch / `0x72F430`, or the territory panel action), then drive it and
+  verify the lobby `MatchWDT`/`WDT=` conflict. WDT-0b/3 (native) still needs the WOL TCP
+  gateway.
 
 ### First finding: the browser does not use the raw TCP path
 

@@ -7,6 +7,8 @@ import { options, startPage } from "./lib.mjs";
 const opts = options(process.argv.slice(2));
 opts.noDev = true;
 opts.pageArgs.push("--debuglog", "--env", "HLE_NETTRACE=1");
+if (process.env.WDT_MSGTRACE) opts.pageArgs.push("--env", "HLE_MSGTRACE=1");
+if (process.env.WDT_INJECT) opts.pageArgs.push("--env", `RA2_WDT_CLICK=${process.env.WDT_INJECT}`);
 if (opts.testGame) {
   // `?test=1` streams the game folder; the import allowlist omits the exe, so
   // hand it the same file the installer would have imported.
@@ -115,9 +117,12 @@ try {
     console.log("territory phase", (await run.state())?.phase);
   }
   if (process.env.WDT_CLICK_GAME) {
-    const [x, y] = process.env.WDT_CLICK_GAME.split(",").map(Number);
-    await run.clickGame(x, y);
-    await run.page.waitForTimeout(4000);
+    const points = process.env.WDT_CLICK_GAME.split(";").map((pair) => pair.split(",").map(Number));
+    for (const [x, y] of points) {
+      await run.clickGame(x, y);
+      await run.page.waitForTimeout(3000);
+    }
+    await run.page.waitForTimeout(2000);
     await run.shot("territory-click-game");
     const lines = run.all.filter((line) => /WDT|Match|match|STARTG|GAMEOPT|dialog/i.test(line));
     console.log("territory game click dialogs", JSON.stringify(lines.slice(-20)));
