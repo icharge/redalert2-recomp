@@ -876,6 +876,11 @@ static void m_stub_1(void) { RET(E_NOTIMPL, 1); }
 static void m_stub_2(void) { RET(E_NOTIMPL, 2); }
 static void m_stub_3(void) { RET(E_NOTIMPL, 3); }
 static void m_stub_4(void) { RET(E_NOTIMPL, 4); }
+static void m_wdt_request_state(void) {
+    fprintf(stderr, "[wdt] RequestWDTState args %08X %08X %08X %08X sink %08X\n",
+            A32(0), A32(1), A32(2), A32(3), g_channel.sink);
+    RET(E_NOTIMPL, 4);
+}
 static void m_stub_5(void) { RET(E_NOTIMPL, 5); }
 static void m_stub_6(void) { RET(E_NOTIMPL, 6); }
 static void m_stub_7(void) { RET(E_NOTIMPL, 7); }
@@ -1251,7 +1256,7 @@ static uint32_t create_channel(const uint8_t *iid, uint32_t *out) {
         { "WolChannel::RequestLadderList", m_stub_8 }, { "WolChannel::RequestPing", m_stub_4 },
         { "WolChannel::PumpMessages", m_net_pump },
         { "WolChannel::GetAvgPing", m_net_get_avg_ping }, { "WolChannel::RequestNewNick", m_stub_7 },
-        { "WolChannel::RequestAgeCheck", m_stub_5 }, { "WolChannel::RequestWDTState", m_stub_4 },
+        { "WolChannel::RequestAgeCheck", m_stub_5 }, { "WolChannel::RequestWDTState", m_wdt_request_state },
         { "WolChannel::RequestLocaleLadderList", m_stub_9 }, { "WolChannel::RequestLocaleLadderSearch", m_stub_11 },
         { "WolChannel::RequestHighscore", m_stub_5 }, { 0, 0 }
     };
