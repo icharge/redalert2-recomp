@@ -57,9 +57,11 @@
   image-rendering: pixelated;
 }
 
+/* above the canvas (and the cursor), so a crash or a failed start can be read and its buttons used */
 .overlay {
   position: absolute;
   inset: 0;
+  z-index: 5;
   background: color-mix(in srgb, var(--color-background) 88%, transparent);
 }
 

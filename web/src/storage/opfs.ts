@@ -224,9 +224,21 @@ export async function readGameFile(
   root: Promise<FileSystemDirectoryHandle> = navigator.storage.getDirectory(),
 ): Promise<Uint8Array> {
   const parts = `game/${home}/${name}`.split("/");
+  const missing = () =>
+    new Error(
+      `${name} is missing from this browser's copy of the game. Reimport the game (or the mod that has it).`,
+    );
   const dir = await openFolder(root, parts.slice(0, -1).join("/"));
-  if (!dir) throw new Error(`${name} is not in this browser's copy of the game (reimport it).`);
-  const file = await (await dir.getFileHandle(parts[parts.length - 1] ?? "")).getFile();
+  if (!dir) throw missing();
+  let handle: FileSystemFileHandle;
+  try {
+    handle = await dir.getFileHandle(parts[parts.length - 1] ?? "");
+  } catch (error) {
+    // The folder is there but the file is not: say which file, rather than the browser's own wording.
+    if (error instanceof DOMException && error.name === "NotFoundError") throw missing();
+    throw error;
+  }
+  const file = await handle.getFile();
   return new Uint8Array(await file.arrayBuffer());
 }
 
