@@ -876,10 +876,167 @@ static void m_stub_1(void) { RET(E_NOTIMPL, 1); }
 static void m_stub_2(void) { RET(E_NOTIMPL, 2); }
 static void m_stub_3(void) { RET(E_NOTIMPL, 3); }
 static void m_stub_4(void) { RET(E_NOTIMPL, 4); }
+
+/* WDT state packet: a 4-byte big-endian header (total length, kind), then
+ * records of an 8-byte header (4-byte ASCII tag, 16-bit kind, big-endian
+ * 16-bit length) and that many bytes padded to four. The client's WDTState
+ * constructor (0x76AC90) walks exactly this shape; see the WDT plan. */
+static uint8_t g_wdt_packet[4096];
+/* The page caches the RA2Web /wdt/state packet for the current and previous
+ * cycle when the WOL client connects. The game runs on an Emscripten worker,
+ * so hop to the page's main thread (as the WOL bridge does) and copy the
+ * cached bytes into the shared wasm heap. A miss falls back to the fixture. */
+static int wdt_fetch_from_page(int previous, uint8_t *out, int capacity) {
+    return MAIN_THREAD_EM_ASM_INT({
+        const fn = Module.ra2WdtState;
+        if (!fn) { console.log("wdt: no ra2WdtState"); return -1; }
+        const bytes = fn($0 ? "previous" : "current");
+        if (!bytes) { console.log("wdt: cache miss", $0); return -1; }
+        if (bytes.length > $2) { console.log("wdt: too large", bytes.length); return -1; }
+        HEAPU8.set(bytes, $1);
+        return bytes.length;
+    }, previous, (int)(uintptr_t)out, capacity);
+}
+static uint32_t wdt_rec(uint8_t *p, const char tag[4], const void *data, uint32_t len) {
+    memcpy(p, tag, 4);
+    p[4] = p[5] = 0;
+    p[6] = (uint8_t)(len >> 8);
+    p[7] = (uint8_t)len;
+    if (len) memcpy(p + 8, data, len);
+    uint32_t padded = (len + 3u) & ~3u;
+    memset(p + 8 + len, 0, padded - len);
+    return 8u + padded;
+}
+static uint32_t wdt_finish(uint8_t *p, uint32_t total, uint16_t kind) {
+    p[0] = (uint8_t)(total >> 8);
+    p[1] = (uint8_t)total;
+    p[2] = (uint8_t)(kind >> 8);
+    p[3] = (uint8_t)kind;
+    return total;
+}
+static uint32_t wdt_rec_u32(uint8_t *p, const char tag[4], uint32_t v) {
+    uint8_t b[4] = { (uint8_t)v, (uint8_t)(v >> 8), (uint8_t)(v >> 16), (uint8_t)(v >> 24) };
+    return wdt_rec(p, tag, b, 4);
+}
+static uint32_t wdt_rec_u8(uint8_t *p, const char tag[4], uint8_t v) {
+    return wdt_rec(p, tag, &v, 1);
+}
+/* One current-cycle state. The world map is 30 regions per continent, so the
+ * current cycle carries that many 44-byte territory records (the layout the
+ * parser at 0x72BFA0 consumes: id, art/name fields, the 0x28-byte stat groups
+ * and two 32-bit map coordinates). Values mirror WDTTerritory's defaults so
+ * the map code has complete records. */
+#define WDT_TERRITORIES 30
+/* Owner map: two bits per (row, column) cell, low bits first; row 0/1 are the
+ * playable sides, the last row is neutral. */
+static void wdt_owners(uint8_t *out, size_t bytes, uint32_t rows, uint32_t cols) {
+    memset(out, 0, bytes);
+    for (uint32_t r = 0; r + 1 < rows; r++)
+        for (uint32_t c = 0; c + 1 < cols; c += 2) {
+            uint32_t cell = r * cols + c;
+            if (cell / 4 < bytes) out[cell / 4] |= (uint8_t)((r + 1) << ((cell % 4) * 2));
+        }
+}
+static uint32_t wdt_state_current(uint8_t *p) {
+    uint8_t owners[15];
+    wdt_owners(owners, sizeof owners, 2, WDT_TERRITORIES);
+    uint8_t recs[WDT_TERRITORIES * 44];
+    memset(recs, 0, sizeof recs);
+    for (int i = 0; i < WDT_TERRITORIES; i++) {
+        uint8_t *rec = recs + i * 44;
+        rec[0] = (uint8_t)(i >> 8); rec[1] = (uint8_t)i;  /* territory id */
+        rec[2] = 0x8A; rec[3] = 0x8A;                     /* art/name index 10 */
+        rec[4] = 0x27; rec[5] = 0x10;                     /* 10000 */
+        rec[6] = 0x81;                                    /* weights 1, 0 */
+        rec[7] = 0x80;
+        rec[8] = 0x81; rec[9] = 0x81; rec[10] = 0x82;
+        rec[11] = 0x80;
+        rec[12] = 0; rec[13] = 100; rec[14] = 50; rec[15] = 0;
+        rec[16] = 100; rec[17] = 50; rec[18] = 0; rec[19] = 100;
+        rec[20] = 1; rec[21] = 100; rec[22] = 50; rec[23] = 0;
+        rec[24] = 100; rec[25] = 50; rec[26] = 0; rec[27] = 100; rec[28] = 50;
+        rec[29] = 0; rec[30] = 100; rec[31] = 50; rec[32] = 0;
+        rec[33] = 100; rec[34] = 50; rec[35] = 0;
+        memset(rec + 36, 0xFF, 8);                        /* coordinates: -1, -1 */
+    }
+    uint32_t n = 0;
+    n += wdt_rec_u32(p + 4 + n, "CRTK", 1);          /* faction rows - 1 */
+    n += wdt_rec_u32(p + 4 + n, "CYLN", 0);          /* cycle length - 1 */
+    n += wdt_rec(p + 4 + n, "MPVC", recs, (uint32_t)sizeof recs);
+    n += wdt_rec(p + 4 + n, "HSVC", owners, (uint32_t)sizeof owners);
+    n += wdt_rec_u8(p + 4 + n, "CMID", 0);
+    n += wdt_rec_u32(p + 4 + n, "CYID", 1);
+    n += wdt_rec_u32(p + 4 + n, "TICC", 30);
+    n += wdt_rec(p + 4 + n, "WURL", "https://example.invalid/wdt", 27);
+    n += wdt_rec(p + 4 + n, "SDSC", "Alpha cycle", 11);
+    n += wdt_rec(p + 4 + n, "LDSC", "World Domination test cycle", 27);
+    return 4u + n;
+}
+/* The previous cycle has no territory records; the parser derives the map
+ * width (30) and takes the row count from TOTK. */
+static uint32_t wdt_state_previous(uint8_t *p) {
+    uint8_t owners[15]; /* 2 rows x 30 cells, 2 bits each */
+    wdt_owners(owners, sizeof owners, 2, WDT_TERRITORIES);
+    uint32_t n = 0;
+    n += wdt_rec_u32(p + 4 + n, "TOTK", 1);
+    n += wdt_rec_u32(p + 4 + n, "CYLN", 0);
+    n += wdt_rec(p + 4 + n, "HSVC", owners, (uint32_t)sizeof owners);
+    n += wdt_rec_u8(p + 4 + n, "CMID", 0);
+    n += wdt_rec_u32(p + 4 + n, "CYID", 0);
+    n += wdt_rec(p + 4 + n, "WURL", "https://example.invalid/wdt", 27);
+    n += wdt_rec(p + 4 + n, "SDSC", "Alpha cycle", 11);
+    n += wdt_rec(p + 4 + n, "LDSC", "World Domination test cycle", 27);
+    return 4u + n;
+}
+static void wdt_deliver(const uint8_t *packet, uint32_t len) {
+    uint32_t sink = g_channel.sink;
+    if (!sink) return;
+    /* slot 8 of CComObject<CNetUtilEventSink>'s vtable: OnWDTState */
+    uint32_t method = MEM32(MEM32(sink) + 8u * 4u);
+    uint32_t args[5] = { sink, 0, 0, (uint32_t)(uintptr_t)packet, len };
+    fprintf(stderr, "[wdt] OnWDTState fn=%08X len=%u\n", method, len);
+    hle_call_guest(method, 5, args);
+    uint32_t state = MEM32(0xB2AD68u + 4u);
+    if (state) fprintf(stderr, "[wdt] state=%08X width=%u rows=%u terr=%08X prev=%u\n",
+                       state, MEM32(state + 0x20), MEM32(state + 0x24),
+                       MEM32(state + 0x44), MEM8(state + 0x48));
+}
+/* The stock WOLAPI opens an asynchronous connection and leaves its event in
+ * the game's 18-entry wait array at 0xB264F8; Get_WDT_State_Silent waits for
+ * entry 11 (0xB) and treats it as the ready signal, then asks for the previous
+ * cycle (flag 5) and waits again. The browser has no such socket, so publish
+ * real HLE events and signal entry 11 when the requested state is ready. */
+#define WDT_EVENT_COUNT 18
+#define WDT_EVENT_READY 11
+#define WDT_EVENT_ARRAY 0xB264F8u
+static uint32_t g_wdt_events[WDT_EVENT_COUNT];
+static void wdt_events_ready(void) {
+    if (!g_wdt_events[0]) {
+        uint32_t create = hle_resolve("CreateEventA");
+        for (int i = 0; i < WDT_EVENT_COUNT; i++) {
+            uint32_t a[4] = { 0, 0, 0, 0 };
+            g_wdt_events[i] = hle_call_guest(create, 4, a);
+            MEM32(WDT_EVENT_ARRAY + 4u * (uint32_t)i) = g_wdt_events[i];
+        }
+    }
+    uint32_t args[1] = { g_wdt_events[WDT_EVENT_READY] };
+    hle_call_guest(hle_resolve("SetEvent"), 1, args);
+}
 static void m_wdt_request_state(void) {
-    fprintf(stderr, "[wdt] RequestWDTState args %08X %08X %08X %08X sink %08X\n",
-            A32(0), A32(1), A32(2), A32(3), g_channel.sink);
-    RET(E_NOTIMPL, 4);
+    fprintf(stderr, "[wdt] RequestWDTState args %08X %08X %08X %08X sink %08X chat %08X\n",
+            A32(0), A32(1), A32(2), A32(3), g_channel.sink, g_chat.sink);
+    int previous = (A32(3) & 4u) != 0;
+    int fetched = wdt_fetch_from_page(previous, g_wdt_packet, (int)sizeof g_wdt_packet);
+    if (fetched > 0) {
+        fprintf(stderr, "[wdt] server state %s %d bytes\n", previous ? "previous" : "current", fetched);
+        wdt_deliver(g_wdt_packet, (uint32_t)fetched);
+    } else {
+        uint32_t total = previous ? wdt_state_previous(g_wdt_packet)
+                                  : wdt_state_current(g_wdt_packet);
+        wdt_deliver(g_wdt_packet, wdt_finish(g_wdt_packet, total, 0));
+    }
+    wdt_events_ready();
+    RET(S_OK, 4);
 }
 static void m_stub_5(void) { RET(E_NOTIMPL, 5); }
 static void m_stub_6(void) { RET(E_NOTIMPL, 6); }

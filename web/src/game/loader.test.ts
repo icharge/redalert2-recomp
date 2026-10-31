@@ -316,7 +316,11 @@ describe("startGame", () => {
     const module = window.Module!;
     try {
       module.ra2WolStart!("test", "password123");
-      expect(requests).toEqual(["https://wol.test/service/register"]);
+      expect(requests).toContain("https://wol.test/service/register");
+      expect(requests.filter((request) => request.includes("/wdt/state")).sort()).toEqual([
+        "https://wol.test/service/wdt/state?cycle=current",
+        "https://wol.test/service/wdt/state?cycle=previous",
+      ]);
     } finally {
       module.ra2WolStop!();
       module.onAbort!("test cleanup");

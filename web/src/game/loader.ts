@@ -129,6 +129,8 @@ interface Ra2Module extends Partial<WasmMemory> {
   ra2WolStop?(): void;
   ra2WolReceiveLine?(line: string): void;
   ra2WolReport?(requestId: number, gameNumber: number, packet: Uint8Array): void;
+  /** Cached World Domination packet for the request's cycle, or null before the fetch lands. */
+  ra2WdtState?(cycle: "current" | "previous"): Uint8Array | null;
 }
 
 declare global {
@@ -553,7 +555,31 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
       httpUrl: wolHttpUrl,
       socketUrl: import.meta.env.VITE_WOL_SOCKET_URL ?? toWolSocketUrl(wolHttpUrl),
     };
+    // World Domination state is fetched over the same HTTP origin as WOL and
+    // cached, because the game asks for it synchronously from the WOLAPI COM
+    // bridge. A cold cache makes the bridge fall back to its own fixture.
+    const wdtCache = new Map<"current" | "previous", Uint8Array>();
+    const prefetchWdt = (cycle: "current" | "previous") => {
+      const base = wolHttpUrl.replace(/\/+$/, "");
+      void fetch(`${base}/wdt/state?cycle=${cycle}`)
+        .then(async (response) => {
+          if (response.ok) wdtCache.set(cycle, new Uint8Array(await response.arrayBuffer()));
+        })
+        .catch(() => {});
+    };
+    module.ra2WdtState = (cycle) => {
+      prefetchWdt(cycle);
+      return wdtCache.get(cycle) ?? null;
+    };
+    // The Emscripten Module the C side sees is not always the options object
+    // this page builds, so publish the same accessor on the global scope too.
+    (
+      globalThis as { ra2WdtState?: (cycle: "current" | "previous") => Uint8Array | null }
+    ).ra2WdtState = module.ra2WdtState;
     module.ra2WolStart = (username, password) => {
+      wdtCache.clear();
+      prefetchWdt("current");
+      prefetchWdt("previous");
       udpRelay?.stop();
       wolClient?.close();
       wolResultGames.clear();

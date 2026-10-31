@@ -1,12 +1,17 @@
 // Temporary WDT capture probe: reach the faction screen and click a side with
 // HLE_NETTRACE=1, then dump every native line. Not a committed test.
-import { writeFileSync } from "node:fs";
+import { writeFileSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { options, startPage } from "./lib.mjs";
 
 const opts = options(process.argv.slice(2));
 opts.noDev = true;
-opts.pageArgs.push("--mute", "--debuglog", "--env", "HLE_NETTRACE=1");
+opts.pageArgs.push("--debuglog", "--env", "HLE_NETTRACE=1");
+if (opts.testGame) {
+  // `?test=1` streams the game folder; the import allowlist omits the exe, so
+  // hand it the same file the installer would have imported.
+  opts.gameFileOverrides = { "game.exe": readFileSync(path.resolve("../game/game.exe")) };
+}
 const run = await startPage(opts);
 
 async function waitDialog(id, after = 0, ms = 60000) {
@@ -30,13 +35,23 @@ async function login(y0, y1) {
   await run.clickGame(720, 220);
 }
 try {
-  if ((await run.state())?.phase === "idle") {
-    await run.page.waitForTimeout(1000);
-    await run.page.mouse.click(480, 421); // Red Alert 2 tab
-    await run.page.waitForTimeout(500);
-    await run.page.mouse.click(898, 505); // Play
+  if (!opts.testGame) {
+    await run.page.getByRole("heading", { name: "Your games" }).waitFor({ timeout: 60000 });
+    const installation = run.page.locator('[data-slot-id="1"]');
+    const ra2Edition = installation.getByRole("radio", { name: "Red Alert 2" });
+    if (await ra2Edition.count()) await ra2Edition.click();
+    const card = run.page.locator('[data-slot-id="1"] [data-game-id="ra2"]');
+    await card.getByRole("button", { name: "Play" }).click();
   }
   await run.waitFor("main menu", (s) => s?.phase === "running", 180);
+  console.log(
+    "wdt hooks",
+    await run.page.evaluate(() => [
+      typeof globalThis.ra2WdtState,
+      typeof globalThis.Module?.ra2WdtState,
+      typeof globalThis.Module?.ra2WolStart,
+    ]),
+  );
   await run.page.waitForTimeout(1500);
   await run.clickGame(720, 263); // Internet
   await waitDialog("0x10E");
@@ -64,8 +79,10 @@ try {
   await run.page.waitForTimeout(3000);
   await run.shot("faction");
   await run.clickGame(190, 115); // Allied
-  await run.page.waitForTimeout(4000);
-  await run.shot("clicked");
+  for (let i = 0; i < 8; i++) {
+    await run.page.waitForTimeout(1500);
+    await run.shot(`tick${i}`);
+  }
 } finally {
   writeFileSync(path.join(opts.shots, "game.log"), run.all.join("\n"));
   writeFileSync(path.join(opts.shots, "browser.log"), run.lines.join("\n"));

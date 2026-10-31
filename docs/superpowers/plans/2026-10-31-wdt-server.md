@@ -72,13 +72,30 @@ call). No state codec or server model exists yet.
 | --- | --- | --- | --- | --- |
 | WDT-0a | Capture the browser request shape | **done** | — | The faction click reaches `WolChannel::RequestWDTState`; args recorded (`0C058240 00B269AC 0 3`, sink `0BF5B910`). |
 | WDT-0b | Capture the native/server-list path | pending | — | Native `sub_00797800` request bytes and the `MGL` server-list fields are understood. |
-| WDT-1 | Packet codec and state model | pending | WDT-0a/b | Golden state fixtures round-trip; the client parses a minimal state. |
-| WDT-2 | Browser `RequestWDTState` bridge | **started** | WDT-1 | The bridge logs the call and returns a state event instead of `E_NOTIMPL`; the faction screen stays open. |
-| WDT-2a | Server-side WDT state endpoint | pending | WDT-1 | RA2Web serves current/previous cycle JSON or a packet; the bridge can fetch it. |
-| WDT-3 | Native TCP WDT listener | pending | WDT-0b | Native client loads the faction screen without a registry hack. |
-| WDT-4 | Match assignment and result ingestion | pending | WDT-2/3 | `MatchWDT`/`WDT=` assign a conflict; `WDTT` updates it. |
-| WDT-5 | Cycles, history, admin | pending | WDT-4 | Cycle rollover and previous-cycle view work. |
-| WDT-6 | Persistence, tests, docs | pending | all | SQLite/memory tables, golden tests, two-client e2e, regression. |
+| WDT-1 | Packet codec and state model | **done** | WDT-0a/b | `src/wdt/codec.ts` + `service.ts`: container/tag round-trip, 30×44-byte records, 2-bit owner map, current/previous packets; 14 tests. |
+| WDT-2 | Browser `RequestWDTState` bridge | **done** | WDT-1 | Bridge signals the client's event array (index 0xB), fetches `/wdt/state` through the page (`MAIN_THREAD_EM_ASM`), delivers `OnWDTState` (current 1556 B, previous 216 B), no `E_NOTIMPL`, no `0xD0`. |
+| WDT-2a | Server-side WDT state endpoint | **done** | WDT-1 | `/wdt/state?cycle=current|previous` and `/wdt/status`; live smoke returns 1556/216-byte packets. |
+| WDT-3 | Native TCP WDT listener | **started** | WDT-0b | `WdtTcpServer` answers `WDT CURRENT`/`PREVIOUS` on `WDT_PORT`; native client capture still pending. |
+| WDT-4 | Match assignment and result ingestion | **started** | WDT-2/3 | `MatchWDT`/`WDS=`/`WDT=` in GAMEOPT and the bot assign a conflict at STARTG; native results settle it once. Live two-client WOL test passes; duplicate→409. |
+| WDT-5 | Cycles, history, admin | **started** | WDT-4 | `advanceCycle` freezes the current map as previous; `/wdt/status` exposes history. Admin routes still pending. |
+| WDT-6 | Persistence, tests, docs | **started** | all | Memory service + 14 codec/service/lobby tests; SQLite persistence and lift regeneration still pending. |
+
+### Progress note (2026-10-31)
+
+- **Server** `ra2web@9645e87`: codec/service/TCP/HTTP, WOL assignment (`WDS=`/`WDT=` at
+  STARTG and `MatchWDT` queue tags), native-result settlement, `scripts/wdt-lobby.ts`,
+  `scripts/wdt-smoke.ts`.
+- **Client** `7592c20`: the WOLAPI bridge signals the 18-event array at index `0xB`, returns
+  `S_OK`, and delivers the page-cached `/wdt/state` current/previous packets through
+  `OnWDTState`. Live log evidence: `server state current 1556 bytes`, `previous 216 bytes`.
+- **Verification**:
+  - `bun test src/wdt` → 14 pass, 0 fail (51+ assertions), `tsc --noEmit` exit 0.
+  - `WDT LOBBY TEST PASSED`: two real WOL sockets, `GAMEOPT` with `WDS=0,WDT=11`,
+    `STARTG`, then `/wdt/status` shows the conflict for that game id.
+  - `wdt-smoke`: HTTP 200, 1556-byte current packet (`CRTK=2`, `MPVC=1320`, `HSVC=23`);
+    TCP previous packet 216 bytes (`TOTK=2`).
+- **Next**: native-result HTTP integration test (the helper is unit-tested), cycle rollover
+  admin routes, SQLite persistence, and a stable map-screen/side-click e2e run.
 
 ### First finding: the browser does not use the raw TCP path
 
