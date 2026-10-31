@@ -141,8 +141,14 @@ call). No state codec or server model exists yet.
   `WM_LBUTTONDOWN` handled by that dialog proc — it depends on the map control's own state
   (`[control+0x68]`, `[screen+0x454]`) and the mouse object. Next: instrument that control
   state/button flag and inject the click where the control reads it.
-- **Next**: drive the map control's territory-commit state, verify the lobby
-  `MatchWDT`/`WDT=` assignment and result; then WDT-0b/3 native capture.
+- **Forced-message probe**: forcing the map update's message to `1` every tick and holding the mouse
+  over the rendered US still produced no match request or WDT conflict; dialogs stayed
+  `0xC6,0xE2,0x10E,0xC4,0x10F,0x113,0x125` and only the state poll continued. So the message
+  path alone is not the commit; the map control's selected-territory state/button (`+0x454`,
+  the territory list) has to be set too.
+- **Next**: inspect the map control's territory-selection state and the `sub_0072E430`
+  hit-result handling, set the selected territory/state, and verify the lobby
+  `MatchWDT`/`WDT=` assignment; then WDT-0b/3 native capture.
 
 ### First finding: the browser does not use the raw TCP path
 
