@@ -135,13 +135,14 @@ call). No state codec or server model exists yet.
   "Click on a white territory to engage in battle" render at 1280x720:
   `work/wdt-art640/tick19.png` (848 KB). The 640 layout is drawn at 472x448 inside the wider
   window; scaling it is a later polish item.
-- **Territory click attempt**: clicking the rendered map at viewport (430,500) and at game
-  (200,250) produced no WDT/match request — only the once-per-second `/wdt/state` poll. The
-  map is drawn from the 640 art scaled into a wider dialog, so the `ClickMap` hit test
-  coordinate space and/or the neutral ("white") owner value is the next thing to decode; the
-  e2e now supports `WDT_CLICK` (viewport) and `WDT_CLICK_GAME` (game pixels).
-- **Next**: decode `NA_ClikMap_TempB.pcx` and map the cursor rect to the scaled 640 layout,
-  then click a white region and verify the lobby `MatchWDT`/`WDT=` assignment; then WDT-0b/3.
+- **Click instrumentation**: `sub_0072A770` (the territory hit test) and the
+  `sub_0072E430` click helper are **never called** for page clicks at viewport (430,500) or
+  game (200,250). The map keeps polling `/wdt/state` once a second, so the screen is alive;
+  the click is not reaching the map's custom input path. Next: find the map window proc /
+  message that commits a territory (likely a `WM_LBUTTONDOWN` path distinct from the
+  faction screen's `0x768A3B` hit test), then drive that rect.
+- **Next**: route the click to the map's territory-commit message, verify the lobby
+  `MatchWDT`/`WDT=` assignment and result; then WDT-0b/3 native capture.
 
 ### First finding: the browser does not use the raw TCP path
 
