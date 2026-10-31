@@ -1,0 +1,220 @@
+# World Domination Tour (WDT) Server Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this
+> plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Make World Domination Tour playable end to end: the game loads a WDT cycle, a player
+chooses a side, a WDT match starts, the result is reported, and the next state reflects territory
+control, points and history.
+
+**Architecture:** A new WDT service in the sibling `ra2web/server` owns the cycle/territory model
+and speaks the legacy WDT TCP protocol. Native clients connect to it directly (`WDTHost`/
+`WDTPort` in the game's registry key). Browser clients reach the same service through a
+TCP-over-WebSocket bridge in `win32hle`/the page, because a browser cannot open the raw TCP socket
+the game uses. WOL accounts and the existing native relay/game-result path supply identity and
+match completion; the WDT service does not duplicate them.
+
+**Tech stack:** TypeScript/Bun in `../ra2web/server`, Vitest, SQLite and memory storage; C/Emscripten
+in this repo and `../pcrecomp` for the web transport; RA2/YR lifted C for protocol evidence; a
+Python/TypeScript fake TCP server for packet capture.
+
+**Status:** planning only. No server or transport code exists yet.
+
+## What the client does (evidence)
+
+- WDT is a **separate TCP service**, not the WOL lobby. `Get_WDT_State_Silent` reads
+  `SOFTWARE\Westwood\Yuri's Revenge` / `SOFTWARE\Westwood\Red Alert 2` (`WDTHost`, `WDTPort`) and
+  logs `WDTHost is %s, port is %d`.
+- `wonline.cpp`'s WDT fetch (`sub_00797800`, YR `0x00797800`) connects, sends a small request,
+  then reads an `0x12`-byte header. It retries while the socket reports `0x102` and logs
+  `Requesting current WDT cycle` / `Requesting Previous Cycle`.
+- `INetUtilEvent::OnWDTState` (`CNetUtilEventSink__virtual_8`, YR `0x007A2FE0`) receives the
+  packet and logs `Previous cycle data received`, `Current cycle data received` or
+  `NACK received from server`. It builds a `WDTState`.
+- `WDTState` (`0x0076AC90`) parses a **tagged packet** with 4-character tags. Tags seen in the
+  parser: `NACK`, `TOTK`, `CRTK`, `CYLN`, `WURL`, `SDSC`, `LDSC`, `MPVC`, `HSVC`, `CMID`,
+  `CYID`, `TICC`, plus six more and per-territory records. The parser uses the same
+  field lookup (`sub_00625FB0` / `sub_00625F60` / `sub_00625DB0`) as the game's packet/chunk
+  tree, so the wire format is a tagged tree, not an ad-hoc text protocol.
+- The faction screen is `FactionSelectDialogControl` (`WDTFSBSm.pcx` / `WDTFSAsm.pcx` /
+  `WDTFSSsm.pcx`, dialog `0x125`, `WorldDom.cpp`). The side is stored in `[control+0xC]` and
+  committed by `WM_LBUTTONUP`.
+- WDT matches use the WOL match request path: `MatchWDT `, `, WDS=0`, `, WDS=1`, `, WDT=` in
+  `wonline.cpp` (`sub_007A0690`). The WDT server and the WOL/gserv relay therefore have to
+  agree on the match assignment, but gameplay remains the existing native relay.
+- Native game results already carry `WDTT` (and the other WDT fields) in the game-res packet
+  (`Sending game results ... WDTT`, YR `0x006C700C`). The existing unscored native-results
+  endpoint is the natural ingestion point.
+
+## Non-goals in the first cut
+
+- Rebuilding the original Westwood ladder formula or awarding RA2Web ladder points from WDT.
+  WDT points/territory are a separate record until a later decision.
+- A web page for browsing WDT standings. The first cut is the in-game service.
+- Anti-cheat beyond the existing authenticated native report validation.
+
+## Global constraints
+
+- Reuse WOL account/session identity. Do not add a second login.
+- Keep normal WOL, skirmish, campaign and native-result behaviour unchanged.
+- Keep the WDT wire format in one codec; the server, tests and fake clients share it.
+- The browser transport must be bounded, authenticated, timeout-aware and must not block the
+  game thread while waiting for the server.
+- Changes in `../pcrecomp` are separate commits with their own selftests.
+- Generated lift output is never committed; protocol fixes belong in `run_lift.py` and its tests.
+- Record captured packets as derived evidence under `work/`, never commit retail payloads.
+
+## Milestones
+
+### WDT-0: Capture the protocol (go/no-go)
+
+**Files:** `work/wdt/` capture scripts and logs; no product code yet.
+
+The original servers are gone, so the only trustworthy reference is the client. Point a native
+build at a local listener by writing the game's registry key (`WDTHost=127.0.0.1`,
+`WDTPort=<port>`); for Wine/Linux use a `.reg` file, for Windows a `reg add` script.
+
+- [ ] Write a minimal TCP listener that accepts one connection, logs every byte in both
+      directions with timestamps, and can reply with a candidate packet from a file.
+- [ ] Run the recompiled YR and RA2 clients against it, once for the current cycle and once for
+      the previous cycle, and save the request bytes and the client log lines.
+- [ ] Identify the request framing: fixed 16/18-byte header, tag, cycle selector, nickname/ticket,
+      byte order and any terminator.
+- [ ] Identify the response envelope: how the `0x12`-byte header relates to the tagged body,
+      lengths, alignment and nesting.
+- [ ] Derive the complete tag list and field types from the `WDTState` parser and the six
+      unlisted tags; map each to the UI field it drives.
+- [ ] Produce a minimal synthetic response that reaches
+      `OnWDTState: Current cycle data received` and opens the faction screen.
+- [ ] Click a side and capture the follow-up request; document what the server must answer.
+- [ ] **Gate:** do not start the product server until the faction screen loads and a side click
+      produces a second, understood request. If the client requires an unavailable ticket or
+      encryption, stop and record the blocker.
+
+### WDT-1: Codec and state model
+
+**Files:** `../ra2web/server/src/wdt/codec.ts`, `model.ts`, tests under
+`../ra2web/server/test/wdt*`.
+
+- [ ] Implement `encodeWdtState(state): Uint8Array` and `decodeWdtState(bytes): WdtState` from
+      the WDT-0 captures, including the tagged tree and all integer/string/string-list fields.
+- [ ] Define the model: cycle (`id`, `startsAt`, `endsAt`, `state`), campaigns/theaters, factions,
+      territories (`id`, `name`, `owner`, centroid, `map`/theater, conflicts), conflicts
+      (`attacker`, `defender`, `territory`, `gameId`, `status`, `winner`), player statistics and
+      history entries.
+- [ ] Add golden tests: each captured response decodes, re-encodes to the same canonical bytes,
+      and rejects truncated/unknown-tag packets without throwing.
+- [ ] Add a fixture state with at least two territories per side, one neutral territory, one open
+      conflict and a non-empty history.
+
+### WDT-2: TCP WDT service
+
+**Files:** `../ra2web/server/src/wdt/server.ts`, `service.ts`, `config.ts`, `index.ts`, tests.
+
+- [ ] Add `WDT_ENABLED`, `WDT_PORT` (default a free port), `WDT_HOST` and
+      `WDT_SOCKET_PATH` configuration; do not disturb the WOL/gserv ports.
+- [ ] Serve the current and previous cycle state from one in-memory `WdtService`; answer `NACK`
+      with a bounded reason when no state exists.
+- [ ] Bound every read (header, body, fields), time out idle clients and close cleanly on
+      shutdown.
+- [ ] Add a native-client setup helper (`reg add` / `.reg`) and document the exact keys.
+- [ ] Integration test: a fake client sends the captured request and receives a decodable
+      response; unknown clients get a clean close.
+- [ ] Run the actual native client against the service; acceptance is the faction screen opening
+      without `TXT_WDT_NET_ERR` and a side click being accepted.
+
+### WDT-3: Browser transport
+
+**Files:** `../pcrecomp/runtime/win32hle/wsock32.c`, its selftests; `web/src/game/wdt.ts` and
+tests; `../ra2web/server/src/wdt/ws.ts`.
+
+The game's WDT client calls Winsock `connect`/`send`/`recv` directly, so `WolChannel::RequestWDTState`
+is not the path to implement. The browser needs a TCP substitute.
+
+- [ ] Decide the seam: a `wtcp_*` transport in `wsock32.c` for the WDT host/port, or a page-level
+      interception of the socket pair. Prefer the HLE transport so the guest code is unchanged.
+- [ ] Add a WebSocket endpoint (`/wdt`) that carries length-prefixed TCP frames both ways.
+- [ ] Implement connect/send/recv readiness, partial reads, backpressure, reconnect policy and
+      `WSAEWOULDBLOCK` semantics; no busy-wait on the game thread.
+- [ ] Selftest: a paired in-memory socket echoes a frame, returns `WSAEWOULDBLOCK` when empty,
+      and recovers from a closed peer.
+- [ ] Browser e2e: launch the imported game, open World Domination, verify the faction screen and
+      a side click reach the server.
+- [ ] Document the transport in `docs/web/protocol.md` and the server endpoint in
+      `docs/web/deploy.md`.
+
+### WDT-4: Match flow and results
+
+**Files:** `../ra2web/server/src/wdt/service.ts`, `ladder/nativeGameRes.ts` (extend), the native
+results route, `web/src/game/wol.ts` if the report needs WDT context, tests.
+
+- [ ] Define the match assignment: the server picks a conflict/territory and returns the
+      WOL/gserv parameters the client needs; keep normal Custom Match untouched.
+- [ ] Carry the cycle/conflict/territory IDs through the `WDT=`/`MatchWDT` fields and the STARTG
+      context so a match can be attributed to a WDT conflict.
+- [ ] Extend the native game-res parser with the `WDTT`/WDT fields, validating them against the
+      authenticated roster and the assigned conflict.
+- [ ] Apply a terminal result: winner takes or defends the territory, both players' WDT
+      wins/losses/points update, history gains an entry, the conflict closes.
+- [ ] Reject reports for unknown, already-closed or mismatched conflicts; keep them auditable.
+- [ ] Test with two native clients: choose sides, play, report, and verify the next state changes.
+
+### WDT-5: Cycles, history and admin
+
+- [ ] Advance a cycle at `endsAt` (or by an authenticated admin action); freeze the old cycle for
+      the previous-view request and start a fresh current state.
+- [ ] Serve previous-cycle data with the same codec; verify the client logs
+      `Previous cycle data received`.
+- [ ] Keep a bounded history of territory flips, conflicts and results.
+- [ ] Add operator endpoints/CLI for enable/disable, cycle advance and reset, with no secrets in
+      logs.
+
+### WDT-6: Persistence, tests and docs
+
+- [ ] Add WDT tables to the storage interface and both backends (SQLite migration + memory):
+      cycles, territories, conflicts, players, history.
+- [ ] Unit tests: codec golden files, cycle rollover, conflict assignment, result application,
+      duplicate/late reports, both storage engines.
+- [ ] Regression: WOL login/lobby, skirmish, campaign, normal native results, LAN; native Windows,
+      Linux and browser.
+- [ ] Docs: `docs/web/decisions.md` (WDT is a separate service), `docs/web/protocol.md` (transport),
+      `docs/web/deploy.md` (ports/keys), `docs/hires.md`/README if the user-facing status changes.
+- [ ] Add the WDT start-up and health line to the server log and a conformance/smoke script.
+
+## Data model sketch
+
+```
+wdt_cycles(id, starts_at, ends_at, state)
+wdt_territories(cycle_id, id, name, owner_faction, x, y, theater, map)
+wdt_conflicts(cycle_id, id, territory_id, attacker, defender, game_id, status, winner)
+wdt_players(cycle_id, account, faction, points, wins, losses)
+wdt_history(cycle_id, at, kind, payload)
+```
+
+Use the WOL account name as the player key. Keep the WDT points separate from the RA2Web ladder
+until a later decision; the existing native-results path stays unscored.
+
+## Risks and open questions
+
+- **Protocol framing is the main risk.** The client parser proves a tagged tree, but the wire
+  envelope, byte order and the six unlisted tags are unknown until WDT-0 captures them.
+- **Cycle selection.** It is not yet known whether the client asks for previous first or current
+  first, or how the request names the cycle; the capture must answer this.
+- **Authentication.** The WDT request may carry only a nickname, or a WOL ticket. If it needs a
+  ticket, the service must validate it through the existing session store.
+- **Match assignment.** The WDT server may be expected to create the WOL room itself, or only to
+  return a conflict and let `MatchWDT` find a room. The capture and `sub_007A0690` must settle
+  this before WDT-4.
+- **Result authority.** A client can lie in the game-res report; keep the existing authenticated
+  roster checks, and decide whether a disputed result holds the territory.
+- **No reference server.** Every response is reconstructed from the client parser; keep golden
+  captures and make the codec tolerant of extra/unknown tags.
+- **Browser transport scope.** A WebSocket TCP bridge is new HLE surface area; it needs the same
+  bounded-buffer and game-thread discipline as the UDP relay.
+
+## Order and go/no-go
+
+Do WDT-0 first; it is small and decides the rest. If the faction screen and a side click can be
+served, proceed with WDT-1 and WDT-2, then the browser transport, then matches. If the client
+requires a credential or cipher we cannot reproduce, stop at the captured evidence and record the
+blocker rather than building a server that cannot be reached.
