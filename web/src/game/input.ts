@@ -119,7 +119,20 @@ export function attachInput(
 ): () => void {
   const picture = options.picture ?? (() => ({ width: canvas.width, height: canvas.height }));
   let virtual = { x: picture().width / 2, y: picture().height / 2 };
+  /** The last point the pointer was at while unlocked: where the player's cursor really is. */
+  let anchored: { x: number; y: number } | null = null;
+  let anchoredSize = picture();
   let warpSeq = -1;
+  /** The browser can report a delta across a lock it has just taken; ignore that one. */
+  let skipMove = false;
+  /** Where the virtual cursor is on screen, for carrying it across a picture change. */
+  const virtualClient = (box: DOMRect, size: Size) => {
+    const scale = Math.min(box.width / size.width, box.height / size.height) || 1;
+    return {
+      x: box.left + (box.width - size.width * scale) / 2 + virtual.x * scale,
+      y: box.top + (box.height - size.height * scale) / 2 + virtual.y * scale,
+    };
+  };
   const held = new Map<string, KeyPair>();
   const buttons = new Set<number>();
   let composing = false;
@@ -128,22 +141,40 @@ export function attachInput(
     const size = picture();
     const box = canvas.getBoundingClientRect();
     if (document.pointerLockElement === canvas) {
+      if (size.width !== anchoredSize.width || size.height !== anchoredSize.height) {
+        // A match changes the picture from the menus' 800x600 to its own size. The
+        // virtual cursor was in the old picture's pixels; keep it on the same screen
+        // pixel, under the player's pointer, instead of letting the first movement
+        // fling it at an edge of the new picture.
+        const at = virtualClient(box, anchoredSize);
+        const p = toGamePixels(at.x, at.y, box, size);
+        if (p) virtual = p;
+        anchoredSize = size;
+      }
       const warp = options.warp?.();
       if (warp && warp.seq > 0 && warp.seq !== warpSeq) {
         virtual = { x: warp.x, y: warp.y };
         warpSeq = warp.seq;
+        anchored = null; // the game chose this place: do not override it later
       }
       const scale = Math.min(box.width / size.width, box.height / size.height) || 1;
       if (moving) {
-        virtual.x += event.movementX / scale;
-        virtual.y += event.movementY / scale;
+        if (skipMove) skipMove = false;
+        else {
+          virtual.x += event.movementX / scale;
+          virtual.y += event.movementY / scale;
+        }
       }
       virtual.x = Math.max(0, Math.min(size.width - 1, virtual.x));
       virtual.y = Math.max(0, Math.min(size.height - 1, virtual.y));
       return { x: Math.floor(virtual.x), y: Math.floor(virtual.y) };
     }
     const p = toGamePixels(event.clientX, event.clientY, box, size);
-    if (p) virtual = p;
+    if (p) {
+      virtual = p;
+      anchored = { x: event.clientX, y: event.clientY };
+      anchoredSize = size;
+    }
     return p;
   };
 
@@ -281,7 +312,20 @@ export function attachInput(
     if (event.relatedTarget !== options.textInput) game.ra2_focus(0);
   };
   const onLock = () => {
-    if (document.pointerLockElement !== canvas) release();
+    if (document.pointerLockElement !== canvas) {
+      release();
+      return;
+    }
+    // Taking the lock hides the real pointer; carry the relative cursor over to
+    // where the player's pointer was, and drop the delta the browser reports for
+    // the lock itself (it can be the distance to its own lock anchor).
+    const size = picture();
+    if (anchored) {
+      const p = toGamePixels(anchored.x, anchored.y, canvas.getBoundingClientRect(), size);
+      if (p) virtual = p;
+    }
+    anchoredSize = size;
+    skipMove = true;
   };
 
   canvas.addEventListener("mousemove", onMove);

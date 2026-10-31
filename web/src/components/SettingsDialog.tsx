@@ -9,6 +9,7 @@ export function SettingsDialog({
   onClose,
   fullscreen,
   pointerLocked,
+  pointerLockDisabled,
   onFullscreen,
   onPointerLock,
   statsOn,
@@ -19,6 +20,7 @@ export function SettingsDialog({
   onClose(): void;
   fullscreen?: boolean;
   pointerLocked?: boolean;
+  pointerLockDisabled?: boolean;
   onFullscreen?(): void;
   onPointerLock?(): void;
   statsOn: boolean;
@@ -109,12 +111,21 @@ export function SettingsDialog({
             <Button variant="soft" onClick={onFullscreen}>
               {fullscreen ? "Leave fullscreen" : "Fullscreen (F11)"}
             </Button>
-            <Button variant="soft" onClick={onPointerLock}>
+            <Button
+              variant="soft"
+              onClick={onPointerLock}
+              disabled={pointerLockDisabled}
+              title={
+                pointerLockDisabled ? "?show-cursor=1 keeps the system cursor visible" : undefined
+              }
+            >
               {pointerLocked ? "Release pointer" : "Lock pointer for edge scrolling"}
             </Button>
           </Flex>
           <Text size="1" color="gray">
-            Press Esc to release the pointer or leave fullscreen.
+            {pointerLockDisabled
+              ? "Cursor debug: Pointer Lock stays off so the browser's cursor is visible."
+              : "Press Esc to release the pointer or leave fullscreen."}
           </Text>
           <Flex justify="end">
             <Button onClick={onClose}>Back to game</Button>

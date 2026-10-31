@@ -142,3 +142,17 @@ reaching its button:
 [present] click at game 714,262 -> Button 01F52A42 (id 1559) at 70,21
 [game] Capture_Mouse()
 ```
+
+## Debugging the cursor
+
+In a battle the game draws its own cursor, so the real pointer is hidden. To
+see both, set `RA2_SHOW_CURSOR`:
+
+```
+cmd /c "set RA2_SHOW_CURSOR=1 && build\ra2.exe --run"
+```
+
+A crosshair then stays over the picture at the real pointer's place (the log
+says `the crosshair (RA2_SHOW_CURSOR)`). Input still goes through the same
+mapping, so a cursor that drifts or jumps while the crosshair stays smooth is
+the game's cursor, not the pointer.

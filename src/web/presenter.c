@@ -28,6 +28,7 @@
 #include "frame_clock.h"
 #include "hdvox.h"
 #include "mods.h"
+#include "page_cursor.h"
 
 #define WM_CHAR         0x0102u
 #define WM_ACTIVATEAPP  0x001Cu
@@ -353,6 +354,34 @@ static void update_cursor(void) {
     __atomic_add_fetch(&g_sh.cursor_seq, 1, __ATOMIC_RELEASE);
 }
 
+/* The in-match cursor on the page (docs/web/cursor-layer.md). src/runtime/page_cursor.c
+ * captured it read from the game; this copies it to shared memory when it changed. The
+ * page's request travels the other way: while it holds, the lift skips the game's blit. */
+static void update_page_cursor(void) {
+    static uint32_t shown = ~0u;
+    ra2_page_cursor_request(__atomic_load_n(&g_sh.page_cursor_request, __ATOMIC_RELAXED));
+    ra2_page_cursor_tick();
+    const ra2_page_cursor_t *cursor = ra2_page_cursor_state();
+    uint32_t seq = __atomic_load_n(&cursor->seq, __ATOMIC_ACQUIRE);
+    if (seq & 1u) return;                                /* the game thread is mid-update */
+    uint32_t kind = cursor->visible ? RA2_PAGE_CURSOR_IMAGE : RA2_PAGE_CURSOR_NONE;
+    if (seq == shown && kind == g_sh.page_cursor_kind) return;
+    int w = cursor->w, h = cursor->h;
+    if (kind == RA2_PAGE_CURSOR_IMAGE && (w <= 0 || h <= 0 || w > RA2_PAGE_CURSOR_PX || h > RA2_PAGE_CURSOR_PX))
+        kind = RA2_PAGE_CURSOR_NONE;
+    uint32_t at = __atomic_add_fetch(&g_sh.page_cursor_seq, 1, __ATOMIC_SEQ_CST);   /* odd: publishing */
+    g_sh.page_cursor_kind = kind;
+    g_sh.page_cursor_w = kind == RA2_PAGE_CURSOR_IMAGE ? (uint32_t)w : 0;
+    g_sh.page_cursor_h = kind == RA2_PAGE_CURSOR_IMAGE ? (uint32_t)h : 0;
+    g_sh.page_cursor_hot_x = kind == RA2_PAGE_CURSOR_IMAGE ? cursor->hot_x : 0;
+    g_sh.page_cursor_hot_y = kind == RA2_PAGE_CURSOR_IMAGE ? cursor->hot_y : 0;
+    if (kind == RA2_PAGE_CURSOR_IMAGE) memcpy(g_sh.page_cursor_rgba, cursor->rgba, (size_t)w * h * 4);
+    __atomic_store_n(&g_sh.page_cursor_seq, at + 1, __ATOMIC_SEQ_CST);         /* even: whole */
+    /* A change that landed while this copy ran moves the state's seq, so the next
+     * pump publishes again; the page rejects a read whose sequence changed. */
+    shown = seq;
+}
+
 /* ---- input: the page's side, then the game's ------------------------------- */
 
 enum { IN_MOVE, IN_DOWN, IN_UP, IN_KEYDOWN, IN_KEYUP, IN_CHAR, IN_QUIT, IN_FOCUS, IN_SETTING };
@@ -498,6 +527,9 @@ void web_presenter_start(int (*menus_use_windows_cursor)(void)) {
     hle_screen_frame_hook = on_frame;
     hle_dd_unlock_hook = present_now;
     hle_cursor_hook = warp_cursor;
+    /* Capture the in-match cursor from the start: the page needs a sprite
+     * before it can ask the game to stop drawing one (page_cursor.c). */
+    ra2_page_cursor_on(1);
 }
 
 void web_presenter_pump(void) {
@@ -505,6 +537,7 @@ void web_presenter_pump(void) {
     static int fps_started;
     drain_input();
     update_cursor();
+    update_page_cursor();
     /* Dialog paints can finish without a primary Unlock. Sample the game's
      * presented surface at its regular pump boundary as well. */
     present_now();

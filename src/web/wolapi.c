@@ -882,6 +882,41 @@ static void m_stub_4(void) { RET(E_NOTIMPL, 4); }
  * 16-bit length) and that many bytes padded to four. The client's WDTState
  * constructor (0x76AC90) walks exactly this shape; see the WDT plan. */
 static uint8_t g_wdt_packet[4096];
+/* Probe: the exe's fallback literals include quote characters, but the CSF
+ * keys are stored without them. Return the unquoted key for WDTProps. */
+uint32_t ra2_wdt_default_key(int longDescription) {
+    static char shortKey[] = "WDT:DefaultShortDescription";
+    static char longKey[] = "WDT:DefaultLongDescription";
+    return (uint32_t)(uintptr_t)(longDescription ? longKey : shortKey);
+}
+void ra2_wdt_debug_state(const char *where, uint32_t ebx, uint32_t eax) {
+    uint32_t heap = (uint32_t)emscripten_get_heap_size();
+    fprintf(stderr, "[wdt] %s ebx=%08X eax=%08X [ebx]=%08X [ebx+4]=%08X\n",
+            where, ebx, eax, ebx ? MEM32(ebx) : 0, ebx ? MEM32(ebx + 4) : 0);
+    if (!eax || eax + 0x50 >= heap) return;
+    for (int field = 8; field <= 0x10; field += 4) {
+        uint32_t p = MEM32(eax + (uint32_t)field);
+        fprintf(stderr, "[wdt] %s +%02X=%08X", where, field, p);
+        if (p && p + 64 < heap) {
+            fprintf(stderr, " via='");
+            for (int i = 0; i < 32 && MEM8(p + (uint32_t)i); i++) {
+                unsigned char c = MEM8(p + (uint32_t)i);
+                fputc(c >= 32 && c < 127 ? c : '.', stderr);
+            }
+            uint32_t q = MEM32(p);
+            fprintf(stderr, "' [p]=%08X", q);
+            if (q && q + 32 < heap) {
+                fprintf(stderr, " str='");
+                for (int i = 0; i < 32 && MEM8(q + (uint32_t)i); i++) {
+                    unsigned char c = MEM8(q + (uint32_t)i);
+                    fputc(c >= 32 && c < 127 ? c : '.', stderr);
+                }
+                fprintf(stderr, "'");
+            }
+        }
+        fprintf(stderr, "\n");
+    }
+}
 /* The page caches the RA2Web /wdt/state packet for the current and previous
  * cycle when the WOL client connects. The game runs on an Emscripten worker,
  * so hop to the page's main thread (as the WOL bridge does) and copy the
@@ -997,9 +1032,39 @@ static void wdt_deliver(const uint8_t *packet, uint32_t len) {
     fprintf(stderr, "[wdt] OnWDTState fn=%08X len=%u\n", method, len);
     hle_call_guest(method, 5, args);
     uint32_t state = MEM32(0xB2AD68u + 4u);
-    if (state) fprintf(stderr, "[wdt] state=%08X width=%u rows=%u terr=%08X prev=%u\n",
-                       state, MEM32(state + 0x20), MEM32(state + 0x24),
-                       MEM32(state + 0x44), MEM8(state + 0x48));
+    uint32_t props = MEM32(0xB2AD78u + 4u);
+    fprintf(stderr, "[wdt] state=%08X props=%08X globals:", state, props);
+    for (int i = 0; i < 16; i++) fprintf(stderr, " %08X", MEM32(0xB2AD60u + 4u * (uint32_t)i));
+    fprintf(stderr, "\n");
+    if (state) {
+        uint32_t s8 = MEM32(state + 8), sc = MEM32(state + 0xC), s10 = MEM32(state + 0x10);
+        fprintf(stderr, "[wdt] state width=%u rows=%u terr=%08X prev=%u s8=%08X sC=%08X s10=%08X\n",
+                MEM32(state + 0x20), MEM32(state + 0x24), MEM32(state + 0x44),
+                MEM8(state + 0x48), s8, sc, s10);
+        if (s8 && s8 < 0x40000000u) {
+            fprintf(stderr, "[wdt] s8 bytes:");
+            for (int i = 0; i < 32; i++) fprintf(stderr, " %02x", MEM8(s8 + (uint32_t)i));
+            fprintf(stderr, " text='");
+            for (int i = 0; i < 32 && MEM8(s8 + (uint32_t)i); i++) {
+                unsigned char c = MEM8(s8 + (uint32_t)i);
+                fputc(c >= 32 && c < 127 ? c : '.', stderr);
+            }
+            fprintf(stderr, "'\n");
+        }
+        uint32_t heap = (uint32_t)emscripten_get_heap_size();
+        fprintf(stderr, "[wdt] state words:");
+        for (int i = 0; i < 20; i++) fprintf(stderr, " %08X", MEM32(state + 4u * (uint32_t)i));
+        fprintf(stderr, "\n");
+        for (int i = 0; i < 20; i++) {
+            uint32_t v = MEM32(state + 4u * (uint32_t)i);
+            if (v < 0x10000u || v + 64u >= heap) continue;
+            uint32_t w = MEM32(v);
+            if (w == 0x54445722u || w == 0x68747470u) {
+                fprintf(stderr, "[wdt] state+%02X -> %08X starts '%c%c%c%c'\n", i * 4, v,
+                        MEM8(v), MEM8(v + 1), MEM8(v + 2), MEM8(v + 3));
+            }
+        }
+    }
 }
 /* The stock WOLAPI opens an asynchronous connection and leaves its event in
  * the game's 18-entry wait array at 0xB264F8; Get_WDT_State_Silent waits for

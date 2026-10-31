@@ -37,6 +37,8 @@ from run_lift import (
     web_exit_confirmation_patches,
     WEB_URL_SITES,
     web_url_patches,
+    PAGE_CURSOR_SITES,
+    page_cursor_patches,
 )
 
 
@@ -544,6 +546,48 @@ class WebUrlPatchTests(unittest.TestCase):
         patches = web_url_patches(self.image('gamemd'), 0, 'gamemd')
         self.assertIn('ra2_open_wol_page(ecx)', patches[va])
         self.assertIn('esp = esp - 0x%Xu;' % size, patches[va])
+
+
+class PageCursorPatchTests(unittest.TestCase):
+    """The in-match cursor blit is skippable and captured (run_lift.py page_cursor_patches)."""
+
+    @staticmethod
+    def image(target, corrupt=None):
+        t = PAGE_CURSOR_SITES[target]
+        code = bytearray(t['blit'] + 16)
+        code[t['draw']:t['draw'] + len(bytes.fromhex(t['shape']))] = bytes.fromhex(t['shape'])
+        code[t['blit']:t['blit'] + len(bytes.fromhex(t['call']))] = bytes.fromhex(t['call'])
+        if corrupt is not None:
+            code[corrupt] ^= 0xFF
+        return bytes(code)
+
+    def test_each_edition_replaces_its_cursor_blit(self):
+        for target in ('gamemd', 'game'):
+            with self.subTest(target=target):
+                t = PAGE_CURSOR_SITES[target]
+                patches = page_cursor_patches(self.image(target), 0, target)
+                self.assertEqual(set(patches), {t['blit']})
+                c = patches[t['blit']]
+                self.assertTrue(c.startswith('@replace:{'))
+                self.assertIn('ra2_page_cursor_suppress()', c)
+                self.assertIn('RECOMP_CALL(sub_%08X)' % t['blit_fn'], c)
+                self.assertIn('ra2_page_cursor_drawn(%s)' % t['this'], c)
+
+    def test_the_game_keeps_drawing_its_own_cursor_without_a_suppression(self):
+        for target in ('gamemd', 'game'):
+            with self.subTest(target=target):
+                t = PAGE_CURSOR_SITES[target]
+                body = '    RECOMP_CALL(sub_%08X); /* 0x%08X: call */\n' % (t['blit_fn'], t['blit'])
+                result = apply_patches(body, page_cursor_patches(self.image(target), 0, target))
+                self.assertIn('if (!ra2_page_cursor_suppress()) { RECOMP_CALL(sub_%08X);' % t['blit_fn'], result)
+                self.assertNotIn('/* 0x%08X: call */' % t['blit'], result)
+
+    def test_a_different_build_gets_no_patch(self):
+        for target in ('gamemd', 'game'):
+            t = PAGE_CURSOR_SITES[target]
+            with self.subTest(target=target):
+                self.assertEqual(page_cursor_patches(self.image(target, corrupt=t['draw']), 0, target), {})
+                self.assertEqual(page_cursor_patches(self.image(target, corrupt=t['blit']), 0, target), {})
 
 
 if __name__ == '__main__':

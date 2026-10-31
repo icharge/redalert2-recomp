@@ -34,6 +34,7 @@ See [deploy.md](deploy.md) for the hosting constraint.
 | [toolchain.md](toolchain.md) | Emscripten, `build-web.sh`, `cmake/emscripten.cmake`, the link flags and why |
 | [frontend.md](frontend.md) | The page: React, TypeScript and Radix; screens, state, styling, conventions |
 | [protocol.md](protocol.md) | What the page and the game say to each other: messages, exported C functions, events |
+| [cursor-layer.md](cursor-layer.md) | Plan and task breakdown: draw the in-match game cursor on a page layer so it moves at display refresh rate |
 | [storage.md](storage.md) | Importing the install, checking it, the OPFS layout, saves and settings |
 | [testing.md](testing.md) | Unit tests for the page, the playtest suite in a headless browser, the conformance milestones |
 | [deploy.md](deploy.md) | Hosting, the cross-origin headers, the service worker, caching, browser support |

@@ -7,9 +7,10 @@
 #include <stdint.h>
 #include <stddef.h>
 
-#define RA2_WEB_PROTOCOL 9
+#define RA2_WEB_PROTOCOL 10
 
 #define RA2_CURSOR_PX 32
+#define RA2_PAGE_CURSOR_PX 64
 
 /* The picture and the cursor, published by the game thread and read by the
  * page in wasm's shared memory (ra2_shared() says where). Every field up to
@@ -46,7 +47,20 @@ typedef struct ra2_shared {
     volatile uint32_t hd_rects, hd_rect_count, hd_seq;
     volatile uint32_t republish;     /* the page sets 1 to ask for a full picture; the game clears it */
     volatile uint32_t present_mode;  /* written by the page: RA2_PRESENT_*, read at each publish */
+    /* protocol 10: the in-match game cursor, drawn by the page instead of inside the picture
+     * (docs/web/cursor-layer.md). Same shape as the cursor block above: a seqlock, the kind,
+     * the hot spot and the pixels. The page sets page_cursor_request while it draws the cursor
+     * itself; the game then skips its own blit (src/runtime/page_cursor.c). */
+    volatile uint32_t page_cursor_seq;      /* seqlock: odd while the sprite is published */
+    volatile uint32_t page_cursor_kind;     /* RA2_PAGE_CURSOR_* */
+    volatile int32_t  page_cursor_hot_x, page_cursor_hot_y;
+    volatile uint32_t page_cursor_w, page_cursor_h;
+    volatile int32_t  page_cursor_request;  /* written by the page with Atomics.store */
+    uint8_t  page_cursor_rgba[RA2_PAGE_CURSOR_PX * RA2_PAGE_CURSOR_PX * 4];
 } ra2_shared_t;
+
+enum { RA2_PAGE_CURSOR_NONE = 0,        /* no sprite yet, or the game stopped drawing it */
+       RA2_PAGE_CURSOR_IMAGE = 1 };     /* page_cursor_rgba, with its hot spot */
 
 enum { RA2_CURSOR_NONE = 0,          /* the game draws its own: hide the system one */
        RA2_CURSOR_IMAGE = 1,         /* cursor_rgba, with its hot spot */
@@ -76,6 +90,9 @@ _Static_assert(__builtin_offsetof(ra2_shared_t, hd_rect_count) == 1052 * 4, "web
 _Static_assert(__builtin_offsetof(ra2_shared_t, hd_seq) == 1053 * 4, "web/src/game/protocol.ts reads hdSeq at word 1053");
 _Static_assert(__builtin_offsetof(ra2_shared_t, republish) == 1054 * 4, "web/src/game/protocol.ts reads republish at word 1054");
 _Static_assert(__builtin_offsetof(ra2_shared_t, present_mode) == 1055 * 4, "web/src/game/protocol.ts reads presentMode at word 1055");
+_Static_assert(__builtin_offsetof(ra2_shared_t, page_cursor_seq) == 1056 * 4, "web/src/game/protocol.ts reads pageCursorSeq at word 1056");
+_Static_assert(__builtin_offsetof(ra2_shared_t, page_cursor_request) == 1062 * 4, "web/src/game/protocol.ts reads pageCursorRequest at word 1062");
+_Static_assert(__builtin_offsetof(ra2_shared_t, page_cursor_rgba) == 1063 * 4, "web/src/game/protocol.ts reads PAGE_CURSOR_RGBA_OFFSET");
 
 /* events: one line on stdout, "@ra2 " and JSON (presenter.c) */
 void web_event_boot(const char *title, const char *exe, uint32_t stamp);

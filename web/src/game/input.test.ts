@@ -98,6 +98,37 @@ describe("attachInput", () => {
     detach();
   });
 
+  it("keeps the relative cursor under the pointer when a match changes the picture size", () => {
+    const canvas = document.createElement("canvas");
+    canvas.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 1600, height: 1200 }) as DOMRect;
+    const game = { ra2_input_pointer: vi.fn(), ra2_input_key: vi.fn(), ra2_focus: vi.fn() };
+    let picture = { width: 800, height: 600 }; // the menus
+    const detach = attachInput(canvas, game, { picture: () => picture });
+    // The player puts the cursor at client 1000,900 of the 4:3 menu picture.
+    canvas.dispatchEvent(new MouseEvent("mousemove", { clientX: 1000, clientY: 900 }));
+    expect(game.ra2_input_pointer).toHaveBeenLastCalledWith(0, 500, 450, 0);
+    Object.defineProperty(document, "pointerLockElement", { configurable: true, value: canvas });
+    document.dispatchEvent(new Event("pointerlockchange"));
+    const relative = (x: number, y: number) => {
+      const event = new MouseEvent("mousemove");
+      Object.defineProperties(event, { movementX: { value: x }, movementY: { value: y } });
+      canvas.dispatchEvent(event);
+    };
+    // The delta the browser reports for the lock itself is dropped.
+    relative(30, -30);
+    expect(game.ra2_input_pointer).toHaveBeenLastCalledWith(0, 500, 450, 0);
+    // The match's 1600x900 picture keeps the cursor on the same screen pixel
+    // (client 1000,900 is now game 1000,750, not still 500,450 or an edge).
+    picture = { width: 1600, height: 900 };
+    relative(10, 0);
+    expect(game.ra2_input_pointer).toHaveBeenLastCalledWith(0, 1010, 750, 0);
+    // The picture then stays where it is, and so does the cursor.
+    relative(-10, 0);
+    expect(game.ra2_input_pointer).toHaveBeenLastCalledWith(0, 1000, 750, 0);
+    detach();
+  });
+
   it("releases held modifiers and mouse buttons on blur, and does not steal dialog input", () => {
     const canvas = document.createElement("canvas");
     canvas.width = 800;
