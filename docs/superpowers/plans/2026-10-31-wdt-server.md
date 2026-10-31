@@ -200,6 +200,13 @@ call). No state codec or server model exists yet.
   0x75E08F sees every entry, but GAM handling sits behind `[esp+0x20]` state and an earlier
   service branch; trace `[esp+0x20]` writes (0x75E5D2, 0x75E6C1) and the selected-server flag
   to learn which entry order/fields the client needs before it counts a mangler.
+- **Mangler transport is UDP (verified)**: the client sends **76-byte UDP datagrams** to the
+  MGL address on a match start (`sendto 172.29.99.1 ; 29094`, `[net] sendto ... 76 bytes`).
+  The browser HLE (`wudp_send`) drops loopback destinations before queueing, so the earlier
+  `127.0.0.1` MGL entry never reached the page. Publishing the MGL address as a routable
+  virtual IP (`172.29.99.1`) makes the datagrams queue for the relay. Serving the mangler
+  therefore needs a **pre-STARTG consumer** of `ra2_udp_*` that answers the 76-byte protocol
+  with `ra2_udp_push` (the current `UdpRelay` only starts after STARTG and drains the queue).
 - **Start-event probe (negative, but informative)**: trying the ASCII chat events 13/14/15
   with a `Start 0:RA2Web` payload does not reach `0x75B910` either. A probe shows the WDT
   sub-state `[0xA3D2A4]` is **3** during the `list 33 33` that follows the match start, while

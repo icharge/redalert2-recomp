@@ -266,7 +266,9 @@ static void emit_server_list(void) {
     g_server_mgl = g_server;
     copy_text(g_server_mgl.name, sizeof g_server_mgl.name, "RA2Web MGL");
     copy_text(g_server_mgl.connlabel, sizeof g_server_mgl.connlabel, "MGL");
-    copy_text(g_server_mgl.conndata, sizeof g_server_mgl.conndata, "TCP;127.0.0.1;29094");
+    copy_text(g_server_mgl.conndata, sizeof g_server_mgl.conndata, "TCP;172.29.99.1;29094");
+    /* The HLE drops loopback sends before they reach the page relay, so the
+     * mangler address must be a routable virtual IP for the browser path. */
     g_server_wdt = g_server;
     copy_text(g_server_wdt.name, sizeof g_server_wdt.name, "RA2Web WDT");
     copy_text(g_server_wdt.connlabel, sizeof g_server_wdt.connlabel, "WDT");
