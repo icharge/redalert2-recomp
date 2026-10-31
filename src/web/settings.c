@@ -17,7 +17,8 @@
 #include "video_modes.h"
 
 static const char *scales[] = { "sharp", "smooth", "crt", "nearest", "integer" };
-static int scale_mode, blur_bars = 1, modern, menu_open, video_w = 800, video_h = 600;
+/* smooth is the launcher's default; an existing .host file overrides it. */
+static int scale_mode = 1, blur_bars = 1, modern, menu_open, video_w = 800, video_h = 600;
 static char remembered_mod[128];
 #ifdef RA2_TARGET_GAME
 #define HOST_INI ".host/ra2.ini"

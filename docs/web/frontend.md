@@ -116,13 +116,14 @@ is never reused for another slot. Mod/font restarts reload the same game URL.
 
 ## Settings: what lives where
 
-Game settings (resolution, scaling, HD vehicles, controls, mods) stay in the
-game's own F10 menu, drawn by the host as on Linux, so each setting has one
-copy. The launcher's `LauncherGameSettings` dialog adds Gameplay, Audio,
-Video and Keyboard tabs that read and write the same per-edition
+Game settings stay in the game's own F10 menu during play, drawn by the host as
+on Linux, so each setting has one copy. The launcher's `LauncherGameSettings`
+dialog edits the same files: its Launcher tab has the host presentation
+settings (scaling, blur menu bars, HD vehicles, FPS overlay), and its Gameplay,
+Audio, Video and Keyboard tabs read and write the per-edition
 `RA2.INI`/`RA2MD.INI` and `KEYBOARD.INI`/`KEYBOARDMD.INI` in
-`save/<storage>/`; they are a convenience over the game's files, not a second
-copy. The Video tab also holds the launcher's resolution override. The
+`save/<storage>/`. The host settings live in `.host/<edition>.ini`; a fresh
+profile starts at smooth scaling. The Video tab also holds the launcher's resolution override. The
 Keyboard tab follows the game's own Customize Keyboard layout: pick a
 category, pick a command, read its description, then capture and assign a key
 (or reset every binding to the game's defaults). With no keyboard file in the

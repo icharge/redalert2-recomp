@@ -6,6 +6,7 @@ import {
   defaultMainIni,
   emptyIni,
   encodeLatin1,
+  ensureDefaultHostSettings,
   ensureDefaultMainSettings,
   formatHandle,
   getIniValue,
@@ -340,6 +341,38 @@ describe("ensureDefaultMainSettings", () => {
     await ensureDefaultMainSettings(record("ra2md", { "RA2MD.INI": "[Options]" }), {
       readSave: async () => null,
       readImported: async () => bytes("[Options]\nGameSpeed=1\n"),
+      writeSave: async (_storage, name) => {
+        writes.push(name);
+      },
+    });
+    expect(writes).toEqual([]);
+  });
+});
+
+describe("ensureDefaultHostSettings", () => {
+  it("writes smooth scaling and the host defaults when there is no host file", async () => {
+    const writes: { name: string; text: string }[] = [];
+    await ensureDefaultHostSettings(record("ra2md"), {
+      readSave: async () => null,
+      writeSave: async (_storage, name, data) => {
+        writes.push({ name, text: text(data) });
+      },
+    });
+    expect(writes).toHaveLength(1);
+    expect(writes[0]?.name).toBe(".host/ra2md.ini");
+    expect(writes[0]?.text).toContain("scale=smooth");
+    expect(writes[0]?.text).toContain("bars=blur");
+    expect(writes[0]?.text).toContain("hdvox=0");
+    expect(writes[0]?.text).toContain("controls=classic");
+  });
+
+  it("does not overwrite an existing host file", async () => {
+    const writes: string[] = [];
+    await ensureDefaultHostSettings(record("ra2md"), {
+      readSave: async (_storage, name) =>
+        name === ".host/ra2md.ini"
+          ? { name: "ra2md.ini", data: bytes("[present]\nscale=crt\n") }
+          : null,
       writeSave: async (_storage, name) => {
         writes.push(name);
       },

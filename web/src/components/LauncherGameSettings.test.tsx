@@ -156,6 +156,27 @@ describe("LauncherGameSettings", () => {
     expect(localStorage.getItem("ra2.speed-control.slot-1-ra2md")).toBe("1");
   });
 
+  it("writes the presentation settings to the host file", async () => {
+    const { written } = setup();
+    const scaling = screen.getByRole("combobox", { name: "Scaling" });
+    expect(scaling).toHaveTextContent("Smooth");
+    await userEvent.click(scaling);
+    await userEvent.click(await screen.findByRole("option", { name: "CRT" }));
+    await waitFor(() =>
+      expect(
+        written.some(
+          (entry) => entry.name === ".host/ra2md.ini" && entry.text.includes("scale=crt"),
+        ),
+      ).toBe(true),
+    );
+    await userEvent.click(screen.getByRole("switch", { name: "Blur menu bars" }));
+    await waitFor(() => expect(written.at(-1)?.text).toContain("bars=black"));
+    await userEvent.click(screen.getByRole("switch", { name: "HD vehicles" }));
+    await waitFor(() => expect(written.at(-1)?.text).toContain("hdvox=1"));
+    expect(written.at(-1)?.text).toContain("scale=crt");
+    expect(written.at(-1)?.text).toContain("bars=black");
+  });
+
   it("writes the MOBA-style control to the host file", async () => {
     const { written } = setup();
     await gameplay();
