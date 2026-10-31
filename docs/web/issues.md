@@ -20,7 +20,9 @@ gets them too. Tasks: the W4.1x series in [tasks.md](tasks.md).
 | 9 | Pressing a sidebar button shows no pressed ("clicked") frame; hovering shows no highlight | New | the game's own button class gets `WM_LBUTTONDOWN`, paints and locks the primary, and the picture is the same as before | **fixed**, W4.18: owner-draw state transitions notify the parent even when the guest subclass handles paint; `e2e/lobby.mjs` |
 | 10 | The lobby's right panel was not finished in an earlier browser build | New | the lobby's panels slide in (`seq-13` in `e2e/shots` is the middle of it); an earlier snapshot failed to repaint the title tab and minimap after the animation | **fixed**, W4.19; `work/web-lobby-idle-40/` shows the full panel after 40 s idle and an identical right-panel crop after opening and closing a drop-down |
 | 11 | Can the game change its resolution while running? | Question | the game takes its size from `RA2MD.INI` (Yuri) or `RA2.INI` (Red Alert 2) when a game or mission starts; both have an 800x600 menu shell, and each new game can use a new size ([hires.md](../hires.md), W9.1 and W9.2) | answered |
+| 12 | Red Alert 2 looks frozen while loading a saved game (or never reaches the menu when saves exist) | New | the game appends a whole copy of its settings on later writes. The saved `RA2.INI` had grown to 31 MB (19,000 copies), and restoring it made every start-up parse all of it before the menu. Yuri's Revenge was already compacted on restore; Red Alert 2 was not | fixed: `restoreSaves` compacts an oversized `RA2.INI` or `RA2MD.INI` to the copy that edition's reader uses (Red Alert 2 reads the last, Yuri the first), and the save watcher stores the compacted bytes too. With the same 31 MB profile the menu opened in 3.5 s, the store shrank to 1,993 bytes, the last (1920x1080) video setting survived, and Load Saved Game worked |
 | 13 | Joining a normal Yuri's Revenge game shows "the resolution will be limited" even though the host set no limit | New | YR kept the stock join check: a room without a resolution flag allows only 1024 wide, so a guest whose `RA2MD.INI` asks for more (the launcher's 2580x1080 here) is prompted before joining | fixed: `yr_online_patches` (`run_lift.py`) gives YR the Red Alert 2 range and a quiet clamp, 1024x768 for a `0x200` room and 1920x1080 otherwise; the prompt is gone ([hires.md](../hires.md)) |
+| 14 | Hovering the Allied or Soviet emblem on the campaign screen does not light it up (browser and Linux; native Windows is fine) | New | the campaign dialog (`0x94`) runs its hover from `WM_NCHITTEST`, not `WM_MOUSEMOVE`: the handler hit-tests the point, then sends the `0x4D3`/`0x4D4`/`0x4D5` messages the emblem controls animate from. Windows sends `WM_NCHITTEST`, with screen coordinates, ahead of every mouse message; `win32hle`'s mouse input posted only the mouse message | **fixed**, pcrecomp: `hle_input_mouse` sends `WM_NCHITTEST` to the window under the pointer before queueing the mouse message (also while another window holds the capture, as on Windows). `user32_hover_selftest` checks the message, its target and its coordinates; `e2e/campaign-hover.mjs` shows both emblems change and return pixel-exactly in **both editions** (Yuri's Revenge 29,990 and 26,930 pixels; Red Alert 2 36,492 and 30,370). Also true of the native Linux host; W4.20 |
 
 ## What was behind 6
 
@@ -38,6 +40,23 @@ it). It was not GDI on a window DC, the first guess.
 Tools that found it: `--heartbeat 3 --windows`, `--msgtrace N` (messages to windows numbered
 N and up), `LOG_FILE=... node e2e/save.mjs --arg --msgtrace --arg 65700`. `save.mjs` now also
 clicks OK and shoots the screen without the box.
+
+## What was behind 12
+
+`RA2.INI` in the save store had every section and key repeated about 19,000 times. The game's
+settings writer appends a full profile on each later write instead of replacing the file, so each
+start made the next one slower; at 31 MB the start-up parse stalled long enough to look like a
+freeze, and nothing after it (including Load Saved Game) was reachable. Removing only the `.sav`
+files did not help because the bloated INI was still restored.
+
+The restore path already had a repair for Yuri's Revenge (`RA2MD.INI`): keep the first section
+and key copy, which is what Yuri's reader uses. Red Alert 2's reader uses the **last** copy (a
+test `RA2.INI` with 640x480 and then 800x600 started at 800x600), so compacting to the first would
+silently revert its video setting from the profile's 1920x1080 to the imported 1280x720. The
+repair now picks the copy per edition and writes those bytes back over both the game's file and
+the save store; the save watcher compacts the bytes before storing them too. The profile from the
+report was used as the check: 31,391,338 bytes in the store, menu in 3.5 s, store at 1,993 bytes,
+the last 1920x1080 setting preserved, and Load Saved Game stayed running.
 
 ## What is known about 8, 9 and 10 (parked)
 

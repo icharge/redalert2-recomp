@@ -76,6 +76,7 @@ Tick a task off here in the same pull request that finishes it.
 | ~~W4.17~~ | Drop-down lists draw their border | here | W4.16 | M | the colour and resolution lists show the two-pixel frame; see [issues.md](issues.md), 8, and the captures in `work/web-dropdown-current/` and `work/resolution-frame-first/` |
 | ~~W4.18~~ | Sidebar button states match the Windows game | pcrecomp, here | W4.16 | M | `e2e/lobby.mjs`: raw hover pixels equal idle (as in the lossless native reference); held changes only the selected button, dragging out/in clears/restores it, and release restores idle |
 | ~~W4.19~~ | The lobby's right panel finishes (title tab, minimap) without a repaint | pcrecomp, here | W4.16 | M | `work/web-lobby-idle-40/`: after 40 s idle, the right-panel/minimap/title-tab pixels are identical after opening and closing a drop-down |
+| ~~W4.20~~ | The campaign screen's Allied and Soviet emblems light up on hover | pcrecomp, here | W4.19 | S | `e2e/campaign-hover.mjs`: raw pixels show both emblems change on hover and return pixel-exactly when the pointer leaves, in Yuri's Revenge and Red Alert 2 ([issues.md](issues.md), 14) |
 
 ## Stage 5: the main loop
 

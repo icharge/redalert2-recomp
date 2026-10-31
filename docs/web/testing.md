@@ -132,6 +132,11 @@ More steps and switches, from chasing the first play's issues ([issues.md](issue
 - `save.mjs` plays a skirmish to the in-game menu and Save, then shoots 8 frames
   (`SLOW=1.8` on a slow run, `LOG_FILE=path` keeps the game's log). `timeline.mjs
   --every 1 --skirmish` shoots the page from its load on.
+- `node e2e/campaign-hover.mjs --game ../game --shots ../work/campaign-hover` opens
+  Single Player, then New Campaign, and compares raw game pixels: each emblem
+  changes when the pointer is over it and returns when it leaves. It is the check
+  for `WM_NCHITTEST` reaching the dialog ([issues.md](issues.md), 14); with
+  `--url 'http://localhost:5173/?target=game'` it checks Red Alert 2's module too.
 - `node e2e/movies.mjs` (stage 8): the game decodes the main menu’s Bink movies out of `ra2md.mix` (the log
   says which, with its size and frame count) and the sidebar’s gauge changes from one picture to the next.
   Needs a build with FFmpeg (`tools/build-ffmpeg-web.sh` first) and the dev server up.
