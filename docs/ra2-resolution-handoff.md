@@ -117,6 +117,10 @@ resolution control, and enables it at any host size:
 `tools/test_lift_patches.py` covers every patch site (`43 tests`). The
 two-client check is `web/e2e/wol.mjs --room-flags 0x400` (prompt appears and
 accepting joins at 1920x1080) versus the same run without the flag (no prompt).
+Both ran 2026-10-31 against a private 1 GB / 4 GB YR build: the `0x400` room
+showed the prompt with "1920x1080", accepting stored 1920x1080 and the guest
+joined; without the flag the room published `WOLAPI2:0`, no prompt appeared and
+the guest joined at its own size.
 
 RA2Web (`../ra2web/server/src`, read 2026-10-25): it stores a room's topic, WOLAPI2 metadata
 included, as an opaque string and relays it; it does not read the resolution flags or any
