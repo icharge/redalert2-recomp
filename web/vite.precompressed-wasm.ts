@@ -1,4 +1,4 @@
-import { createReadStream, existsSync, statSync } from "node:fs";
+import { createReadStream, statSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 import type { Plugin, PreviewServer, ViteDevServer } from "vite";
@@ -22,6 +22,16 @@ function addVary(response: ServerResponse, name: string): void {
     .filter(Boolean);
   if (!values.some((value) => value.toLowerCase() === name.toLowerCase())) values.push(name);
   response.setHeader("Vary", values.join(", "));
+}
+
+/** Warn once per build when a sidecar belongs to an older module, instead of on every request. */
+const warnedStale = new Set<string>();
+function warnStale(key: string, sidecar: string, wasm: string): void {
+  if (warnedStale.has(key)) return;
+  warnedStale.add(key);
+  console.warn(
+    `[precompressed-wasm] ${sidecar} is older than ${path.basename(wasm)}; serving the uncompressed module.`,
+  );
 }
 
 export function createPrecompressedWasmMiddleware(publicDir: string, base: string): Middleware {
@@ -49,12 +59,30 @@ export function createPrecompressedWasmMiddleware(publicDir: string, base: strin
     const wasmPath = path.resolve(publicDir, moduleFiles.wasm);
     const brotliPath = path.resolve(publicDir, `${moduleFiles.stem}.br`);
     const gzipPath = path.resolve(publicDir, `${moduleFiles.stem}.gz`);
-    const exists = {
-      br: existsSync(brotliPath),
-      gzip: existsSync(gzipPath),
-      identity: existsSync(wasmPath),
+    const modified = (file: string): number | null => {
+      try {
+        return statSync(file).mtimeMs;
+      } catch {
+        return null;
+      }
     };
-    if (!exists.identity) return next();
+    const wasmTime = modified(wasmPath);
+    if (wasmTime === null) return next();
+
+    // A sidecar copied from another build is worse than no sidecar: the browser would decompress
+    // an old module and pair it with the current JS. Only trust one at least as new as its wasm.
+    const fresh = (sidecar: string) => {
+      const time = modified(sidecar);
+      if (time === null) return false;
+      if (time >= wasmTime) return true;
+      warnStale(`${sidecar}:${wasmTime}`, path.basename(sidecar), wasmPath);
+      return false;
+    };
+    const exists = {
+      br: fresh(brotliPath),
+      gzip: fresh(gzipPath),
+      identity: true,
+    };
 
     const accepted = request.headers["accept-encoding"];
     const encoding = chooseWasmEncoding(

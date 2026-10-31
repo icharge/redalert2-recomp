@@ -1,10 +1,10 @@
 import { brotliCompressSync, brotliDecompressSync, gzipSync, gunzipSync } from "node:zlib";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { Writable } from "node:stream";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createPrecompressedWasmMiddleware, precompressedWasm } from "../vite.precompressed-wasm";
 
 const temporaryDirectories: string[] = [];
@@ -153,6 +153,84 @@ describe("precompressed Wasm HTTP responses", () => {
     expect(response.status).toBe(200);
     expect(response.headers["content-encoding"]).toBeUndefined();
     expect(response.body).toEqual(original);
+  });
+
+  it("ignores compressed files older than the module they were made from", async () => {
+    const publicDir = mkdtempSync(path.join(tmpdir(), "ra2-precompressed-wasm-stale-"));
+    temporaryDirectories.push(publicDir);
+    mkdirSync(path.join(publicDir, "game"), { recursive: true });
+    const original = Buffer.from([0, 97, 115, 109, 1, 0, 0, 0, 7, 7, 7]);
+    const wasm = path.join(publicDir, "game", "ra2.wasm");
+    const brotli = path.join(publicDir, "game", "ra2.wasm.br");
+    const gzip = path.join(publicDir, "game", "ra2.wasm.gz");
+    writeFileSync(wasm, original);
+    writeFileSync(brotli, brotliCompressSync(original));
+    writeFileSync(gzip, gzipSync(original));
+    const built = new Date(2026, 0, 2, 3, 4, 5);
+    const older = new Date(2026, 0, 2, 3, 4, 4);
+    utimesSync(wasm, built, built);
+    utimesSync(brotli, older, older);
+    utimesSync(gzip, older, older);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const response = await runMiddleware(publicDir, "/", "/game/ra2.wasm", {
+        "accept-encoding": "br, gzip",
+      });
+      expect(response.status).toBe(200);
+      expect(response.headers["content-encoding"]).toBeUndefined();
+      expect(response.body).toEqual(original);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("ra2.wasm.br is older"));
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("ra2.wasm.gz is older"));
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("still serves a sidecar written in the same tick as its module", async () => {
+    const publicDir = mkdtempSync(path.join(tmpdir(), "ra2-precompressed-wasm-same-time-"));
+    temporaryDirectories.push(publicDir);
+    mkdirSync(path.join(publicDir, "game"), { recursive: true });
+    const original = Buffer.from([0, 97, 115, 109, 1, 0, 0, 0, 8, 8, 8]);
+    const wasm = path.join(publicDir, "game", "ra2.wasm");
+    const brotli = path.join(publicDir, "game", "ra2.wasm.br");
+    writeFileSync(wasm, original);
+    writeFileSync(brotli, brotliCompressSync(original));
+    const built = new Date(2026, 0, 2, 3, 4, 5);
+    utimesSync(wasm, built, built);
+    utimesSync(brotli, built, built);
+    const response = await runMiddleware(publicDir, "/", "/game/ra2.wasm", {
+      "accept-encoding": "br",
+    });
+    expect(response.headers["content-encoding"]).toBe("br");
+    expect(brotliDecompressSync(response.body)).toEqual(original);
+  });
+
+  it("falls back to a fresh gzip when only Brotli is stale", async () => {
+    const publicDir = mkdtempSync(path.join(tmpdir(), "ra2-precompressed-wasm-stale-br-"));
+    temporaryDirectories.push(publicDir);
+    mkdirSync(path.join(publicDir, "game"), { recursive: true });
+    const original = Buffer.from([0, 97, 115, 109, 1, 0, 0, 0, 6, 6, 6]);
+    const wasm = path.join(publicDir, "game", "ra2.wasm");
+    const brotli = path.join(publicDir, "game", "ra2.wasm.br");
+    const gzip = path.join(publicDir, "game", "ra2.wasm.gz");
+    writeFileSync(wasm, original);
+    writeFileSync(brotli, brotliCompressSync(original));
+    writeFileSync(gzip, gzipSync(original));
+    const built = new Date(2026, 0, 2, 3, 4, 5);
+    const older = new Date(2026, 0, 2, 3, 4, 4);
+    utimesSync(wasm, built, built);
+    utimesSync(brotli, older, older);
+    utimesSync(gzip, built, built);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const response = await runMiddleware(publicDir, "/", "/game/ra2.wasm", {
+        "accept-encoding": "br, gzip",
+      });
+      expect(response.headers["content-encoding"]).toBe("gzip");
+      expect(gunzipSync(response.body)).toEqual(original);
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it("does not intercept other paths or paths outside the configured base", async () => {
