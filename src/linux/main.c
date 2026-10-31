@@ -77,6 +77,19 @@ void ra2_open_url(uint32_t url_va, uint32_t ask) {
     fprintf(stderr, "[url] %s\n", url_va ? (const char *)(uintptr_t)url_va : "");
 }
 
+/* DoWebPageDialog's embedded WOL browser takes a page key, not a URL; map it
+ * to the same sentinel the registry is seeded with (the page does the topic
+ * mapping). */
+void ra2_open_wol_page(uint32_t key_va) {
+    static const char *const names[] = { "Community", "Ladder", "Manage", "Battleclans", "NetStatus" };
+    static const char *const paths[] = { "community", "ladder", "account", "clans", "status" };
+    const char *key = key_va ? (const char *)(uintptr_t)key_va : "";
+    const char *path = "external";
+    for (size_t i = 0; i < sizeof names / sizeof names[0]; i++)
+        if (!strcmp(key, names[i])) { path = paths[i]; break; }
+    fprintf(stderr, "[url] https://ra2web.invalid/%s\n", path);
+}
+
 /* HD voxels (src/runtime/hdvox.c): the lift's patches call it, and the
  * presenter shows its 2x picture. */
 #include "hdvox.h"
@@ -479,6 +492,14 @@ int main(int argc, char **argv) {
      * return silently. Point them at the page's own mapped pages. */
     hle_reg_set_string(0x80000002u, "Software\\Westwood\\Yuri's Revenge\\URL",
                        "Community", "https://ra2web.invalid/community");
+    hle_reg_set_string(0x80000002u, "Software\\Westwood\\Yuri's Revenge\\URL",
+                       "Ladder", "https://ra2web.invalid/ladder");
+    hle_reg_set_string(0x80000002u, "Software\\Westwood\\Yuri's Revenge\\URL",
+                       "Manage", "https://ra2web.invalid/account");
+    hle_reg_set_string(0x80000002u, "Software\\Westwood\\Yuri's Revenge\\URL",
+                       "Battleclans", "https://ra2web.invalid/clans");
+    hle_reg_set_string(0x80000002u, "Software\\Westwood\\Yuri's Revenge\\URL",
+                       "NetStatus", "https://ra2web.invalid/status");
 #endif
     hle_com_register_class(CLSID_Blowfish, ra2_blowfish_create);
     printf(RA2_TITLE " recomp host (native Linux)\n  lifted functions in dispatch: %u\n", recomp_dispatch_count);

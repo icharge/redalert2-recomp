@@ -82,15 +82,35 @@ void web_event_exit(int code) {
  * default browser and start it. The lift returns here instead, and the page
  * shows the URL in our dialog (or asks before opening it). Log the URL the
  * game asked for, unchanged, and carry it in the event. */
-void ra2_open_url(uint32_t url_va, uint32_t ask) {
+static void open_url_text(const char *url, uint32_t ask) {
     static unsigned seq;
-    const char *url = url_va ? (const char *)(uintptr_t)url_va : "";
     char u[512], line[640];
     fprintf(stderr, "[url] %s\n", url);
     web_json_escape(u, sizeof u, url);
     snprintf(line, sizeof line,
              "{\"e\":\"open\",\"url\":\"%s\",\"ask\":%u,\"seq\":%u}", u, ask, ++seq);
     web_event_json(line);
+}
+
+void ra2_open_url(uint32_t url_va, uint32_t ask) {
+    open_url_text(url_va ? (const char *)(uintptr_t)url_va : "", ask);
+}
+
+/* DoWebPageDialog hands the embedded WOL browser a page key ("Ladder",
+ * "Manage", ...), not a URL: its WebBrowser reads the real URL from the
+ * registry. The lift returns here before the embedded browser is created, and
+ * the host maps the key to the same sentinel the registry is seeded with; the
+ * page maps the path to a topic. */
+void ra2_open_wol_page(uint32_t key_va) {
+    static const char *const names[] = { "Community", "Ladder", "Manage", "Battleclans", "NetStatus" };
+    static const char *const paths[] = { "community", "ladder", "account", "clans", "status" };
+    const char *key = key_va ? (const char *)(uintptr_t)key_va : "";
+    const char *path = "external";
+    char url[256];
+    for (size_t i = 0; i < sizeof names / sizeof names[0]; i++)
+        if (!strcmp(key, names[i])) { path = paths[i]; break; }
+    snprintf(url, sizeof url, "https://ra2web.invalid/%s", path);
+    open_url_text(url, 0);
 }
 
 /* ---- the picture ------------------------------------------------------------- */

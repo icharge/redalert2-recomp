@@ -100,9 +100,11 @@ node e2e/links-lobby.mjs --url 'http://127.0.0.1:5173/' --edition ra2md --profil
 ```
 
 It logs in and presses the lobby controls; `--press DLG:CTRL@s` replaces the
-defaults. In this build YR's `0x113` Tournament/News (1955/1958) open the game's
-own `0x131` notice (the ladder service is not configured) and never call the URL
-routine, so there is no `open` event to assert there.
+defaults. YR's `0x113` Tournament/News use the embedded WOL browser
+(`DoWebPageDialog`, `HTML\frame.htm`), which `web_url_patches` intercepts by
+page key. The offline `0x114` Manage Account/Tournament controls
+(`0x114:1772`/`1955`) exercise that same path without a server:
+`[url] https://ra2web.invalid/account` and `.../ladder`.
 
 ## Exit confirmation: game to web and back
 

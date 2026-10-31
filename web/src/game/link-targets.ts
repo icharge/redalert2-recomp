@@ -43,6 +43,18 @@ const RA2WEB_PATHS: Partial<Record<LinkTopic, string>> = {
   status: "/status",
 };
 
+/** Paths the seeded YR registry values (and the WOL browser page keys) use. */
+const SENTINEL_TOPICS: Record<string, LinkTopic> = {
+  community: "community",
+  ladder: "tournament",
+  account: "account",
+  clans: "community",
+  status: "status",
+  privacy: "privacy",
+  news: "news",
+  consent: "consent",
+};
+
 /** The configured RA2Web page for a topic, or null when there is none. */
 export function sitePageUrl(
   target: Pick<LinkTarget, "topic" | "detail">,
@@ -104,9 +116,7 @@ export function linkTarget(url: string, site = ra2webSite()): LinkTarget {
     if (first === "support") {
       return make("support", url, supportKind(path) ?? "support", false, site);
     }
-    const known = (Object.keys(RA2WEB_PATHS) as LinkTopic[]).find(
-      (topic) => RA2WEB_PATHS[topic] === `/${first}`,
-    );
+    const known = SENTINEL_TOPICS[first];
     // A sentinel we do not map is not a real page: never offer it outbound.
     if (!known) return { topic: "external", url, external: false, embed: false };
     return make(known, url, undefined, false, site);

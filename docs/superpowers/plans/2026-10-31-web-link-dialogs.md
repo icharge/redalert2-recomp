@@ -9,9 +9,12 @@ Intercept every URL the game opens and show a dialog instead — an iframe when 
 framed, a confirmation with the original URL otherwise — in both editions, with no dead Westwood
 destinations.
 
-**Architecture:** Every in-game link goes through one of three shared routines. Patch their entry
-points at lift time to call a host hook, `ra2_open_url(url, ask)`, and return before the temp-file,
-`FindExecutableA`, `CreateProcessA`, `TXT_LAUNCHBROWSER` and `TXT_NOBROWSER` path runs. The web host
+**Architecture:** Every in-game link goes through one of four shared routines
+(three hand a URL to the system browser; YR's embedded WOL browser takes a page
+key). Patch their entry points at lift time to call a host hook,
+`ra2_open_url(url, ask)` or `ra2_open_wol_page(key)`, and return before the
+temp-file, `FindExecutableA`, `CreateProcessA`, `TXT_LAUNCHBROWSER`,
+`TXT_NOBROWSER` or embedded-browser path runs. The web host
 emits an `open` event on the existing `@ra2` stdout protocol; the page maps the URL and renders a
 Radix overlay. When the mapped target is known to allow framing, the overlay shows it in a sandboxed
 `<iframe>`; otherwise it asks the player to confirm, with a `target="_blank"` link to the original
@@ -29,7 +32,7 @@ Vitest, Node e2e scripts in `web/e2e/`.
 | ID  | Track    | Task                                                       | Status  |
 | --- | -------- | ---------------------------------------------------------- | ------- |
 | T0  | Spike    | One routine patched end to end (RA2 Privacy)               | Done    |
-| T1  | Intercept| Patch all three entry points                               | Done    |
+| T1  | Intercept| Patch all four entry points                              | Done    |
 | T2  | Intercept| Host hook + `open` event + protocol bump                   | Done    |
 | T3  | Intercept| Linux hook and YR registry seeding                         | Done    |
 | T4  | Page     | Link target mapping and tests                              | Done    |
@@ -41,20 +44,24 @@ Vitest, Node e2e scripts in `web/e2e/`.
 
 ## Findings (the spec)
 
-The game has no embedded HTML renderer. Neither exe imports `mshtml`, `shdocvw`, `urlmon` or the
-WebBrowser CLSID. It writes a dummy `.html` file, finds the default browser with
+The system-browser path writes a dummy `.html` file, finds the default browser with
 `FindExecutableA`, then starts it with `CreateProcessA` and a `[open] <url>` command line.
+Neither exe imports `mshtml`, `shdocvw` or `urlmon`. YR additionally hosts an embedded WOL
+browser (`DoWebPageDialog`, `HTML\frame.htm`) that reads a registry URL and shows it in an
+in-game window; the lift intercepts that entry too (`ra2_open_wol_page`).
 
 | Edition | Routine | First instruction | Arguments | `FindExecutableA` | `CreateProcessA` |
 | --- | --- | --- | --- | --- | --- |
 | RA2 `game.exe` | `0x0073C580` (`wonline.cpp`) | `81 ec 10 03 00 00` | `ecx` = URL, `edx` = ask | `0x0073C5FA` | `0x0073C69E` |
 | YR `GameMD.exe` | `0x0077DC90` (`wonline.cpp`) | `81 ec 10 03 00 00` | `ecx` = URL, `edx` = ask | `0x0077DD0A` | `0x0077DDAE` |
 | YR `GameMD.exe` | `0x00551630` (`ViewHTML`) | `81 ec 68 04 00 00` | `ecx` = URL | `0x00551716` | `0x00551779` |
+| YR `GameMD.exe` | `0x00773E90` (`DoWebPageDialog`) | `83 ec 28` | `ecx` = page key | embedded WOL browser (`HTML\frame.htm`) | — |
 
-All three are `void`, take their arguments in `ecx`/`edx`, and have no stack arguments. The first
-lifted instruction is the stack allocation, so replacing it with a host call and `return` is safe.
-Generated bodies: `src/recomp/gen_game/recomp_0050.c:34964`, `src/recomp/gen/recomp_0054.c:43536`,
-`src/recomp/gen/recomp_0023.c:755`.
+All four are `void`, take their arguments in `ecx`/`edx`/one stack argument, and have no
+stack arguments beyond `DoWebPageDialog`'s page key. The first lifted instruction is the stack
+allocation, so replacing it with a host call and `return` is safe. Generated bodies:
+`src/recomp/gen_game/recomp_0050.c:34964`, `src/recomp/gen/recomp_0054.c:43536`,
+`src/recomp/gen/recomp_0023.c:755`, `src/recomp/gen/recomp_0054.c:1730`.
 
 The dummy HTML is `<title>Hi there.</title>` (RA2) or `<title>ViewHTML</title>` (YR); it is only a
 probe for `FindExecutableA`, never displayed. No other code path opens a URL:
@@ -434,21 +441,22 @@ export function linkTarget(url: string): LinkTarget;
 
 - `python run_lift.py --all` → `lifted 24877  not-lifted stubs 0  errors 0`;
   `python run_lift.py --all --target game` → `lifted 23125  not-lifted stubs 0  errors 0`.
-- Generated C: `ra2_open_url` appears exactly twice in `src/recomp/gen` (YR
+- Generated C: `ra2_open_url` appears twice in `src/recomp/gen` (YR
   `0x0077DC90`, `0x00551630`) and once in `src/recomp/gen_game`
-  (`0x0073C580`); no other function contains it.
-- `python -m unittest tools.test_lift_patches` → 45 tests OK.
+  (`0x0073C580`); `ra2_open_wol_page` appears once (`0x00773E90`); no other
+  function contains them.
+- `python -m unittest tools.test_lift_patches` → 46 tests OK.
 - `cd web && pnpm test` → 45 files, 431 tests pass; `pnpm typecheck` clean;
   `pnpm build` succeeds.
 - YR wasm build (`RA2_TARGET=gamemd build-web.cmd`) → `[77/77] Linking C
-  executable ra2md.js`.
+  executable ra2md.js`; rebuilt after the embedded-browser patch → `[75/75]`.
 - YR headless: `node build-web/ra2md.js --run --game ./game --headless --mute
   --press 0xE2:1668@1 --press 0x10E:1375@4` → `[url]
   https://ra2web.invalid/community` and
   `@ra2 {"e":"open","url":"https://ra2web.invalid/community","ask":0,"seq":1}`,
   with no `TXT_NOBROWSER`.
 - RA2 wasm build (`RA2_TARGET=game build-web.cmd`) → `[70/70] Linking C
-  executable ra2.js`.
+  executable ra2.js`; rebuilt after the embedded-browser patch → `[6/6]`.
 - RA2 headless: `node build-web-game/ra2.js --run --game ./game --headless
   --mute --press 0xE2:1668@1 --press 0x10E:1764@5 --press 0x114:1772@8` →
   `[url]
@@ -471,9 +479,10 @@ export function linkTarget(url: string): LinkTarget;
   `0x10F:1772` and `0x114:1772` →
   `[url] http://games2.westwood.com/cgi-bin/cgiclient?...`; YR `0x10E:1375`
   → the seeded `Community` URL. None reached `TXT_NOBROWSER`.
-- YR `0x113:1955`/`1958` were clicked in a real logged-in lobby (local RA2Web
-  on 9090): both open the game's own `0x131` dialog and never call the URL
-  routine, so there is no `open` event for them in this build. RA2's
-  `0x113` ClanAndLadder path was not reached before the page closed in this
-  environment; the shared RA2 routine is already exercised by `0xE7`,
-  `0x10F` and `0x114`.
+- YR's embedded WOL browser (`DoWebPageDialog`, `0x00773E90`) is intercepted
+  by page key. Offline in `0x114`: `1772` → `[url]
+  https://ra2web.invalid/account`, `1955` → `https://ra2web.invalid/ladder`;
+  `0x10E:1375` still → `.../community`. No `0x131` browser dialog is created.
+  The logged-in `0x113:1955/1958` path uses the same entry; the local lobby
+  run selected the RA2 edition from the persistent profile, so the offline
+  controls are the reproducible check for that hook.

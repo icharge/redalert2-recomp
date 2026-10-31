@@ -10,7 +10,9 @@ versions follow [SemVer](https://semver.org/).
   system browser. `run_lift.py`'s `web_url_patches` intercepts the three
   routines that write a probe `.html`, find the default browser and start it
   (RA2 `0x0073C580`; YR `0x0077DC90` and `0x00551630`), logs the URL unchanged
-  and emits an `open` event (protocol 9). The page maps it to a topic and
+  and emits an `open` event (protocol 9). YR's embedded WOL browser
+  (`DoWebPageDialog`, `HTML\frame.htm`) is intercepted by page key too, before
+  the embedded browser is created. The page maps the URL to a topic and
   shows our dialog: a sandboxed iframe for a configured page, otherwise a
   confirmation with the original URL. "Open in browser" is a
   `target="_blank"`/`rel="noopener noreferrer"` anchor and only `http(s)` URLs

@@ -728,6 +728,14 @@ int main(int argc, char **argv) {
      * return silently. Point them at the page's own mapped pages. */
     hle_reg_set_string(0x80000002u, "Software\\Westwood\\Yuri's Revenge\\URL",
                        "Community", "https://ra2web.invalid/community");
+    hle_reg_set_string(0x80000002u, "Software\\Westwood\\Yuri's Revenge\\URL",
+                       "Ladder", "https://ra2web.invalid/ladder");
+    hle_reg_set_string(0x80000002u, "Software\\Westwood\\Yuri's Revenge\\URL",
+                       "Manage", "https://ra2web.invalid/account");
+    hle_reg_set_string(0x80000002u, "Software\\Westwood\\Yuri's Revenge\\URL",
+                       "Battleclans", "https://ra2web.invalid/clans");
+    hle_reg_set_string(0x80000002u, "Software\\Westwood\\Yuri's Revenge\\URL",
+                       "NetStatus", "https://ra2web.invalid/status");
 #endif
     hle_com_register_class(CLSID_Blowfish, ra2_blowfish_create);
 #ifdef RA2_TARGET_GAME
