@@ -724,6 +724,10 @@ WDT_SITES = {
         # song lookup dereferences it and aborts the screen transition.
         'theme': (0x0072A685, '8b4e248b01ff507c'),
         'theme_target': 0x0072A6C0,
+        # The WDT map opening is a Bink movie; the page's Bink backend fails on
+        # it and the map screen closes before drawing. Skip the movie object.
+        'movie': (0x007299C0, '7432'),
+        'movie_target': 0x007299F4,
     },
     'gamemd': {
         'hover': (0x007AF829, '81eb02020000'),
@@ -762,6 +766,11 @@ def wdt_patches(code, cs, target):
         out[theme[0]] = ('@replace:if (MEM32(esi + 0x24) == 0) goto L_%08X; '
                          'ecx = MEM32(esi + 0x24); %s'
                          % (sites['theme_target'], tag))
+    movie = sites.get('movie')
+    if movie and at(*movie):
+        out[movie[0]] = ('@replace:goto L_%08X; '
+                         '/* remaster: skip the WDT opening Bink movie, run_lift.py wdt_patches */'
+                         % sites['movie_target'])
     return out
 
 

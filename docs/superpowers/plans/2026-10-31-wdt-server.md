@@ -118,12 +118,18 @@ call). No state codec or server model exists yet.
   (or map-data loading) remains the open blocker.
 - **Buffer test**: skipping the `WDTState` destructor's frees keeps the description strings alive. With the
   unquoted server keys that removes `***NO_STRING***` completely, but the map is still
-  black. So the blank map is **not** caused by the description-buffer lifetime; the next
-  suspect is the 44-byte territory record layout / map asset loading (`WDTMap.ini`, the
-  client's region art), not `WDTProps.cpp`.
-- **Next**: decode the client's `WDTMap.ini`/region record layout (coordinates, art id and
-  owner row) and compare it with the 44-byte fixture; then WDT-0b/3 native request capture
-  and native-client verification.
+  black. So the blank map is **not** caused by the description-buffer lifetime.
+- **WDTMap.ini decoded** (plaintext inside `wdt.mix`): sections `[NorthAmerica]`, `[Europe]`,
+  `[Asia]` select an art set; each set has `Art_640`/`Art_800`, `Background=*_WorldDom_*.pcx`,
+  `ClickMap=*_ClikMap*.pcx`, `OverlayPrefix=AsTerr`/`NaTerr`, and `Territory00..29`.
+  The 44-byte record ids are 0..29 matching those keys; the two trailing ints are not map
+  coordinates.
+- **Bink opening**: the map screen's `Opening=*Animation_*.bik` fails in the page
+  (`Bink Error:`), which closed the screen in a loop. `wdt_patches` now skips creating that
+  movie object. After the skip the screen stays up and draws its **"World Domination Tour"**
+  title and logo, with no Bink error; the background/overlays are still blank.
+- **Next**: make the map use the 640/800 art set at the player's resolution (or scale the 800
+  layout), then re-check the overlay names/owner bitmap; then WDT-0b/3 native capture.
 
 ### First finding: the browser does not use the raw TCP path
 
