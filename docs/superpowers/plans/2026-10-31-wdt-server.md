@@ -170,9 +170,20 @@ call). No state codec or server model exists yet.
   and `WDTHost is , port is 0`, then the client returns to login and shows `0xD0`
   ("Matching Server Not Found"). Replacing the entry with `WDT` alone breaks login, so the
   multi-service encoding of the 0xF8-byte server-list entry still has to be decoded.
-- **Next**: decode the 0xF8-byte server-list entry so the bridge can publish `IRC`, `GAM` and
-  `WDT` entries together (WDT -> the `WdtTcpServer` port), then serve the mangler/`Start <game>`
-  flow (0x75B910 handles `Start <name>`, `Fail...`, `PingFail...`, `RankFail...`). With a
+- **Server-list entry decoded**: the 0xF8-byte entry already matches WOLAPI's layout —
+  the service label sits at offset **0x5F** (after `gametype/chattype/timezone`,
+  `longitude/latitude`, `next` and `name[71]`) and `conndata` at **0x64**. `conndata` is
+  `proto;host;port`: the parser skips the first token, copies the second to `WDTHost`
+  (0xB269AC) and `atoi`s the third into `WDTPort` (0xB299BC). Verified live: a `WDT` entry
+  with `TCP;127.0.0.1;29094` produces `WDTHost is 127.0.0.1, port is 29094` and
+  `Get_WDT_State_Silent` uses it; a bare `host;port` instead yields `WDTHost is 29094, port is 0`.
+- **One service per pass**: with a chained list `IRC, IRC, LAD, GAM, WDT` the client processes
+  the labels `LAD` then `GAM` and stops (WDT never seen); with `IRC, IRC, LAD, WDT, GAM` it
+  processes `LAD` then `WDT` and stops. So each server-list pass registers only one of
+  `GAM`/`WDT`. The mangler count stays 0 either way (observed `Got 0 mangler servers`).
+- **Next**: publish the services in separate `OnServerList` passes (or find the multi-service
+  separator in `conndata`) so `GAM` and `WDT` both register; point `GAM` at a mangler endpoint
+  the browser can serve and implement the `Start <game>`/`Fail` lines (0x75B910). With a
   matching game in the type-33 list the client can join it and the existing `WDT=`/STARTG
   assignment can run. WDT-0b/3 (native) still needs the WOL TCP gateway.
 
