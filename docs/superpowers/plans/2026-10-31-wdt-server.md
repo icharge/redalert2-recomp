@@ -200,6 +200,13 @@ call). No state codec or server model exists yet.
   0x75E08F sees every entry, but GAM handling sits behind `[esp+0x20]` state and an earlier
   service branch; trace `[esp+0x20]` writes (0x75E5D2, 0x75E6C1) and the selected-server flag
   to learn which entry order/fields the client needs before it counts a mangler.
+- **Start-event probe (negative, but informative)**: trying the ASCII chat events 13/14/15
+  with a `Start 0:RA2Web` payload does not reach `0x75B910` either. A probe shows the WDT
+  sub-state `[0xA3D2A4]` is **3** during the `list 33 33` that follows the match start, while
+  the Start/Fail sink only accepts state 1 or 2. Forcing the state to 2 at that point is unsafe:
+  `list 33 33` is also sent by ordinary lobby browsing, and one run lost the WDT screen entirely.
+  So `Start` handling is **downstream of the mangler session** (the client enters state 1/2 after
+  connecting), not something to inject before it.
 - **Start-line injection (negative)**: queueing a synthetic
   `:matchbot!mb@local PRIVMSG <nick> :Start 0:RA2Web` when the client sends `list 33 33` does
   not reach the match-start handler (`0x75B910` never logs). The bridge delivers a PRIVMSG as
