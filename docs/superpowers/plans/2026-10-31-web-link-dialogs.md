@@ -41,6 +41,7 @@ Vitest, Node e2e scripts in `web/e2e/`.
 | T7  | Verify   | Unit, lift, e2e and headless tests                         | Done    |
 | T8  | Docs     | Protocol/frontend/architecture/changelog                   | Done    |
 | T9  | Optional | Help (`WinHelpA` / `GetHelpURL`) and Windows native        | Pending |
+| T10 | Optional | Replicate the game dialog chrome with the game's art       | Pending |
 
 ## Findings (the spec)
 
@@ -404,7 +405,60 @@ export function linkTarget(url: string): LinkTarget;
   asserts the overlay topic, the URL line, no new tab, and no dead-host anchor.
 - [ ] **Step 4: Offline/PWA.** The overlay is part of the app shell, so the message/confirmation
   path works offline; an iframe target still needs the network. Check under the `/emu/` base.
-- [ ] **Step 5: Both editions build**, with the lift clean and the protocol 9 boot accepted.
+- [ ] **Step 5: Both editions build**, with the lift clean and the current protocol boot accepted.
+
+---
+
+### Task 10: Replicate the game's dialog chrome with its art (optional polish)
+
+**Goal:** make the link dialog read as an in-game dialog, not a generic web
+modal, by skinning it with the game's own frame, title bar and button art.
+Behavior, URL handling and accessibility stay as they are.
+
+**Files:**
+- Create: `web/src/components/GameDialogChrome.tsx`,
+  `web/src/components/GameDialogChrome.module.css`
+- Create: `tools/export_dialog_art.py` (or extend `tools/dialogs.py`) and its
+  output under `web/src/assets/dialog/`
+- Modify: `web/src/components/LinkDialogContent.tsx`,
+  `web/src/components/LinkDialog.tsx`, `docs/web/frontend.md`
+
+**Interfaces:**
+- Produces `<GameDialogChrome title onClose>{children}</GameDialogChrome>`, a
+  presentational skin. Radix `Dialog` stays the accessible shell (focus,
+  Escape, `aria-labelledby`), so the URL/iframe/confirmation behavior is
+  unchanged.
+- Keeps `LinkTarget` and `LinkDialogContent`'s props as they are.
+
+- [ ] **Step 1: Pick the reference art.** The system-browser link dialog is a
+  native Win32 dialog (frame, title bar, buttons from the game's SHP/TMP art),
+  while YR's embedded WOL browser used `HTML/Frame.htm`, `HTML/NavBar.htm` and
+  `HTML/assets/*.jpg`. Use the native dialog art for the confirmation dialog
+  and the HTML navbar art only for the iframe chrome. Record the exact MIX
+  file, SHP/TMP frame, palette and 9-slice borders.
+- [ ] **Step 2: Export it.** A small tool reads the game's art through the
+  existing archive/palette helpers and writes 1x/2x RGBA PNGs with alpha plus
+  the slice metadata. Keep the assets small; do not bake text into images.
+- [ ] **Step 3: Build the chrome.** CSS 9-slice frame, title bar, close/OK
+  buttons with normal/hover/pressed/disabled states, and the same bevel colours
+  in both editions. DOM buttons and real text stay accessible and selectable.
+- [ ] **Step 4: Wire it in.** `LinkDialog` renders `GameDialogChrome` inside
+  Radix `Dialog.Content`; the iframe/confirmation body keeps its current
+  layout. Fall back to the current Radix look if the art is missing.
+- [ ] **Step 5: Typography.** Use the game's bitmap font for the title and
+  buttons where it can be rendered accessibly; otherwise use the page font with
+  the game's sizing and colours. Never render text only as a sprite.
+- [ ] **Step 6: Verify.** Screenshot the dialog at 800x600 and at a scaled/DPR
+  size against the native dialog for both editions; keyboard focus, Escape,
+  `aria-labelledby`, the iframe sandbox and the external anchor still pass.
+- [ ] **Step 7: Tests and docs.** Component test for the chrome, a visual e2e
+  screenshot, and a `frontend.md` note on where the art comes from and how to
+  regenerate it. If the art cannot be redistributed, keep the current skin and
+  document that decision.
+
+**Risks:** art licensing/size, 9-slice seams when scaled, bitmap-font
+legibility, and text width in a fixed frame. The current Radix dialog remains
+the fallback for all of them.
 
 ## Acceptance criteria
 
