@@ -517,36 +517,44 @@ def web_exit_confirmation_patches(code, cs, target):
 
 
 WEB_URL_SITES = {
-    'gamemd': ((0x0077DC90, 0x310, 'edx'),   # wonline.cpp: void f(url, ask)
-               (0x00551630, 0x468, '0')),    # ViewHTML: void f(url)
-    'game': ((0x0073C580, 0x310, 'edx'),),   # wonline.cpp: void f(url, ask)
+    'gamemd': (
+        (0x0077DC90, '81ec10030000', 0x310, 'edx'),   # wonline.cpp: void f(url, ask)
+        (0x00551630, '81ec68040000', 0x468, '0'),      # ViewHTML: void f(url)
+        (0x00773E90, '83ec28', 0x28, 'wol'),           # DoWebPageDialog: page key
+    ),
+    'game': ((0x0073C580, '81ec10030000', 0x310, 'edx'),),  # wonline.cpp: void f(url, ask)
 }
 
 
 def web_url_patches(code, cs, target):
-    """Intercept the routines that hand a WOL-era URL to the system browser.
+    """Intercept the routines that hand a WOL-era page to the system browser.
 
     RA2 sub_0073C580 and YR sub_0077DC90 (both wonline.cpp: the URL in ecx,
-    ask in edx) and YR sub_00551630 (ViewHTML: the URL in ecx) all start by
-    allocating their frame, so the lift can call the host and return before the
-    temp .html probe, FindExecutableA, CreateProcessA, TXT_LAUNCHBROWSER and
-    TXT_NOBROWSER path runs. The page shows our dialog instead
+    ask in edx), YR sub_00551630 (ViewHTML: the URL in ecx) and YR
+    DoWebPageDialog (0x00773E90, the page key in ecx: the embedded WOL browser
+    that wraps a registry URL) all start by allocating their frame, so the lift
+    can call the host and return before the temp .html probe, FindExecutableA,
+    CreateProcessA, TXT_LAUNCHBROWSER, TXT_NOBROWSER or embedded WebBrowser
+    path runs. The page shows our dialog instead
     (docs/superpowers/plans/2026-10-31-web-link-dialogs.md). A different build
     fails the byte check and gets no patch."""
     patches = {}
-    for va, size, ask in WEB_URL_SITES[target]:
-        raw = b'\x81\xec' + size.to_bytes(4, 'little')
+    for va, shape, size, ask in WEB_URL_SITES[target]:
+        raw = bytes.fromhex(shape)
         if code[va - cs:va - cs + len(raw)] != raw:
             print('[*] web_url_patches: 0x%08X does not match this build; no URL patch' % va)
             continue
+        call = ('    { extern void ra2_open_wol_page(uint32_t);\n'
+                '      ra2_open_wol_page(ecx); return; }\n') if ask == 'wol' else (
+                '    { extern void ra2_open_url(uint32_t, uint32_t);\n'
+                '      ra2_open_url(ecx, %s); return; }\n' % ask)
         patches[va] = (
             '@replace:#if defined(__EMSCRIPTEN__) || defined(RA2_URL_HOST)\n'
-            '    { extern void ra2_open_url(uint32_t, uint32_t);\n'
-            '      ra2_open_url(ecx, %s); return; }\n'
+            + call +
             '#else\n'
             '    esp = esp - 0x%Xu; /* 0x%08X: sub esp, 0x%X */\n'
             '#endif /* web URL: the page shows the link, not the system browser */'
-            % (ask, size, va, size))
+            % (size, va, size))
     return patches
 
 

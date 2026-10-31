@@ -48,6 +48,13 @@ describe("linkTarget", () => {
     // A sentinel the page does not map is not a real page; never offer it.
     const unknown = linkTarget("https://ra2web.invalid/mystery", SITE);
     expect(unknown).toMatchObject({ topic: "external", external: false, embed: false });
+
+    expect(linkTarget("https://ra2web.invalid/ladder", SITE)).toMatchObject({
+      topic: "tournament",
+      embed: true,
+    });
+    expect(linkTarget("https://ra2web.invalid/clans", SITE).topic).toBe("community");
+    expect(linkTarget("https://ra2web.invalid/status", SITE).topic).toBe("status");
   });
 
   it("asks before opening an unknown live URL", () => {

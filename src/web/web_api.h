@@ -89,6 +89,8 @@ void web_json_escape(char *out, size_t n, const char *text);
  * of the system browser. Called from the lift's web_url_patches early return;
  * `url_va` is the guest string, `ask` says the game wanted a confirmation. */
 void ra2_open_url(uint32_t url_va, uint32_t ask);
+/* the embedded WOL browser's page key (DoWebPageDialog), mapped to a URL */
+void ra2_open_wol_page(uint32_t key_va);
 int ra2_exit_confirmation_reply(uint32_t request, int exit_game);
 
 enum { RA2_SETTING_SCALE, RA2_SETTING_BARS, RA2_SETTING_HD, RA2_SETTING_MODERN,

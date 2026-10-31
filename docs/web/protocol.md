@@ -143,13 +143,21 @@ Example: `@ra2 {"e":"mode","w":1280,"h":720}`.
 
 ## Web links
 
-The game has no embedded HTML renderer: a WOL-era link writes a probe `.html`,
-finds the default browser with `FindExecutableA` and starts it with
-`CreateProcessA`. `run_lift.py`'s `web_url_patches` intercepts the three
-routines that do it (RA2 `0x0073C580`; YR `0x0077DC90` and `0x00551630`) at
-their entry, calls `ra2_open_url(url, ask)` and returns. The host logs the URL
-unchanged (`[url] <url>`) and emits `open`. On Linux the hook only logs; the
-Windows native32 build keeps the system browser.
+The game has no embedded HTML renderer for the system-browser path: a
+WOL-era link writes a probe `.html`, finds the default browser with
+`FindExecutableA` and starts it with `CreateProcessA`. `run_lift.py`'s
+`web_url_patches` intercepts the three routines that do it (RA2 `0x0073C580`;
+YR `0x0077DC90` and `0x00551630`) at their entry, calls
+`ra2_open_url(url, ask)` and returns. YR also has an embedded WOL browser:
+`DoWebPageDialog` (`0x00773E90`) takes a page key (`"Ladder"`, `"Manage"`,
+`"Battleclans"`, ...), reads the registry URL and wraps it in
+`HTML\frame.htm`. The same lift patch intercepts it and calls
+`ra2_open_wol_page(key)`, which maps the key to the seeded sentinel URL and
+returns before the embedded browser is created. That path's `url` is the
+seeded sentinel (`https://ra2web.invalid/<path>`), not a dead Westwood host:
+the host owns the registry value the game would have read. The host logs the
+URL unchanged (`[url] <url>`) and emits `open`. On Linux the hooks only log;
+the Windows native32 build keeps the system browser and the embedded browser.
 
 The page maps the URL to a `LinkTarget` (`web/src/game/link-targets.ts`):
 `topic`, the original `url`, a `detail` (a support kind, a locale), `external`

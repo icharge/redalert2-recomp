@@ -572,8 +572,8 @@ class WebUrlPatchTests(unittest.TestCase):
     @staticmethod
     def image(target, corrupt=None):
         code = bytearray(0x00800000)
-        for va, size, _ in WEB_URL_SITES[target]:
-            code[va:va + 6] = b'\x81\xec' + size.to_bytes(4, 'little')
+        for va, shape, _, _ in WEB_URL_SITES[target]:
+            code[va:va + len(shape) // 2] = bytes.fromhex(shape)
         if corrupt is not None:
             code[corrupt] ^= 0xFF
         return bytes(code)
@@ -582,15 +582,18 @@ class WebUrlPatchTests(unittest.TestCase):
         for target in ('gamemd', 'game'):
             with self.subTest(target=target):
                 patches = web_url_patches(self.image(target), 0, target)
-                self.assertEqual(set(patches), {va for va, _, _ in WEB_URL_SITES[target]})
-                for va, size, ask in WEB_URL_SITES[target]:
+                self.assertEqual(set(patches), {va for va, _, _, _ in WEB_URL_SITES[target]})
+                for va, _, size, ask in WEB_URL_SITES[target]:
                     c = patches[va]
-                    self.assertIn('ra2_open_url(ecx, %s)' % ask, c)
+                    if ask == 'wol':
+                        self.assertIn('ra2_open_wol_page(ecx)', c)
+                    else:
+                        self.assertIn('ra2_open_url(ecx, %s)' % ask, c)
                     self.assertIn('return;', c)
                     self.assertIn('esp = esp - 0x%Xu;' % size, c)
 
     def test_the_native_branch_reproduces_the_original_allocation(self):
-        va, size, _ = WEB_URL_SITES['game'][0]
+        va, _, size, _ = WEB_URL_SITES['game'][0]
         patches = web_url_patches(self.image('game'), 0, 'game')
         body = '    esp = esp - 0x%Xu; /* 0x%08X: sub esp, 0x%X */\n' % (size, va, size)
         result = apply_patches(body, patches)
@@ -605,8 +608,15 @@ class WebUrlPatchTests(unittest.TestCase):
                 va = WEB_URL_SITES[target][0][0]
                 patches = web_url_patches(self.image(target, corrupt=va), 0, target)
                 self.assertNotIn(va, patches)
-                for other, _, _ in WEB_URL_SITES[target][1:]:
+                for other, _, _, _ in WEB_URL_SITES[target][1:]:
                     self.assertIn(other, patches)
+
+    def test_the_embedded_browser_site_gets_the_page_hook(self):
+        va, shape, size, _ = WEB_URL_SITES['gamemd'][2]
+        self.assertEqual(bytes.fromhex(shape), b'\x83\xec\x28')
+        patches = web_url_patches(self.image('gamemd'), 0, 'gamemd')
+        self.assertIn('ra2_open_wol_page(ecx)', patches[va])
+        self.assertIn('esp = esp - 0x%Xu;' % size, patches[va])
 
 
 if __name__ == '__main__':
