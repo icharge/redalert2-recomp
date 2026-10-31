@@ -1105,6 +1105,8 @@ extern int hle_ws_udp_pop(uint8_t *packet, uint32_t capacity);
 extern int hle_ws_udp_push(const uint8_t *packet, uint32_t length);
 #define WDT_MANGLER_PORT 29094
 static void service_mangler(void) {
+    /* Only before STARTG: during a match the relay owns the outbound queue. */
+    if (g_session.game_id[0]) return;
     uint8_t frame[1600];
     for (int n = 0; n < 16; n++) {
         int size = hle_ws_udp_pop(frame, (uint32_t)sizeof frame);
