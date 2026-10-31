@@ -728,12 +728,17 @@ WDT_SITES = {
         # it and the map screen closes before drawing. Skip the movie object.
         'movie': (0x007299C0, '7432'),
         'movie_target': 0x007299F4,
+        # The shipped WDT art is the 640 set (472x448 background/overlays). At
+        # wider resolutions the loader reads Art_<width>/Art_800, whose assets
+        # are not shipped, and the map draws blank. Force the 640 key.
+        'art': (0x007295DC, '8b15e0238500'),
     },
     'gamemd': {
         'hover': (0x007AF829, '81eb02020000'),
         'hover_target': 0x007AF73B,
         'resolution': (0x007AFBAA, '0f8ea0000000'),
         'resolution_target': 0x007AFC50,
+        'art': (0x007682AC, '8b15a4008a00'),
     },
 }
 
@@ -771,6 +776,10 @@ def wdt_patches(code, cs, target):
         out[movie[0]] = ('@replace:goto L_%08X; '
                          '/* remaster: skip the WDT opening Bink movie, run_lift.py wdt_patches */'
                          % sites['movie_target'])
+    art = sites.get('art')
+    if art and at(*art):
+        out[art[0]] = ('@replace:edx = 0x280u; '
+                       '/* remaster: WDT uses the shipped 640 art set, run_lift.py wdt_patches */')
     return out
 
 

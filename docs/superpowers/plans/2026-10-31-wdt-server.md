@@ -128,8 +128,15 @@ call). No state codec or server model exists yet.
   (`Bink Error:`), which closed the screen in a loop. `wdt_patches` now skips creating that
   movie object. After the skip the screen stays up and draws its **"World Domination Tour"**
   title and logo, with no Bink error; the background/overlays are still blank.
-- **Next**: make the map use the 640/800 art set at the player's resolution (or scale the 800
-  layout), then re-check the overlay names/owner bitmap; then WDT-0b/3 native capture.
+- **Map renders**: the loader builds `Art_<width>` (falling back to `Art_800` above 800 px), but
+  only the 640 art set is shipped — the 800 background/opening/overlay assets are absent, so the
+  map drew blank and the Bink opening failed. Forcing the key to `Art_640` (`edx = 0x280` in
+  `wdt_patches`) makes the North America map, territory outlines, sidebar and
+  "Click on a white territory to engage in battle" render at 1280x720:
+  `work/wdt-art640/tick19.png` (848 KB). The 640 layout is drawn at 472x448 inside the wider
+  window; scaling it is a later polish item.
+- **Next**: click a territory to enter a WDT match and verify the lobby `WDT=` assignment/result
+  path from the UI; then WDT-0b/3 native request capture and native-client verification.
 
 ### First finding: the browser does not use the raw TCP path
 
