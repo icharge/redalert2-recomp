@@ -181,11 +181,20 @@ call). No state codec or server model exists yet.
   the labels `LAD` then `GAM` and stops (WDT never seen); with `IRC, IRC, LAD, WDT, GAM` it
   processes `LAD` then `WDT` and stops. So each server-list pass registers only one of
   `GAM`/`WDT`. The mangler count stays 0 either way (observed `Got 0 mangler servers`).
-- **Next**: publish the services in separate `OnServerList` passes (or find the multi-service
-  separator in `conndata`) so `GAM` and `WDT` both register; point `GAM` at a mangler endpoint
-  the browser can serve and implement the `Start <game>`/`Fail` lines (0x75B910). With a
-  matching game in the type-33 list the client can join it and the existing `WDT=`/STARTG
-  assignment can run. WDT-0b/3 (native) still needs the WOL TCP gateway.
+- **Two-pass emission does not register the mangler**: emitting the list twice
+  (`IRC,LAD,GAM` then `IRC,WDT`) still leaves `Got 0 mangler servers`. Instrumenting the client
+  shows the mangler list (`0xB2AC34` count / `0xB2A700` entries) is never fed: the GAM branch
+  at `0x75E5DF` is never entered even though the entry labels are visible to the list parser.
+  `WDTHost`/`WDTPort` still decode correctly, and the client never opens a TCP connection to the
+  WDT host on a match start, so the mangler is genuinely the remaining input.
+- **Next (sharpened)**: find the condition that reaches the GAM branch — the label loop at
+  0x75E08F sees every entry, but GAM handling sits behind `[esp+0x20]` state and an earlier
+  service branch; trace `[esp+0x20]` writes (0x75E5D2, 0x75E6C1) and the selected-server flag
+  to learn which entry order/fields the client needs before it counts a mangler.
+- **Next**: reach the GAM branch (trace the `[esp+0x20]` state and the selected-server flag),
+  then serve the mangler and the `Start <game>`/`Fail` lines (0x75B910). With a matching game
+  in the type-33 list the client can join it and the existing `WDT=`/STARTG assignment can run.
+  WDT-0b/3 (native) still needs the WOL TCP gateway.
 
 ### First finding: the browser does not use the raw TCP path
 
