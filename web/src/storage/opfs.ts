@@ -226,7 +226,7 @@ export async function readGameFile(
   const parts = `game/${home}/${name}`.split("/");
   const missing = () =>
     new Error(
-      `${name} is missing from this browser's copy of the game. Reimport the game (or the mod that has it).`,
+      `${name} is missing from this browser's copy of the game. Resume the import to copy it again, or reimport the mod that has it.`,
     );
   const dir = await openFolder(root, parts.slice(0, -1).join("/"));
   if (!dir) throw missing();
@@ -240,6 +240,22 @@ export async function readGameFile(
   }
   const file = await handle.getFile();
   return new Uint8Array(await file.arrayBuffer());
+}
+
+/**
+ * The recorded files the copy no longer has, or has at another size (`damaged` counts too). A
+ * browser can drop storage under pressure or a person can clear it, so a record is checked
+ * against the copy before it is trusted: the launcher then offers the import to copy them again.
+ */
+export async function missingGameFiles(
+  files: { home: string; name: string; size: number }[],
+  target: Pick<CopyTarget, "size">,
+): Promise<string[]> {
+  const missing: string[] = [];
+  for (const file of files) {
+    if ((await target.size(gamePath(file.home, file.name))) !== file.size) missing.push(file.name);
+  }
+  return missing;
 }
 
 export interface SavedSettingsFile {

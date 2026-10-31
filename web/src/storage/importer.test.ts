@@ -85,7 +85,7 @@ function memoryTarget(): CopyTarget & { files: Map<string, number> } {
 }
 
 const roomy = { quota: 1e12, usage: 0 };
-const all = { movies: true, saves: true };
+const all = { movies: true, saves: true, settings: true };
 
 describe("prepareImport", () => {
   it("plans game data without requiring the bundled executable and DLL", async () => {
@@ -119,7 +119,7 @@ describe("runImport", () => {
     const prepared = await prepareImport(
       source(folder()),
       build,
-      { movies: false, saves: true },
+      { movies: false, saves: true, settings: false },
       roomy,
     );
     const seen: number[] = [];
@@ -206,6 +206,50 @@ describe("runImport", () => {
     };
     await run(again, manifest, watching, { slot: 1 });
     expect(writes).toHaveLength(prepared.plan.copy.length - 3);
+    expect((await manifest.getGame("ra2md"))?.complete).toBe(true);
+  });
+
+  it("copies again a file a stopped import recorded but the copy no longer has", async () => {
+    const manifest = await Manifest.open(new IDBFactory());
+    const target = memoryTarget();
+    const prepared = await prepareImport(source(folder()), build, all, roomy);
+    const controller = new AbortController();
+    let writes = 0;
+    const counting = {
+      ...target,
+      write: async (path: string, stream: ReadableStream<Uint8Array>, signal?: AbortSignal) => {
+        await target.write(path, stream, signal);
+        if (++writes === 2) controller.abort();
+      },
+    };
+    await expect(run(prepared, manifest, counting, { signal: controller.signal })).rejects.toThrow(
+      /cancelled/,
+    );
+    const record = await manifest.getGame("ra2md");
+    const lost = Object.entries(record!.files).find(([, entry]) => entry.done);
+    expect(lost).toBeDefined();
+    const [name, entry] = lost!;
+    // the browser dropped the copy; the record still says it is there
+    target.files.delete(`game/${entry.home}/${name}`);
+
+    const again = await prepareImport(source(folder()), build, all, roomy);
+    await run(again, manifest, target, { slot: 1 });
+    expect(target.files.has(`game/${entry.home}/${name}`)).toBe(true);
+    expect((await manifest.getGame("ra2md"))?.complete).toBe(true);
+  });
+
+  it("lets a resume repair a complete-looking installation whose copy lost a file", async () => {
+    const manifest = await Manifest.open(new IDBFactory());
+    const target = memoryTarget();
+    const prepared = await prepareImport(source(folder()), build, all, roomy);
+    await run(prepared, manifest, target);
+    expect((await manifest.getGame("ra2md"))?.complete).toBe(true);
+    // the browser dropped one recorded archive; the record still says the import is complete
+    target.files.delete("game/slot-1/ra2md.mix");
+
+    const again = await prepareImport(source(folder()), build, all, roomy);
+    await run(again, manifest, target, { slot: 1 });
+    expect(target.files.has("game/slot-1/ra2md.mix")).toBe(true);
     expect((await manifest.getGame("ra2md"))?.complete).toBe(true);
   });
 

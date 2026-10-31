@@ -14,6 +14,39 @@ afterEach(() => {
   delete window.ra2Session;
 });
 
+/** A stand-in for OPFS: the files at their slash paths, with the sizes given. */
+function fakeOpfs(files: Record<string, number>): FileSystemDirectoryHandle {
+  type Node = { dirs: Map<string, Node>; files: Map<string, number> };
+  const root: Node = { dirs: new Map(), files: new Map() };
+  for (const [path, size] of Object.entries(files)) {
+    const parts = path.split("/");
+    let node = root;
+    for (const part of parts.slice(0, -1)) {
+      let next = node.dirs.get(part);
+      if (!next) {
+        next = { dirs: new Map(), files: new Map() };
+        node.dirs.set(part, next);
+      }
+      node = next;
+    }
+    node.files.set(parts[parts.length - 1] ?? "", size);
+  }
+  const handle = (node: Node) => ({
+    kind: "directory",
+    async getDirectoryHandle(name: string) {
+      const child = node.dirs.get(name);
+      if (!child) throw new DOMException(`${name} is not there`, "NotFoundError");
+      return handle(child);
+    },
+    async getFileHandle(name: string) {
+      const size = node.files.get(name);
+      if (size === undefined) throw new DOMException(`${name} is not there`, "NotFoundError");
+      return { kind: "file", getFile: async () => ({ size }) };
+    },
+  });
+  return handle(root) as unknown as FileSystemDirectoryHandle;
+}
+
 describe("BrowserCheck", () => {
   it("says what this browser lacks and what to do", () => {
     render(<App />);
@@ -77,6 +110,42 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "Resume import" })).toBeInTheDocument();
     m.close();
   });
+  it("offers resume when the record says complete but the browser's copy lost a file", async () => {
+    vi.stubGlobal("crossOriginIsolated", true);
+    vi.stubGlobal("indexedDB", new IDBFactory());
+    vi.stubGlobal("navigator", {
+      storage: {
+        estimate: async () => ({ quota: 1e12, usage: 0 }),
+        getDirectory: async () => fakeOpfs({ "game/slot-1/ra2.mix": 4 }),
+      },
+    });
+    vi.stubGlobal("fetch", () => Promise.resolve(new Response(JSON.stringify({ games: {} }))));
+    const m = await Manifest.open();
+    const installation = await m.createInstallation("Lost file");
+    await m.beginImport(
+      "ra2md",
+      "Yuri's Revenge",
+      1,
+      [
+        { name: "ra2.mix", size: 4, lastModified: 1, needs: ["ra2md"] },
+        { name: "testmap.yrm", size: 12, lastModified: 1, needs: ["ra2md"] },
+      ],
+      installation.slot,
+    );
+    await m.markFileDone("ra2md", "ra2.mix", installation.slot);
+    await m.markFileDone("ra2md", "testmap.yrm", installation.slot);
+    window.history.replaceState({}, "", "/game/1");
+    render(<App />);
+    expect(await screen.findByText(/testmap\.yrm/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Resume import" })).toHaveAttribute(
+      "href",
+      "/import?resume=1",
+    );
+    // the record now says the import did not finish, so the Library offers Resume
+    expect((await m.getGame("ra2md", installation.slot))?.complete).toBe(false);
+    m.close();
+  });
+
   it("goes to the game when the browser has what it needs", async () => {
     vi.stubGlobal("crossOriginIsolated", true);
     vi.stubGlobal("fetch", () =>

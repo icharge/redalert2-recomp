@@ -161,6 +161,9 @@ export class Manifest {
    * Starts an import, or takes up one that stopped. A file already recorded as done with the size and
    * time the folder has now is kept as done; anything else is to copy again. A file another game has
    * already put in OPFS is listed here as done, kept where it is.
+   *
+   * `present` is what the copy holds, as sizes keyed `<home>/<name>`, when the caller looked. A file
+   * the record calls done but the copy has lost or truncated is copied again, not trusted.
    */
   async beginImport(
     id: GameId,
@@ -168,6 +171,7 @@ export class Manifest {
     exeStamp: number,
     planned: PlannedFile[],
     installationSlot?: number,
+    present?: ReadonlyMap<string, number>,
   ): Promise<{ record: GameRecord; resume: ResumePoint }> {
     const slot = installationSlot ?? 1;
     if (!(await this.getInstallation(slot))) {
@@ -206,7 +210,10 @@ export class Manifest {
             entry.lastModified === file.lastModified,
         );
       const matches = (e: FileEntry) =>
-        e.done && e.size === file.size && e.lastModified === file.lastModified;
+        e.done &&
+        e.size === file.size &&
+        e.lastModified === file.lastModified &&
+        (!present || present.get(`${e.home}/${file.name}`) === file.size);
       if (had && matches(had)) {
         files[file.name] = { ...had, needs: file.needs };
         resume.done.push(file.name);
@@ -225,7 +232,8 @@ export class Manifest {
           lastModified: file.lastModified,
           done: false,
           needs: file.needs,
-          home: had?.home ?? `slot-${slot}`,
+          // a copy the record names but OPFS lost goes back where it was, repairing both editions
+          home: had?.home ?? shared?.home ?? `slot-${slot}`,
         };
         resume.todo.push(file);
       }
@@ -259,6 +267,32 @@ export class Manifest {
     entry.done = true;
     record.complete = Object.values(record.files).every((file) => file.done);
     store.put(record);
+    await finished(tx);
+  }
+
+  /**
+   * Files the browser's copy no longer has: mark them not copied, so the installation is incomplete
+   * again and Resume import copies them from the folder instead of trusting the record.
+   */
+  async markFilesMissing(id: GameId, names: string[], slot = 1): Promise<void> {
+    const tx = this.db.transaction(GAMES, "readwrite");
+    const store = tx.objectStore(GAMES);
+    const record = (await request(store.get([slot, id]))) as GameRecord | undefined;
+    if (!record) {
+      tx.abort();
+      throw new Error(`${id} is not part of this installation`);
+    }
+    let changed = false;
+    for (const name of names) {
+      const entry = record.files[name];
+      if (!entry || !entry.done) continue;
+      entry.done = false;
+      changed = true;
+    }
+    if (changed) {
+      record.complete = Object.values(record.files).every((file) => file.done);
+      store.put(record);
+    }
     await finished(tx);
   }
 

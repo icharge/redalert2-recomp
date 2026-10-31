@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { CopyCancelled, copyInstall, removeFiles, type CopyJob, type CopyTarget } from "./opfs";
+import {
+  CopyCancelled,
+  copyInstall,
+  missingGameFiles,
+  removeFiles,
+  type CopyJob,
+  type CopyTarget,
+} from "./opfs";
 
 /** A target in memory. */
 function memoryTarget(): CopyTarget & { files: Map<string, Uint8Array> } {
@@ -133,5 +140,22 @@ describe("removeFiles", () => {
       { home: "ra2", name: "gone.mix" },
     ]);
     expect([...target.files.keys()]).toEqual(["game/ra2/b.mix"]);
+  });
+});
+
+describe("missingGameFiles", () => {
+  it("names the recorded files the copy lacks or has at another size", async () => {
+    const target = memoryTarget();
+    target.files.set("game/slot-1/present.mix", new Uint8Array(4));
+    target.files.set("game/ra2/short.ini", new Uint8Array(2));
+    const missing = await missingGameFiles(
+      [
+        { home: "slot-1", name: "present.mix", size: 4 },
+        { home: "slot-1", name: "gone.yrm", size: 9 },
+        { home: "ra2", name: "short.ini", size: 5 },
+      ],
+      target,
+    );
+    expect(missing).toEqual(["gone.yrm", "short.ini"]);
   });
 });

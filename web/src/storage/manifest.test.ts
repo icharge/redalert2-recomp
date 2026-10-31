@@ -56,6 +56,40 @@ describe("Manifest: an import", () => {
     expect(again.importedAt).toBe(first.importedAt);
     await expect(m.markFileDone("ra2md", "nope.mix")).rejects.toThrow(/not part of/);
   });
+
+  it("copies again a file whose record says done but the copy has lost", async () => {
+    const m = await open();
+    await m.beginImport("ra2md", "Yuri's Revenge", 1, plan("a.mix", "b.mix"));
+    await m.markFileDone("ra2md", "a.mix");
+    await m.markFileDone("ra2md", "b.mix");
+    // what the copy holds: b.mix is gone; a.mix is whole
+    const present = new Map([["slot-1/a.mix", 1000]]);
+    const { record, resume } = await m.beginImport(
+      "ra2md",
+      "Yuri's Revenge",
+      1,
+      plan("a.mix", "b.mix"),
+      undefined,
+      present,
+    );
+    expect(resume.done).toEqual(["a.mix"]);
+    expect(resume.todo.map((f) => f.name)).toEqual(["b.mix"]);
+    expect(record.files["b.mix"]).toMatchObject({ done: false, home: "slot-1" });
+    expect(record.complete).toBe(false);
+  });
+
+  it("marks files the copy lost as uncopied, so the import offers to resume", async () => {
+    const m = await open();
+    await m.beginImport("ra2md", "Yuri's Revenge", 1, plan("a.mix", "b.mix"));
+    await m.markFileDone("ra2md", "a.mix");
+    await m.markFileDone("ra2md", "b.mix");
+    expect((await m.getGame("ra2md"))?.complete).toBe(true);
+    await m.markFilesMissing("ra2md", ["b.mix", "not-there.mix"]);
+    const record = await m.getGame("ra2md");
+    expect(record?.files["a.mix"]?.done).toBe(true);
+    expect(record?.files["b.mix"]?.done).toBe(false);
+    expect(record?.complete).toBe(false);
+  });
 });
 
 describe("Manifest: two games sharing files", () => {

@@ -78,7 +78,10 @@ separate identities without changing the user's install or sharing a key between
 file is streamed (`file.stream().pipeTo(writable)`), never read whole, so a
 280 MB `.mix` doesn't sit in memory. After each file, the manifest records
 it with its size and `lastModified`. A reload or Cancel resumes from the
-manifest. A file whose size doesn't match is copied again.
+manifest. A file whose size doesn't match is copied again. A resume first
+measures what OPFS actually holds: a file the record calls done but the copy
+has lost or truncated (a browser can drop storage under pressure) is copied
+again rather than trusted.
 
 ## Installations and storage namespaces
 
@@ -132,6 +135,12 @@ anything smaller is copied into memory (`READ_IN_PLACE_BYTES` in `web/src/storag
 game's own ini is always copied, since the page sets its picture size and online port. Mod files
 follow the same rule under `/game/mods/<name>/`. Nothing is read into memory for the big files, so
 Yuri's Revenge needs about 20 MB of JS heap rather than 1 GB ([decisions.md](decisions.md), D11).
+
+Before the runtime starts, the game route checks every recorded file's size in OPFS (a big file is
+only linked, so a lost archive would otherwise fail much later, inside the game). A file the
+browser no longer has is marked uncopied in the record, and the route says which files are missing
+and offers **Resume import** instead of starting into a stop; the resume copies them from the
+folder again. The record's `complete` flag therefore never outlives the copy it describes.
 
 The game's thread mounts OPFS at `/opfs` before `main()` reads anything (`src/web/main.c`), and
 reads through `src/web/opfs_read.js`, which keeps a read-only handle open between opens of the same

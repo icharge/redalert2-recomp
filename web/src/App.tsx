@@ -9,7 +9,14 @@ import { Library } from "./screens/Library";
 import { Play } from "./screens/Play";
 import { loadBuildInfo, type BuildInfo } from "./storage/install";
 import { Manifest, type GameRecord, type InstallationRecord } from "./storage/manifest";
-import { opfsSaveStore, opfsTarget, readGameFile, removeFiles } from "./storage/opfs";
+import {
+  missingGameFiles,
+  opfsSaveStore,
+  opfsTarget,
+  readGameFile,
+  removeFiles,
+  type CopyTarget,
+} from "./storage/opfs";
 import { useUpdate } from "./update";
 import { exportSaves, importSaves, isSavePath } from "./storage/saves";
 import { managedInstallationSource } from "./storage/file-manager";
@@ -233,7 +240,14 @@ function Main() {
       />
       <Route
         path="/game/:slot"
-        element={<InstallationGame games={games} installations={installations} />}
+        element={
+          <InstallationGame
+            games={games}
+            installations={installations}
+            manifest={manifest}
+            target={target}
+          />
+        }
       />
       <Route path="*" element={<RouteError message="That page was not found." />} />
     </Routes>
@@ -243,9 +257,13 @@ function Main() {
 function InstallationGame({
   games,
   installations,
+  manifest,
+  target,
 }: {
   games: GameRecord[];
   installations: InstallationRecord[];
+  manifest: Manifest;
+  target: CopyTarget;
 }) {
   const { slot: value } = useParams();
   const location = useLocation();
@@ -267,6 +285,32 @@ function InstallationGame({
         : null,
     [selected, location.search],
   );
+  // A record can say complete while the browser's copy has lost files (storage pressure, cleared
+  // site data). Check before starting the runtime, so the game does not stop halfway with one name:
+  // the missing files are marked uncopied and the player is sent to Resume import.
+  const [checked, setChecked] = useState<{ record: GameRecord; names: string[] } | null>(null);
+  useEffect(() => {
+    if (!selected || !selected.complete) return;
+    let live = true;
+    const recorded = Object.entries(selected.files)
+      .filter(([, entry]) => entry.done)
+      .map(([name, entry]) => ({ home: entry.home, name, size: entry.size }));
+    void missingGameFiles(recorded, target)
+      .then(async (names) => {
+        if (!live) return;
+        if (names.length) await manifest.markFilesMissing(selected.id, names, selected.slot);
+        if (live) setChecked({ record: selected, names });
+      })
+      .catch(() => {
+        // storage that cannot be read at all is the start's error to report, not this check's
+        if (live) setChecked({ record: selected, names: [] });
+      });
+    return () => {
+      live = false;
+    };
+  }, [selected, manifest, target]);
+  // Only this record's answer counts: a switch of edition checks again rather than starting blind.
+  const missing = checked && checked.record === selected ? checked.names : null;
   if (!slot || !installation) return <RouteError message="That installation was not found." />;
   if (!choices.length || (!selected && planned.some((id) => id === edition)))
     return <RouteError message="This installation's import did not finish." resume={slot} />;
@@ -274,7 +318,18 @@ function InstallationGame({
     return <RouteError message="That edition is not available in this installation." />;
   if (!selected.complete)
     return <RouteError message="This installation's import did not finish." resume={slot} />;
+  if (missing === null) return <Centered>Checking the game&apos;s files…</Centered>;
+  if (missing.length)
+    return <RouteError message={missingFilesMessage(missing)} resume={selected.slot} />;
   return files && <Play key={`${slot}:${edition}`} files={files} />;
+}
+
+/** What to say when the browser's copy no longer has files the installation lists. */
+function missingFilesMessage(names: string[]): string {
+  const shown = names.slice(0, 3).join(", ");
+  const rest = names.length > 3 ? ` and ${names.length - 3} more` : "";
+  const one = names.length === 1;
+  return `${one ? "A file is" : `${names.length} files are`} missing from this browser's copy of the game: ${shown}${rest}. Resume the import to copy ${one ? "it" : "them"} again.`;
 }
 
 function RouteError({ message, resume }: { message: string; resume?: number }) {

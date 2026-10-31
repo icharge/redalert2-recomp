@@ -10,8 +10,8 @@ import {
   type ImportPlan,
   type SpaceCheck,
 } from "./install";
-import type { Manifest, PlannedFile } from "./manifest";
-import { copyInstall, type CopyJob, type CopyProgress, type CopyTarget } from "./opfs";
+import type { GameRecord, Manifest, PlannedFile } from "./manifest";
+import { copyInstall, gamePath, type CopyJob, type CopyProgress, type CopyTarget } from "./opfs";
 import { EMPTY_ARCHIVE } from "./install";
 
 /** One file of the folder the player picked. */
@@ -173,9 +173,25 @@ export async function runImport(options: RunOptions): Promise<number> {
   const slot = installation.slot;
   const existing = await manifest.listGames(slot);
   const expected = installation.editions ?? existing.map((game) => game.id);
+  // A record's done flag is only as good as the copy it names: a browser can drop storage under
+  // pressure. What the copy holds is measured before the record is trusted, so a resume copies a
+  // file the record calls done but OPFS lost, instead of marking it done again.
+  const present = new Map<string, number>();
+  for (const record of existing)
+    for (const [name, entry] of Object.entries(record.files)) {
+      if (!entry.done) continue;
+      const size = await target.size(gamePath(entry.home, name));
+      if (size !== null) present.set(`${entry.home}/${name}`, size);
+    }
+  /** The record says it was copied, and the copy is still there. */
+  const whole = (record: GameRecord) =>
+    record.complete &&
+    Object.entries(record.files).every(
+      ([name, entry]) => !entry.done || present.get(`${entry.home}/${name}`) === entry.size,
+    );
   if (
     existing.length &&
-    expected.every((id) => existing.some((game) => game.id === id && game.complete))
+    expected.every((id) => existing.some((game) => game.id === id && whole(game)))
   )
     throw new Error("That installation is already complete. Import it into a new slot instead.");
   if (
@@ -203,7 +219,14 @@ export async function runImport(options: RunOptions): Promise<number> {
         needs: file.needs,
       }));
     const exeStamp = game.stamp;
-    const { record, resume } = await manifest.beginImport(id, game.title, exeStamp, planned, slot);
+    const { record, resume } = await manifest.beginImport(
+      id,
+      game.title,
+      exeStamp,
+      planned,
+      slot,
+      present,
+    );
     // what an earlier run already finished counts toward the bar, once
     for (const name of resume.done) {
       if (counted.has(name)) continue;
@@ -237,6 +260,9 @@ export async function runImport(options: RunOptions): Promise<number> {
           totalFiles: Math.max(totalFiles, progress.totalFiles),
         }),
     });
+    // Everything this edition lists is in OPFS now: a copy that was verified, or one just written.
+    for (const [name, entry] of Object.entries(record.files))
+      present.set(`${entry.home}/${name}`, entry.size);
     doneBytes += jobs.reduce((sum, job) => sum + job.size, 0);
     doneFiles += jobs.length;
   }
