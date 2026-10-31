@@ -187,14 +187,23 @@ call). No state codec or server model exists yet.
   at `0x75E5DF` is never entered even though the entry labels are visible to the list parser.
   `WDTHost`/`WDTPort` still decode correctly, and the client never opens a TCP connection to the
   WDT host on a match start, so the mangler is genuinely the remaining input.
+- **Mangler label decoded (verified)**: the mangler is the server-list label **`MGL`**, not
+  `GAM` (0x75E7AC tests `strstr(label, "MGL")`; `GAM` is the game service). Publishing
+  `MGL` with `TCP;127.0.0.1;29094` makes the client log
+  `MGL entry in server list`, `Got mangler server from servserv - address is 127.0.0.1 ; 29094`
+  and `Got 1 mangler servers` (previously 0). The same list still decodes `WDT`
+  (`WDTHost 127.0.0.1:29094`) and the map state stays 30x3. The client still ends at `0xD0`:
+  after `LIST 33` it reconnects to the **IRC** server (not the MGL entry), requests
+  `list 0 0`, gets the lobby list and fails — so the mangler *session* (its login/channel-list/
+  `Start <game>` exchange) is what the bridge must now serve.
 - **Next (sharpened)**: find the condition that reaches the GAM branch — the label loop at
   0x75E08F sees every entry, but GAM handling sits behind `[esp+0x20]` state and an earlier
   service branch; trace `[esp+0x20]` writes (0x75E5D2, 0x75E6C1) and the selected-server flag
   to learn which entry order/fields the client needs before it counts a mangler.
-- **Next**: reach the GAM branch (trace the `[esp+0x20]` state and the selected-server flag),
-  then serve the mangler and the `Start <game>`/`Fail` lines (0x75B910). With a matching game
-  in the type-33 list the client can join it and the existing `WDT=`/STARTG assignment can run.
-  WDT-0b/3 (native) still needs the WOL TCP gateway.
+- **Next**: detect the mangler session in the bridge (the client reconnects after `LIST 33`) and
+  answer its `list 0 0` with the matching server, then deliver `Start <game>` (0x75B910 handles
+  it) and a matching game in the type-33 reply. The existing `WDT=`/STARTG assignment can then
+  run. WDT-0b/3 (native) still needs the WOL TCP gateway.
 
 ### First finding: the browser does not use the raw TCP path
 

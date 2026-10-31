@@ -72,7 +72,7 @@ _Static_assert(sizeof(ra2_wolapi_session) == 504, "browser WOL session layout");
 static char g_lines[WOL_LINE_COUNT][WOL_LINE_CAP];
 static volatile uint32_t g_line_write, g_line_read;
 static wol_server g_server;
-static wol_server g_server_entry;
+static wol_server g_server_entry, g_server_mgl, g_server_wdt;
 static wol_channel g_channels[64];
 static wol_channel g_lobby, g_active_channel;
 static wol_user g_users[32];
@@ -259,6 +259,21 @@ static void emit_server_list(void) {
     g_server_entry = g_server;
     /* The prefix before ':' is a WOL locale, used for automatic selection. */
     snprintf(g_server_entry.name, sizeof g_server_entry.name, "%u:RA2Web", g_product_sku & 0xffu);
+    /* The mangler (GameSpy matchmaking) comes from a server-list entry labelled
+     * "MGL" (0x75E7AC tests for it); "GAM" is the game service. conndata is
+     * proto;host;port, so the mangler points at the same endpoint the WDT
+     * listener serves. */
+    g_server_mgl = g_server;
+    copy_text(g_server_mgl.name, sizeof g_server_mgl.name, "RA2Web MGL");
+    copy_text(g_server_mgl.connlabel, sizeof g_server_mgl.connlabel, "MGL");
+    copy_text(g_server_mgl.conndata, sizeof g_server_mgl.conndata, "TCP;127.0.0.1;29094");
+    g_server_wdt = g_server;
+    copy_text(g_server_wdt.name, sizeof g_server_wdt.name, "RA2Web WDT");
+    copy_text(g_server_wdt.connlabel, sizeof g_server_wdt.connlabel, "WDT");
+    copy_text(g_server_wdt.conndata, sizeof g_server_wdt.conndata, "TCP;127.0.0.1;29094");
+    g_server_wdt.next = 0;
+    g_server_mgl.next = (uint32_t)(uintptr_t)&g_server_wdt;
+    g_server_entry.next = (uint32_t)(uintptr_t)&g_server_mgl;
     g_server.next = (uint32_t)(uintptr_t)&g_server_entry;
     uint32_t values[] = { S_OK, (uint32_t)(uintptr_t)&g_server };
     event_call(0, 2, values); /* IChatEvent::OnServerList */
