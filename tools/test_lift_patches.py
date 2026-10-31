@@ -30,6 +30,8 @@ from run_lift import (
     yr_online_patches,
     ra2_shell_patches,
     thai_font_call_replacements,
+    THEME_PLAYSONG_ARG,
+    theme_song_guard,
     web_exit_confirmation_patches,
 )
 
@@ -524,6 +526,42 @@ class RA2ModeCapPatchTests(unittest.TestCase):
 
     def test_a_partial_build_match_is_left_unpatched(self):
         self.assertEqual(ra2_mode_cap_patches(self.image(corrupt=RA2_MODE_CAP_SITES[2][0]), 0), {})
+
+
+class ThemeSongGuardTests(unittest.TestCase):
+    """A saved song id the theme pack lacks becomes "no song" (run_lift.py theme_song_guard)."""
+
+    @staticmethod
+    def image(target, corrupt=None):
+        va = THEME_PLAYSONG_ARG[target]
+        code = bytearray(va + 6)
+        code[va - 3:va + 6] = bytes.fromhex('8b4e2c8b7c241085c9')
+        if corrupt is not None:
+            code[corrupt] ^= 0xFF
+        return bytes(code)
+
+    def test_both_editions_guard_the_argument_load(self):
+        for target in ('game', 'gamemd'):
+            with self.subTest(target=target):
+                va = THEME_PLAYSONG_ARG[target]
+                patches = theme_song_guard(self.image(target), 0, target)
+                self.assertEqual(set(patches), {va})
+                self.assertIn('(int32_t)edi >= 0', patches[va])
+                self.assertIn('(uint32_t)edi >= MEM32(esi + 0x24)', patches[va])
+                self.assertIn('edi = 0xFFFFFFFFu;', patches[va])
+
+    def test_the_guard_follows_the_argument_load_in_the_lifted_body(self):
+        va = THEME_PLAYSONG_ARG['game']
+        patches = theme_song_guard(self.image('game'), 0, 'game')
+        body = '    edi = MEM32(esp + 0x10); /* 0x%08X: mov edi, dword ptr [esp + 0x10] */\n' % va
+        result = apply_patches(body, patches)
+        self.assertLess(result.index('edi = MEM32(esp + 0x10);'), result.index('edi = 0xFFFFFFFFu;'))
+
+    def test_a_different_build_is_untouched(self):
+        for target in ('game', 'gamemd'):
+            va = THEME_PLAYSONG_ARG[target]
+            with self.subTest(target=target):
+                self.assertEqual(theme_song_guard(self.image(target, corrupt=va), 0, target), {})
 
 
 if __name__ == '__main__':

@@ -457,6 +457,35 @@ def queue_five_patches(target):
     return {site: after_production_event() for site in t['sites']}
 
 
+def theme_song_guard(code, cs, target):
+    """Ignore a song id a save names but the loaded theme pack does not have.
+
+    A save made with another install can hold a value in the Theme's current-song
+    field that is not an index (Sov12S.sav from the report holds 0x30005C1B, a
+    pointer-sized value). PlaySong then reads the song array at that index,
+    `mov ecx, [eax + edi*4]`, which is 3.2 GB past the heap: a wasm trap here,
+    and a fault on Windows too. Treat a non-negative id past the pack's count as
+    "no song" (-1), the value PlaySong already returns on; the mission then
+    starts without that song. The count is at Theme+0x24 and the array at
+    Theme+0x18 (src/recomp/gen_game/recomp_0044.c, Theme::PlaySong).
+    """
+    va = THEME_PLAYSONG_ARG[target]
+    at = va - cs
+    # mov ecx,[esi+0x2c]; mov edi,[esp+0x10]; test ecx,ecx
+    if code[at - 3:at + 6] != b'\x8b\x4e\x2c\x8b\x7c\x24\x10\x85\xc9':
+        print('[*] theme_song_guard: the PlaySong argument load does not match this build; no guard')
+        return {}
+    return {va: (
+        'if ((int32_t)edi >= 0 && (uint32_t)edi >= MEM32(esi + 0x24)) '
+        'edi = 0xFFFFFFFFu; '
+        '/* remaster: a save may name a song the theme pack does not have, '
+        'run_lift.py theme_song_guard */')}
+
+
+# The `mov edi, [esp+0x10]` that loads Theme::PlaySong's song id, in each exe.
+THEME_PLAYSONG_ARG = {'gamemd': 0x00720BDF, 'game': 0x006E7EDF}
+
+
 def web_exit_confirmation_patches(code, cs, target):
     """Replace only the main menu's Exit confirmation call on Emscripten.
 
@@ -1012,6 +1041,7 @@ def targets():
                        title="Yuri's Revenge", game_frame=0x00A8ED84, stamp=0x3BDF544E,
                        patches=lambda code, cs: {**sidebar_rows_patches(code, cs), **dropdown_frame_patches(code, cs), **HD_VOXEL_PATCHES,
                                                  **modern_controls_patches('gamemd'), **queue_five_patches('gamemd'),
+                                                 **theme_song_guard(code, cs, 'gamemd'),
                                                  **yr_online_patches(code, cs),
                                                  **web_exit_confirmation_patches(code, cs, 'gamemd')}),
         'game': dict(exe=os.path.join(_HERE, 'game', 'game.exe'),
@@ -1028,6 +1058,7 @@ def targets():
                                                                      (0x0083962C, 0x00ABCD64)),
                                                **dropdown_frame_patches(code, cs), **HD_VOXEL_PATCHES_GAME,
                                                **modern_controls_patches('game'), **queue_five_patches('game'),
+                                               **theme_song_guard(code, cs, 'game'),
                                                **web_exit_confirmation_patches(code, cs, 'game'),
                                                **ra2_shell_patches(code, cs), **ra2_hires_patches(code, cs),
                                                **ra2_online_patches(code, cs), **ra2_confirm_patches(code, cs),

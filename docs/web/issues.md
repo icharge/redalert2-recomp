@@ -24,6 +24,7 @@ gets them too. Tasks: the W4.1x series in [tasks.md](tasks.md).
 | 13 | Joining a normal Yuri's Revenge game shows "the resolution will be limited" even though the host set no limit; the Create Game "Limit screen resolution" checkbox is greyed out at high resolutions | New | YR kept the stock join check: a room without a resolution flag allows only 1024 wide, so a guest whose `RA2MD.INI` asks for more (the launcher's 2580x1080 here) is prompted before joining. The option itself was force-cleared and disabled at 1024+ | fixed: `yr_online_patches` (`run_lift.py`) makes the option usable at any host size. When it is on, the room advertises 1920x1080, the host is capped at create time, and a guest above it gets the stock prompt with its text rewritten to 1920x1080; accepting stores that size. When it is off, no flag is published and there is no cap or prompt ([hires.md](../hires.md)) |
 | 14 | Hovering the Allied or Soviet emblem on the campaign screen does not light it up (browser and Linux; native Windows is fine) | New | the campaign dialog (`0x94`) runs its hover from `WM_NCHITTEST`, not `WM_MOUSEMOVE`: the handler hit-tests the point, then sends the `0x4D3`/`0x4D4`/`0x4D5` messages the emblem controls animate from. Windows sends `WM_NCHITTEST`, with screen coordinates, ahead of every mouse message; `win32hle`'s mouse input posted only the mouse message | **fixed**, pcrecomp: `hle_input_mouse` sends `WM_NCHITTEST` to the window under the pointer before queueing the mouse message (also while another window holds the capture, as on Windows). `user32_hover_selftest` checks the message, its target and its coordinates; `e2e/campaign-hover.mjs` shows both emblems change and return pixel-exactly in **both editions** (Yuri's Revenge 29,990 and 26,930 pixels; Red Alert 2 36,492 and 30,370). Also true of the native Linux host; W4.20 |
 | 15 | The launcher sometimes cannot start: "testmap.yrm (or another file) is missing from this browser's copy of the game", and it stays that way | New | the game route trusted the installation record's `complete` flag, but the browser's copy had lost the file (storage pressure, cleared site data), and the manifest kept calling it done; "Resume import" then trusted the same flag, so the file was never copied again. A big archive was only linked, so a lost one surfaced later inside the game instead of at the launcher | fixed: the game route measures every recorded file in OPFS before starting, marks the ones the copy lacks as uncopied, and says which files are missing with a **Resume import** link; the resume measures the copy before trusting the record and copies a lost or truncated file again (`missingGameFiles`, `markFilesMissing`, `beginImport(..., present)`; tests in `opfs.test.ts`, `manifest.test.ts`, `importer.test.ts`, `App.test.tsx`) |
+| 16 | Loading a saved game crashes the browser port: `Uncaught RuntimeError: memory access out of bounds` in lifted `sub_006E7EB0` (`Theme::PlaySong`), with `Sov12S.sav` on the guest stack | New | a save made with another install can hold a song id the loaded theme pack does not have (the report's `Sov12S.sav` holds `0x30005C1B`, a pointer-sized value). `Theme::PlaySong` indexes its song array with it, `mov ecx,[eax+edi*4]`: 3.2 GB past the heap, so wasm traps (Windows would fault there too) | fixed: `theme_song_guard` (`run_lift.py`, both editions) turns a non-negative id past the pack's count into -1 ("no song") just after PlaySong loads its argument; the mission loads without that song. Checked with `tools/test_lift_patches.py`, and the report's save now loads to a running battle (1920x1080) |
 
 ## What was behind 6
 
@@ -58,6 +59,21 @@ repair now picks the copy per edition and writes those bytes back over both the 
 the save store; the save watcher compacts the bytes before storing them too. The profile from the
 report was used as the check: 31,391,338 bytes in the store, menu in 3.5 s, store at 1,993 bytes,
 the last 1920x1080 setting preserved, and Load Saved Game stayed running.
+
+## What was behind 16
+
+The report's saves are from another install (their internal "Last Save Time" is
+2011; a save the page makes now says 2026), and `Sov12S.sav` stores `0x30005C1B`
+where the Theme keeps the current song. The load runs `Theme::QueueSong(stream)`
+over the save (`sub_006E8340`) and passes that value to `Theme::PlaySong`. The
+song list has 19 entries, the value is not one, and the out-of-range branch
+still reads `[array + id*4]` at `0x6E80C7` before it prints the song's name; on
+Windows the address would fault as well. A temporary `[theme-trace]` print in
+the lifted body showed `PlaySong arg=30005C1B caller=006E8340 count=19` for the
+save, and `arg=FFFFFFFF` for a save made by this build; the crash reproduces in
+the imported (OPFS) route at 800x600. The guard turns only positive ids past the
+count into -1, leaving the -1/-2/-3 sentinels alone. The report's save then
+reaches a running 1920x1080 battle (screenshot `work/perf/repro-fresh`).
 
 ## What is known about 8, 9 and 10 (parked)
 
