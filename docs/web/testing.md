@@ -126,6 +126,14 @@ RA2's ladder controls are reached through the custom-match lobby:
 `tournament`). The deeper `0xBE`/`0xC1` chat/ladder screens are not opened by
 this path; the run's next press waits for `0xBE` and never reaches it.
 
+The WOL `Help` button (`0xBE:1375`) lives in that same unreachable chat
+dialog: Quick Match (`0x10E:1760`) and RA2's PlayWDT (`0x10E:1763`) both end
+in the game's `0xD0` notice after login, and YR's `0x113` lobby has no Help
+control. The help URL itself is covered without a menu path: the WOLAPI
+selftest checks `WolChat::GetHelpURL`, and
+`LinkDialogContent.test.tsx` renders the `support`/`help` target (heading
+"Support", `${site}/support/help`).
+
 ## Exit confirmation: game to web and back
 
 Regenerate the lifts after changing the call patch (`python run_lift.py --all`

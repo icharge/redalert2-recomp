@@ -587,7 +587,7 @@ the fallback for all of them.
 - **News page key.** `0x113:1958` is `GUI:News`; the page-key table and the YR
   registry now seed `News` -> `https://ra2web.invalid/news` (so the next build
   reports `news`, not the fallback `external`). Covered by
-  `link-targets.test.ts`; the host change needs the next wasm rebuild.
+  `link-targets.test.ts`.
 - **RA2 lobby.** `node e2e/links-lobby.mjs --edition ra2 --profile <ra2prof2>`
   -> `"joined": true`; `0x113:1368` (`GUI:ClanAndLadder`) opens
   `http://www.westwood.com/westwoodonline/tournaments/redalert2/`, which the
@@ -595,3 +595,36 @@ the fallback for all of them.
   not reached from this login path: `0x113:1368` opens the tournament page
   directly, and the script's next press waits for `0xBE`, which never opens.
   The same URL routine is proven by this control and by the offline matrix.
+
+### Rebuild and live verification (1 November 2026, later)
+
+- **YR rebuild.** `set RA2_TARGET=gamemd && build-web.cmd` ->
+  `[1/1] Linking C executable ra2md.js`, published
+  `web/public/game/ra2md.*` (build `736df3192fa11d23`, 3:01).
+  `node build-web/ra2md.js --run --game ./game --headless --mute` ->
+  `@ra2 {"e":"boot","protocol":10,"title":"Yuri's Revenge",...}` and `menu`.
+  The wasm now contains `News\0`, `https://ra2web.invalid/news` and
+  `https://ra2web.invalid/support/help.html` (byte search).
+- **YR lobby e2e, rebuilt module.**
+  `node e2e/links-lobby.mjs --edition ra2md --profile <ra2prof2>` ->
+  `"joined": true`, `0x113:1955` -> `https://ra2web.invalid/ladder`,
+  `0x113:1958` -> `https://ra2web.invalid/news` (no longer `/external`).
+- **RA2 rebuild.** The first attempt raced a concurrent
+  `run_lift.py --all --target game` and failed with missing `sub_*`
+  declarations in `gen_game`; after that lift finished,
+  `build-web.cmd` rebuilt 70 objects and linked, publishing
+  `web/public/game/ra2.*` (build `b9bf3c5b9eccb472`, 3:27).
+  `node build-web-game/ra2.js --run --game ./game --headless --mute` ->
+  `@ra2 {"e":"boot","protocol":10,"title":"Red Alert 2",...}`.
+- **RA2 lobby e2e, rebuilt module.** `0x113:1368` -> `open`
+  `http://www.westwood.com/westwoodonline/tournaments/redalert2/`,
+  `"joined": true`.
+- **Help path.** `0xBE:1375` (`GUI:Help`) lives in the WOL chat dialog, which
+  this build never opens: Quick Match (`0x10E:1760`) and, in RA2, PlayWDT
+  (`0x10E:1763`) both end in the game's `0xD0` notice after login, and the
+  YR custom-match lobby (`0x113`) has no Help button. The host half is proven
+  by the WOLAPI selftest (`GetHelpURL` -> `.../support/help.html`), the page
+  half by `LinkDialogContent.test.tsx` (heading "Support", `/support/help`
+  link) and by injecting the host-shaped event into the running page:
+  `window.ra2Store.apply({e:"open",url:"https://ra2web.invalid/support/help.html",...})`
+  rendered the Support dialog (`work/web-links-help/help-dialog.png`).
