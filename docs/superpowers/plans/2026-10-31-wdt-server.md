@@ -116,9 +116,14 @@ call). No state codec or server model exists yet.
   fail the lookup. The server now sends the unquoted keys and places territories on the map
   grid instead of `-1,-1`, but the **map art is still blank**, so the client state lifetime
   (or map-data loading) remains the open blocker.
-- **Next**: keep the parsed `WDTState` string/territory buffers alive past `OnWDTState`
-  (the refcount is 3 but the buffers are dangling), or make the WDT screen read the packet
-  buffers directly; then WDT-0b/3 native request capture and native-client check.
+- **Buffer test**: skipping the `WDTState` destructor's frees keeps the description strings alive. With the
+  unquoted server keys that removes `***NO_STRING***` completely, but the map is still
+  black. So the blank map is **not** caused by the description-buffer lifetime; the next
+  suspect is the 44-byte territory record layout / map asset loading (`WDTMap.ini`, the
+  client's region art), not `WDTProps.cpp`.
+- **Next**: decode the client's `WDTMap.ini`/region record layout (coordinates, art id and
+  owner row) and compare it with the 44-byte fixture; then WDT-0b/3 native request capture
+  and native-client verification.
 
 ### First finding: the browser does not use the raw TCP path
 
