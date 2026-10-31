@@ -200,6 +200,12 @@ call). No state codec or server model exists yet.
   0x75E08F sees every entry, but GAM handling sits behind `[esp+0x20]` state and an earlier
   service branch; trace `[esp+0x20]` writes (0x75E5D2, 0x75E6C1) and the selected-server flag
   to learn which entry order/fields the client needs before it counts a mangler.
+- **Start-line injection (negative)**: queueing a synthetic
+  `:matchbot!mb@local PRIVMSG <nick> :Start 0:RA2Web` when the client sends `list 33 33` does
+  not reach the match-start handler (`0x75B910` never logs). The bridge delivers a PRIVMSG as
+  `IChatEvent::OnPrivateUnicodeMessage` (ordinal 38); the `Start`/`Fail` parser sits behind a
+  different chat event (the sink virtual at 0x7625C9, gated on WDT state `[0xA3D2A4]` 1 or 2),
+  so the next probe must try the ASCII notice/message ordinals or set the WDT state first.
 - **Next**: detect the mangler session in the bridge (the client reconnects after `LIST 33`) and
   answer its `list 0 0` with the matching server, then deliver `Start <game>` (0x75B910 handles
   it) and a matching game in the type-33 reply. The existing `WDT=`/STARTG assignment can then
