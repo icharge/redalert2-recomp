@@ -55,6 +55,18 @@ describe("linkTarget", () => {
     });
     expect(linkTarget("https://ra2web.invalid/clans", SITE).topic).toBe("community");
     expect(linkTarget("https://ra2web.invalid/status", SITE).topic).toBe("status");
+    // YR's lobby News button (0x113:1958) asks DoWebPageDialog for this key.
+    expect(linkTarget("https://ra2web.invalid/news", SITE)).toMatchObject({
+      topic: "news",
+      embed: true,
+    });
+  });
+
+  it("maps the WOL Help URL to the support page", () => {
+    // src/web/wolapi.c's GetHelpURL hands the game this seeded URL.
+    const help = linkTarget("https://ra2web.invalid/support/help.html", SITE);
+    expect(help).toMatchObject({ topic: "support", detail: "help", external: false, embed: true });
+    expect(sitePageUrl(help, SITE)).toBe(`${SITE}/support/help`);
   });
 
   it("asks before opening an unknown live URL", () => {

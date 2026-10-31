@@ -1,0 +1,19 @@
+/* The chrome draws its own frame; Radix only supplies the modal shell. */
+.content {
+  padding: 0;
+  overflow: hidden;
+  background: transparent;
+  box-shadow: none;
+}
+
+.content :global(.rt-DialogClose) {
+  top: 9px;
+  right: 9px;
+  z-index: 2;
+  color: #f7edd2;
+}
+
+.content :global(.rt-DialogClose):hover {
+  color: #fff;
+  background-color: rgb(255 255 255 / 0.16);
+}

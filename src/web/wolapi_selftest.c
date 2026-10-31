@@ -7,6 +7,9 @@
 
 uint32_t g_eax, g_esp;
 int win32hle_trace;
+/* This selftest drives COM directly, so there is no HLE registry to resolve
+ * names in (only the WDT watchdog path asks for one). */
+uint32_t hle_resolve(const char *name) { (void)name; return 0; }
 static recomp_func_t test_methods[512];
 static uint32_t test_method_count;
 static struct { uint8_t clsid[16]; uint32_t (*create)(const uint8_t *, uint32_t *); } test_classes[3];
@@ -99,6 +102,13 @@ int main(void) {
     uint32_t version = 0;
     uint32_t version_args[] = { (uint32_t)(uintptr_t)&version };
     assert(invoke(g_chat.chat, 20, 1, version_args) == S_OK && version >= 0x10010);
+    /* The Help control reads this URL and hands it to the game's URL routine. */
+    uint32_t help = 0;
+    uint32_t help_args[] = { (uint32_t)(uintptr_t)&help };
+    assert(invoke(g_chat.chat, 34, 1, help_args) == S_OK);
+    assert(strcmp((char *)(uintptr_t)help, "https://ra2web.invalid/support/help.html") == 0);
+    uint32_t no_help[] = { 0 };
+    assert(invoke(g_chat.chat, 34, 1, no_help) == E_POINTER);
     assert(invoke(g_channel.chat, 7, 0, NULL) == S_OK);
     assert(invoke(g_profile.chat, 5, 0, NULL) == S_OK);
     emit_server_list();

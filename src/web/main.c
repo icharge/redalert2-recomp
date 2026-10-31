@@ -736,6 +736,8 @@ int main(int argc, char **argv) {
                        "Battleclans", "https://ra2web.invalid/clans");
     hle_reg_set_string(0x80000002u, "Software\\Westwood\\Yuri's Revenge\\URL",
                        "NetStatus", "https://ra2web.invalid/status");
+    hle_reg_set_string(0x80000002u, "Software\\Westwood\\Yuri's Revenge\\URL",
+                       "News", "https://ra2web.invalid/news");
 #endif
     hle_com_register_class(CLSID_Blowfish, ra2_blowfish_create);
 #ifdef RA2_TARGET_GAME

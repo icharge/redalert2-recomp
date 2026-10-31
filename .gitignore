@@ -8,6 +8,8 @@ build-linux-game/
 # Browser builds (build-web.sh, build-web.cmd)
 build-web/
 build-web-game/
+# Exported from the player's own game folder by tools/export_dialog_art.py
+web/public/dialog-art/
 # Private native-WOL verification modules, also generated from the retail game.
 build-web-udp/
 build-web-wol-yr/

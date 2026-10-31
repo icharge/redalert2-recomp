@@ -1118,6 +1118,15 @@ static void m_chat_get_version(void) {
     MEM32(A32(1)) = 0x10010;
     RET(S_OK, 2);
 }
+/* The lobby's Help control asks WOLAPI for a URL, then hands it to the game's
+ * own URL routine. The server has none, so give it the seeded support page:
+ * web_url_patches maps that to the page dialog like every other game link. */
+static const char g_help_url[] = "https://ra2web.invalid/support/help.html";
+static void m_chat_get_help_url(void) {
+    if (!A32(1)) RET(E_POINTER, 2);
+    MEM32(A32(1)) = (uint32_t)(uintptr_t)g_help_url;
+    RET(S_OK, 2);
+}
 static void m_chat_set_value(void) {
     copy_text(g_attribute_name, sizeof g_attribute_name, ASTR(1));
     copy_text(g_attribute_value, sizeof g_attribute_value, ASTR(2));
@@ -1204,7 +1213,7 @@ static void m_chat_get_attribute_value(void) {
     { "WolChat::GetGametypeInfo", m_stub_7 }, { "WolChat::RequestFind", m_stub_2 }, { "WolChat::RequestPage", m_stub_3 }, \
     { "WolChat::SetFindPage", m_stub_3 }, { "WolChat::SetSquelch", m_stub_3 }, { "WolChat::GetSquelch", m_stub_2 }, \
     { "WolChat::SetChannelFilter", m_stub_2 }, { "WolChat::RequestGameEnd", m_chat_game_end }, { "WolChat::SetLangFilter", m_stub_2 }, \
-    { "WolChat::RequestChannelBan", m_stub_3 }, { "WolChat::GetGametypeList", m_stub_2 }, { "WolChat::GetHelpURL", m_stub_2 }, \
+    { "WolChat::RequestChannelBan", m_stub_3 }, { "WolChat::GetGametypeList", m_stub_2 }, { "WolChat::GetHelpURL", m_chat_get_help_url }, \
     { "WolChat::SetProductSKU", m_chat_profile_value }, { "WolChat::GetNick", m_chat_get_nick }, { "WolChat::SetNick", m_chat_set_nick }, \
     { "WolChat::GetLobbyCount", m_chat_get_lobby_count }, { "WolChat::RequestRawMessage", m_chat_raw_message }, \
     { "WolChat::GetAttributeValue", m_chat_get_attribute_value }, { "WolChat::SetAttributeValue", m_chat_set_value }, \

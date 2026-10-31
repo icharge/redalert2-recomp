@@ -1,6 +1,7 @@
 import { Dialog } from "@radix-ui/themes";
 import type { LinkTarget } from "../game/link-targets";
 import { LinkDialogContent } from "./LinkDialogContent";
+import styles from "./LinkDialog.module.css";
 
 /**
  * The game asked for a URL: show it over the running game. Mounted by
@@ -24,6 +25,7 @@ export function LinkDialog({
       }}
     >
       <Dialog.Content
+        className={styles.content}
         maxWidth="760px"
         onCloseAutoFocus={(event) => {
           if (!returnFocusTo) return;
