@@ -322,12 +322,9 @@ try {
     await guest.page.waitForTimeout(300);
     await guest.clickGame(150, ra2 ? 47 : 65);
     await guest.clickGame(720, 263);
-    if (!ra2 && (await guest.state()).settings.width > 1024) {
-      await waitNative(guest, "[dialog] open 0xFB");
-      await guest.page.waitForTimeout(500);
-      await dump("guest", "resolution-confirm");
-      await guest.clickGame(720, 220); // Yes in the original YR resolution prompt.
-    }
+    // The stock YR join check prompts when the guest's RA2MD.INI size is over
+    // the room's limit; yr_online_patches clamps it quietly (1024x768 for a
+    // 0x200 room, 1920x1080 otherwise), so no resolution dialog appears here.
     if (roomPassword) {
       await waitNative(guest, "[dialog] open 0xE1");
       await guest.page.waitForTimeout(500);

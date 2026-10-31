@@ -122,8 +122,10 @@ tests, but still needs this runtime check:
   otherwise handled cleanly (the reported screenshot showed only three sizes).
 
 Yuri's Revenge's join check was inspected at `0x789960`: unlike RA2's shipping
-code, it retains its comparison (`jle 0x789a58` at `0x7899aa`), so the RA2
-online patch is not applied to YR.
+code, it retains its comparison (`jle 0x789a58` at `0x007899AA`) and its modal
+"resolution limited" prompt. `yr_online_patches` (run_lift.py) now gives it the
+same range and quiet clamp as RA2: 0x200 allows 1024, 0x400 and unflagged rooms
+1920. This removes the prompt a normal room showed every guest above 1024.
 
 ## Working tree notes
 

@@ -586,6 +586,66 @@ RA2_ONLINE_TARGETS = {
 RA2_ONLINE_LABELS = {'clamp': 0x0074582A, 'accept': 0x00745895}
 
 
+# Yuri's Revenge keeps the stock join check (sub_00789960) and its resolution
+# prompt: a guest above the room's limit gets a modal message ("the host limited
+# the resolution") before the join. A normal room (no 0x200/0x400 flag) is
+# limited to 1024, so every guest above 1024 sees it even when the host did not
+# enable [MultiPlayer] WOLLimitResolution. The same range as Red Alert 2
+# (1024x768 .. 1920x1080) replaces the stock 640/800/1024: 0x200 allows 1024,
+# 0x400 and unflagged rooms allow 1920. A larger match size (0xA8EB84, the
+# size RA2MD.INI asks for) is clamped quietly and saved, and the join continues
+# without the prompt. The lower bound is not raised here.
+YR_ONLINE_SITES = {
+    # va: (hex of the instruction the patch lands on, what it is)
+    'limit_800': (0x00789988, 'be20030000'),          # mov esi, 0x320 (ResolutionLimited800)
+    'limit_and': (0x00789998, '2580feffff'),          # and eax, 0xfffffe80
+    'limit_add': (0x0078999D, '0500040000'),          # add eax, 0x400
+    'cmp_width': (0x007899A4, '393584eba800'),        # cmp [0xa8eb84], esi
+    'jle_accept': (0x007899AA, '0f8e'),               # jle 0x789a58 (the stock prompt/clamp)
+}
+YR_ONLINE_TARGETS = {'jle_accept': 0x00789A58}
+YR_ONLINE_LABELS = {'accept': 0x00789A58}
+
+
+def yr_online_patches(code, cs):
+    """Yuri's Revenge's online resolution range (see YR_ONLINE_SITES).
+
+    Every site is checked by its bytes first; the branch's rel32 must reach the
+    stock acceptance label. A different build gets no patches."""
+    def at(va, hexbytes):
+        raw = bytes.fromhex(hexbytes)
+        return code[va - cs:va - cs + len(raw)] == raw
+
+    checks = [at(va, shape) for name, (va, shape) in YR_ONLINE_SITES.items()
+              if name != 'jle_accept']
+    va, shape = YR_ONLINE_SITES['jle_accept']
+    rel = int.from_bytes(code[va - cs + 2:va - cs + 6], 'little', signed=True)
+    checks.append(at(va, shape) and va + 6 + rel == YR_ONLINE_TARGETS['jle_accept'])
+    if not all(checks):
+        print('[*] yr_online_patches: a site does not match this build; no online patches')
+        return {}
+
+    tag = '/* remaster: online resolution range, run_lift.py yr_online_patches */'
+    sites = YR_ONLINE_SITES
+    out = {
+        sites['limit_800'][0]: 'esi = 0x780u; ' + tag,
+        sites['limit_and'][0]: '@replace:eax = eax & 0xFFFFFC80u; ' + tag,
+        sites['limit_add'][0]: '@replace:eax = eax + 0x780u; ' + tag,
+        # The stock branch opens the resolution message and only then clamps.
+        # Replace it with the quiet clamp: store 1024x768 for the 1024 limit,
+        # else 1920x1080, save the settings, and go straight to the join.
+        sites['jle_accept'][0]: ('@replace:{ if ((int32_t)MEM32(0x00A8EB84) <= (int32_t)esi) '
+                                 'goto L_%08X; } '
+                                 '{ uint32_t _w = (esi == 0x400u) ? 0x400u : 0x780u; '
+                                 'uint32_t _h = (_w == 0x400u) ? 0x300u : 0x438u; '
+                                 'MEM32(0x00A8EB84) = _w; MEM32(0x00A8EB88) = _h; '
+                                 'ecx = 0x00A8EB60u; RECOMP_CALL(sub_005FAD10); RECOMP_FLAGS_IN(); } '
+                                 'goto L_%08X; %s') % (YR_ONLINE_LABELS['accept'],
+                                                       YR_ONLINE_LABELS['accept'], tag),
+    }
+    return out
+
+
 def ra2_online_patches(code, cs):
     """Red Alert 2's online resolution range (see RA2_ONLINE_SITES).
 
@@ -915,6 +975,7 @@ def targets():
                        title="Yuri's Revenge", game_frame=0x00A8ED84, stamp=0x3BDF544E,
                        patches=lambda code, cs: {**sidebar_rows_patches(code, cs), **dropdown_frame_patches(code, cs), **HD_VOXEL_PATCHES,
                                                  **modern_controls_patches('gamemd'), **queue_five_patches('gamemd'),
+                                                 **yr_online_patches(code, cs),
                                                  **web_exit_confirmation_patches(code, cs, 'gamemd')}),
         'game': dict(exe=os.path.join(_HERE, 'game', 'game.exe'),
                      catalog=os.path.join(_HERE, 'work', 'game', 'functions.json'),

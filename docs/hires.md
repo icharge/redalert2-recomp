@@ -39,6 +39,16 @@ bytes first so a different build gets none:
 - `src/web/wolapi.c` keeps the room flag bits (`0x200`, `0x400`) through room
   creation and room-list parsing; `wolapi_selftest.c` checks the round trip.
 
+Yuri's Revenge keeps the stock join check (`sub_00789960`) and its modal
+"resolution limited" message: a guest whose `RA2MD.INI` size is above the room's
+limit is asked before joining. A room without a resolution flag is limited to
+1024, so every guest above 1024 saw the message even when the host did not turn
+on `[MultiPlayer] WOLLimitResolution`. `yr_online_patches` gives YR the same
+range and quiet clamp as RA2: flag `0x200` allows 1024x768, `0x400` and unflagged
+rooms 1920x1080; a larger size is stored (and saved) without the message. The
+RA2Web server still relays the room flags and must enforce the range itself for
+patched or third-party clients.
+
 The host (`CMakeLists.txt`, `src/runtime/host.c`) links at `/BASE:0x10000000` with a
 1 MB stack and runs the game on a thread with a 16 MB one: at the old base
 (0x60000000) this Windows would not start the ~480 MB image, and a 16 MB main

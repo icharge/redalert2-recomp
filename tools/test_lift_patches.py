@@ -27,6 +27,7 @@ from run_lift import (
     ra2_profile_patches,
     ra2_tab_patches,
     ra2_online_patches,
+    yr_online_patches,
     ra2_shell_patches,
     thai_font_call_replacements,
     web_exit_confirmation_patches,
@@ -256,6 +257,60 @@ class RA2OnlinePatchTests(unittest.TestCase):
                 self.assertEqual(ra2_online_patches(self.image(corrupt=va), 0), {})
         self.assertEqual(ra2_online_patches(self.image(jmp_target=0x00745900), 0), {})
         self.assertEqual(ra2_online_patches(self.image(call_target=0x00500000), 0), {})
+
+
+class YROnlinePatchTests(unittest.TestCase):
+    """Yuri's Revenge's online resolution range (run_lift.py yr_online_patches)."""
+
+    SIZE = 0x00790000
+
+    @staticmethod
+    def rel32(va, length, target):
+        return ((target - (va + length)) & 0xFFFFFFFF).to_bytes(4, 'little').hex()
+
+    @classmethod
+    def image(cls, target=0x00789A58, corrupt=None):
+        code = bytearray(cls.SIZE)
+
+        def put(va, hexbytes):
+            raw = bytes.fromhex(hexbytes)
+            code[va:va + len(raw)] = raw
+
+        put(0x00789988, 'be20030000')
+        put(0x00789998, '2580feffff')
+        put(0x0078999D, '0500040000')
+        put(0x007899A4, '393584eba800')
+        put(0x007899AA, '0f8e' + cls.rel32(0x007899AA, 6, target))
+        if corrupt is not None:
+            code[corrupt] ^= 0xFF
+        return bytes(code)
+
+    def test_every_site_is_patched(self):
+        patches = yr_online_patches(self.image(), 0)
+        self.assertEqual(set(patches), {0x00789988, 0x00789998, 0x0078999D, 0x007899AA})
+
+    def test_the_limit_is_1920_with_1024_for_the_640_flag(self):
+        patches = yr_online_patches(self.image(), 0)
+        self.assertIn('esi = 0x780u;', patches[0x00789988])
+        self.assertIn('eax = eax & 0xFFFFFC80u;', patches[0x00789998])
+        self.assertIn('eax = eax + 0x780u;', patches[0x0078999D])
+
+    def test_the_prompt_becomes_a_quiet_clamp(self):
+        patches = yr_online_patches(self.image(), 0)
+        body = '    if (CMP_LE(_flag_a, _flag_b)) goto L_00789A58; /* 0x007899AA: jle 0x789a58 */\n'
+        result = apply_patches(body, {0x007899AA: patches[0x007899AA]})
+        self.assertIn('if ((int32_t)MEM32(0x00A8EB84) <= (int32_t)esi)', result)
+        self.assertNotIn('RECOMP_CALL(sub_00734E60)', result)
+        self.assertIn('MEM32(0x00A8EB84) = _w;', result)
+        self.assertIn('MEM32(0x00A8EB88) = _h;', result)
+        self.assertIn('RECOMP_CALL(sub_005FAD10)', result)
+        self.assertIn('goto L_00789A58;', result)
+
+    def test_a_different_build_gets_no_online_patches(self):
+        for va in (0x00789988, 0x00789998, 0x0078999D, 0x007899A4):
+            with self.subTest(va=va):
+                self.assertEqual(yr_online_patches(self.image(corrupt=va), 0), {})
+        self.assertEqual(yr_online_patches(self.image(target=0x00789B00), 0), {})
 
 
 class RA2ConfirmPatchTests(unittest.TestCase):
