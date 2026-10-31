@@ -73,7 +73,7 @@ export async function startPage(opts) {
     // 100 MB DevTools pipe buffer and disconnect the browser.
     const server = createServer((request, response) => {
       const name = new URL(request.url, "http://localhost").pathname.slice(1);
-      if (!/^ra2\.(js|wasm|data)$/.test(name)) {
+      if (!/^ra2(?:md)?\.(js|wasm|data)$/.test(name)) {
         response.writeHead(404).end();
         return;
       }

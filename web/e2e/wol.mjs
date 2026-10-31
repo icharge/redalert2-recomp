@@ -221,7 +221,10 @@ async function enterRoomPassword(run, password) {
 async function open(name, username) {
   const run = await startPage({ ...opts, shots: `${opts.shots}/${name}` });
   clients[name] = run;
-  await run.page.evaluate(() => {
+  // The WOL server under test; override for a private port
+  // (WOL_TEST_HOST=127.0.0.1:19091).
+  const wolHost = process.env.WOL_TEST_HOST ?? "127.0.0.1:19090";
+  await run.page.evaluate((wolHost) => {
     const Socket = window.WebSocket;
     window.WebSocket = class extends Socket {
       constructor(url, protocols) {
@@ -230,7 +233,7 @@ async function open(name, username) {
         if (String(url).endsWith("/gserv/native")) window.wolTestRelaySocket = this;
       }
     };
-  });
+  }, wolHost);
   run.wire = [];
   run.page.on("websocket", (ws) => {
     if (!ws.url().includes("/wol")) return;
