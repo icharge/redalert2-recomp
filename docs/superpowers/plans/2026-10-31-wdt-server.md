@@ -73,12 +73,12 @@ call). No state codec or server model exists yet.
 | WDT-0a | Capture the browser request shape | **done** | — | The faction click reaches `WolChannel::RequestWDTState`; args recorded (`0C058240 00B269AC 0 3`, sink `0BF5B910`). |
 | WDT-0b | Capture the native/server-list path | pending | — | Native `sub_00797800` request bytes and the `MGL` server-list fields are understood. |
 | WDT-1 | Packet codec and state model | **done** | WDT-0a/b | `src/wdt/codec.ts` + `service.ts`: container/tag round-trip, 30×44-byte records, 2-bit owner map, current/previous packets; 14 tests. |
-| WDT-2 | Browser `RequestWDTState` bridge | **done** | WDT-1 | Bridge signals the client's event array (index 0xB), fetches `/wdt/state` through the page (`MAIN_THREAD_EM_ASM`), delivers `OnWDTState` (current 1556 B, previous 216 B), no `E_NOTIMPL`, no `0xD0`. |
+| WDT-2 | Browser `RequestWDTState` bridge | **done** | WDT-1 | Bridge signals the client's event array (index 0xB), fetches `/wdt/state` through the page (`MAIN_THREAD_EM_ASM`), delivers `OnWDTState` (current/previous). The event argument list is now `(this, unused, packet, length)`, so the client parses `MPVC`/`HSVC` (30x3) and shows owner colours, icons and territory names. |
 | WDT-2a | Server-side WDT state endpoint | **done** | WDT-1 | `/wdt/state?cycle=current|previous` and `/wdt/status`; live smoke returns 1556/216-byte packets. |
 | WDT-3 | Native TCP WDT listener | **started** | WDT-0b | `WdtTcpServer` answers `WDT CURRENT`/`PREVIOUS` on `WDT_PORT`; native client capture still pending. |
-| WDT-4 | Match assignment and result ingestion | **started** | WDT-2/3 | `MatchWDT`/`WDS=`/`WDT=` in GAMEOPT and the bot assign a conflict at STARTG; native results settle it once. Live two-client WOL test passes; duplicate→409. |
+| WDT-4 | Match assignment and result ingestion | **started** | WDT-2/3 | Server assignment and settlement verified (live WOL test, duplicate→409). The UI now selects a white territory and a second click starts the match, which stops at the WOL game-list (type 33) lookup: no WDT matching game -> `0xD0`. |
 | WDT-5 | Cycles, history, admin | **done** | WDT-4 | `advanceCycle` freezes the current map as previous; authenticated `/wdt/admin/{rollover,reset,enable,status}`; `/wdt/status` exposes conflicts/history. |
-| WDT-6 | Persistence, tests, docs | **done** | all | SQLite `wdt_state` snapshot, Memory store, 16 WDT tests, regenerated RA2 lift (`--check` exit 0), 46 lift-patch tests. |
+| WDT-6 | Persistence, tests, docs | **done** | all | SQLite `wdt_state` snapshot, Memory store, 16 WDT tests, regenerated RA2 lift (`--check` exit 0), 51 lift-patch tests. |
 
 ### Progress note (2026-10-31)
 
@@ -144,10 +144,24 @@ call). No state codec or server model exists yet.
 - **WDT screen object**: `sub_0072FFC0`’s `ecx` is not a persistent screen — its `+0x454`/
   `+0x45C` fields are per-frame stack scratch, and `+0x45C` is the **Back button**
   (rect 570,475 136x25 at 1280x720), which is why direct injection from the host is useless.
-- **Next**: locate the transition that starts a match from a selected territory (the
-  `[screen+0x454] == 2` branch / `0x72F430`, or the territory panel action), then drive it and
-  verify the lobby `MatchWDT`/`WDT=` conflict. WDT-0b/3 (native) still needs the WOL TCP
-  gateway.
+- **Bridge argument fix (root cause)**: `OnWDTState` is
+  `(this, unused, packet, length)`. The browser bridge pushed an extra zero
+  (`{sink,0,0,packet,len}` / count 5), so the client parsed a null packet: every tag
+  lookup missed, `MPVC`/`HSVC` lengths were 0, the sidebar showed `MISSING*` and the map
+  had no owner fill. With `{sink,0,packet,len}` / count 4 the client parses the real
+  packet: `MPVC parse len=1320`, `state width=30 rows=3`, owner colours (Soviet red,
+  neutral white), territory icons, and real names (`Grand Canyon`, `Black Hills`).
+- **UI match flow**: one click on a white territory selects it (name, "Starting Units : 13,
+  MCV Redeployable, Long Game, No Goodie Crates", prompt **"Click to fight in this
+  territory"**). A second click starts the match: the client initialises Winsock/UDP,
+  requests the lobby list (type 0), joins `Lob_33_0`, then requests the **game list
+  (type 33)**. It then searches that list for the WDT matching server; with no such game
+  it shows dialog `0xD0` (**"Error : Matching Server Not Found"**, CSF
+  `WOL:MatchGameChannelNotFound`). Evidence: `work/wdt-final2/territory-click-game.png`
+  (selected Black Hills), `work/wdt-fix5/game.log` (match start + 0xD0).
+- **Next**: answer the type-33 game-list request with a WDT matching game so the client can
+  join it instead of showing `0xD0`, then verify a live `MatchWDT`/`WDT=` conflict and result.
+  WDT-0b/3 (native) still needs the WOL TCP gateway.
 
 ### First finding: the browser does not use the raw TCP path
 

@@ -882,41 +882,6 @@ static void m_stub_4(void) { RET(E_NOTIMPL, 4); }
  * 16-bit length) and that many bytes padded to four. The client's WDTState
  * constructor (0x76AC90) walks exactly this shape; see the WDT plan. */
 static uint8_t g_wdt_packet[4096];
-/* Probe: the exe's fallback literals include quote characters, but the CSF
- * keys are stored without them. Return the unquoted key for WDTProps. */
-uint32_t ra2_wdt_default_key(int longDescription) {
-    static char shortKey[] = "WDT:DefaultShortDescription";
-    static char longKey[] = "WDT:DefaultLongDescription";
-    return (uint32_t)(uintptr_t)(longDescription ? longKey : shortKey);
-}
-void ra2_wdt_debug_state(const char *where, uint32_t ebx, uint32_t eax) {
-    uint32_t heap = (uint32_t)emscripten_get_heap_size();
-    fprintf(stderr, "[wdt] %s ebx=%08X eax=%08X [ebx]=%08X [ebx+4]=%08X\n",
-            where, ebx, eax, ebx ? MEM32(ebx) : 0, ebx ? MEM32(ebx + 4) : 0);
-    if (!eax || eax + 0x50 >= heap) return;
-    for (int field = 8; field <= 0x10; field += 4) {
-        uint32_t p = MEM32(eax + (uint32_t)field);
-        fprintf(stderr, "[wdt] %s +%02X=%08X", where, field, p);
-        if (p && p + 64 < heap) {
-            fprintf(stderr, " via='");
-            for (int i = 0; i < 32 && MEM8(p + (uint32_t)i); i++) {
-                unsigned char c = MEM8(p + (uint32_t)i);
-                fputc(c >= 32 && c < 127 ? c : '.', stderr);
-            }
-            uint32_t q = MEM32(p);
-            fprintf(stderr, "' [p]=%08X", q);
-            if (q && q + 32 < heap) {
-                fprintf(stderr, " str='");
-                for (int i = 0; i < 32 && MEM8(q + (uint32_t)i); i++) {
-                    unsigned char c = MEM8(q + (uint32_t)i);
-                    fputc(c >= 32 && c < 127 ? c : '.', stderr);
-                }
-                fprintf(stderr, "'");
-            }
-        }
-        fprintf(stderr, "\n");
-    }
-}
 /* The page caches the RA2Web /wdt/state packet for the current and previous
  * cycle when the WOL client connects. The game runs on an Emscripten worker,
  * so hop to the page's main thread (as the WOL bridge does) and copy the
@@ -1026,11 +991,13 @@ static uint32_t wdt_state_previous(uint8_t *p) {
 static void wdt_deliver(const uint8_t *packet, uint32_t len) {
     uint32_t sink = g_channel.sink;
     if (!sink) return;
-    /* slot 8 of CComObject<CNetUtilEventSink>'s vtable: OnWDTState */
+    /* slot 8 of CComObject<CNetUtilEventSink>'s vtable: OnWDTState
+     * (this, unused, packet, length) — the client reads the packet from the
+     * third stack slot and the length from the fourth (RA2 0x75D210). */
     uint32_t method = MEM32(MEM32(sink) + 8u * 4u);
-    uint32_t args[5] = { sink, 0, 0, (uint32_t)(uintptr_t)packet, len };
+    uint32_t args[4] = { sink, 0, (uint32_t)(uintptr_t)packet, len };
     fprintf(stderr, "[wdt] OnWDTState fn=%08X len=%u\n", method, len);
-    hle_call_guest(method, 5, args);
+    hle_call_guest(method, 4, args);
     uint32_t state = MEM32(0xB2AD68u + 4u);
     uint32_t props = MEM32(0xB2AD78u + 4u);
     fprintf(stderr, "[wdt] state=%08X props=%08X globals:", state, props);
