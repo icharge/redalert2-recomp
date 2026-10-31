@@ -78,8 +78,12 @@ static wol_channel g_lobby, g_active_channel;
 static wol_user g_users[32];
 static wol_user g_locale_user;
 static uint32_t g_channel_count, g_user_count, g_channel_type = WOL_LOBBY_TYPE;
+/* True while g_channels holds the answer to a type-0 (lobby) channel list. */
+static uint32_t g_channel_list_lobby;
+/* Players in the lobby this client last joined, for the synthetic lobby entry
+ * used when the server has no lobby row to report (e.g. the first player). */
+static uint32_t g_lobby_users;
 static uint32_t g_pending_server_list;
-static uint32_t g_pending_channel_list;
 static uint32_t g_pending_logout;
 static uint32_t g_creating_channel;
 static uint32_t g_joining_channel;
@@ -291,6 +295,23 @@ static void collect_motd(const char *line) {
 }
 
 static void emit_channel_list(void) {
+    if (g_channel_list_lobby) {
+        g_channel_list_lobby = 0;
+        /* RA2Web creates global lobbies on JOIN. If no lobby of this edition
+         * exists yet it has nothing to report, but the native directory still
+         * needs the configured lobby so the game can find and join it. */
+        if (g_channel_count == 0) {
+            memset(&g_lobby, 0, sizeof g_lobby);
+            snprintf(g_lobby.name, sizeof g_lobby.name, "Lob_%u_0", (unsigned)WOL_LOBBY_TYPE);
+            copy_text(g_lobby.topic, sizeof g_lobby.topic, "RA2Web");
+            g_lobby.max_users = 100;
+            g_lobby.official = 1;
+            g_lobby.current_users = g_lobby_users;
+            uint32_t values[] = { S_OK, (uint32_t)(uintptr_t)&g_lobby };
+            event_call(5, 2, values); /* IChatEvent::OnChannelList */
+            return;
+        }
+    }
     for (uint32_t i = 0; i < g_channel_count; i++)
         g_channels[i].next = i + 1 < g_channel_count ? (uint32_t)(uintptr_t)&g_channels[i + 1] : 0;
     uint32_t values[] = { S_OK, g_channel_count ? (uint32_t)(uintptr_t)&g_channels[0] : 0 };
@@ -303,6 +324,13 @@ static void emit_user_list(void) {
     for (uint32_t i = 0; i < g_user_count; i++)
         g_users[i].next = i + 1 < g_user_count ? (uint32_t)(uintptr_t)&g_users[i + 1] : 0;
     wol_channel *channel = current_channel();
+    if (channel) {
+        /* Keep the channel record the game sees in step with its roster; the
+         * native channel list shows this count next to the channel name. */
+        channel->current_users = g_user_count;
+        if (g_current_channel[0] == '#' && strncmp(g_current_channel + 1, "Lob_", 4) == 0)
+            g_lobby_users = g_user_count;
+    }
     uint32_t values[] = { S_OK, (uint32_t)(uintptr_t)channel,
         g_user_count ? (uint32_t)(uintptr_t)&g_users[0] : 0 };
     event_call(12, 3, values); /* IChatEvent::OnUserList */
@@ -387,6 +415,13 @@ static void parse_room_line(const char *line) {
     for (char *field = strtok(copy, " \r\n"); field && count < 16; field = strtok(NULL, " \r\n"))
         fields[count++] = field;
     if (count < 11 || strcmp(fields[1], "322") != 0 || fields[3][0] != '#') return;
+    /* A type-0 LIST contains every lobby; the native screen only knows this
+     * edition's own lobbies (Lob_33_* for RA2, Lob_41_* for YR). */
+    if (g_channel_list_lobby) {
+        char prefix[24];
+        snprintf(prefix, sizeof prefix, "Lob_%u_", (unsigned)WOL_LOBBY_TYPE);
+        if (strncmp(fields[3] + 1, prefix, strlen(prefix)) != 0) return;
+    }
     wol_channel *channel = &g_channels[g_channel_count++];
     memset(channel, 0, sizeof *channel);
     channel->current_users = (uint32_t)strtoul(fields[4], NULL, 10);
@@ -512,7 +547,7 @@ static void disconnected(void) {
     g_connected = g_connection_pending = g_creating_channel = g_joining_channel = g_starting_game = 0;
     memset(&g_session, 0, sizeof g_session);
     g_current_channel[0] = '\0';
-    g_user_count = g_channel_count = 0;
+    g_user_count = g_channel_count = g_lobby_users = g_channel_list_lobby = 0;
     uint32_t status[] = { 0x0004012fu };
     event_call(16, 1, status); /* IChatEvent::OnNetStatus: connection closed */
 }
@@ -735,18 +770,6 @@ static void pump_lines(void) {
         uint32_t status[] = { 0x0004012fu }; /* directory connection closed after listing */
         event_call(16, 1, status); /* IChatEvent::OnNetStatus */
     }
-    if (g_pending_channel_list) {
-        g_pending_channel_list = 0;
-        /* RA2Web creates global lobbies on JOIN and only lists game rooms.
-         * Expose this configured lobby through the native directory interface. */
-        memset(&g_lobby, 0, sizeof g_lobby);
-        snprintf(g_lobby.name, sizeof g_lobby.name, "Lob_%u_0", g_channel_type);
-        copy_text(g_lobby.topic, sizeof g_lobby.topic, "RA2Web");
-        g_lobby.max_users = 100;
-        g_lobby.official = 1;
-        uint32_t values[] = { S_OK, (uint32_t)(uintptr_t)&g_lobby };
-        event_call(5, 2, values);
-    }
     if (g_pending_logout) {
         g_pending_logout = 0;
         wol_user *user = user_for_name(g_nick);
@@ -759,6 +782,8 @@ static void pump_lines(void) {
         g_current_channel[0] = '\0';
         g_user_count = 0;
         g_channel_count = 0;
+        g_lobby_users = 0;
+        g_channel_list_lobby = 0;
         g_motd_ready = 0;
     }
     uint32_t read = __atomic_load_n(&g_line_read, __ATOMIC_RELAXED);
@@ -924,10 +949,14 @@ static void m_chat_request_connection(void) {
 }
 static void m_chat_request_channel_list(void) {
     char line[80];
-    if (!A32(1)) { g_pending_channel_list = 1; RET(S_OK, 3); }
-    g_channel_type = A32(1);
+    uint32_t type = A32(1);
+    if (type) g_channel_type = type;
+    g_channel_list_lobby = type == 0;
     g_channel_count = 0;
-    snprintf(line, sizeof line, "list %u %u", g_channel_type, g_channel_type);
+    /* Type 0 is the native lobby (channel) list. Ask RA2Web so the game
+     * receives each lobby's player count; if the server has no lobby yet,
+     * emit_channel_list() exposes the configured one instead. */
+    snprintf(line, sizeof line, "list %u %u", type, type);
     browser_send(line);
     RET(S_OK, 3);
 }

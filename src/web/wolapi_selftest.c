@@ -129,16 +129,34 @@ int main(void) {
     assert(invoke(g_chat.point, 5, 2, advise) == S_OK);
     /* RA2 requests an untyped directory before ever specifying its game type.
      * It rejects the result unless its lobby name starts with Lob_33_. */
+    EM_ASM({ Module.ra2WolSend = line => { Module.testWolLine = line; }; });
+    char expected_lobby[16];
+    snprintf(expected_lobby, sizeof expected_lobby, "Lob_%u_0", (unsigned)WOL_LOBBY_TYPE);
     uint32_t initial_lobby_args[] = { 0, 0 };
     assert(invoke(g_chat.chat, 6, 2, initial_lobby_args) == S_OK);
+    assert(EM_ASM_INT({ return Module.testWolLine === "list 0 0"; }));
+    /* A lobby already in use is reported by the server with its player count. */
+    ra2_wolapi_receive_line(":wol-ra2web 321 testuser 0 :Channel Users Name");
+    char listed_lobby[96];
+    snprintf(listed_lobby, sizeof listed_lobby,
+             ":wol-ra2web 322 testuser #Lob_%u_0 2 0 0 0 0 0 0:: :0", (unsigned)WOL_LOBBY_TYPE);
+    ra2_wolapi_receive_line(listed_lobby);
+    ra2_wolapi_receive_line(":wol-ra2web 323 testuser 0 :End of /LIST");
     assert(invoke(g_chat.chat, 3, 0, NULL) == S_OK);
     assert(test_event_count == 1 && test_event_method[0] == 0x10008);
     wol_channel *initial_lobby = (wol_channel *)(uintptr_t)test_event_args[0][2];
-#ifdef RA2_TARGET_GAME
-    assert(strcmp(initial_lobby->name, "Lob_33_0") == 0);
-#else
-    assert(strcmp(initial_lobby->name, "Lob_41_0") == 0);
-#endif
+    assert(strcmp(initial_lobby->name, expected_lobby) == 0);
+    assert(initial_lobby->current_users == 2);
+    /* Servers without a live lobby still get the configured one, so the game
+     * can find and join it (RA2Web creates lobbies on JOIN). */
+    test_event_count = 0;
+    assert(invoke(g_chat.chat, 6, 2, initial_lobby_args) == S_OK);
+    ra2_wolapi_receive_line(":wol-ra2web 321 testuser 0 :Channel Users Name");
+    ra2_wolapi_receive_line(":wol-ra2web 323 testuser 0 :End of /LIST");
+    assert(invoke(g_chat.chat, 3, 0, NULL) == S_OK);
+    assert(test_event_count == 1 && test_event_method[0] == 0x10008);
+    initial_lobby = (wol_channel *)(uintptr_t)test_event_args[0][2];
+    assert(strcmp(initial_lobby->name, expected_lobby) == 0);
     test_event_count = 0;
     uint32_t discover[] = { 45, 0x10001, (uint32_t)(uintptr_t)"TibSun", (uint32_t)(uintptr_t)"TibPass99", 30 };
     assert(invoke(g_chat.chat, 4, 5, discover) == S_OK);
@@ -166,30 +184,41 @@ int main(void) {
     uint32_t game_list_args[] = { 41, 1 }, lobby_list_args[] = { 0, 0 };
     assert(invoke(g_chat.chat, 6, 2, game_list_args) == S_OK);
     assert(invoke(g_chat.chat, 6, 2, lobby_list_args) == S_OK);
+    assert(EM_ASM_INT({ return Module.testWolLine === "list 0 0"; }));
+    assert(invoke(g_chat.chat, 3, 0, NULL) == S_OK);
+    assert(test_event_count == 3); /* every LIST now waits for the server's reply */
+    ra2_wolapi_receive_line(":wol 321 testuser 0 :Channel Users Name");
+    ra2_wolapi_receive_line(":wol 323 testuser 0 :End of /LIST");
     assert(invoke(g_chat.chat, 3, 0, NULL) == S_OK);
     assert(test_event_count == 4 && test_event_method[3] == 0x10008);
     wol_channel *lobby = (wol_channel *)(uintptr_t)test_event_args[3][2];
-    assert(lobby && lobby->type == 0 && strcmp(lobby->name, "Lob_41_0") == 0);
+    assert(lobby && lobby->type == 0 && strcmp(lobby->name, expected_lobby) == 0);
     uint32_t join_args[] = { (uint32_t)(uintptr_t)lobby };
     assert(invoke(g_chat.chat, 8, 1, join_args) == S_OK);
-    assert(EM_ASM_INT({ return Module.testWolLine === "join #Lob_41_0 zotclot9"; }));
-    ra2_wolapi_receive_line(":testuser!local JOIN :0,0,0,1 #Lob_41_0");
+    snprintf(listed_lobby, sizeof listed_lobby, "join #Lob_%u_0 zotclot9", (unsigned)WOL_LOBBY_TYPE);
+    assert(EM_ASM_INT({ return Module.testWolLine === UTF8ToString($0); }, (uint32_t)(uintptr_t)listed_lobby));
+    char lobby_channel[24], lobby_line[96];
+    snprintf(lobby_channel, sizeof lobby_channel, "#Lob_%u_0", (unsigned)WOL_LOBBY_TYPE);
+    snprintf(lobby_line, sizeof lobby_line, ":testuser!local JOIN :0,0,0,1 %s", lobby_channel);
+    ra2_wolapi_receive_line(lobby_line);
     assert(invoke(g_chat.chat, 3, 0, NULL) == S_OK);
     assert(test_event_method[4] == 0x1000a);
     wol_user *joined = (wol_user *)(uintptr_t)test_event_args[4][3];
     assert(joined->flags & 0x8000); /* native OnChannelJoin distinguishes our own join */
-    assert(strcmp(((wol_channel *)(uintptr_t)test_event_args[4][2])->name, "Lob_41_0") == 0);
-    ra2_wolapi_receive_line(":wol 353 testuser = #Lob_41_0 :@testuser,0,1,1 other,0,0,1");
+    assert(strcmp(((wol_channel *)(uintptr_t)test_event_args[4][2])->name, expected_lobby) == 0);
+    snprintf(lobby_line, sizeof lobby_line, ":wol 353 testuser = %s :@testuser,0,1,1 other,0,0,1", lobby_channel);
+    ra2_wolapi_receive_line(lobby_line);
     assert(invoke(g_chat.chat, 3, 0, NULL) == S_OK);
     assert(g_user_count == 2 && strcmp(g_users[1].name, "other") == 0);
     assert((g_users[0].flags & 0x8001) == 0x8001);
     (void)user_for_name("other");
     assert(strcmp(g_users[0].name, "testuser") == 0);
     assert(invoke(g_chat.chat, 9, 0, NULL) == S_OK);
-    ra2_wolapi_receive_line(":testuser!local PART #Lob_41_0");
+    snprintf(lobby_line, sizeof lobby_line, ":testuser!local PART %s", lobby_channel);
+    ra2_wolapi_receive_line(lobby_line);
     assert(invoke(g_chat.chat, 3, 0, NULL) == S_OK);
     assert(test_event_count == 7 && test_event_method[6] == 0x1000b);
-    assert(strcmp(((wol_channel *)(uintptr_t)test_event_args[6][2])->name, "Lob_41_0") == 0);
+    assert(strcmp(((wol_channel *)(uintptr_t)test_event_args[6][2])->name, expected_lobby) == 0);
     assert(!g_current_channel[0]);
     wol_channel room = { .type = 41, .min_users = 1, .max_users = 4, .reserved = 0x600, .flags = 128 };
     strcpy(room.name, "testuser");
