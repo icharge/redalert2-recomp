@@ -30,32 +30,20 @@ bytes first so a different build gets none:
   for the next game and nothing switches live.
 - `ra2_hires_patches` and `ra2_mode_cap_patches`: `AllowHiResModes` forced on and the
   size cap in both dialogs raised.
-- `ra2_online_patches`: the online join check (`sub_00745780`, which the shipping
-  exe skips with a jump) is real again with the range 1024x768 to 1920x1080: room
-  flag `0x200` allows up to 1024 wide, `0x400` and unflagged rooms 1920. A larger
-  size is clamped quietly and stored; at match start an online game below
-  1024x768 is raised to it. Skirmish and campaign are unrestricted. A patched
-  client can ignore this, so the RA2Web server must enforce the range itself.
+- `ra2_online_patches`: **no online resolution limit.** Red Alert 2's shipping
+  join check is already skipped by a jump, so the lift keeps that stock path
+  and does not add a cap. The match uses the size in `RA2.INI`; skirmish,
+  campaign and online matches are all unrestricted.
 - `src/web/wolapi.c` keeps the room flag bits (`0x200`, `0x400`) through room
   creation and room-list parsing; `wolapi_selftest.c` checks the round trip.
+  They are informational now; neither edition clamps a guest.
 
-Yuri's Revenge's Create Game screen owns the resolution option: the "Limit
-screen resolution" checkbox (control 0x71E, `[MultiPlayer] WOLLimitResolution`).
-The stock game clears the option at 1024+ and only publishes the 640/800 caps,
-so a normal room (option off) compared every guest against the stock 1024
-default and prompted above it. `yr_online_patches` replaces that:
-
-- the option can be enabled at any host size (the stock force-off and the two
-  dialog width gates are removed);
-- when on, the room publishes `0x400` and the host's own match size is capped
-  to 1920x1080 (stored and saved). A guest above 1920 gets the stock prompt,
-  whose text `src/runtime/woltext.c` rewrites from 640x480/800x600 to
-  1920x1080; Yes stores 1920x1080 and saves it, No aborts the join;
-- when off, no bits are published, so the join is accepted without a cap or a
-  prompt.
-
-The RA2Web server still relays the room flags and does not enforce them; a
-patched client can ignore the check.
+Yuri's Revenge's stock join check is removed too. `yr_online_patches` jumps
+straight to its accept path, so a room never caps a guest and the stock
+"resolution will be limited" prompt is unreachable. The Create Game "Limit
+screen resolution" checkbox remains stock UI, but it no longer changes the
+match size. The RA2Web server still relays the room flags and does not enforce
+them.
 
 The host (`CMakeLists.txt`, `src/runtime/host.c`) links at `/BASE:0x10000000` with a
 1 MB stack and runs the game on a thread with a 16 MB one: at the old base

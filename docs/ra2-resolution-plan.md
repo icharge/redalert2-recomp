@@ -44,8 +44,9 @@ Done and how it was checked:
   Lift patch `ra2_confirm_patches` (run_lift.py) at the two callers
   (0x00542719, 0x00543B0C).
 - The Options resolution list shows every size.
-- Online matches are held to 1024x768 to 1920x1080; `wolapi` carries the limit
-  in the room flags.
+- Online matches have no resolution limit; both editions use the player's
+  `RA2.INI`/`RA2MD.INI` size. `wolapi` still carries the room flags, but they
+  are informational.
 
 ## What was found
 
@@ -109,39 +110,16 @@ Done and how it was checked:
 4. Web: raise the dropdown's 8-item cap; keep the F10 list and the dropdown in
    sync.
 
-### 3. Online range, 1024x768 to 1920x1080
+### 3. Online range: none
 
-Room flag to limit (max width), replacing the stock 640/800/1024:
-
-| Room flag | Stock | New |
-|---|---|---|
-| `0x200` ("ResolutionLimited640") | 640 | 1024 (1024x768) |
-| `0x400` ("ResolutionLimited800") | 800 | 1920 (1920x1080) |
-| neither | 1024 | 1920 (1920x1080) |
-
-Yuri's Revenge takes a different route (2026-10-31): its Create Game "Limit
-screen resolution" option is the only control. It can be enabled at any host
-size; when on, the room publishes `0x400` and both the host (at create time) and
-guests (through the stock prompt, whose 640/800 text is rewritten to
-1920x1080) cap at 1920x1080. When off, no flag is published, so the join is
-neither capped nor prompted. RA2 keeps the quiet range below.
-
-- Below 1024x768 online is raised to 1024x768 when the match starts.
-- Lift patch: change the constants in the limit arithmetic
-  (`0x007457AA` to `0x007457C4`); replace the dead `jmp` at `0x007457CC` with
-  a real check; replace the live display switch (`0x00745864` on) with storing
-  the clamped size for the next game. Also clamp at the match-start toggle
-  site (`0x0065BF98`) using a session-type check. Skirmish and campaign stay
-  unrestricted.
-- `wolapi.c`: keep the existing flag bits; set them when a room is created
-  (`m_chat_request_channel_create`) and read them in `parse_room_line`
-  (`channel->flags`). The RA2Web server must pass the flags through; for real
-  enforcement it must check sizes itself (a patched client can ignore the
-  clamp).
-- Notes: the game's "Resolution limited to 640/800" text comes from its
-  language data and would be wrong, but the quiet clamp never shows it.
-  1920x1080 shows more map than 1024x768, so a size range is not an equal
-  view.
+The earlier 1024x768 to 1920x1080 online range was removed (2026-10-31). Both
+editions now accept the size each player's INI asks for, with no prompt, no
+quiet clamp and no match-start adjustment. Red Alert 2's shipping join check is
+already skipped by a jump; `ra2_online_patches` leaves that stock path.
+Yuri's Revenge's stock join check is replaced by a jump to its accept path
+(`yr_online_patches`), so its Create Game "Limit screen resolution" checkbox no
+longer caps a room. `wolapi.c` still round-trips the room flags, but they are
+informational; the RA2Web server relays them and does not enforce a range.
 
 ### 4. Tests and docs
 

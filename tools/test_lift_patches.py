@@ -28,6 +28,8 @@ from run_lift import (
     ra2_tab_patches,
     ra2_online_patches,
     yr_online_patches,
+    WDT_SITES,
+    wdt_patches,
     ra2_shell_patches,
     thai_font_call_replacements,
     web_exit_confirmation_patches,
@@ -196,156 +198,81 @@ class RA2HiResPatchTests(unittest.TestCase):
         self.assertEqual(ra2_hires_patches(bytes(va + 8), 0), {})
 
 
-class RA2OnlinePatchTests(unittest.TestCase):
-    """Red Alert 2's online resolution range (run_lift.py ra2_online_patches)."""
-
-    SIZE = 0x00760000
+class OnlineNoLimitPatchTests(unittest.TestCase):
+    """No online resolution limit (run_lift.py ra2/yr_online_patches)."""
 
     @staticmethod
-    def rel32(va, length, target):
-        return ((target - (va + length)) & 0xFFFFFFFF).to_bytes(4, 'little').hex()
-
-    @classmethod
-    def image(cls, jmp_target=0x00745895, call_target=0x00543A70, corrupt=None):
-        code = bytearray(cls.SIZE)
-
-        def put(va, hexbytes):
-            raw = bytes.fromhex(hexbytes)
-            code[va:va + len(raw)] = raw
-
-        put(0x007457AA, 'bb20030000')
-        put(0x007457BA, '2580feffff')
-        put(0x007457BF, '0500040000')
-        put(0x007457CC, 'e9' + cls.rel32(0x007457CC, 5, jmp_target))
-        put(0x00745859, '8bd7')
-        put(0x0074585B, 'e8' + cls.rel32(0x0074585B, 5, call_target))
-        put(0x00745889, '7e0a')
-        put(0x0065BF98, 'a1380ba400')
+    def yr_image(corrupt=None):
+        code = bytearray(0x00790000)
+        va = 0x007899AA
+        rel = (0x00789A58 - (va + 6)) & 0xFFFFFFFF
+        code[va:va + 6] = bytes.fromhex('0f8e') + rel.to_bytes(4, 'little')
         if corrupt is not None:
             code[corrupt] ^= 0xFF
         return bytes(code)
 
-    def test_every_site_is_patched(self):
-        patches = ra2_online_patches(self.image(), 0)
-        self.assertEqual(set(patches), {0x007457AA, 0x007457BA, 0x007457BF, 0x007457CC,
-                                        0x00745859, 0x0074585B, 0x00745889, 0x0065BF98})
+    def test_red_alert_2_keeps_its_shipping_uncapped_join_check(self):
+        self.assertEqual(ra2_online_patches(self.yr_image(), 0), {})
 
-    def test_the_limit_is_1920_with_1024_for_the_640_flag(self):
-        patches = ra2_online_patches(self.image(), 0)
-        self.assertIn('ebx = 0x780u;', patches[0x007457AA])
-        self.assertIn('eax = eax & 0xFFFFFC80u;', patches[0x007457BA])
-        self.assertIn('eax = eax + 0x780u;', patches[0x007457BF])
+    def test_yuris_revenge_accepts_every_room_without_a_prompt_or_clamp(self):
+        patches = yr_online_patches(self.yr_image(), 0)
+        self.assertEqual(set(patches), {0x007899AA})
+        self.assertEqual(patches[0x007899AA],
+                         '@replace:goto L_00789A58; '
+                         '/* remaster: no online resolution limit, run_lift.py yr_online_patches */')
 
-    def test_the_skipped_check_becomes_a_real_one_and_the_clamp_is_quiet(self):
-        patches = ra2_online_patches(self.image(), 0)
-        body = '    goto L_00745895; /* 0x007457CC: jmp 0x745895 */\n'
-        result = apply_patches(body, {0x007457CC: patches[0x007457CC]})
-        self.assertIn('MEM8(0x00A40D0B) ? MEM32(0x00A40B38) : MEM32(0x008523E0)', result)
-        self.assertIn('if ((int32_t)_w <= (int32_t)ebx) goto L_00745895;', result)
-        # The shipping jump makes the old clamp unreachable from this function;
-        # the lifter emits that block in a separate function, so a C goto is invalid.
-        self.assertNotIn('goto L_0074582A;', result)
-        self.assertIn('MEM32(0x00A40B38) = esi;', result)
-        self.assertIn('MEM32(0x00A40B3C) = edi;', result)
-        self.assertIn('RECOMP_CALL(sub_005D91B0)', result)
-        self.assertNotIn('    goto L_00745895; /* 0x007457CC', result)
-        self.assertIn('eax = 1u;', patches[0x0074585B])        # the live switch is not run
-
-    def test_a_different_build_gets_no_online_patches(self):
-        for va in (0x007457AA, 0x0065BF98, 0x00745859):
-            with self.subTest(va=va):
-                self.assertEqual(ra2_online_patches(self.image(corrupt=va), 0), {})
-        self.assertEqual(ra2_online_patches(self.image(jmp_target=0x00745900), 0), {})
-        self.assertEqual(ra2_online_patches(self.image(call_target=0x00500000), 0), {})
+    def test_a_different_build_gets_no_online_patch(self):
+        self.assertEqual(yr_online_patches(self.yr_image(corrupt=0x007899AA), 0), {})
 
 
-class YROnlinePatchTests(unittest.TestCase):
-    """Yuri's Revenge's 1920 online cap and optional prompt (run_lift.py yr_online_patches)."""
-
-    SIZE = 0x00790000
+class WDTPatchTests(unittest.TestCase):
+    """World Domination's hover and its 640x480 limit (run_lift.py wdt_patches)."""
 
     @staticmethod
-    def rel32(va, length, target):
-        return ((target - (va + length)) & 0xFFFFFFFF).to_bytes(4, 'little').hex()
-
-    @staticmethod
-    def rel8(va, length, target):
-        return ((target - (va + length)) & 0xFF).to_bytes(1, 'little').hex()
-
-    @classmethod
-    def image(cls, jle_target=0x00789A58, off_target=0x00789B82, corrupt=None):
-        code = bytearray(cls.SIZE)
-
-        def put(va, hexbytes):
-            raw = bytes.fromhex(hexbytes)
+    def image(target, corrupt=None):
+        sites = WDT_SITES[target]
+        code = bytearray(0x00800000)
+        for name in ('hover', 'resolution'):
+            va, shape = sites[name]
+            raw = bytes.fromhex(shape)
             code[va:va + len(raw)] = raw
-
-        put(0x0078997B, '8b4720')
-        put(0x00789988, 'be20030000')
-        put(0x00789998, '2580feffff')
-        put(0x0078999D, '0500040000')
-        put(0x007899A4, '393584eba800')
-        put(0x007899AA, '0f8e' + cls.rel32(0x007899AA, 6, jle_target))
-        put(0x007899E1, '50')
-        put(0x00789A08, '8bc6b960')
-        put(0x00789B79, '7c' + cls.rel8(0x00789B79, 2, off_target)
-            + 'c60540b5a80000')
-        put(0x00789DA8, '8b1584eba800')
-        put(0x0078DF75, '52')
-        put(0x0078DF84, '8a44241c')
         if corrupt is not None:
             code[corrupt] ^= 0xFF
         return bytes(code)
 
-    def test_every_site_is_patched(self):
-        patches = yr_online_patches(self.image(), 0)
-        self.assertEqual(set(patches), {
-            0x0078997B, 0x007899E1, 0x00789A08, 0x00789B79,
-            0x00789DA8, 0x0078DF75, 0x0078DF84,
-        })
-        self.assertNotIn(0x007899AA, patches)  # the stock prompt branch stays
+    def test_every_edition_patches_the_same_two_sites(self):
+        for target in ('game', 'gamemd'):
+            with self.subTest(target=target):
+                sites = WDT_SITES[target]
+                patches = wdt_patches(self.image(target), 0, target)
+                self.assertEqual(set(patches), {sites['hover'][0], sites['resolution'][0]})
 
-    def test_a_normal_room_is_uncapped_and_never_prompts(self):
-        patches = yr_online_patches(self.image(), 0)
-        body = patches[0x0078997B]
-        self.assertIn('eax = MEM32(edi + 0x20);', body)
-        self.assertIn('if (!(eax & 0x600u)) goto L_00789A58;', body)
-        self.assertIn('esi = 0x780u;', body)
-        self.assertIn('goto L_007899A4;', body)
+    def test_a_mouse_move_runs_the_same_hit_test_as_wm_nchittest(self):
+        for target in ('game', 'gamemd'):
+            with self.subTest(target=target):
+                sites = WDT_SITES[target]
+                patches = wdt_patches(self.image(target), 0, target)
+                body = patches[sites['hover'][0]]
+                self.assertIn('if (ebx == 0x200u || ebx == 0x201u) goto L_%08X;'
+                              % sites['hover_target'], body)
+                self.assertIn('ebx = ebx - 0x202u;', body)
 
-    def test_the_prompt_is_shown_with_the_1920_text(self):
-        patches = yr_online_patches(self.image(), 0)
-        self.assertIn('ra2_wol_limit_message', patches[0x007899E1])
-        self.assertIn('PUSH32(esp, eax);', patches[0x007899E1])
+    def test_the_640x480_query_and_prompt_are_skipped(self):
+        for target in ('game', 'gamemd'):
+            with self.subTest(target=target):
+                sites = WDT_SITES[target]
+                patches = wdt_patches(self.image(target), 0, target)
+                self.assertEqual(patches[sites['resolution'][0]],
+                                 '@replace:goto L_%08X; '
+                                 '/* remaster: World Domination hover and resolution, '
+                                 'run_lift.py wdt_patches */' % sites['resolution_target'])
 
-    def test_yes_stores_1920_and_saves_it(self):
-        body = yr_online_patches(self.image(), 0)[0x00789A08]
-        self.assertIn('MEM32(0x00A8EB84) = 0x780u;', body)
-        self.assertIn('MEM32(0x00A8EB88) = 0x438u;', body)
-        self.assertIn('RECOMP_CALL(sub_005FAD10)', body)
-        self.assertIn('goto L_00789A3E;', body)
-
-    def test_the_host_is_capped_and_the_room_advertises_1920(self):
-        body = yr_online_patches(self.image(), 0)[0x00789DA8]
-        self.assertIn('uint32_t _reserved = eax | 0x400u;', body)
-        self.assertIn('if ((int32_t)MEM32(0x00A8EB84) > 1920)', body)
-        self.assertIn('eax = _reserved;', body)
-        self.assertIn('goto L_00789DC6;', body)
-
-    def test_the_option_stays_on_and_the_checkbox_is_usable(self):
-        patches = yr_online_patches(self.image(), 0)
-        self.assertIn('goto L_00789B82;', patches[0x00789B79])
-        self.assertIn('PUSH32(esp, 1);', patches[0x0078DF75])
-        self.assertIn('SET_LO8(eax, 0);', patches[0x0078DF84])
-
-    def test_a_different_build_gets_no_online_patches(self):
-        for va in (0x0078997B, 0x00789988, 0x00789998, 0x0078999D, 0x007899A4,
-                   0x007899E1, 0x00789A08, 0x00789B79, 0x00789DA8,
-                   0x0078DF75, 0x0078DF84):
-            with self.subTest(va=va):
-                self.assertEqual(yr_online_patches(self.image(corrupt=va), 0), {})
-        self.assertEqual(yr_online_patches(self.image(jle_target=0x00789B00), 0), {})
-        self.assertEqual(yr_online_patches(self.image(off_target=0x00789B90), 0), {})
+    def test_a_different_build_gets_no_wdt_patches(self):
+        for target in ('game', 'gamemd'):
+            for name in ('hover', 'resolution'):
+                with self.subTest(target=target, name=name):
+                    va = WDT_SITES[target][name][0]
+                    self.assertEqual(wdt_patches(self.image(target, corrupt=va), 0, target), {})
 
 
 class RA2ConfirmPatchTests(unittest.TestCase):

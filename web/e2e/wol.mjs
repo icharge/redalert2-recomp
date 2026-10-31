@@ -270,10 +270,8 @@ try {
   const host = await open("host", "woltst1");
   // --room-flags 0x400: publish the room's resolution bit as the server would
   // relay it to the guest (the first WOLAPI2 number, the room's reserved field
-  // at [room + 0x20], which the join check reads). YR now treats either
-  // resolution bit as the 1920x1080 cap; 0x400 is what a host that ticked
-  // "Limit screen resolution" publishes. The game itself only sets the bit
-  // from that option, so the test sets it on the wire.
+  // at [room + 0x20]). Both editions ignore it now, so a size above any old
+  // cap joins without a prompt; the option is informational.
   const flagsAt = process.argv.indexOf("--room-flags");
   if (flagsAt > 0) {
     const flags = Number(process.argv[flagsAt + 1]);
@@ -328,30 +326,8 @@ try {
     await guest.page.waitForTimeout(300);
     await guest.clickGame(150, ra2 ? 47 : 65);
     await guest.clickGame(720, 263);
-    // A limited YR room (the option on, or --room-flags 0x200/0x400) prompts a
-    // guest configured above 1920x1080; accepting stores that size. A room
-    // without the limit publishes no flag and never prompts.
-    const roomFlags = flagsAt > 0 ? Number(process.argv[flagsAt + 1]) : 0;
-    if (!ra2 && roomFlags & 0x600) {
-      const guestWidth = await guest.page.evaluate(() => window.Module.HEAPU32[0xa8eb84 / 4]);
-      if (guestWidth > 1920) {
-        await waitNative(guest, "[dialog] open 0xFB");
-        await guest.page.waitForTimeout(500);
-        await dump("guest", "resolution-confirm");
-        await guest.page.mouse.click(1137, 385, { delay: 200 }); // Yes (screen pixels)
-        let stored = [];
-        for (let i = 0; i < 15; i++) {
-          stored = await guest.page.evaluate(() => [
-            window.Module.HEAPU32[0xa8eb84 / 4],
-            window.Module.HEAPU32[0xa8eb88 / 4],
-          ]);
-          if (stored[0] === 1920) break;
-          await guest.page.waitForTimeout(200);
-        }
-        await dump("guest", "after-yes");
-        assert.deepEqual(stored, [1920, 1080], "accepting stores 1920x1080");
-      }
-    }
+    // There is no online resolution limit in either edition: a room never
+    // prompts or clamps a guest, whatever bits --room-flags publishes.
     if (roomPassword) {
       await waitNative(guest, "[dialog] open 0xE1");
       await guest.page.waitForTimeout(500);

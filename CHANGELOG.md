@@ -153,6 +153,13 @@ a2.ini`.
   script, to tell lift bugs from host bugs.
 
 ### Fixed
+- World Domination (Red Alert 2 and Yuri's Revenge) was unplayable: the
+  Allied/Soviet logos did not highlight or accept a click, and the entry
+  demanded a 640x480 display mode. The faction screen now runs its hit test
+  from a mouse move as well as `WM_NCHITTEST`, and the 640x480 query/prompt is
+  skipped so the player's resolution is kept. The online resolution cap and
+  its prompt are removed for both editions; a match uses the size in
+  `RA2.INI`/`RA2MD.INI`.
 - Built with Visual Studio 2026 (MSVC 19.50 and later), every skirmish and
   campaign crashed as the map loaded (issue #2). That compiler's optimiser
   drops the sign test of a 16-bit value moved to the top of a register, so a

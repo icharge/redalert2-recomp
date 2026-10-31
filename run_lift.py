@@ -556,189 +556,97 @@ RA2_SHELL_TAG = '/* remaster: shell 800x600, run_lift.py ra2_shell_patches */'
 RA2_HIRES_SITE = (0x005D8DF3, '884629')            # mov byte ptr [esi + 0x29], al
 
 
-# Online play's resolution range (docs/ra2-resolution-plan.md, step 3). The
-# join check sub_00745780 (wonline.cpp) reads the room's flags at [room + 0x20]:
-# 0x400 (ResolutionLimited800) caps the width at 800, 0x200 (ResolutionLimited640)
-# at 640, neither at 1024. The plan's new range: 0x400 and neither allow 1920
-# (1920x1080), 0x200 allows 1024 (1024x768). The shipping exe skips the check with
-# an unconditional jump (0x007457CC); the real check replaces it, and a width over
-# the limit is clamped quietly (the width compared is the match size, 0xA40B38, when the
-# mode toggle is on: the shell is always 800 wide, which no limit would ever catch): the size is stored for the next game (the live
-# switch is not run), and the join is accepted. At match start an online game's
-# size is held to 1024x768 .. 1920x1080 (0x0065BF98; session type 4 is the online
-# lobby, read by sub_00755CD0).
-RA2_ONLINE_SITES = {
-    # va: (hex of the instruction the patch lands on, what it is)
-    'limit_800': (0x007457AA, 'bb20030000'),          # mov ebx, 0x320 (ResolutionLimited800)
-    'limit_and': (0x007457BA, '2580feffff'),          # and eax, 0xfffffe80
-    'limit_add': (0x007457BF, '0500040000'),          # add eax, 0x400
-    'jmp_check': (0x007457CC, 'e9'),                  # jmp 0x745895 (the skipped comparison)
-    'size_edi':  (0x00745859, '8bd7'),                # mov edx, edi
-    'live_call': (0x0074585B, 'e8'),                  # call 0x543a70 (the live display switch)
-    'after_jle': (0x00745889, '7e0a'),                # jle 0x745895 (after the clamp)
-    'match_w':   (0x0065BF98, 'a1380ba400'),          # mov eax, [0xa40b38] (match-start size)
-}
-RA2_ONLINE_TARGETS = {
-    'jmp_check': 0x00745895,
-    'live_call': 0x00543A70,
-    'after_jle': 0x00745895,
-}
-RA2_ONLINE_LABELS = {'clamp': 0x0074582A, 'accept': 0x00745895}
-
-
-# Yuri's Revenge's online resolution option (docs/hires.md).
-#
-# The Create Game dialog's "Limit screen resolution" checkbox (control 0x71E,
-# [MultiPlayer] WOLLimitResolution in RA2MD.INI) is the room's only resolution
-# control. The stock game force-clears the option when the host's match width is
-# 1024 or more, disables the checkbox at that size, and publishes 640/800 caps.
-# That is why a normal room (option off) still advertised no bits and every
-# guest was compared against the stock 1024 default.
-#
-# New behaviour:
-#  - the option can be enabled at any host size (force-off and the two dialog
-#    width gates are removed);
-#  - when it is on, the room publishes 0x400 (the remaster's 1920 bit) and the
-#    host's own match size (0xA8EB84) is clamped to 1920x1080 and saved;
-#  - a guest whose match size is above 1920 gets the stock prompt, whose text
-#    is rewritten from 640x480/800x600 to 1920x1080 by
-#    ra2_wol_limit_message (src/runtime/woltext.c); Yes stores 1920x1080 and
-#    saves it, No aborts the join as before;
-#  - a room with neither flag has no cap and no prompt: the join check accepts
-#    immediately, so a normal game never asks the guest to lower its size.
+# Online play has no resolution limit (docs/ra2-resolution-plan.md, step 3).
+# Red Alert 2's shipping join check sub_00745780 is already skipped by an
+# unconditional jump, so `ra2_online_patches` leaves the stock behaviour alone.
+# Yuri's Revenge's join check is real; its accept branch (the `jle` to
+# 0x789A58) becomes unconditional, which makes its clamp and prompt
+# unreachable. Each edition then uses the size in its own INI online.
 YR_ONLINE_SITES = {
     # va: (hex of the instruction the patch lands on, what it is)
-    'flag_load': (0x0078997B, '8b4720'),               # mov eax, [edi + 0x20] (room flags)
-    'limit_800': (0x00789988, 'be20030000'),           # mov esi, 0x320
-    'limit_and': (0x00789998, '2580feffff'),           # and eax, 0xfffffe80
-    'limit_add': (0x0078999D, '0500040000'),           # add eax, 0x400
-    'cmp_width': (0x007899A4, '393584eba800'),         # cmp [0xa8eb84], esi
     'jle_accept': (0x007899AA, '0f8e'),                # jle 0x789a58
-    'message_push': (0x007899E1, '50'),                # push eax (the CSF prompt)
-    'yes_clamp': (0x00789A08, '8bc6b960'),             # mov eax, esi; mov ecx, 0xa8eb60
-    'force_off': (0x00789B79, '7c07c60540b5a80000'),   # jl; mov byte [0xa8b540], 0
-    'publish': (0x00789DA8, '8b1584eba800'),           # mov edx, [0xa8eb84]
-    'dialog_enable': (0x0078DF75, '52'),               # push edx (EnableWindow arg)
-    'dialog_check': (0x0078DF84, '8a44241c'),          # mov al, [esp + 0x1c]
 }
-# ('rel32'/'rel8', target) for the two stock branches the patch relies on.
-YR_ONLINE_TARGETS = {'jle_accept': ('rel32', 0x00789A58),
-                     'force_off': ('rel8', 0x00789B82)}
 
 
 def yr_online_patches(code, cs):
-    """Yuri's Revenge's 1920 online cap and its optional prompt (see YR_ONLINE_SITES).
+    """Yuri's Revenge has no online resolution limit.
 
-    Every site is checked by its bytes first; the branches' displacements must
-    reach their stock targets. A different build gets no patches."""
+    The stock join check compares the guest's match size with the room's
+    640/800/1024 limit and can prompt/clamp. Its accept branch (the `jle` to
+    0x789A58) becomes unconditional, so the clamp and the stock "resolution
+    will be limited" prompt are unreachable. The host's own size is not
+    clamped: the room's flag is only an advertisement for guests.
+    """
+    va = YR_ONLINE_SITES['jle_accept'][0]
+    raw = code[va - cs:va - cs + 6]
+    rel = int.from_bytes(raw[2:6], 'little', signed=True)
+    if raw[:2] != bytes.fromhex('0f8e') or va + 6 + rel != 0x00789A58:
+        print('[*] yr_online_patches: the join check does not match this build; no online patch')
+        return {}
+    return {va: ('@replace:goto L_00789A58; '
+                 '/* remaster: no online resolution limit, run_lift.py yr_online_patches */')}
+
+
+# World Domination (RA2, YR). The faction screen's window proc only reads
+# WM_NCHITTEST for its hover and click: [this+0xC] is set by that hit test and
+# WM_LBUTTONUP commits it. win32hle now sends WM_NCHITTEST, but a client can
+# also deliver only WM_MOUSEMOVE (and the child dialog's client coordinates
+# are the 0,0-based ones the hit test expects), so route a mouse move and the
+# button-down through the same hit test as well (a click without a prior move
+# still sets the side it commits). The other site skips the stock 640x480 query and
+# prompt: the WDT art is 640x480, but the game no longer has to switch the
+# display mode (and refuse to enter when the player says No). The WDT dialog
+# stays at its native size; the display keeps the player's resolution.
+WDT_SITES = {
+    'game': {
+        'hover': (0x00768B29, '81eb02020000'),       # sub ebx, 0x202 (messages over WM_COMMAND)
+        'hover_target': 0x00768A3B,                  # the WM_NCHITTEST hit test
+        'resolution': (0x00768EAA, '0f8ea0000000'),  # jle 0x768f50 (skip the 640x480 switch)
+        'resolution_target': 0x00768F50,
+    },
+    'gamemd': {
+        'hover': (0x007AF829, '81eb02020000'),
+        'hover_target': 0x007AF73B,
+        'resolution': (0x007AFBAA, '0f8ea0000000'),
+        'resolution_target': 0x007AFC50,
+    },
+}
+
+
+def wdt_patches(code, cs, target):
+    """World Domination's mouse hover and its 640x480 display limit (WDT_SITES).
+
+    Every site is checked by its bytes first: a different build gets none."""
+    sites = WDT_SITES[target]
+
     def at(va, hexbytes):
         raw = bytes.fromhex(hexbytes)
         return code[va - cs:va - cs + len(raw)] == raw
 
-    checks = [at(va, shape) for name, (va, shape) in YR_ONLINE_SITES.items()
-              if name not in YR_ONLINE_TARGETS]
-    for name, (kind, target) in YR_ONLINE_TARGETS.items():
-        va = YR_ONLINE_SITES[name][0]
-        if kind == 'rel32':
-            rel = int.from_bytes(code[va - cs + 2:va - cs + 6], 'little', signed=True)
-            checks.append(at(va, YR_ONLINE_SITES[name][1]) and va + 6 + rel == target)
-        else:
-            rel = int.from_bytes(code[va - cs + 1:va - cs + 2], 'little', signed=True)
-            checks.append(at(va, YR_ONLINE_SITES[name][1]) and va + 2 + rel == target)
-    if not all(checks):
-        print('[*] yr_online_patches: a site does not match this build; no online patches')
+    if not all(at(va, shape) for va, shape in
+               (sites['hover'], sites['resolution'])):
+        print('[*] wdt_patches: a site does not match this build; no World Domination patches')
         return {}
-
-    tag = '/* remaster: online resolution range, run_lift.py yr_online_patches */'
-    sites = YR_ONLINE_SITES
+    tag = '/* remaster: World Domination hover and resolution, run_lift.py wdt_patches */'
+    hover_va = sites['hover'][0]
+    resolution_va = sites['resolution'][0]
     return {
-        # No resolution bits: a normal room is uncapped and never prompts.
-        # Otherwise every limited room means 1920 wide, whatever bit it set.
-        sites['flag_load'][0]: ('@replace:eax = MEM32(edi + 0x20); '
-                                'if (!(eax & 0x600u)) goto L_00789A58; '
-                                'esi = 0x780u; goto L_007899A4; ' + tag),
-        # The stock prompt names 640x480/800x600. Rewrite the looked-up text
-        # (its own encoding is preserved) before it is handed to the dialog.
-        sites['message_push'][0]: ('@replace:{ extern const uint16_t *ra2_wol_limit_message(const uint16_t *); '
-                                   'eax = (uint32_t)(uintptr_t)ra2_wol_limit_message((const uint16_t *)(uintptr_t)eax); } '
-                                   'PUSH32(esp, eax); ' + tag),
-        # Yes: store the remaster size and save it, then continue to the
-        # stock re-check (which now passes) and the join.
-        sites['yes_clamp'][0]: ('@replace:{ MEM32(0x00A8EB84) = 0x780u; MEM32(0x00A8EB88) = 0x438u; '
-                                'ecx = 0x00A8EB60u; RECOMP_CALL(sub_005FAD10); RECOMP_FLAGS_IN(); } '
-                                'goto L_00789A3E; ' + tag),
-        # The option survives at 1024+ instead of being cleared.
-        sites['force_off'][0]: '@replace:goto L_00789B82; ' + tag,
-        # The room advertises 1920 and the host's own match size is capped too.
-        # The reserved value is kept in a local across SaveSettings, which
-        # returns in eax (RECOMP_CALL reloads the guest register).
-        sites['publish'][0]: ('@replace:{ uint32_t _reserved = eax | 0x400u; '
-                              'if ((int32_t)MEM32(0x00A8EB84) > 1920) { '
-                              'MEM32(0x00A8EB84) = 0x780u; MEM32(0x00A8EB88) = 0x438u; '
-                              'ecx = 0x00A8EB60u; RECOMP_CALL(sub_005FAD10); RECOMP_FLAGS_IN(); } '
-                              'eax = _reserved; } goto L_00789DC6; ' + tag),
-        # The checkbox is usable at any host size and shows the option's state.
-        sites['dialog_enable'][0]: '@replace:PUSH32(esp, 1); ' + tag,
-        sites['dialog_check'][0]: '@replace:SET_LO8(eax, 0); ' + tag,
+        hover_va: ('@replace:if (ebx == 0x200u || ebx == 0x201u) goto L_%08X; '
+                   'ebx = ebx - 0x202u; %s' % (sites['hover_target'], tag)),
+        resolution_va: ('@replace:goto L_%08X; %s'
+                        % (sites['resolution_target'], tag)),
     }
 
 
 def ra2_online_patches(code, cs):
-    """Red Alert 2's online resolution range (see RA2_ONLINE_SITES).
+    """Red Alert 2 has no online resolution limit.
 
-    Every site is checked by its bytes first: the opcodes, and for the jumps and
-    the call the target they reach. A different build gets no patches."""
-    def at(va, hexbytes):
-        raw = bytes.fromhex(hexbytes.replace(' ', ''))
-        return code[va - cs:va - cs + len(raw)] == raw
-
-    def rel_target(va, length):
-        """The target of the rel32 branch of `length` bytes at va."""
-        rel = int.from_bytes(code[va - cs + length - 4:va - cs + length], 'little', signed=True)
-        return va + length + rel
-
-    checks = []
-    for name in ('limit_800', 'limit_and', 'limit_add', 'size_edi', 'match_w'):
-        va, shape = RA2_ONLINE_SITES[name]
-        checks.append(at(va, shape))
-    va = RA2_ONLINE_SITES['jmp_check'][0]
-    checks.append(at(va, 'e9') and rel_target(va, 5) == RA2_ONLINE_TARGETS['jmp_check'])
-    va = RA2_ONLINE_SITES['live_call'][0]
-    checks.append(at(va, 'e8') and rel_target(va, 5) == RA2_ONLINE_TARGETS['live_call'])
-    va = RA2_ONLINE_SITES['after_jle'][0]
-    checks.append(at(va, '7e0a'))
-    if not all(checks):
-        print('[*] ra2_online_patches: a site does not match this build; no online patches')
-        return {}
-
-    tag = '/* remaster: online resolution range, run_lift.py ra2_online_patches */'
-    sites = RA2_ONLINE_SITES
-    out = {
-        sites['limit_800'][0]: 'ebx = 0x780u; ' + tag,
-        sites['limit_and'][0]: '@replace:eax = eax & 0xFFFFFC80u; ' + tag,
-        sites['limit_add'][0]: '@replace:eax = eax + 0x780u; ' + tag,
-        # The shipping jump makes the old clamp unreachable here, so the lifter
-        # puts it in another C function. Keep the quiet stores and INI save inline
-        # instead of jumping to that function's label (or its dialog cleanup).
-        sites['jmp_check'][0]: ('@replace:{ uint32_t _w = MEM8(0x00A40D0B) ? MEM32(0x00A40B38) : MEM32(0x008523E0); '
-                                'if ((int32_t)_w <= (int32_t)ebx) goto L_%08X; } '
-                                '{ esi = (ebx == 0x400u) ? 0x400u : 0x780u; '
-                                'edi = (esi == 0x400u) ? 0x300u : 0x438u; '
-                                'MEM32(0x00A40B38) = esi; MEM32(0x00A40B3C) = edi; '
-                                'ecx = 0x00A40B18u; RECOMP_CALL(sub_005D91B0); RECOMP_FLAGS_IN(); } '
-                                'goto L_%08X; %s') % (RA2_ONLINE_LABELS['accept'], RA2_ONLINE_LABELS['accept'], tag),
-        # The clamped size, for the next game: 1024x768 for the 1024 limit,
-        # else 1920x1080. edx carries the height the store below uses.
-        sites['size_edi'][0]: ('esi = (ebx == 0x400u) ? 0x400u : 0x780u; '
-                               'edi = (esi == 0x400u) ? 0x300u : 0x438u; edx = edi; ' + tag),
-        sites['live_call'][0]: '@replace:eax = 1u; /* stored, not switched live */ ' + tag,
-        sites['after_jle'][0]: '@replace:goto L_%08X; %s' % (RA2_ONLINE_LABELS['accept'], tag),
-        sites['match_w'][0]: ('{ if (MEM32(0x00A3D298) == 4u) { uint32_t _w = eax, _h = MEM32(0x00A40B3C); '
-                              'if (_w < 1024u) _w = 1024u; if (_h < 768u) _h = 768u; '
-                              'if (_w > 1920u) _w = 1920u; if (_h > 1080u) _h = 1080u; '
-                              'eax = _w; MEM32(0x00A40B38) = _w; MEM32(0x00A40B3C) = _h; } } ' + tag),
-    }
-    return out
+    Its shipping join check is already skipped by an unconditional jump, and the
+    remaster used to replace that jump with a 1024..1920 clamp. The user asked
+    for no limit, so the stock behaviour (the match uses the INI size) stands.
+    The function stays so run_lift.py and the tests name the decision in one
+    place."""
+    return {}
 
 
 # The "The display mode will be changed..." confirm (dialog 0xD9, Ok/Cancel) that
@@ -1013,6 +921,7 @@ def targets():
                        patches=lambda code, cs: {**sidebar_rows_patches(code, cs), **dropdown_frame_patches(code, cs), **HD_VOXEL_PATCHES,
                                                  **modern_controls_patches('gamemd'), **queue_five_patches('gamemd'),
                                                  **yr_online_patches(code, cs),
+                                                 **wdt_patches(code, cs, 'gamemd'),
                                                  **web_exit_confirmation_patches(code, cs, 'gamemd')}),
         'game': dict(exe=os.path.join(_HERE, 'game', 'game.exe'),
                      catalog=os.path.join(_HERE, 'work', 'game', 'functions.json'),
@@ -1033,7 +942,7 @@ def targets():
                                                **ra2_online_patches(code, cs), **ra2_confirm_patches(code, cs),
                                                **ra2_cache_patches(code, cs), **ra2_mode_cap_patches(code, cs),
                                                **ra2_load_patches(code, cs), **ra2_profile_patches(code, cs),
-                                               **ra2_tab_patches(code, cs)}),
+                                               **ra2_tab_patches(code, cs), **wdt_patches(code, cs, 'game')}),
     }
 
 
