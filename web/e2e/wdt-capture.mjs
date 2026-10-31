@@ -79,10 +79,36 @@ try {
   await run.page.waitForTimeout(3000);
   await run.shot("faction");
   await run.clickGame(190, 115); // Allied
-  for (let i = 0; i < 8; i++) {
-    await run.page.waitForTimeout(1500);
+  const afterClickDialogs = new Set();
+  for (let i = 0; i < 20; i++) {
+    await run.page.waitForTimeout(3000);
     await run.shot(`tick${i}`);
+    for (const line of run.all) {
+      const match = /\[dialog\] open (0x[0-9A-F]+)/.exec(line);
+      if (match) afterClickDialogs.add(match[1]);
+    }
   }
+  const serverCurrent = run.all.some((line) => line.includes("[wdt] server state current"));
+  const serverPrevious = run.all.some((line) => line.includes("[wdt] server state previous"));
+  const unable = run.all.some((line) => line.includes("[dialog] open 0xD0"));
+  const mapScreen = afterClickDialogs.has("0x125");
+  const phase = (await run.state())?.phase;
+  await run.shot("wdt-screen");
+  console.log(
+    "wdt evidence",
+    JSON.stringify({
+      serverCurrent,
+      serverPrevious,
+      unable,
+      mapScreen,
+      phase,
+      dialogs: [...afterClickDialogs],
+    }),
+  );
+  if (!serverCurrent || !serverPrevious) throw new Error("WDT server state was not delivered");
+  if (unable) throw new Error("the client opened the 0xD0 unable-to-connect dialog");
+  if (!mapScreen) throw new Error("the side click did not open the WDT map screen (0x125)");
+  if (phase !== "running") throw new Error(`the game left the running phase: ${phase}`);
 } finally {
   writeFileSync(path.join(opts.shots, "game.log"), run.all.join("\n"));
   writeFileSync(path.join(opts.shots, "browser.log"), run.lines.join("\n"));

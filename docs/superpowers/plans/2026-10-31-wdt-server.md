@@ -78,7 +78,7 @@ call). No state codec or server model exists yet.
 | WDT-3 | Native TCP WDT listener | **started** | WDT-0b | `WdtTcpServer` answers `WDT CURRENT`/`PREVIOUS` on `WDT_PORT`; native client capture still pending. |
 | WDT-4 | Match assignment and result ingestion | **started** | WDT-2/3 | `MatchWDT`/`WDS=`/`WDT=` in GAMEOPT and the bot assign a conflict at STARTG; native results settle it once. Live two-client WOL test passes; duplicate→409. |
 | WDT-5 | Cycles, history, admin | **done** | WDT-4 | `advanceCycle` freezes the current map as previous; authenticated `/wdt/admin/{rollover,reset,enable,status}`; `/wdt/status` exposes conflicts/history. |
-| WDT-6 | Persistence, tests, docs | **started** | all | SQLite `wdt_state` snapshot (current+previous+counters), Memory store for memory deployments, 16 tests; lift regeneration and stable map-screen e2e still pending. |
+| WDT-6 | Persistence, tests, docs | **done** | all | SQLite `wdt_state` snapshot, Memory store, 16 WDT tests, regenerated RA2 lift (`--check` exit 0), 46 lift-patch tests. |
 
 ### Progress note (2026-10-31)
 
@@ -98,8 +98,19 @@ call). No state codec or server model exists yet.
     `/wdt/state` 503, enable restores 200, reset starts cycle 3.
   - `WDT ADMIN PERSISTENCE PASSED`: after stopping and restarting on the same
     `DB_PATH`, `/wdt/status` still reports cycle 3 and `enabled=true`.
-- **Next**: regenerate the lift for the current patches, run one stable browser
-  map-screen/side-click e2e, and add the SQLite round-trip to the release notes.
+  - **Browser e2e** (`wdt-capture`, test mode, one uninterrupted run): server
+    current + previous packets delivered, **no `0xD0`**, `[dialog] open 0x125`
+    after the Allied click, game still `running` 60 s later. Screenshot:
+    `work/wdt-e2e-final/wdt-screen.png`.
+  - **Lift**: `python run_lift.py --target game --all` lifted 23,125 functions
+    (0 errors), `--check` exit 0, `tools/test_lift_patches.py` → `Ran 46 tests — OK`.
+- **Known limitation**: the WDT map screen (`0x125`) opens but its map art is
+  blank; the client logs `***NO_STRING***` from `WDTProps.cpp` while reading the
+  state description/territory buffers. The side click is accepted (state
+  requests continue, no `0xD0`), so this is a client-side buffer/lifecycle issue,
+  not a missing server packet.
+- **Next**: WDT-0b/3 native request capture and native-client check; fix the
+  `WDTProps.cpp` buffer lifetime so the map art renders.
 
 ### First finding: the browser does not use the raw TCP path
 
