@@ -35,6 +35,8 @@ from run_lift import (
     THEME_PLAYSONG_ARG,
     theme_song_guard,
     web_exit_confirmation_patches,
+    WEB_URL_SITES,
+    web_url_patches,
 )
 
 
@@ -489,6 +491,49 @@ class ThemeSongGuardTests(unittest.TestCase):
             va = THEME_PLAYSONG_ARG[target]
             with self.subTest(target=target):
                 self.assertEqual(theme_song_guard(self.image(target, corrupt=va), 0, target), {})
+
+
+class WebUrlPatchTests(unittest.TestCase):
+    """Each URL opener calls the host and returns before the browser path."""
+
+    @staticmethod
+    def image(target, corrupt=None):
+        code = bytearray(0x00800000)
+        for va, size, _ in WEB_URL_SITES[target]:
+            code[va:va + 6] = b'\x81\xec' + size.to_bytes(4, 'little')
+        if corrupt is not None:
+            code[corrupt] ^= 0xFF
+        return bytes(code)
+
+    def test_each_site_gets_one_early_return(self):
+        for target in ('gamemd', 'game'):
+            with self.subTest(target=target):
+                patches = web_url_patches(self.image(target), 0, target)
+                self.assertEqual(set(patches), {va for va, _, _ in WEB_URL_SITES[target]})
+                for va, size, ask in WEB_URL_SITES[target]:
+                    c = patches[va]
+                    self.assertIn('ra2_open_url(ecx, %s)' % ask, c)
+                    self.assertIn('return;', c)
+                    self.assertIn('esp = esp - 0x%Xu;' % size, c)
+
+    def test_the_native_branch_reproduces_the_original_allocation(self):
+        va, size, _ = WEB_URL_SITES['game'][0]
+        patches = web_url_patches(self.image('game'), 0, 'game')
+        body = '    esp = esp - 0x%Xu; /* 0x%08X: sub esp, 0x%X */\n' % (size, va, size)
+        result = apply_patches(body, patches)
+        self.assertIn('#if defined(__EMSCRIPTEN__) || defined(RA2_URL_HOST)', result)
+        self.assertIn('ra2_open_url(ecx, edx)', result)
+        self.assertIn('#else', result)
+        self.assertEqual(result.count('esp = esp - 0x%Xu;' % size), 1)
+
+    def test_wrong_bytes_produce_no_patch(self):
+        for target in ('gamemd', 'game'):
+            with self.subTest(target=target):
+                va = WEB_URL_SITES[target][0][0]
+                patches = web_url_patches(self.image(target, corrupt=va), 0, target)
+                self.assertNotIn(va, patches)
+                for other, _, _ in WEB_URL_SITES[target][1:]:
+                    self.assertIn(other, patches)
 
 
 if __name__ == '__main__':

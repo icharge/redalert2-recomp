@@ -41,6 +41,14 @@ describe("parseEventLine", () => {
       e: "settingsSaved",
       path: "/opfs/game/RA2MD.INI",
     });
+    expect(
+      parseEventLine('@ra2 {"e":"open","url":"http://privacypolicy.westwood.com","ask":0,"seq":2}'),
+    ).toEqual({
+      e: "open",
+      url: "http://privacypolicy.westwood.com",
+      ask: 0,
+      seq: 2,
+    });
     expect(parseEventLine('@ra2 {"e":"error","message":"no gamemd.exe in /game"}')).toEqual({
       e: "error",
       message: "no gamemd.exe in /game",
@@ -64,5 +72,7 @@ describe("parseEventLine", () => {
     expect(parseEventLine('@ra2 {"e":"exitConfirm","hwnd":123}')).toBeNull();
     expect(parseEventLine('@ra2 {"e":"boot","protocol":1}')).toBeNull();
     expect(parseEventLine('@ra2 {"e":"settingsSaved"}')).toBeNull();
+    expect(parseEventLine('@ra2 {"e":"open"}')).toBeNull();
+    expect(parseEventLine('@ra2 {"e":"open","url":1,"ask":0,"seq":2}')).toBeNull();
   });
 });

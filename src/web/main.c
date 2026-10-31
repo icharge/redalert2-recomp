@@ -723,6 +723,12 @@ int main(int argc, char **argv) {
     if (g_clockstats) ra2_clockstats_install();
     win32hle_register(g_ra2_shims);    /* first: the game's own answers win */
     recomp_host_init();
+#ifndef RA2_TARGET_GAME
+    /* YR's WOL buttons read their target from this key; without it they
+     * return silently. Point them at the page's own mapped pages. */
+    hle_reg_set_string(0x80000002u, "Software\\Westwood\\Yuri's Revenge\\URL",
+                       "Community", "https://ra2web.invalid/community");
+#endif
     hle_com_register_class(CLSID_Blowfish, ra2_blowfish_create);
 #ifdef RA2_TARGET_GAME
     ra2_wolapi_set_no_router_flag(0x00A402D0u);   /* Session (0xA3D298) + 0x3038 */

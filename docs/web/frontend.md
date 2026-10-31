@@ -168,6 +168,15 @@ Rules:
 - **No game logic in the page.** If something is about the game, it belongs
   in the C host.
 
+The game's dialogs that the page replaces live in this store too:
+`exitConfirmation` (the main menu's Exit prompt) and `openLink` (a WOL-era
+link the game asked the system browser to open). `Play` mounts one Radix
+dialog for each and gates game input while one is open; closing them only
+clears the field, so the game keeps running. `openLink` is mapped by
+`link-targets.ts` into a topic, the original URL, and whether the page may be
+framed or offered as an outbound link ([protocol.md](protocol.md), "Web
+links").
+
 ## Look
 
 Radix Themes with `appearance="dark"` by default (the game is dark), and

@@ -18,6 +18,13 @@ export interface CopyProgress {
   file: string;
 }
 
+/** A link the game asked the system browser to open (the `open` event). */
+export interface OpenLink {
+  seq: number;
+  url: string;
+  ask: number;
+}
+
 export interface GameState {
   phase: Phase;
   /** what is being loaded, while it loads (a file name, "game files") */
@@ -33,6 +40,8 @@ export interface GameState {
   error: string | null;
   exitCode: number | null;
   exitConfirmation: { request: number } | null;
+  /** a WOL-era link: the page shows our dialog instead of the system browser */
+  openLink: OpenLink | null;
   settings: HostSettings | null;
   restart: { mod: string } | null;
 }
@@ -49,6 +58,7 @@ const INITIAL: GameState = {
   error: null,
   exitCode: null,
   exitConfirmation: null,
+  openLink: null,
   settings: null,
   restart: null,
 };
@@ -145,10 +155,18 @@ export class GameStore {
       case "exit":
         // a crash already says why; an exit after it is the runtime shutting down
         if (this.state.phase !== "crashed")
-          this.set({ phase: "exited", exitCode: event.code, exitConfirmation: null });
+          this.set({
+            phase: "exited",
+            exitCode: event.code,
+            exitConfirmation: null,
+            openLink: null,
+          });
         return;
       case "exitConfirm":
         this.set({ exitConfirmation: { request: event.request } });
+        return;
+      case "open":
+        this.set({ openLink: { seq: event.seq, url: event.url, ask: event.ask } });
         return;
       case "settingsSaved":
         return;
@@ -162,9 +180,14 @@ export class GameStore {
     if (this.state.exitConfirmation?.request === request) this.set({ exitConfirmation: null });
   }
 
+  /** The player closed the link dialog (the game keeps running). */
+  dismissOpenLink(): void {
+    if (this.state.openLink) this.set({ openLink: null });
+  }
+
   /** The game's thread died (a trap), or the runtime aborted. */
   crashed(what: string): void {
-    this.set({ phase: "crashed", error: what, exitConfirmation: null });
+    this.set({ phase: "crashed", error: what, exitConfirmation: null, openLink: null });
   }
 }
 

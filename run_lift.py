@@ -487,6 +487,7 @@ THEME_PLAYSONG_ARG = {'gamemd': 0x00720BDF, 'game': 0x006E7EDF}
 
 
 def web_exit_confirmation_patches(code, cs, target):
+
     """Replace only the main menu's Exit confirmation call on Emscripten.
 
     Init.CPP resolves GUI:ExitAreYouSure, OK and Cancel, then pushes the
@@ -513,6 +514,40 @@ def web_exit_confirmation_patches(code, cs, target):
         '    #else\n'
         '    RECOMP_CALL(sub_%08X);\n'
         '    #endif /* web Exit confirmation: no native dialog is created */' % helper)}
+
+
+WEB_URL_SITES = {
+    'gamemd': ((0x0077DC90, 0x310, 'edx'),   # wonline.cpp: void f(url, ask)
+               (0x00551630, 0x468, '0')),    # ViewHTML: void f(url)
+    'game': ((0x0073C580, 0x310, 'edx'),),   # wonline.cpp: void f(url, ask)
+}
+
+
+def web_url_patches(code, cs, target):
+    """Intercept the routines that hand a WOL-era URL to the system browser.
+
+    RA2 sub_0073C580 and YR sub_0077DC90 (both wonline.cpp: the URL in ecx,
+    ask in edx) and YR sub_00551630 (ViewHTML: the URL in ecx) all start by
+    allocating their frame, so the lift can call the host and return before the
+    temp .html probe, FindExecutableA, CreateProcessA, TXT_LAUNCHBROWSER and
+    TXT_NOBROWSER path runs. The page shows our dialog instead
+    (docs/superpowers/plans/2026-10-31-web-link-dialogs.md). A different build
+    fails the byte check and gets no patch."""
+    patches = {}
+    for va, size, ask in WEB_URL_SITES[target]:
+        raw = b'\x81\xec' + size.to_bytes(4, 'little')
+        if code[va - cs:va - cs + len(raw)] != raw:
+            print('[*] web_url_patches: 0x%08X does not match this build; no URL patch' % va)
+            continue
+        patches[va] = (
+            '@replace:#if defined(__EMSCRIPTEN__) || defined(RA2_URL_HOST)\n'
+            '    { extern void ra2_open_url(uint32_t, uint32_t);\n'
+            '      ra2_open_url(ecx, %s); return; }\n'
+            '#else\n'
+            '    esp = esp - 0x%Xu; /* 0x%08X: sub esp, 0x%X */\n'
+            '#endif /* web URL: the page shows the link, not the system browser */'
+            % (ask, size, va, size))
+    return patches
 
 
 def apply_patches(body, patches):
@@ -632,6 +667,10 @@ WDT_SITES = {
         'hover_target': 0x00768A3B,                  # the WM_NCHITTEST hit test
         'resolution': (0x00768EAA, '0f8ea0000000'),  # jle 0x768f50 (skip the 640x480 switch)
         'resolution_target': 0x00768F50,
+        # A WDT theme with no song stream leaves [theme+0x24] null; the next
+        # song lookup dereferences it and aborts the screen transition.
+        'theme': (0x0072A685, '8b4e248b01ff507c'),
+        'theme_target': 0x0072A6C0,
     },
     'gamemd': {
         'hover': (0x007AF829, '81eb02020000'),
@@ -659,12 +698,18 @@ def wdt_patches(code, cs, target):
     tag = '/* remaster: World Domination hover and resolution, run_lift.py wdt_patches */'
     hover_va = sites['hover'][0]
     resolution_va = sites['resolution'][0]
-    return {
+    out = {
         hover_va: ('@replace:if (ebx == 0x200u || ebx == 0x201u) goto L_%08X; '
                    'ebx = ebx - 0x202u; %s' % (sites['hover_target'], tag)),
         resolution_va: ('@replace:goto L_%08X; %s'
                         % (sites['resolution_target'], tag)),
     }
+    theme = sites.get('theme')
+    if theme and at(*theme):
+        out[theme[0]] = ('@replace:if (MEM32(esi + 0x24) == 0) goto L_%08X; '
+                         'ecx = MEM32(esi + 0x24); %s'
+                         % (sites['theme_target'], tag))
+    return out
 
 
 def ra2_online_patches(code, cs):
@@ -952,7 +997,8 @@ def targets():
                                                  **theme_song_guard(code, cs, 'gamemd'),
                                                  **yr_online_patches(code, cs),
                                                  **wdt_patches(code, cs, 'gamemd'),
-                                                 **web_exit_confirmation_patches(code, cs, 'gamemd')}),
+                                                 **web_exit_confirmation_patches(code, cs, 'gamemd'),
+                                                 **web_url_patches(code, cs, 'gamemd')}),
         'game': dict(exe=os.path.join(_HERE, 'game', 'game.exe'),
                      catalog=os.path.join(_HERE, 'work', 'game', 'functions.json'),
                      seeds=os.path.join(_HERE, 'work', 'game', 'rtti_seeds.json'),
@@ -973,7 +1019,8 @@ def targets():
                                                **ra2_online_patches(code, cs), **ra2_confirm_patches(code, cs),
                                                **ra2_cache_patches(code, cs), **ra2_mode_cap_patches(code, cs),
                                                **ra2_load_patches(code, cs), **ra2_profile_patches(code, cs),
-                                               **ra2_tab_patches(code, cs), **wdt_patches(code, cs, 'game')}),
+                                               **ra2_tab_patches(code, cs), **wdt_patches(code, cs, 'game'),
+                                               **web_url_patches(code, cs, 'game')}),
     }
 
 

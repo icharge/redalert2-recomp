@@ -7,7 +7,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
-#define RA2_WEB_PROTOCOL 8
+#define RA2_WEB_PROTOCOL 9
 
 #define RA2_CURSOR_PX 32
 
@@ -85,6 +85,10 @@ void web_event_error(const char *message);
 void web_event_exit(int code);
 void web_event_json(const char *json);
 void web_json_escape(char *out, size_t n, const char *text);
+/* the game asked for a URL (a WOL-era link): the page shows our dialog instead
+ * of the system browser. Called from the lift's web_url_patches early return;
+ * `url_va` is the guest string, `ask` says the game wanted a confirmation. */
+void ra2_open_url(uint32_t url_va, uint32_t ask);
 int ra2_exit_confirmation_reply(uint32_t request, int exit_game);
 
 enum { RA2_SETTING_SCALE, RA2_SETTING_BARS, RA2_SETTING_HD, RA2_SETTING_MODERN,
