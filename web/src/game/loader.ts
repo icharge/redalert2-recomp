@@ -29,7 +29,7 @@ import {
   type GameId,
 } from "../storage/install";
 import { liveGameFileSource, type ReadOnlyFileSource } from "../storage/file-browser";
-import { ensureDefaultMainSettings } from "../storage/game-settings";
+import { ensureDefaultHostSettings, ensureDefaultMainSettings } from "../storage/game-settings";
 import {
   readThaiFont,
   shouldLoadImportedGameFile,
@@ -465,6 +465,7 @@ async function loadOpfsFiles(
   });
   // A fresh import has no settings of its own; give the game the launcher's defaults first.
   await ensureDefaultMainSettings(record);
+  await ensureDefaultHostSettings(record);
   await restoreSaves(
     fs,
     opfsSaveStore(),

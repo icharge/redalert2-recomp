@@ -69,6 +69,14 @@ const SCROLL_METHOD = [
   { value: 2, label: "Drag to pan (reversed)" },
 ];
 
+const SCALING = [
+  { value: "sharp", label: "Sharp bilinear" },
+  { value: "smooth", label: "Smooth" },
+  { value: "crt", label: "CRT" },
+  { value: "nearest", label: "Nearest" },
+  { value: "integer", label: "Integer" },
+];
+
 const SCROLL_RATE = [
   { value: 0, label: "0 — fastest" },
   { value: 1, label: "1" },
@@ -217,6 +225,37 @@ function ChoiceRow({
         <Select.Content>
           {choices.map((choice) => (
             <Select.Item key={choice.value} value={String(choice.value)}>
+              {choice.label}
+            </Select.Item>
+          ))}
+        </Select.Content>
+      </Select.Root>
+    </Row>
+  );
+}
+
+function StringChoiceRow({
+  id,
+  label,
+  hint,
+  value,
+  choices,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  hint?: string;
+  value: string;
+  choices: { value: string; label: string }[];
+  onChange(value: string): void;
+}) {
+  return (
+    <Row id={id} label={label} hint={hint}>
+      <Select.Root value={value} onValueChange={onChange}>
+        <Select.Trigger id={id} aria-label={label} />
+        <Select.Content>
+          {choices.map((choice) => (
+            <Select.Item key={choice.value} value={choice.value}>
               {choice.label}
             </Select.Item>
           ))}
@@ -461,6 +500,7 @@ export function LauncherGameSettings({
   const [campaignSpeedControl, setCampaignSpeedControl] = useState(() =>
     readCampaignSpeedControlPreference(game.storage),
   );
+  const [tab, setTab] = useState("launcher");
   const [loaded, setLoaded] = useState<LoadedGameSettings | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [capturing, setCapturing] = useState(false);
@@ -510,6 +550,12 @@ export function LauncherGameSettings({
   };
   const mainToggle = (section: string, key: string, fallback = true): boolean =>
     mainValue(section, key, fallback ? "yes" : "no").toLowerCase() === "yes";
+  const hostValue = (section: string, key: string, fallback: string): string => {
+    const value = loaded?.host.ini ? getIniValue(loaded.host.ini, section, key) : null;
+    return value ?? fallback;
+  };
+  const hostToggle = (section: string, key: string, onValue: string, fallback: string): boolean =>
+    hostValue(section, key, fallback) === onValue;
 
   async function writeMain(nextIni: Ini, errorText = "Could not save the game settings") {
     const current = loadedRef.current;
@@ -550,11 +596,11 @@ export function LauncherGameSettings({
     await writeMain(setIniValue(ini, section, key, value));
   }
 
-  async function saveHostControls(modern: boolean) {
+  async function saveHost(section: string, key: string, value: string, errorText: string) {
     const current = loadedRef.current;
     if (!current) return;
     const ini = current.host.ini ?? emptyIni();
-    const nextIni = setIniValue(ini, "present", "controls", modern ? "modern" : "classic");
+    const nextIni = setIniValue(ini, section, key, value);
     const data = serializeIni(nextIni);
     const previous = current.host;
     const optimistic = { ...current, host: { ...previous, ini: nextIni, data } };
@@ -571,8 +617,17 @@ export function LauncherGameSettings({
         loadedRef.current = reverted;
         setLoaded(reverted);
       }
-      setError(`Could not save the control setting: ${message(cause)}`);
+      setError(`${errorText}: ${message(cause)}`);
     }
+  }
+
+  async function saveHostControls(modern: boolean) {
+    await saveHost(
+      "present",
+      "controls",
+      modern ? "modern" : "classic",
+      "Could not save the control setting",
+    );
   }
 
   async function resetSections(sections: SettingsSection[]) {
@@ -703,7 +758,14 @@ export function LauncherGameSettings({
         if (!open) onClose();
       }}
     >
-      <Dialog.Content maxWidth="600px" style={{ maxHeight: "85vh", overflowY: "auto" }}>
+      <Dialog.Content
+        maxWidth={tab === "gameplay" || tab === "keyboard" ? "860px" : "600px"}
+        style={{
+          width: `min(92vw, ${tab === "gameplay" || tab === "keyboard" ? 860 : 600}px)`,
+          maxHeight: "85vh",
+          overflowY: "auto",
+        }}
+      >
         <Dialog.Title>{game.title} settings</Dialog.Title>
         <Dialog.Description size="2" mb="4">
           Set launcher options and the game's own settings for the next launch.
@@ -715,7 +777,7 @@ export function LauncherGameSettings({
           </Callout.Root>
         ) : null}
 
-        <Tabs.Root defaultValue="launcher">
+        <Tabs.Root value={tab} onValueChange={setTab}>
           <Tabs.List className={styles.tabs}>
             <Tabs.Trigger value="launcher">Launcher</Tabs.Trigger>
             <Tabs.Trigger value="gameplay">Gameplay</Tabs.Trigger>
@@ -735,15 +797,52 @@ export function LauncherGameSettings({
                   writeSkipIntroPreference(game.storage, skip);
                 }}
               />
-              <ToggleRow
-                id={`launcher-fps-overlay-${game.slot}-${game.id}`}
-                label="FPS overlay"
-                checked={fpsOverlay}
-                onChange={(on) => {
-                  setFpsOverlay(on);
-                  writeStatsPreference(on);
-                }}
-              />
+              <Section title="Presentation" hint="These apply while the game is running.">
+                <StringChoiceRow
+                  id={`launcher-scaling-${game.slot}-${game.id}`}
+                  label="Scaling"
+                  value={hostValue("present", "scale", "smooth")}
+                  choices={SCALING}
+                  onChange={(value) =>
+                    void saveHost("present", "scale", value, "Could not save the scaling")
+                  }
+                />
+                <ToggleRow
+                  id={`launcher-blur-bars-${game.slot}-${game.id}`}
+                  label="Blur menu bars"
+                  checked={hostToggle("present", "bars", "blur", "blur")}
+                  onChange={(on) =>
+                    void saveHost(
+                      "present",
+                      "bars",
+                      on ? "blur" : "black",
+                      "Could not save the menu bars",
+                    )
+                  }
+                />
+                <ToggleRow
+                  id={`launcher-hd-vehicles-${game.slot}-${game.id}`}
+                  label="HD vehicles"
+                  checked={hostToggle("present", "hdvox", "1", "0")}
+                  onChange={(on) =>
+                    void saveHost(
+                      "present",
+                      "hdvox",
+                      on ? "1" : "0",
+                      "Could not save the HD vehicles setting",
+                    )
+                  }
+                />
+                <ToggleRow
+                  id={`launcher-fps-overlay-${game.slot}-${game.id}`}
+                  label="FPS overlay"
+                  checked={fpsOverlay}
+                  onChange={(on) => {
+                    setFpsOverlay(on);
+                    writeStatsPreference(on);
+                  }}
+                />
+              </Section>
               <ToggleRow
                 id={`launcher-thai-font-fix-${game.slot}-${game.id}`}
                 label="Thai font fix"
@@ -792,130 +891,132 @@ export function LauncherGameSettings({
                       writes a new file for the next launch.
                     </Text>
                   ) : null}
-                  <Section title="Player" hint="Used in multiplayer lobbies and saved games.">
-                    <TextRow
-                      id={settingId("MultiPlayer", "Handle")}
-                      label="Player name"
-                      value={playerName}
-                      placeholder="Player"
-                      maxLength={16}
-                      onCommit={(name) => {
-                        const handle = formatHandle(name);
-                        if (handle === null) {
-                          setError("That name uses characters the game cannot store.");
-                          return;
-                        }
-                        void saveMain("MultiPlayer", "Handle", handle);
-                      }}
-                    />
-                  </Section>
-                  <Section title="Match">
-                    <SliderRow
-                      id={settingId("Options", "GameSpeed")}
-                      label="Game speed"
-                      value={mainNumber("Options", "GameSpeed", 5)}
-                      min={0}
-                      max={6}
-                      format={(value) =>
-                        value === 0 ? "0 (slowest)" : value === 6 ? "6 (fastest)" : String(value)
-                      }
-                      onChange={(value) => void saveMain("Options", "GameSpeed", String(value))}
-                    />
-                    <ChoiceRow
-                      id={settingId("Options", "Difficulty")}
-                      label="Difficulty"
-                      value={mainNumber("Options", "Difficulty", 2)}
-                      choices={DIFFICULTY}
-                      onChange={choose("Options", "Difficulty")}
-                    />
-                    {game.id === "ra2md" ? (
-                      <ChoiceRow
-                        id={settingId("Options", "CampDifficulty")}
-                        label="Campaign difficulty"
-                        value={mainNumber("Options", "CampDifficulty", 2)}
-                        choices={DIFFICULTY}
-                        onChange={choose("Options", "CampDifficulty")}
+                  <div className={styles.gameplayGrid}>
+                    <Section title="Player" hint="Used in multiplayer lobbies and saved games.">
+                      <TextRow
+                        id={settingId("MultiPlayer", "Handle")}
+                        label="Player name"
+                        value={playerName}
+                        placeholder="Player"
+                        maxLength={16}
+                        onCommit={(name) => {
+                          const handle = formatHandle(name);
+                          if (handle === null) {
+                            setError("That name uses characters the game cannot store.");
+                            return;
+                          }
+                          void saveMain("MultiPlayer", "Handle", handle);
+                        }}
                       />
-                    ) : null}
-                  </Section>
-                  <Section title="Campaign">
-                    <ToggleRow
-                      id={`launcher-speed-control-${game.slot}-${game.id}`}
-                      label="Campaign speed control"
-                      hint="Adds -SPEEDCONTROL, so the game speed slider is available in campaign missions."
-                      checked={campaignSpeedControl}
-                      onChange={(on) => {
-                        setCampaignSpeedControl(on);
-                        writeCampaignSpeedControlPreference(game.storage, on);
-                      }}
-                    />
-                  </Section>
-                  <Section title="Camera">
-                    <ChoiceRow
-                      id={settingId("Options", "ScrollMethod")}
-                      label="Scroll method"
-                      hint="How the held right mouse button pans the map."
-                      value={mainNumber("Options", "ScrollMethod", 0)}
-                      choices={SCROLL_METHOD}
-                      onChange={choose("Options", "ScrollMethod")}
-                    />
-                    <ChoiceRow
-                      id={settingId("Options", "ScrollRate")}
-                      label="Scroll rate"
-                      hint="Lower is faster; 0 is the fastest and 6 the slowest."
-                      value={mainNumber("Options", "ScrollRate", 3)}
-                      choices={SCROLL_RATE}
-                      onChange={choose("Options", "ScrollRate")}
-                    />
-                    <ToggleRow
-                      id={settingId("Options", "AutoScroll")}
-                      label="Auto scroll"
-                      checked={mainToggle("Options", "AutoScroll", true)}
-                      onChange={toggle("Options", "AutoScroll")}
-                    />
-                  </Section>
-                  <Section title="Controls">
-                    <ToggleRow
-                      id={settingId("present", "controls")}
-                      label="MOBA style"
-                      hint="Left-click to select; right-click to order. Shift-click a build icon to queue five."
-                      checked={modernControls}
-                      onChange={(on) => void saveHostControls(on)}
-                    />
-                  </Section>
-                  <Section title="Interface">
-                    <ChoiceRow
-                      id={settingId("Options", "DetailLevel")}
-                      label="Detail level"
-                      value={mainNumber("Options", "DetailLevel", 2)}
-                      choices={DETAIL_LEVEL}
-                      onChange={choose("Options", "DetailLevel")}
-                    />
-                    <ToggleRow
-                      id={settingId("Options", "SidebarCameoText")}
-                      label="Sidebar cameo text"
-                      checked={mainToggle("Options", "SidebarCameoText", true)}
-                      onChange={toggle("Options", "SidebarCameoText")}
-                    />
-                    <ToggleRow
-                      id={settingId("Options", "UnitActionLines")}
-                      label="Unit action lines"
-                      checked={mainToggle("Options", "UnitActionLines", true)}
-                      onChange={toggle("Options", "UnitActionLines")}
-                    />
-                    <ToggleRow
-                      id={settingId("Options", "ShowHidden")}
-                      label="Show hidden objects"
-                      checked={mainToggle("Options", "ShowHidden", true)}
-                      onChange={toggle("Options", "ShowHidden")}
-                    />
-                    <ToggleRow
-                      id={settingId("Options", "ToolTips")}
-                      label="Tooltips"
-                      checked={mainToggle("Options", "ToolTips", true)}
-                      onChange={toggle("Options", "ToolTips")}
-                    />
-                  </Section>
+                    </Section>
+                    <Section title="Match">
+                      <SliderRow
+                        id={settingId("Options", "GameSpeed")}
+                        label="Game speed"
+                        value={mainNumber("Options", "GameSpeed", 5)}
+                        min={0}
+                        max={6}
+                        format={(value) =>
+                          value === 0 ? "0 (slowest)" : value === 6 ? "6 (fastest)" : String(value)
+                        }
+                        onChange={(value) => void saveMain("Options", "GameSpeed", String(value))}
+                      />
+                      <ChoiceRow
+                        id={settingId("Options", "Difficulty")}
+                        label="Difficulty"
+                        value={mainNumber("Options", "Difficulty", 2)}
+                        choices={DIFFICULTY}
+                        onChange={choose("Options", "Difficulty")}
+                      />
+                      {game.id === "ra2md" ? (
+                        <ChoiceRow
+                          id={settingId("Options", "CampDifficulty")}
+                          label="Campaign difficulty"
+                          value={mainNumber("Options", "CampDifficulty", 2)}
+                          choices={DIFFICULTY}
+                          onChange={choose("Options", "CampDifficulty")}
+                        />
+                      ) : null}
+                    </Section>
+                    <Section title="Campaign">
+                      <ToggleRow
+                        id={`launcher-speed-control-${game.slot}-${game.id}`}
+                        label="Campaign speed control"
+                        hint="Adds -SPEEDCONTROL, so the game speed slider is available in campaign missions."
+                        checked={campaignSpeedControl}
+                        onChange={(on) => {
+                          setCampaignSpeedControl(on);
+                          writeCampaignSpeedControlPreference(game.storage, on);
+                        }}
+                      />
+                    </Section>
+                    <Section title="Camera">
+                      <ChoiceRow
+                        id={settingId("Options", "ScrollMethod")}
+                        label="Scroll method"
+                        hint="How the held right mouse button pans the map."
+                        value={mainNumber("Options", "ScrollMethod", 0)}
+                        choices={SCROLL_METHOD}
+                        onChange={choose("Options", "ScrollMethod")}
+                      />
+                      <ChoiceRow
+                        id={settingId("Options", "ScrollRate")}
+                        label="Scroll rate"
+                        hint="Lower is faster; 0 is the fastest and 6 the slowest."
+                        value={mainNumber("Options", "ScrollRate", 3)}
+                        choices={SCROLL_RATE}
+                        onChange={choose("Options", "ScrollRate")}
+                      />
+                      <ToggleRow
+                        id={settingId("Options", "AutoScroll")}
+                        label="Auto scroll"
+                        checked={mainToggle("Options", "AutoScroll", true)}
+                        onChange={toggle("Options", "AutoScroll")}
+                      />
+                    </Section>
+                    <Section title="Controls">
+                      <ToggleRow
+                        id={settingId("present", "controls")}
+                        label="MOBA style"
+                        hint="Left-click to select; right-click to order. Shift-click a build icon to queue five."
+                        checked={modernControls}
+                        onChange={(on) => void saveHostControls(on)}
+                      />
+                    </Section>
+                    <Section title="Interface">
+                      <ChoiceRow
+                        id={settingId("Options", "DetailLevel")}
+                        label="Detail level"
+                        value={mainNumber("Options", "DetailLevel", 2)}
+                        choices={DETAIL_LEVEL}
+                        onChange={choose("Options", "DetailLevel")}
+                      />
+                      <ToggleRow
+                        id={settingId("Options", "SidebarCameoText")}
+                        label="Sidebar cameo text"
+                        checked={mainToggle("Options", "SidebarCameoText", true)}
+                        onChange={toggle("Options", "SidebarCameoText")}
+                      />
+                      <ToggleRow
+                        id={settingId("Options", "UnitActionLines")}
+                        label="Unit action lines"
+                        checked={mainToggle("Options", "UnitActionLines", true)}
+                        onChange={toggle("Options", "UnitActionLines")}
+                      />
+                      <ToggleRow
+                        id={settingId("Options", "ShowHidden")}
+                        label="Show hidden objects"
+                        checked={mainToggle("Options", "ShowHidden", true)}
+                        onChange={toggle("Options", "ShowHidden")}
+                      />
+                      <ToggleRow
+                        id={settingId("Options", "ToolTips")}
+                        label="Tooltips"
+                        checked={mainToggle("Options", "ToolTips", true)}
+                        onChange={toggle("Options", "ToolTips")}
+                      />
+                    </Section>
+                  </div>
                   <Flex justify="end">
                     <Button variant="soft" onClick={() => void resetGameplayDefaults()}>
                       Reset gameplay defaults

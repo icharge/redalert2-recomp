@@ -21,6 +21,30 @@
   border-top: 0;
 }
 
+.gameplayGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-4);
+}
+
+.gameplayGrid > .section {
+  padding: var(--space-3);
+  border: 1px solid var(--gray-5);
+  border-radius: var(--radius-3);
+  background: var(--gray-2);
+}
+
+.gameplayGrid > .section:first-child {
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--gray-5);
+}
+
+@media (min-width: 720px) {
+  .gameplayGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .textInput {
   width: 180px;
 }

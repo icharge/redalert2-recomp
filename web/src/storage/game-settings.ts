@@ -452,6 +452,11 @@ export function defaultKeyboardIni(game: GameId): Ini {
   return parseIni(encodeLatin1(DEFAULT_KEYBOARD[game]));
 }
 
+/** The host's defaults when no `.host` file exists yet; smooth scaling is the launcher default. */
+export function defaultHostIni(): Ini {
+  return parseIni(encodeLatin1("[present]\nscale=smooth\nbars=blur\nhdvox=0\ncontrols=classic\n"));
+}
+
 /** A fresh RA2.INI / RA2MD.INI holding the game's own defaults for the sections the launcher edits. */
 export function defaultMainIni(game: GameId): Ini {
   const defaults = gameSettingsDefaults(game);
@@ -678,6 +683,16 @@ export async function ensureDefaultMainSettings(
   const saved = await (deps.readSave ?? defaultReadSave)(game.storage, names.main);
   if (saved || importedEntry(game, names.main)) return;
   await writeGameSettings(game, names.main, serializeIni(defaultMainIni(game.id)), deps);
+}
+
+/** A fresh profile has no host file either; write its defaults before the host reads them. */
+export async function ensureDefaultHostSettings(
+  game: GameRecord,
+  deps: Partial<GameSettingsDeps> = {},
+): Promise<void> {
+  const path = `.host/${settingsFileNames(game.id).main}`;
+  if (await (deps.readSave ?? defaultReadSave)(game.storage, path)) return;
+  await writeGameSettings(game, path, serializeIni(defaultHostIni()), deps);
 }
 
 /** Adds every default binding the file does not have yet, keeping the lines that are already there. */
