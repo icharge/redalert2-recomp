@@ -135,13 +135,13 @@ call). No state codec or server model exists yet.
   "Click on a white territory to engage in battle" render at 1280x720:
   `work/wdt-art640/tick19.png` (848 KB). The 640 layout is drawn at 472x448 inside the wider
   window; scaling it is a later polish item.
-- **Click instrumentation**: `sub_0072A770` (the territory hit test) and the
-  `sub_0072E430` click helper are **never called** for page clicks at viewport (430,500) or
-  game (200,250). The map keeps polling `/wdt/state` once a second, so the screen is alive;
-  the click is not reaching the map's custom input path. Next: find the map window proc /
-  message that commits a territory (likely a `WM_LBUTTONDOWN` path distinct from the
-  faction screen's `0x768A3B` hit test), then drive that rect.
-- **Next**: route the click to the map's territory-commit message, verify the lobby
+- **Map input**: instrumenting the map's update proc (`sub_0072E050`) shows it receives only
+  message **0** on each tick; neither the territory hit test (`sub_0072A770`) nor the click
+  helper (`sub_0072E430`) runs for a page click. The commit path is therefore not a
+  `WM_LBUTTONDOWN` handled by that dialog proc — it depends on the map control's own state
+  (`[control+0x68]`, `[screen+0x454]`) and the mouse object. Next: instrument that control
+  state/button flag and inject the click where the control reads it.
+- **Next**: drive the map control's territory-commit state, verify the lobby
   `MatchWDT`/`WDT=` assignment and result; then WDT-0b/3 native capture.
 
 ### First finding: the browser does not use the raw TCP path
