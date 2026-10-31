@@ -119,6 +119,13 @@ Room flag to limit (max width), replacing the stock 640/800/1024:
 | `0x400` ("ResolutionLimited800") | 800 | 1920 (1920x1080) |
 | neither | 1024 | 1920 (1920x1080) |
 
+Yuri's Revenge takes a different route (2026-10-31): its Create Game "Limit
+screen resolution" option is the only control. It can be enabled at any host
+size; when on, the room publishes `0x400` and both the host (at create time) and
+guests (through the stock prompt, whose 640/800 text is rewritten to
+1920x1080) cap at 1920x1080. When off, no flag is published, so the join is
+neither capped nor prompted. RA2 keeps the quiet range below.
+
 - Below 1024x768 online is raised to 1024x768 when the match starts.
 - Lift patch: change the constants in the limit arithmetic
   (`0x007457AA` to `0x007457C4`); replace the dead `jmp` at `0x007457CC` with

@@ -260,7 +260,7 @@ class RA2OnlinePatchTests(unittest.TestCase):
 
 
 class YROnlinePatchTests(unittest.TestCase):
-    """Yuri's Revenge's online resolution range (run_lift.py yr_online_patches)."""
+    """Yuri's Revenge's 1920 online cap and optional prompt (run_lift.py yr_online_patches)."""
 
     SIZE = 0x00790000
 
@@ -268,49 +268,84 @@ class YROnlinePatchTests(unittest.TestCase):
     def rel32(va, length, target):
         return ((target - (va + length)) & 0xFFFFFFFF).to_bytes(4, 'little').hex()
 
+    @staticmethod
+    def rel8(va, length, target):
+        return ((target - (va + length)) & 0xFF).to_bytes(1, 'little').hex()
+
     @classmethod
-    def image(cls, target=0x00789A58, corrupt=None):
+    def image(cls, jle_target=0x00789A58, off_target=0x00789B82, corrupt=None):
         code = bytearray(cls.SIZE)
 
         def put(va, hexbytes):
             raw = bytes.fromhex(hexbytes)
             code[va:va + len(raw)] = raw
 
+        put(0x0078997B, '8b4720')
         put(0x00789988, 'be20030000')
         put(0x00789998, '2580feffff')
         put(0x0078999D, '0500040000')
         put(0x007899A4, '393584eba800')
-        put(0x007899AA, '0f8e' + cls.rel32(0x007899AA, 6, target))
+        put(0x007899AA, '0f8e' + cls.rel32(0x007899AA, 6, jle_target))
+        put(0x007899E1, '50')
+        put(0x00789A08, '8bc6b960')
+        put(0x00789B79, '7c' + cls.rel8(0x00789B79, 2, off_target)
+            + 'c60540b5a80000')
+        put(0x00789DA8, '8b1584eba800')
+        put(0x0078DF75, '52')
+        put(0x0078DF84, '8a44241c')
         if corrupt is not None:
             code[corrupt] ^= 0xFF
         return bytes(code)
 
     def test_every_site_is_patched(self):
         patches = yr_online_patches(self.image(), 0)
-        self.assertEqual(set(patches), {0x00789988, 0x00789998, 0x0078999D, 0x007899AA})
+        self.assertEqual(set(patches), {
+            0x0078997B, 0x007899E1, 0x00789A08, 0x00789B79,
+            0x00789DA8, 0x0078DF75, 0x0078DF84,
+        })
+        self.assertNotIn(0x007899AA, patches)  # the stock prompt branch stays
 
-    def test_the_limit_is_1920_with_1024_for_the_640_flag(self):
+    def test_a_normal_room_is_uncapped_and_never_prompts(self):
         patches = yr_online_patches(self.image(), 0)
-        self.assertIn('esi = 0x780u;', patches[0x00789988])
-        self.assertIn('eax = eax & 0xFFFFFC80u;', patches[0x00789998])
-        self.assertIn('eax = eax + 0x780u;', patches[0x0078999D])
+        body = patches[0x0078997B]
+        self.assertIn('eax = MEM32(edi + 0x20);', body)
+        self.assertIn('if (!(eax & 0x600u)) goto L_00789A58;', body)
+        self.assertIn('esi = 0x780u;', body)
+        self.assertIn('goto L_007899A4;', body)
 
-    def test_the_prompt_becomes_a_quiet_clamp(self):
+    def test_the_prompt_is_shown_with_the_1920_text(self):
         patches = yr_online_patches(self.image(), 0)
-        body = '    if (CMP_LE(_flag_a, _flag_b)) goto L_00789A58; /* 0x007899AA: jle 0x789a58 */\n'
-        result = apply_patches(body, {0x007899AA: patches[0x007899AA]})
-        self.assertIn('if ((int32_t)MEM32(0x00A8EB84) <= (int32_t)esi)', result)
-        self.assertNotIn('RECOMP_CALL(sub_00734E60)', result)
-        self.assertIn('MEM32(0x00A8EB84) = _w;', result)
-        self.assertIn('MEM32(0x00A8EB88) = _h;', result)
-        self.assertIn('RECOMP_CALL(sub_005FAD10)', result)
-        self.assertIn('goto L_00789A58;', result)
+        self.assertIn('ra2_wol_limit_message', patches[0x007899E1])
+        self.assertIn('PUSH32(esp, eax);', patches[0x007899E1])
+
+    def test_yes_stores_1920_and_saves_it(self):
+        body = yr_online_patches(self.image(), 0)[0x00789A08]
+        self.assertIn('MEM32(0x00A8EB84) = 0x780u;', body)
+        self.assertIn('MEM32(0x00A8EB88) = 0x438u;', body)
+        self.assertIn('RECOMP_CALL(sub_005FAD10)', body)
+        self.assertIn('goto L_00789A3E;', body)
+
+    def test_the_host_is_capped_and_the_room_advertises_1920(self):
+        body = yr_online_patches(self.image(), 0)[0x00789DA8]
+        self.assertIn('uint32_t _reserved = eax | 0x400u;', body)
+        self.assertIn('if ((int32_t)MEM32(0x00A8EB84) > 1920)', body)
+        self.assertIn('eax = _reserved;', body)
+        self.assertIn('goto L_00789DC6;', body)
+
+    def test_the_option_stays_on_and_the_checkbox_is_usable(self):
+        patches = yr_online_patches(self.image(), 0)
+        self.assertIn('goto L_00789B82;', patches[0x00789B79])
+        self.assertIn('PUSH32(esp, 1);', patches[0x0078DF75])
+        self.assertIn('SET_LO8(eax, 0);', patches[0x0078DF84])
 
     def test_a_different_build_gets_no_online_patches(self):
-        for va in (0x00789988, 0x00789998, 0x0078999D, 0x007899A4):
+        for va in (0x0078997B, 0x00789988, 0x00789998, 0x0078999D, 0x007899A4,
+                   0x007899E1, 0x00789A08, 0x00789B79, 0x00789DA8,
+                   0x0078DF75, 0x0078DF84):
             with self.subTest(va=va):
                 self.assertEqual(yr_online_patches(self.image(corrupt=va), 0), {})
-        self.assertEqual(yr_online_patches(self.image(target=0x00789B00), 0), {})
+        self.assertEqual(yr_online_patches(self.image(jle_target=0x00789B00), 0), {})
+        self.assertEqual(yr_online_patches(self.image(off_target=0x00789B90), 0), {})
 
 
 class RA2ConfirmPatchTests(unittest.TestCase):

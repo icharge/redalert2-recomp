@@ -395,9 +395,11 @@ callbacks, and asserts that old relay sockets and native sessions are cleared.
 It is currently a YR-only fixture; general RA2/YR play checks use `--play`.
 `--password` creates a protected room; `--wrong-password` submits an incorrect
 key, acknowledges the native failure dialog, then retries successfully. Both
-imply two clients. Room keys are redacted from the wire capture. For YR with
-an imported widescreen setting, `yr_online_patches` clamps the guest quietly
-(1024x768 for a 0x200 room, else 1920x1080), so no resolution prompt is shown.
+imply two clients. Room keys are redacted from the wire capture. For YR, a room
+created with `[MultiPlayer] WOLLimitResolution=yes` (or `--room-flags 0x400`)
+prompts a guest above 1920x1080; the prompt text is rewritten to 1920x1080 and
+accepting stores that size. A room without the limit publishes no flag, so the
+guest is neither capped nor prompted.
 `--start` alone establishes only the session handoff. Screenshots, game logs and
 redacted WebSocket captures are saved under
 `--shots`. `--interactive` accepts JSON actions such as

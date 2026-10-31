@@ -76,7 +76,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   set(HLE ${PCRECOMP}/runtime/win32hle)
   file(GLOB HLE_SOURCES CONFIGURE_DEPENDS "${HLE}/*.c")
   list(FILTER HLE_SOURCES EXCLUDE REGEX "_selftest\.c$")
-  add_executable(ra2 src/linux/main.c src/linux/launcher.c src/linux/blowfish.c src/linux/script.c src/linux/mods.c src/runtime/hdvox.c src/runtime/queuefive.c src/runtime/thai_font.c ${HLE_SOURCES} ${GEN_SOURCES})
+  add_executable(ra2 src/linux/main.c src/linux/launcher.c src/linux/blowfish.c src/linux/script.c src/linux/mods.c src/runtime/hdvox.c src/runtime/queuefive.c src/runtime/thai_font.c src/runtime/woltext.c ${HLE_SOURCES} ${GEN_SOURCES})
   target_include_directories(ra2 PRIVATE src/linux src/runtime ${GEN_DIR} ${HLE} ${PCRECOMP}/runtime/recomp32)
   target_compile_definitions(ra2 PRIVATE RECOMP_RETADDR=0u RECOMP_FLAT_MEMORY RECOMP_LOCAL_REGS HLE_WITH_FFMPEG)
   set(GEN_OPT "-O2" CACHE STRING "optimisation for the generated C")
@@ -95,7 +95,7 @@ if(EMSCRIPTEN)
     src/web/main.c src/web/read_cache.c src/web/wolapi.c src/web/presenter.c
     src/web/frame_buffers.c src/web/settings.c src/web/modern.c
     src/linux/launcher.c src/linux/blowfish.c src/linux/script.c src/linux/mods.c
-    src/runtime/hdvox.c src/runtime/queuefive.c src/runtime/thai_font.c)
+    src/runtime/hdvox.c src/runtime/queuefive.c src/runtime/thai_font.c src/runtime/woltext.c)
   # Movies: with FFmpeg's Bink decoder (tools/build-ffmpeg-web.sh configures FFmpeg in ../ffmpeg-src/build and lists
   # the files; -DFFMPEG_WEB_DIR names another), else empty and short, see pcrecomp bink.c
   set(FFMPEG_WEB_DIR "${CMAKE_SOURCE_DIR}/../ffmpeg-src/build" CACHE PATH "a configured FFmpeg build (tools/build-ffmpeg-web.sh); without it movies are skipped")
@@ -233,6 +233,7 @@ add_executable(ra2
   src/runtime/hdvox.c
   src/runtime/queuefive.c
   src/runtime/thai_font.c
+  src/runtime/woltext.c
   ${PCRECOMP}/runtime/native32/native32.c
   ${PCRECOMP}/runtime/recomp32/image_loader.c
   ${PCRECOMP}/runtime/recomp32/recomp_trace.c

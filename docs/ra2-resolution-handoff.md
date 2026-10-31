@@ -101,6 +101,23 @@ which is not a regression of this work.
 The online clamp has been exercised in real two-player lobbies (section above): both
 clamps at match start and at join, with unflagged, 0x200 and 0x400 rooms.
 
+### YR "Limit screen resolution" option (2026-10-31)
+
+`yr_online_patches` now makes the Create Game checkbox the room's only
+resolution control, and enables it at any host size:
+
+- **on**: the room publishes `0x400`, the host's own match size is capped to
+  1920x1080 and saved at create time, and a guest above 1920 gets the stock
+  prompt. `src/runtime/woltext.c` rewrites the prompt's 640x480/800x600 text to
+  1920x1080 in the same (mirrored or plain) encoding. Yes stores 1920x1080 and
+  saves it; No aborts the join as stock does.
+- **off**: no resolution bit is published, so the join check accepts at once;
+  there is no cap and no prompt.
+
+`tools/test_lift_patches.py` covers every patch site (`43 tests`). The
+two-client check is `web/e2e/wol.mjs --room-flags 0x400` (prompt appears and
+accepting joins at 1920x1080) versus the same run without the flag (no prompt).
+
 RA2Web (`../ra2web/server/src`, read 2026-10-25): it stores a room's topic, WOLAPI2 metadata
 included, as an opaque string and relays it; it does not read the resolution flags or any
 player's size. The range is therefore enforced by the clients, as the original game does
@@ -122,10 +139,13 @@ tests, but still needs this runtime check:
   otherwise handled cleanly (the reported screenshot showed only three sizes).
 
 Yuri's Revenge's join check was inspected at `0x789960`: unlike RA2's shipping
-code, it retains its comparison (`jle 0x789a58` at `0x007899AA`) and its modal
-"resolution limited" prompt. `yr_online_patches` (run_lift.py) now gives it the
-same range and quiet clamp as RA2: 0x200 allows 1024, 0x400 and unflagged rooms
-1920. This removes the prompt a normal room showed every guest above 1024.
+code, it retains its comparison and its modal "resolution limited" prompt.
+`yr_online_patches` now makes the Create Game "Limit screen resolution" option
+the room's only control: it can be enabled at any host size, publishes `0x400`
+(1920x1080), caps the host at create time, and keeps the stock prompt for guests
+above 1920 with the size rewritten to 1920x1080. A room without the option has
+no flag, no cap and no prompt, so a normal game no longer asks its guests to
+lower the resolution.
 
 ## Working tree notes
 

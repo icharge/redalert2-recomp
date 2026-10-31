@@ -263,11 +263,12 @@ async function open(name, username) {
 
 try {
   const host = await open("host", "woltst1");
-  // --room-flags 0x200: the host's room is published with the resolution flag (0x200 = limited
-  // to 1024x768, 0x400 = 1920x1080 under the remaster's range; docs/ra2-resolution-plan.md),
-  // as the server relays it to the guest: the first WOLAPI2 number, the game's room flags at
-  // [room + 0x20] (the join check reads them there). The game itself only sets these bits from
-  // its own shell mode, which is 800x600 here, so the test sets them on the wire.
+  // --room-flags 0x400: publish the room's resolution bit as the server would
+  // relay it to the guest (the first WOLAPI2 number, the room's reserved field
+  // at [room + 0x20], which the join check reads). YR now treats either
+  // resolution bit as the 1920x1080 cap; 0x400 is what a host that ticked
+  // "Limit screen resolution" publishes. The game itself only sets the bit
+  // from that option, so the test sets it on the wire.
   const flagsAt = process.argv.indexOf("--room-flags");
   if (flagsAt > 0) {
     const flags = Number(process.argv[flagsAt + 1]);
@@ -322,9 +323,19 @@ try {
     await guest.page.waitForTimeout(300);
     await guest.clickGame(150, ra2 ? 47 : 65);
     await guest.clickGame(720, 263);
-    // The stock YR join check prompts when the guest's RA2MD.INI size is over
-    // the room's limit; yr_online_patches clamps it quietly (1024x768 for a
-    // 0x200 room, 1920x1080 otherwise), so no resolution dialog appears here.
+    // A limited YR room (the option on, or --room-flags 0x200/0x400) prompts a
+    // guest configured above 1920x1080; accepting stores that size. A room
+    // without the limit publishes no flag and never prompts.
+    const roomFlags = flagsAt > 0 ? Number(process.argv[flagsAt + 1]) : 0;
+    if (!ra2 && roomFlags & 0x600) {
+      const guestWidth = await guest.page.evaluate(() => window.Module.HEAPU32[0xa8eb84 / 4]);
+      if (guestWidth > 1920) {
+        await waitNative(guest, "[dialog] open 0xFB");
+        await guest.page.waitForTimeout(500);
+        await dump("guest", "resolution-confirm");
+        await guest.clickGame(720, 220); // Yes: store 1920x1080.
+      }
+    }
     if (roomPassword) {
       await waitNative(guest, "[dialog] open 0xE1");
       await guest.page.waitForTimeout(500);

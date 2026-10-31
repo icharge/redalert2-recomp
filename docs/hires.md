@@ -39,15 +39,23 @@ bytes first so a different build gets none:
 - `src/web/wolapi.c` keeps the room flag bits (`0x200`, `0x400`) through room
   creation and room-list parsing; `wolapi_selftest.c` checks the round trip.
 
-Yuri's Revenge keeps the stock join check (`sub_00789960`) and its modal
-"resolution limited" message: a guest whose `RA2MD.INI` size is above the room's
-limit is asked before joining. A room without a resolution flag is limited to
-1024, so every guest above 1024 saw the message even when the host did not turn
-on `[MultiPlayer] WOLLimitResolution`. `yr_online_patches` gives YR the same
-range and quiet clamp as RA2: flag `0x200` allows 1024x768, `0x400` and unflagged
-rooms 1920x1080; a larger size is stored (and saved) without the message. The
-RA2Web server still relays the room flags and must enforce the range itself for
-patched or third-party clients.
+Yuri's Revenge's Create Game screen owns the resolution option: the "Limit
+screen resolution" checkbox (control 0x71E, `[MultiPlayer] WOLLimitResolution`).
+The stock game clears the option at 1024+ and only publishes the 640/800 caps,
+so a normal room (option off) compared every guest against the stock 1024
+default and prompted above it. `yr_online_patches` replaces that:
+
+- the option can be enabled at any host size (the stock force-off and the two
+  dialog width gates are removed);
+- when on, the room publishes `0x400` and the host's own match size is capped
+  to 1920x1080 (stored and saved). A guest above 1920 gets the stock prompt,
+  whose text `src/runtime/woltext.c` rewrites from 640x480/800x600 to
+  1920x1080; Yes stores 1920x1080 and saves it, No aborts the join;
+- when off, no bits are published, so the join is accepted without a cap or a
+  prompt.
+
+The RA2Web server still relays the room flags and does not enforce them; a
+patched client can ignore the check.
 
 The host (`CMakeLists.txt`, `src/runtime/host.c`) links at `/BASE:0x10000000` with a
 1 MB stack and runs the game on a thread with a 16 MB one: at the old base
