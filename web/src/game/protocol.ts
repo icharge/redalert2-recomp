@@ -1,7 +1,7 @@
 // What the page and the game say to each other (docs/web/protocol.md). The C side is
 // src/web/web_api.h: change the two together, and RA2_WEB_PROTOCOL with them.
 
-export const RA2_WEB_PROTOCOL = 9;
+export const RA2_WEB_PROTOCOL = 10;
 
 export const SCALES = ["sharp", "smooth", "crt", "nearest", "integer"] as const;
 export type Scale = (typeof SCALES)[number];
@@ -195,6 +195,15 @@ export const Shared = {
   republish: 1054,
   /** 0 (the default) publishes RGBA as before; 1 publishes the game's own format raw (PresentMode.Raw) */
   presentMode: 1055,
+  /** the in-match game cursor, protocol 10 (docs/web/cursor-layer.md) */
+  pageCursorSeq: 1056,
+  pageCursorKind: 1057,
+  pageCursorHotX: 1058,
+  pageCursorHotY: 1059,
+  pageCursorW: 1060,
+  pageCursorH: 1061,
+  /** the page sets 1 here while it draws the cursor itself; the game then skips its own blit */
+  pageCursorRequest: 1062,
 } as const;
 
 /** The pixel formats of a raw picture (Shared.format). */
@@ -217,6 +226,19 @@ export const CursorKind = {
   Overlay: 3,
 } as const;
 export type CursorKind = (typeof CursorKind)[keyof typeof CursorKind];
+
+/** Byte offset of the page cursor's 64x64 RGBA pixels in the struct. */
+export const PAGE_CURSOR_RGBA_OFFSET = 1063 * 4;
+export const PAGE_CURSOR_PX = 64;
+
+/** Shared.pageCursorKind: the in-match cursor the game captured for the page. */
+export const PageCursorKind = {
+  /** no sprite yet, or the game stopped drawing its cursor */
+  None: 0,
+  /** pageCursorRGBA, with its hot spot */
+  Image: 1,
+} as const;
+export type PageCursorKind = (typeof PageCursorKind)[keyof typeof PageCursorKind];
 
 // ---- the sound: a ring in shared memory ---------------------------------------------------
 // ra2_audio() returns the address of hle_audio_ring_t (pcrecomp win32hle.h): words, then 16-bit

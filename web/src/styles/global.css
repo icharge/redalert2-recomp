@@ -9,3 +9,10 @@ body {
   background: #000;
   overflow: hidden;
 }
+
+/* Debugging (?show-cursor=1): the presenters set `cursor: none` inline while
+ * the game draws its own pointer. Keep the browser's cursor visible so both can
+ * be compared; an author !important rule outranks their inline declaration. */
+canvas[data-native-cursor] {
+  cursor: crosshair !important;
+}

@@ -31,6 +31,7 @@
 #include "present.h"
 #include "hdvox.h"
 #include "mods.h"
+#include "page_cursor.h"
 #include "recomp_target.h"
 
 int host_frame(uint32_t* out, int maxw, int maxh, int* w, int* h);   /* host.c */
@@ -114,6 +115,9 @@ typedef POINT modern_point_t;
 #include "modern_controls_state.h"
 static volatile LONG g_gw = 800, g_gh = 600;   /* the game's picture, last frame */
 static RECT g_dst;                       /* where it is drawn in the client area */
+/* RA2_SHOW_CURSOR=1: keep the Windows pointer visible (as a crosshair) while the
+ * game draws its own cursor, so a jump can be told apart from a pointer problem. */
+static int g_show_cursor;
 static int g_fullscreen;
 static RECT g_windowed;                  /* the window's rect before fullscreen */
 static HWND g_capture_target;            /* the game window a held button went to */
@@ -192,6 +196,47 @@ static RECT fit(int cw, int ch, int gw, int gh, int integer) {
     r.left = (cw - w) / 2, r.top = (ch - h) / 2;
     r.right = r.left + w, r.bottom = r.top + h;
     return r;
+}
+
+/* RA2_PAGE_CURSOR=1: the game stops drawing the in-match cursor and this draws
+ * the one it captured (src/runtime/page_cursor.c), at the real pointer, every
+ * frame. It is the same cursor the page draws in the browser
+ * (docs/web/cursor-layer.md); off, the game draws its own as before. */
+static int g_page_cursor;
+static POINT to_game(int x, int y);               /* below: client point -> game pixels */
+
+static void page_cursor_compose(uint32_t* frame, int fw, int fh) {
+    static uint8_t sprite[RA2_PAGE_CURSOR_PX * RA2_PAGE_CURSOR_PX * 4];
+    const ra2_page_cursor_t* c;
+    uint32_t seq;
+    if (!g_page_cursor || !d.hwnd) return;
+    ra2_page_cursor_tick();
+    c = ra2_page_cursor_state();
+    if (!c->visible || c->w <= 0 || c->h <= 0) return;
+    seq = c->seq;
+    if ((seq & 1u) || (uint32_t)(c->w * c->h * 4) > sizeof sprite) return;
+    memcpy(sprite, c->rgba, (size_t)c->w * c->h * 4);
+    if (c->seq != seq) return;                    /* the game wrote it again: next frame */
+    POINT p;
+    if (!GetCursorPos(&p) || !ScreenToClient(d.hwnd, &p)) return;
+    POINT at = to_game(p.x, p.y);
+    int gw = g_gw > 0 ? g_gw : fw, gh = g_gh > 0 ? g_gh : fh;      /* game pixels */
+    if (gw <= 0 || gh <= 0) return;
+    int scale = fw / gw;                          /* 1, or 2 with HD voxels */
+    if (scale < 1) scale = 1;
+    int left = (at.x - c->hot_x) * scale, top = (at.y - c->hot_y) * scale;
+    for (int y = 0; y < c->h * scale; y++) {
+        int fy = top + y;
+        if (fy < 0 || fy >= fh) continue;
+        uint32_t* row = frame + (size_t)fy * fw;
+        for (int x = 0; x < c->w * scale; x++) {
+            int fx = left + x;
+            if (fx < 0 || fx >= fw) continue;
+            const uint8_t* px = sprite + ((size_t)(y / scale) * c->w + (size_t)(x / scale)) * 4;
+            if (!px[3]) continue;
+            row[fx] = (uint32_t)px[0] << 16 | (uint32_t)px[1] << 8 | px[2];
+        }
+    }
 }
 
 static void draw(const uint32_t* frame, int gw, int gh) {
@@ -550,12 +595,22 @@ static DWORD WINAPI quit_soon(LPVOID unused) {
  * (a battle starts or ends), without the mouse moving: WM_SETCURSOR alone
  * would leave the menus' arrow over the battlefield, beside the game's own,
  * until the player moved. */
+/* The cursor the presenter shows. NULL means the game draws its own; with
+ * RA2_SHOW_CURSOR a crosshair stays over the picture for comparison. */
+static HCURSOR presenter_cursor(void) {
+    HCURSOR c = host_menu_cursor();
+    if (!c && g_show_cursor) return LoadCursorA(NULL, IDC_CROSS);
+    return c;
+}
+
 static void update_cursor(HWND hw) {
     static HCURSOR was = (HCURSOR)-1;
-    HCURSOR c = host_menu_cursor();
+    HCURSOR c = presenter_cursor();
     POINT p;
     if (c == was) return;
-    fprintf(stderr, "[present] cursor: %s\n", c ? "the game's Windows cursor (menus)" : "drawn by the game");
+    fprintf(stderr, "[present] cursor: %s\n",
+            c ? (host_menu_cursor() ? "the game's Windows cursor (menus)" : "the crosshair (RA2_SHOW_CURSOR)")
+              : "drawn by the game");
     was = c;
     if (GetCursorPos(&p) && WindowFromPoint(p) == hw &&
         SendMessageA(hw, WM_NCHITTEST, 0, MAKELPARAM(p.x, p.y)) == HTCLIENT)
@@ -623,7 +678,7 @@ static LRESULT CALLBACK wndproc(HWND hw, UINT m, WPARAM w, LPARAM l) {
     case WM_SETCURSOR:
         /* In a battle the game draws its own; in the menus, the Windows
          * cursor it set (update_cursor). */
-        if (LOWORD(l) == HTCLIENT) { SetCursor(host_menu_cursor()); return TRUE; }
+        if (LOWORD(l) == HTCLIENT) { SetCursor(presenter_cursor()); return TRUE; }
         break;
     case WM_SYSKEYDOWN:
         if (w == VK_RETURN) { set_fullscreen(hw, !g_fullscreen); settings_save(hw); return 0; }
@@ -770,6 +825,7 @@ static DWORD WINAPI present_thread(LPVOID arg) {
         } else if (hd) {                           /* the picture at 2x */
             InterlockedExchange(&g_gw, gw);
             InterlockedExchange(&g_gh, gh);
+            page_cursor_compose(frame, 2 * gw, 2 * gh);
             QueryPerformanceCounter(&t1);
             draw(frame, 2 * gw, 2 * gh);
             QueryPerformanceCounter(&t2);
@@ -777,6 +833,7 @@ static DWORD WINAPI present_thread(LPVOID arg) {
         } else if (host_frame(frame, HOST_FRAME_MAX_WIDTH, HOST_FRAME_MAX_HEIGHT, &gw, &gh)) {
             InterlockedExchange(&g_gw, gw);
             InterlockedExchange(&g_gh, gh);
+            page_cursor_compose(frame, gw, gh);
             QueryPerformanceCounter(&t1);
             draw(frame, gw, gh);
             QueryPerformanceCounter(&t2);
@@ -800,6 +857,18 @@ int present_mode_from_name(const char* name) {
 void present_start(int mode, int fullscreen) {
     char v[16];
     settings_path();
+    g_show_cursor = getenv("RA2_SHOW_CURSOR") != NULL;
+    if (g_show_cursor)
+        fprintf(stderr, "[present] RA2_SHOW_CURSOR: a crosshair shows the real pointer over the picture\n");
+    /* The in-match cursor moves at display rate: the game stops drawing it as
+     * soon as the sprite is captured, and the presenter draws it (page_cursor.c).
+     * RA2_PAGE_CURSOR_DEBUG adds a line a second or so while it is learnt. */
+    g_page_cursor = getenv("RA2_PAGE_CURSOR") != NULL;
+    if (g_page_cursor) {
+        ra2_page_cursor_on(1);
+        ra2_page_cursor_request(1);
+        fprintf(stderr, "[present] RA2_PAGE_CURSOR: the presenter draws the game's cursor\n");
+    }
     /* ra2.ini first; a choice on the command line (mode or fullscreen >= 0) wins. */
     GetPrivateProfileStringA("present", "scale", "sharp", v, sizeof v, g_ini);
     g_mode = present_mode_from_name(v) >= 0 ? present_mode_from_name(v) : 0;

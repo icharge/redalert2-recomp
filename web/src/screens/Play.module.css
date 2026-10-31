@@ -35,6 +35,35 @@
   background: transparent;
 }
 
+/* ?cursor=page: the game's in-match cursor, drawn by the page at display rate */
+.pageCursor {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 3;
+  display: none;
+  pointer-events: none;
+  visibility: hidden;
+  image-rendering: pixelated;
+}
+
+/* ?show-cursor=1: where the page sends the game's cursor, drawn over the picture */
+.cursorMarker {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 2;
+  width: 15px;
+  height: 15px;
+  border: 2px solid #3f6;
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 1px #000,
+    inset 0 0 0 1px #000;
+  pointer-events: none;
+  visibility: hidden;
+}
+
 .textInput {
   position: absolute;
   z-index: 0;

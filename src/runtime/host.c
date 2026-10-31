@@ -27,6 +27,7 @@
 #include "present.h"
 #include "hdvox.h"
 #include "mods.h"
+#include "page_cursor.h"
 #include "recomp_target.h"   /* the binary this build runs: run_lift.py --target */
 
 extern const uint32_t ra2_entry_va;    /* recomp_dispatch.c */
@@ -1589,6 +1590,14 @@ int main(int argc, char** argv) {
     if (input_scripted() && g_classic) { fprintf(stderr, "a scripted run cannot use --classic\n"); return 1; }
     input_start();
     if (!g_classic && !g_headless) present_start(g_scale_mode, g_fullscreen);
+    /* RA2_PAGE_CURSOR=1 without the presenter (headless, --classic, a scripted
+     * run): capture the in-match cursor and stop the game drawing its own, as
+     * the page does in the browser (docs/web/cursor-layer.md). */
+    if ((g_headless || g_classic) && getenv("RA2_PAGE_CURSOR")) {
+        ra2_page_cursor_on(1);
+        ra2_page_cursor_request(1);
+        fprintf(stderr, "[host] RA2_PAGE_CURSOR: the game's cursor is captured\n");
+    }
     if (g_hd_frames_dir) CloseHandle(CreateThread(NULL, 0, hd_frame_dumper, NULL, 0, NULL));
     printf("  entering 0x%08X\n\n", ra2_entry_va);
     fflush(stdout);

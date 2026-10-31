@@ -558,6 +558,51 @@ def web_url_patches(code, cs, target):
     return patches
 
 
+# The in-match game cursor, drawn on the page (docs/web/cursor-layer.md).
+# WWMouseClass::Draw_Cursor blits the cursor shape onto the primary through
+# 0x004AF2A0 (YR) / 0x0049F3A0 (RA2); its `this` carries the shape, frame, hot
+# spot and the position it drew at. The host can skip that blit (the page draws
+# the captured sprite instead) and learns the sprite from the screen otherwise
+# (src/runtime/page_cursor.c). Sites are byte-checked: a different build keeps
+# the game's own cursor.
+PAGE_CURSOR_SITES = {
+    'gamemd': {
+        'draw': 0x007B93F0,
+        'blit': 0x007B9516,
+        'blit_fn': 0x004AF2A0,
+        'this': 'MEM32(esp)',                 # the function kept this at [esp]
+        'shape': '83ec488bc189442400',        # sub esp,0x48; mov eax,ecx; mov [esp],eax
+        'call': 'e8855dcfff',                 # call 0x004af2a0
+    },
+    'game': {
+        'draw': 0x00772740,
+        'blit': 0x00772882,
+        'blit_fn': 0x0049F3A0,
+        'this': 'ebx',                        # mov ebx,ecx at the entry
+        'shape': '83ec48538bd9',              # sub esp,0x48; push ebx; mov ebx,ecx
+        'call': 'e819cbd2ff',                 # call 0x0049f3a0
+    },
+}
+
+
+def page_cursor_patches(code, cs, target):
+    """Skip and capture the game's cursor blit, for the page (docs/web/cursor-layer.md)."""
+    t = PAGE_CURSOR_SITES[target]
+    shape = bytes.fromhex(t['shape'])
+    call = bytes.fromhex(t['call'])
+    at, blit = t['draw'] - cs, t['blit'] - cs
+    if code[at:at + len(shape)] != shape or code[blit:blit + len(call)] != call:
+        print('[*] page_cursor_patches: %s does not match this build; the game keeps its own cursor' % target)
+        return {}
+    return {t['blit']: (
+        '@replace:{ extern int ra2_page_cursor_suppress(void); '
+        'extern void ra2_page_cursor_drawn(uint32_t); '
+        'if (!ra2_page_cursor_suppress()) { RECOMP_CALL(sub_%08X); RECOMP_FLAGS_IN(); } '
+        'ra2_page_cursor_drawn(%s); } '
+        '/* remaster: the page draws the in-match cursor, run_lift.py page_cursor_patches */'
+        % (t['blit_fn'], t['this']))}
+
+
 def apply_patches(body, patches):
     """Add each patch's C after the line that lifts its instruction."""
     for va, c in patches.items():
@@ -1091,6 +1136,7 @@ def targets():
                        patches=lambda code, cs: {**sidebar_rows_patches(code, cs), **dropdown_frame_patches(code, cs), **HD_VOXEL_PATCHES,
                                                  **modern_controls_patches('gamemd'), **queue_five_patches('gamemd'),
                                                  **theme_song_guard(code, cs, 'gamemd'),
+                                                 **page_cursor_patches(code, cs, 'gamemd'),
                                                  **yr_online_patches(code, cs),
                                                  **web_exit_confirmation_patches(code, cs, 'gamemd')}),
         'game': dict(exe=os.path.join(_HERE, 'game', 'game.exe'),
@@ -1108,6 +1154,7 @@ def targets():
                                                **dropdown_frame_patches(code, cs), **HD_VOXEL_PATCHES_GAME,
                                                **modern_controls_patches('game'), **queue_five_patches('game'),
                                                **theme_song_guard(code, cs, 'game'),
+                                               **page_cursor_patches(code, cs, 'game'),
                                                **web_exit_confirmation_patches(code, cs, 'game'),
                                                **ra2_shell_patches(code, cs), **ra2_hires_patches(code, cs),
                                                **ra2_online_patches(code, cs), **ra2_confirm_patches(code, cs),

@@ -15,6 +15,7 @@ import {
 } from "../game/browser-controls";
 import { GameAudio } from "../game/audio";
 import { attachInput } from "../game/input";
+import { PageCursor } from "../game/cursor-layer";
 import { LanPanel } from "../components/LanPanel";
 import { FileExplorer } from "../components/FileExplorer";
 import {
@@ -49,6 +50,9 @@ const runtimeLive = () => !["exited", "crashed"].includes(gameStore.getSnapshot(
 
 /** ?show-cursor=1: the debug mode that keeps the browser cursor visible. */
 const cursorDebug = () => new URLSearchParams(window.location.search).get("show-cursor") === "1";
+
+/** ?cursor=page: draw the game's in-match cursor on the page (docs/web/cursor-layer.md). */
+const cursorPage = () => new URLSearchParams(window.location.search).get("cursor") === "page";
 
 // The game starts once per page load, whatever React remounts (StrictMode, a screen switch).
 declare global {
@@ -90,6 +94,7 @@ export function Play({ files }: { files: FileSource }) {
   const [thaiFontFix] = useState(() => readThaiFontPreference(gameId));
   const handle = useRef<GameHandle | null>(null);
   const cursorMarker = useRef<HTMLDivElement | null>(null);
+  const pageCursorCanvas = useRef<HTMLCanvasElement | null>(null);
   const phase = useGameState((s) => s.phase);
   const copy = useGameState((s) => s.copy);
   const title = useGameState((s) => s.title);
@@ -101,6 +106,7 @@ export function Play({ files }: { files: FileSource }) {
   const settings = useGameState((s) => s.settings);
   const restart = useGameState((s) => s.restart);
   const cursorDebugMode = cursorDebug();
+  const pageCursorMode = cursorPage();
   const [exitError, setExitError] = useState<string | null>(null);
   const updateStats = useCallback((on: boolean) => {
     setStatsOn(on);
@@ -344,6 +350,20 @@ export function Play({ files }: { files: FileSource }) {
         bindCanvas(activeCanvas);
         setPresenter(initialPresenter);
         window.ra2Presenter = initialPresenter;
+        // ?cursor=page: once the game has published the in-match cursor, it
+        // stops drawing it and the page draws it at display rate
+        // (docs/web/cursor-layer.md). The game keeps its own until then.
+        let pageCursorLayer: PageCursor | null = null;
+        if (pageCursorMode && pageCursorCanvas.current) {
+          pageCursorLayer = new PageCursor(
+            pageCursorCanvas.current,
+            () => canvas.current,
+            game.memory,
+            game.shared,
+          );
+          pageCursorLayer.start();
+          console.info("[cursor] the page draws the in-match cursor (?cursor=page)");
+        }
         // Debug marker: the position the page sends the game's cursor to. With
         // ?show-cursor=1 the browser pointer is visible too, so the game's drawn
         // arrow can be compared with both: a drift or jump shows up here first.
@@ -389,9 +409,11 @@ export function Play({ files }: { files: FileSource }) {
         });
         // what the game saved is in OPFS within a moment of leaving the tab
         const onHidden = () => {
-          if (document.visibilityState === "hidden")
+          if (document.visibilityState === "hidden") {
+            // the page is not drawing: the game shows its own cursor again
+            pageCursorLayer?.release();
             void game.saves?.flush().catch((e: unknown) => setBrowserError(String(e)));
-          else if (runtimeLive()) {
+          } else if (runtimeLive()) {
             // back from the background: the game paints its whole screen again
             presenter!.redraw();
             if (document.hasFocus()) game.exports.ra2_focus(1);
@@ -407,6 +429,7 @@ export function Play({ files }: { files: FileSource }) {
           if (stopped) return;
           stopped = true;
           cancelAnimationFrame(markerRaf);
+          pageCursorLayer?.stop();
           if (cursorMarker.current) cursorMarker.current.style.visibility = "hidden";
           presenter?.stop();
           pointer.dispose();
@@ -460,6 +483,9 @@ export function Play({ files }: { files: FileSource }) {
   return (
     <div ref={stage} className={styles.stage}>
       <canvas ref={canvas} className={styles.canvas} tabIndex={0} aria-label="The game" />
+      {pageCursorMode && (
+        <canvas ref={pageCursorCanvas} className={styles.pageCursor} aria-hidden="true" />
+      )}
       {cursorDebugMode && (
         <div ref={cursorMarker} className={styles.cursorMarker} aria-hidden="true" />
       )}

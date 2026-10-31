@@ -168,7 +168,12 @@ function Main() {
       build={build}
       installations={installations}
       modManager={(game) => <ModLibrary game={game.storage} manifest={manifest} target={target} />}
-      onPlay={(game) => navigate(gamePath(game.slot, game.id))}
+      onPlay={(game) => {
+        // A debugging switch given to the launcher follows the game it opens.
+        const showCursor = query.get("show-cursor") === "1";
+        const path = gamePath(game.slot, game.id);
+        navigate(showCursor ? `${path}${path.includes("?") ? "&" : "?"}show-cursor=1` : path);
+      }}
       onImport={() => navigate("/import")}
       onResume={(slot) => navigate(`/import?resume=${slot}`)}
       onRenameInstallation={async (installation, displayName) => {
