@@ -67,6 +67,23 @@ describe("LinkDialogContent", () => {
     open.mockRestore();
   });
 
+  it("shows the WOL Help URL as the support dialog", () => {
+    // src/web/wolapi.c's GetHelpURL hands the game this seeded URL.
+    show({
+      topic: "support",
+      url: "https://ra2web.invalid/support/help.html",
+      detail: "help",
+      external: false,
+      embed: true,
+    });
+
+    expect(screen.getByRole("heading", { name: "Support" })).toBeInTheDocument();
+    expect(screen.getByText(/Westwood's support pages are offline/)).toBeInTheDocument();
+    expect(screen.getByText("https://ra2web.invalid/support/help.html")).toBeInTheDocument();
+    const link = screen.getByRole("link", { name: "Open in browser" });
+    expect(link).toHaveAttribute("href", `${SITE}/support/help`);
+  });
+
   it("asks before opening a live URL the page does not know", () => {
     show(external);
 
