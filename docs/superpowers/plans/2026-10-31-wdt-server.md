@@ -135,8 +135,13 @@ call). No state codec or server model exists yet.
   "Click on a white territory to engage in battle" render at 1280x720:
   `work/wdt-art640/tick19.png` (848 KB). The 640 layout is drawn at 472x448 inside the wider
   window; scaling it is a later polish item.
-- **Next**: click a territory to enter a WDT match and verify the lobby `WDT=` assignment/result
-  path from the UI; then WDT-0b/3 native request capture and native-client verification.
+- **Territory click attempt**: clicking the rendered map at viewport (430,500) and at game
+  (200,250) produced no WDT/match request — only the once-per-second `/wdt/state` poll. The
+  map is drawn from the 640 art scaled into a wider dialog, so the `ClickMap` hit test
+  coordinate space and/or the neutral ("white") owner value is the next thing to decode; the
+  e2e now supports `WDT_CLICK` (viewport) and `WDT_CLICK_GAME` (game pixels).
+- **Next**: decode `NA_ClikMap_TempB.pcx` and map the cursor rect to the scaled 640 layout,
+  then click a white region and verify the lobby `MatchWDT`/`WDT=` assignment; then WDT-0b/3.
 
 ### First finding: the browser does not use the raw TCP path
 

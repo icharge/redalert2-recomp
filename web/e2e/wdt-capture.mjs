@@ -88,6 +88,25 @@ try {
       if (match) afterClickDialogs.add(match[1]);
     }
   }
+  if (process.env.WDT_CLICK) {
+    const [x, y] = process.env.WDT_CLICK.split(",").map(Number);
+    await run.page.mouse.click(x, y);
+    await run.page.waitForTimeout(4000);
+    await run.shot("territory-click");
+    const lines = run.all.filter((line) => /WDT|Match|match|STARTG|GAMEOPT|dialog/i.test(line));
+    console.log("territory click dialogs", JSON.stringify(lines.slice(-20)));
+    console.log("territory phase", (await run.state())?.phase);
+  }
+  if (process.env.WDT_CLICK_GAME) {
+    const [x, y] = process.env.WDT_CLICK_GAME.split(",").map(Number);
+    await run.clickGame(x, y);
+    await run.page.waitForTimeout(4000);
+    await run.shot("territory-click-game");
+    const lines = run.all.filter((line) => /WDT|Match|match|STARTG|GAMEOPT|dialog/i.test(line));
+    console.log("territory game click dialogs", JSON.stringify(lines.slice(-20)));
+    console.log("territory game phase", (await run.state())?.phase);
+  }
+
   const serverCurrent = run.all.some((line) => line.includes("[wdt] server state current"));
   const serverPrevious = run.all.some((line) => line.includes("[wdt] server state previous"));
   const unable = run.all.some((line) => line.includes("[dialog] open 0xD0"));
