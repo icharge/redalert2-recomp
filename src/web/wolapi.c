@@ -1096,8 +1096,35 @@ static void m_stub_10(void) { RET(E_NOTIMPL, 10); }
 static void m_stub_11(void) { RET(E_NOTIMPL, 11); }
 static void m_idle_pump(void) { RET(S_OK, 1); }
 
-static void m_chat_pump(void) { pump_lines(); RET(S_OK, 1); }
-static void m_net_pump(void) { pump_lines(); RET(S_OK, 1); }
+/* World Domination matchmaking ("mangler"): before STARTG the client pings the
+ * MGL address over UDP with a 76-byte game-net frame. The browser has no socket,
+ * so the HLE queues each send; answer it here with the same frame so the client
+ * sees a responding matchmaker. Frames: address, source port, destination port
+ * (network order), payload. */
+extern int hle_ws_udp_pop(uint8_t *packet, uint32_t capacity);
+extern int hle_ws_udp_push(const uint8_t *packet, uint32_t length);
+#define WDT_MANGLER_PORT 29094
+static void service_mangler(void) {
+    uint8_t frame[1600];
+    for (int n = 0; n < 16; n++) {
+        int size = hle_ws_udp_pop(frame, (uint32_t)sizeof frame);
+        if (size <= 0) return;
+        uint16_t destination = (uint16_t)((frame[6] << 8) | frame[7]);
+        if (destination != WDT_MANGLER_PORT) continue;
+        uint16_t source = (uint16_t)((frame[4] << 8) | frame[5]);
+        /* Reply: the mangler is the sender, the game's spare port is the target. */
+        uint8_t reply[1600];
+        memcpy(reply, frame, (size_t)size);
+        reply[0] = 172; reply[1] = 29; reply[2] = 99; reply[3] = 1;
+        reply[4] = (uint8_t)(WDT_MANGLER_PORT >> 8); reply[5] = (uint8_t)WDT_MANGLER_PORT;
+        reply[6] = (uint8_t)(source >> 8); reply[7] = (uint8_t)source;
+        hle_ws_udp_push(reply, (uint32_t)size);
+        fprintf(stderr, "[wdt] mangler reply %d bytes to port %u\n", size - 8, source);
+    }
+}
+
+static void m_chat_pump(void) { service_mangler(); pump_lines(); RET(S_OK, 1); }
+static void m_net_pump(void) { service_mangler(); pump_lines(); RET(S_OK, 1); }
 static uint32_t read_be32(const uint8_t *p) {
     return (uint32_t)p[0] << 24 | (uint32_t)p[1] << 16 | (uint32_t)p[2] << 8 | p[3];
 }

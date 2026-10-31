@@ -200,6 +200,13 @@ call). No state codec or server model exists yet.
   0x75E08F sees every entry, but GAM handling sits behind `[esp+0x20]` state and an earlier
   service branch; trace `[esp+0x20]` writes (0x75E5D2, 0x75E6C1) and the selected-server flag
   to learn which entry order/fields the client needs before it counts a mangler.
+- **Mangler responder implemented (echo; insufficient)**: `service_mangler()` in the browser
+  bridge now pops pre-STARTG frames from the HLE queue on every `PumpMessages` call and pushes a
+  reply for the MGL port: source address/port become `172.29.99.1:29094`, destination is the
+  game's spare port. Verified live: `[wdt] mangler reply 76 bytes to port 21357` (six probes).
+  The client still ends at `0xD0`, so an echo is not the expected matchmaker answer: the reply
+  payload/opcode for the `0xFE` frame still has to be decoded (the request carries a random id
+  plus game-net fields, not a text query).
 - **Mangler datagram captured (verified)**: a page-side `setInterval` that pops the HLE
   `ra2_udp_*` queue (ports are big-endian at frame offsets 4 and 6) logs the pre-STARTG
   matchmaker traffic. The client sends a **76-byte frame** from its spare socket (src 21357)
