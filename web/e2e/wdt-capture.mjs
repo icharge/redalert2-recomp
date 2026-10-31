@@ -88,9 +88,26 @@ try {
       if (match) afterClickDialogs.add(match[1]);
     }
   }
+  if (process.env.WDT_ESCAPE) {
+    await run.page.keyboard.press("Escape");
+    await run.page.waitForTimeout(1000);
+    await run.shot("after-escape");
+  }
+  if (process.env.WDT_DBLCLICK) {
+    const [x, y] = process.env.WDT_DBLCLICK.split(",").map(Number);
+    await run.page.mouse.dblclick(x, y);
+    await run.page.waitForTimeout(4000);
+    await run.shot("territory-dblclick");
+    const lines = run.all.filter((line) => /WDT|Match|match|STARTG|GAMEOPT|dialog/i.test(line));
+    console.log("territory dblclick dialogs", JSON.stringify(lines.slice(-20)));
+    console.log("territory dblclick phase", (await run.state())?.phase);
+  }
   if (process.env.WDT_CLICK) {
     const [x, y] = process.env.WDT_CLICK.split(",").map(Number);
-    await run.page.mouse.click(x, y);
+    await run.page.mouse.move(x, y);
+    await run.page.mouse.down();
+    await run.page.waitForTimeout(300);
+    await run.page.mouse.up();
     await run.page.waitForTimeout(4000);
     await run.shot("territory-click");
     const lines = run.all.filter((line) => /WDT|Match|match|STARTG|GAMEOPT|dialog/i.test(line));
