@@ -10,6 +10,7 @@ const opts = options(process.argv.slice(2));
 opts.pageArgs.push("--mute", "--debuglog");
 const ra2 = new URL(opts.url).searchParams.get("target") === "game";
 const lobby = `#Lob_${ra2 ? 33 : 41}_0`;
+const listType = ra2 ? 33 : 41;
 const wrongPassword = process.argv.includes("--wrong-password");
 const abortStart = process.argv.includes("--abort");
 const partRace = process.argv.includes("--part-race");
@@ -247,7 +248,11 @@ async function open(name, username) {
   await run.clickGame(720, 220);
   await waitNative(run, "Joined Channel");
   const joinedAt = run.wire.findIndex((l) => l.includes(" JOIN ") && l.includes(lobby));
-  await waitWire(run, (l, index) => index > joinedAt && l.includes(" 323 "), "post-join game list");
+  await waitWire(
+    run,
+    (l, index) => index > joinedAt && l.includes(" 323 ") && l.includes(` ${listType} `),
+    "post-join game list",
+  );
   await run.page.waitForTimeout(400);
   assert.ok(
     run.wire.some((l) => l.includes(`JOIN :`) && l.includes(lobby)),
@@ -333,7 +338,7 @@ try {
         await waitNative(guest, "[dialog] open 0xFB");
         await guest.page.waitForTimeout(500);
         await dump("guest", "resolution-confirm");
-        await guest.clickGame(711, 241); // Yes: store 1920x1080.
+        await guest.page.mouse.click(1137, 385, { delay: 200 }); // Yes (screen pixels)
         let stored = [];
         for (let i = 0; i < 15; i++) {
           stored = await guest.page.evaluate(() => [
@@ -343,6 +348,7 @@ try {
           if (stored[0] === 1920) break;
           await guest.page.waitForTimeout(200);
         }
+        await dump("guest", "after-yes");
         assert.deepEqual(stored, [1920, 1080], "accepting stores 1920x1080");
       }
     }
