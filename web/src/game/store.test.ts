@@ -124,6 +124,35 @@ describe("GameStore", () => {
     }
   });
 
+  it("keeps a link open until the player closes it, then clears it", () => {
+    const store = new GameStore();
+    store.begin();
+    store.line(boot());
+    store.line('@ra2 {"e":"menu"}');
+    store.line('@ra2 {"e":"open","url":"http://privacypolicy.westwood.com","ask":0,"seq":7}');
+    expect(store.getSnapshot()).toMatchObject({
+      phase: "running",
+      openLink: { seq: 7, url: "http://privacypolicy.westwood.com", ask: 0 },
+    });
+    store.dismissOpenLink();
+    expect(store.getSnapshot().openLink).toBeNull();
+    expect(store.getSnapshot().phase).toBe("running");
+  });
+
+  it("dismisses an open link if the game exits or crashes", () => {
+    for (const finish of [
+      (s: GameStore) => s.line('@ra2 {"e":"exit","code":0}'),
+      (s: GameStore) => s.crashed("wasm trap"),
+    ]) {
+      const store = new GameStore();
+      store.begin();
+      store.line(boot());
+      store.line('@ra2 {"e":"open","url":"https://example.com","ask":1,"seq":1}');
+      finish(store);
+      expect(store.getSnapshot().openLink).toBeNull();
+    }
+  });
+
   it("shows an error event without ending the game", () => {
     const store = new GameStore();
     store.begin();

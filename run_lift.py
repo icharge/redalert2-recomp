@@ -487,6 +487,7 @@ THEME_PLAYSONG_ARG = {'gamemd': 0x00720BDF, 'game': 0x006E7EDF}
 
 
 def web_exit_confirmation_patches(code, cs, target):
+
     """Replace only the main menu's Exit confirmation call on Emscripten.
 
     Init.CPP resolves GUI:ExitAreYouSure, OK and Cancel, then pushes the
@@ -513,6 +514,40 @@ def web_exit_confirmation_patches(code, cs, target):
         '    #else\n'
         '    RECOMP_CALL(sub_%08X);\n'
         '    #endif /* web Exit confirmation: no native dialog is created */' % helper)}
+
+
+WEB_URL_SITES = {
+    'gamemd': ((0x0077DC90, 0x310, 'edx'),   # wonline.cpp: void f(url, ask)
+               (0x00551630, 0x468, '0')),    # ViewHTML: void f(url)
+    'game': ((0x0073C580, 0x310, 'edx'),),   # wonline.cpp: void f(url, ask)
+}
+
+
+def web_url_patches(code, cs, target):
+    """Intercept the routines that hand a WOL-era URL to the system browser.
+
+    RA2 sub_0073C580 and YR sub_0077DC90 (both wonline.cpp: the URL in ecx,
+    ask in edx) and YR sub_00551630 (ViewHTML: the URL in ecx) all start by
+    allocating their frame, so the lift can call the host and return before the
+    temp .html probe, FindExecutableA, CreateProcessA, TXT_LAUNCHBROWSER and
+    TXT_NOBROWSER path runs. The page shows our dialog instead
+    (docs/superpowers/plans/2026-10-31-web-link-dialogs.md). A different build
+    fails the byte check and gets no patch."""
+    patches = {}
+    for va, size, ask in WEB_URL_SITES[target]:
+        raw = b'\x81\xec' + size.to_bytes(4, 'little')
+        if code[va - cs:va - cs + len(raw)] != raw:
+            print('[*] web_url_patches: 0x%08X does not match this build; no URL patch' % va)
+            continue
+        patches[va] = (
+            '@replace:#if defined(__EMSCRIPTEN__) || defined(RA2_URL_HOST)\n'
+            '    { extern void ra2_open_url(uint32_t, uint32_t);\n'
+            '      ra2_open_url(ecx, %s); return; }\n'
+            '#else\n'
+            '    esp = esp - 0x%Xu; /* 0x%08X: sub esp, 0x%X */\n'
+            '#endif /* web URL: the page shows the link, not the system browser */'
+            % (ask, size, va, size))
+    return patches
 
 
 def apply_patches(body, patches):
@@ -710,6 +745,12 @@ def yr_online_patches(code, cs):
         sites['dialog_enable'][0]: '@replace:PUSH32(esp, 1); ' + tag,
         sites['dialog_check'][0]: '@replace:SET_LO8(eax, 0); ' + tag,
     }
+    theme = sites.get('theme')
+    if theme and at(*theme):
+        out[theme[0]] = ('@replace:if (MEM32(esi + 0x24) == 0) goto L_%08X; '
+                         'ecx = MEM32(esi + 0x24); %s'
+                         % (sites['theme_target'], tag))
+    return out
 
 
 def ra2_online_patches(code, cs):

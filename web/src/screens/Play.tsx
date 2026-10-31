@@ -1,8 +1,10 @@
 import { CrossCircledIcon, ExclamationTriangleIcon } from "@radix-ui/react-icons";
 import { Button, Callout, Dialog, Flex, Heading, ScrollArea, Text } from "@radix-ui/themes";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SoundControl } from "../components/SoundControl";
 import { SettingsDialog } from "../components/SettingsDialog";
+import { LinkDialog } from "../components/LinkDialog";
+import { linkTarget } from "../game/link-targets";
 import { Setting } from "../game/protocol";
 import {
   enterFullscreen,
@@ -45,6 +47,9 @@ import { speedControlArguments } from "../storage/speed-control-preferences";
 
 const runtimeLive = () => !["exited", "crashed"].includes(gameStore.getSnapshot().phase);
 
+/** ?show-cursor=1: the debug mode that keeps the browser cursor visible. */
+const cursorDebug = () => new URLSearchParams(window.location.search).get("show-cursor") === "1";
+
 // The game starts once per page load, whatever React remounts (StrictMode, a screen switch).
 declare global {
   interface Window {
@@ -84,14 +89,18 @@ export function Play({ files }: { files: FileSource }) {
   const gameId = sourceStorage(files);
   const [thaiFontFix] = useState(() => readThaiFontPreference(gameId));
   const handle = useRef<GameHandle | null>(null);
+  const cursorMarker = useRef<HTMLDivElement | null>(null);
   const phase = useGameState((s) => s.phase);
   const copy = useGameState((s) => s.copy);
   const title = useGameState((s) => s.title);
   const error = useGameState((s) => s.error);
   const exitCode = useGameState((s) => s.exitCode);
   const exitConfirmation = useGameState((s) => s.exitConfirmation);
+  const openLink = useGameState((s) => s.openLink);
+  const linkDialogTarget = useMemo(() => (openLink ? linkTarget(openLink.url) : null), [openLink]);
   const settings = useGameState((s) => s.settings);
   const restart = useGameState((s) => s.restart);
+  const cursorDebugMode = cursorDebug();
   const [exitError, setExitError] = useState<string | null>(null);
   const updateStats = useCallback((on: boolean) => {
     setStatsOn(on);
@@ -151,6 +160,12 @@ export function Play({ files }: { files: FileSource }) {
       setBrowserError(`Could not save before switching mods: ${String(e)}`),
     );
   }, [restart, files]);
+
+  useEffect(() => {
+    if (!openLink) return;
+    // the dialog is the only thing that may take the mouse while it is open
+    if (document.pointerLockElement) document.exitPointerLock();
+  }, [openLink]);
 
   const toggleFullscreen = () => {
     void (
@@ -213,12 +228,20 @@ export function Play({ files }: { files: FileSource }) {
         let detach = () => {};
         let observer: ResizeObserver | null = null;
         let canvasMounted = false;
+        // Debug (?show-cursor=1): keep the system pointer (a crosshair) visible
+        // instead of taking Pointer Lock, so the game's drawn cursor can be
+        // compared with the real one. Input stays absolute, as in the menus.
+        const showNativeCursor = cursorDebug();
+        if (showNativeCursor)
+          console.info("[cursor] showing the system cursor: no Pointer Lock (?show-cursor=1)");
         const capture = (active: boolean) =>
           pointer.update(
-            active &&
+            !showNativeCursor &&
+              active &&
               gameStore.getSnapshot().phase === "running" &&
               !gameStore.getSnapshot().settings?.open &&
-              !gameStore.getSnapshot().exitConfirmation,
+              !gameStore.getSnapshot().exitConfirmation &&
+              !gameStore.getSnapshot().openLink,
           );
         let presenter: GamePresenter | null = null;
         const bindCanvas = (target: HTMLCanvasElement) => {
@@ -235,7 +258,8 @@ export function Play({ files }: { files: FileSource }) {
             enabled: () =>
               runtimeLive() &&
               !gameStore.getSnapshot().settings?.open &&
-              !gameStore.getSnapshot().exitConfirmation,
+              !gameStore.getSnapshot().exitConfirmation &&
+              !gameStore.getSnapshot().openLink,
             shortcut: (event) => {
               if (event.code === "F11" || (event.code === "Enter" && event.altKey)) {
                 if (!event.repeat)
@@ -257,6 +281,7 @@ export function Play({ files }: { files: FileSource }) {
               return false;
             },
           });
+          if (showNativeCursor) target.dataset.nativeCursor = "1";
           observer = new ResizeObserver(([entry]) => {
             if (!entry || !runtimeLive()) return;
             const { width, height } = entry.contentRect;
@@ -319,6 +344,38 @@ export function Play({ files }: { files: FileSource }) {
         bindCanvas(activeCanvas);
         setPresenter(initialPresenter);
         window.ra2Presenter = initialPresenter;
+        // Debug marker: the position the page sends the game's cursor to. With
+        // ?show-cursor=1 the browser pointer is visible too, so the game's drawn
+        // arrow can be compared with both: a drift or jump shows up here first.
+        let markerRaf = 0;
+        if (showNativeCursor) {
+          const tick = () => {
+            const marker = cursorMarker.current;
+            const target = canvas.current;
+            const view = presenter;
+            if (marker && target && view) {
+              try {
+                const { HEAP32 } = game.memory();
+                const at = (game.shared >> 2) + 1042; // Shared.pointerX / pointerY
+                const x = Atomics.load(HEAP32, at);
+                const y = Atomics.load(HEAP32, at + 1);
+                const size = view.gameSize();
+                const box = target.getBoundingClientRect();
+                if (size.width > 0 && size.height > 0 && box.width > 0 && box.height > 0) {
+                  const scale = Math.min(box.width / size.width, box.height / size.height);
+                  const left = box.left + (box.width - size.width * scale) / 2 + x * scale;
+                  const top = box.top + (box.height - size.height * scale) / 2 + y * scale;
+                  marker.style.transform = `translate(${left}px, ${top}px) translate(-50%, -50%)`;
+                  marker.style.visibility = "visible";
+                }
+              } catch {
+                // the module is shutting down
+              }
+            }
+            markerRaf = requestAnimationFrame(tick);
+          };
+          markerRaf = requestAnimationFrame(tick);
+        }
         handle.current = game;
         const sound = new GameAudio(game.exports, game.memory);
         void sound.start();
@@ -349,6 +406,8 @@ export function Play({ files }: { files: FileSource }) {
         stop = () => {
           if (stopped) return;
           stopped = true;
+          cancelAnimationFrame(markerRaf);
+          if (cursorMarker.current) cursorMarker.current.style.visibility = "hidden";
           presenter?.stop();
           pointer.dispose();
           sound.close(runtimeLive());
@@ -401,6 +460,9 @@ export function Play({ files }: { files: FileSource }) {
   return (
     <div ref={stage} className={styles.stage}>
       <canvas ref={canvas} className={styles.canvas} tabIndex={0} aria-label="The game" />
+      {cursorDebugMode && (
+        <div ref={cursorMarker} className={styles.cursorMarker} aria-hidden="true" />
+      )}
       <textarea
         ref={textInput}
         className={styles.textInput}
@@ -479,6 +541,11 @@ export function Play({ files }: { files: FileSource }) {
           </Flex>
         </Dialog.Content>
       </Dialog.Root>
+      <LinkDialog
+        target={linkDialogTarget}
+        onClose={() => gameStore.dismissOpenLink()}
+        returnFocusTo={canvas.current}
+      />
       <SettingsDialog
         settings={settings}
         statsOn={statsOn}
@@ -486,7 +553,9 @@ export function Play({ files }: { files: FileSource }) {
         fullscreen={fullscreen}
         pointerLocked={pointerLocked}
         onFullscreen={toggleFullscreen}
+        pointerLockDisabled={cursorDebugMode}
         onPointerLock={() => {
+          if (cursorDebugMode) return;
           if (document.pointerLockElement) document.exitPointerLock();
           else if (canvas.current) {
             handle.current?.exports.ra2_setting(Setting.Menu, 0, 0);

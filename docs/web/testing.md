@@ -17,6 +17,13 @@ everything that doesn't need the game:
 - `storage/manifest.ts`: resuming, a size mismatch, removal of shared files.
 - `game/protocol.ts`: parsing `@ra2` lines, and ignoring other lines.
 - `game/store.ts`: phase transitions, including `crashed` from any phase.
+- `game/link-targets.ts`: the WOL-era URL table, the support/consent parse,
+  the YR registry sentinel, http(s)-only blocking and the static `embed`
+  policy.
+- `components/LinkDialogContent.tsx`: the sandboxed iframe for an embeddable
+  target, the confirmation otherwise, the original URL shown as text, and
+  "Open in browser" as a `target="_blank"`/`rel="noopener noreferrer"` anchor
+  (no `window.open`, no `javascript:` href or frame).
 - Screens: Import with a mocked directory handle, Library with a manifest,
   and Settings round-tripping IndexedDB (`fake-indexeddb`).
 
@@ -50,6 +57,11 @@ node e2e/drive.mjs --step "click 719,221@4" --step "click 720,305@7" --step "cli
                    --step "shot battle@45" --step "state@46"
 ```
 
+To see the real pointer beside the game's software cursor, open the game with
+`?show-cursor=1`: the page does not take Pointer Lock and shows a crosshair plus
+a green ring at the position it reports to the game (the shared pointer), so the
+browser pointer, the input position and the game's drawn cursor can be compared.
+
 `drive.mjs` takes steps `click X,Y`, `rclick`, `move`, `key CODE`, `shot NAME`,
 `picture NAME` (is the canvas lit, and a checksum that changes when it draws) and
 `state`, each `@SECONDS` after the main menu opened, with coordinates in the
@@ -58,6 +70,39 @@ Game on Yuri's Revenge's 800x600 menus; a skirmish loads and runs at 60 frames a
 second. Screenshots go to `web/e2e/shots/`. `CHROME_PATH` names the browser. The
 page exposes its store as `window.ra2Store` in development only, for these
 scripts. This is the base `tools/playtest.py --web` grows from (stage 10).
+
+## WOL-era links: our dialog instead of the browser
+
+The same build carries `web_url_patches`. With Vite running, from `web/`:
+
+```powershell
+node e2e/links.mjs --edition ra2md --game ../game --shots ../work/web-links-yr
+node e2e/links.mjs --url 'http://127.0.0.1:5173/?target=game' --edition ra2 --profile <imported profile> --shots ../work/web-links-ra2
+```
+
+The RA2 example uses `--profile` because the dev server's `--game` copy of the
+full folder (1.07 GB) does not fit the page's 768 MB Wasm heap; an imported
+game in OPFS links the big MIX files in place. The YR folder fits.
+
+It opens the WOL welcome from the main menu (no server needed), presses YR's
+YuriWebSite (which reads the seeded registry `Community` value) or RA2's
+Manage Account, and checks that the page receives `open` with the original URL,
+that the host logged `[url] <url>`, that `TXT_NOBROWSER` never appears, and
+that Cancel closes the dialog while the game keeps running.
+
+The server-only lobby controls need the local RA2Web (`../ra2web/server`,
+`bun run dev`, port 9090) and Vite started with
+`VITE_WOL_HTTP_URL=http://127.0.0.1:9090` and
+`VITE_WOL_SOCKET_URL=ws://127.0.0.1:9090/wol`:
+
+```powershell
+node e2e/links-lobby.mjs --url 'http://127.0.0.1:5173/' --edition ra2md --profile <imported profile>
+```
+
+It logs in and presses the lobby controls; `--press DLG:CTRL@s` replaces the
+defaults. In this build YR's `0x113` Tournament/News (1955/1958) open the game's
+own `0x131` notice (the ladder service is not configured) and never call the URL
+routine, so there is no `open` event to assert there.
 
 ## Exit confirmation: game to web and back
 

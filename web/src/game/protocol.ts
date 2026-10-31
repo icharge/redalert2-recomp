@@ -1,7 +1,7 @@
 // What the page and the game say to each other (docs/web/protocol.md). The C side is
 // src/web/web_api.h: change the two together, and RA2_WEB_PROTOCOL with them.
 
-export const RA2_WEB_PROTOCOL = 8;
+export const RA2_WEB_PROTOCOL = 9;
 
 export const SCALES = ["sharp", "smooth", "crt", "nearest", "integer"] as const;
 export type Scale = (typeof SCALES)[number];
@@ -40,6 +40,7 @@ export type GameEvent =
   | { e: "fps"; fps: number; ms: number; pacing: Pacing | null }
   | { e: "exit"; code: number }
   | { e: "exitConfirm"; request: number }
+  | { e: "open"; url: string; ask: number; seq: number }
   | { e: "settingsSaved"; path: string }
   | { e: "error"; message: string };
 
@@ -131,6 +132,12 @@ export function parseEventLine(line: string): GameEvent | null {
         : null;
     case "settingsSaved":
       return typeof value.path === "string" ? { e: "settingsSaved", path: value.path } : null;
+    case "open":
+      return typeof value.url === "string" &&
+        typeof value.ask === "number" &&
+        typeof value.seq === "number"
+        ? { e: "open", url: value.url, ask: value.ask, seq: value.seq }
+        : null;
     case "error":
       return typeof value.message === "string" ? { e: "error", message: value.message } : null;
     default:

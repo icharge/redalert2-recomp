@@ -78,6 +78,21 @@ void web_event_exit(int code) {
     web_event_json(line);
 }
 
+/* A WOL-era link: the game's own routine would write a probe .html, find the
+ * default browser and start it. The lift returns here instead, and the page
+ * shows the URL in our dialog (or asks before opening it). Log the URL the
+ * game asked for, unchanged, and carry it in the event. */
+void ra2_open_url(uint32_t url_va, uint32_t ask) {
+    static unsigned seq;
+    const char *url = url_va ? (const char *)(uintptr_t)url_va : "";
+    char u[512], line[640];
+    fprintf(stderr, "[url] %s\n", url);
+    web_json_escape(u, sizeof u, url);
+    snprintf(line, sizeof line,
+             "{\"e\":\"open\",\"url\":\"%s\",\"ask\":%u,\"seq\":%u}", u, ask, ++seq);
+    web_event_json(line);
+}
+
 /* ---- the picture ------------------------------------------------------------- */
 
 /* read_index and frame_index start at -1: no buffer is being read, none is published yet. */

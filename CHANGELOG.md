@@ -6,6 +6,18 @@ versions follow [SemVer](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Web links**: the browser build no longer hands WOL-era links to the
+  system browser. `run_lift.py`'s `web_url_patches` intercepts the three
+  routines that write a probe `.html`, find the default browser and start it
+  (RA2 `0x0073C580`; YR `0x0077DC90` and `0x00551630`), logs the URL unchanged
+  and emits an `open` event (protocol 9). The page maps it to a topic and
+  shows our dialog: a sandboxed iframe for a configured page, otherwise a
+  confirmation with the original URL. "Open in browser" is a
+  `target="_blank"`/`rel="noopener noreferrer"` anchor and only `http(s)` URLs
+  can become one. YR's registry `URL\Community` value is seeded so those
+  buttons reach the hook; Windows native32 keeps its current behavior.
+  (`src/web/presenter.c`, `src/linux/main.c`, `web/src/game/link-targets.ts`,
+  `web/src/components/LinkDialog*.tsx`, `VITE_RA2WEB_SITE_URL`.)
 - **Mods**: a mod is a folder in `mods/yr/` or `mods/ra2/`, laid over the
   game's folder without changing it (its files read first, what the game
   writes going into it, its maps and `expandmd*.mix` listed with the game's).
