@@ -77,8 +77,8 @@ call). No state codec or server model exists yet.
 | WDT-2a | Server-side WDT state endpoint | **done** | WDT-1 | `/wdt/state?cycle=current|previous` and `/wdt/status`; live smoke returns 1556/216-byte packets. |
 | WDT-3 | Native TCP WDT listener | **started** | WDT-0b | `WdtTcpServer` answers `WDT CURRENT`/`PREVIOUS` on `WDT_PORT`; native client capture still pending. |
 | WDT-4 | Match assignment and result ingestion | **started** | WDT-2/3 | `MatchWDT`/`WDS=`/`WDT=` in GAMEOPT and the bot assign a conflict at STARTG; native results settle it once. Live two-client WOL test passes; duplicate→409. |
-| WDT-5 | Cycles, history, admin | **started** | WDT-4 | `advanceCycle` freezes the current map as previous; `/wdt/status` exposes history. Admin routes still pending. |
-| WDT-6 | Persistence, tests, docs | **started** | all | Memory service + 14 codec/service/lobby tests; SQLite persistence and lift regeneration still pending. |
+| WDT-5 | Cycles, history, admin | **done** | WDT-4 | `advanceCycle` freezes the current map as previous; authenticated `/wdt/admin/{rollover,reset,enable,status}`; `/wdt/status` exposes conflicts/history. |
+| WDT-6 | Persistence, tests, docs | **started** | all | SQLite `wdt_state` snapshot (current+previous+counters), Memory store for memory deployments, 16 tests; lift regeneration and stable map-screen e2e still pending. |
 
 ### Progress note (2026-10-31)
 
@@ -89,13 +89,17 @@ call). No state codec or server model exists yet.
   `S_OK`, and delivers the page-cached `/wdt/state` current/previous packets through
   `OnWDTState`. Live log evidence: `server state current 1556 bytes`, `previous 216 bytes`.
 - **Verification**:
-  - `bun test src/wdt` → 14 pass, 0 fail (51+ assertions), `tsc --noEmit` exit 0.
+  - `bun test src/wdt` → 16 pass, 0 fail (72 assertions), `tsc --noEmit` exit 0.
   - `WDT LOBBY TEST PASSED`: two real WOL sockets, `GAMEOPT` with `WDS=0,WDT=11`,
     `STARTG`, then `/wdt/status` shows the conflict for that game id.
   - `wdt-smoke`: HTTP 200, 1556-byte current packet (`CRTK=2`, `MPVC=1320`, `HSVC=23`);
     TCP previous packet 216 bytes (`TOTK=2`).
-- **Next**: native-result HTTP integration test (the helper is unit-tested), cycle rollover
-  admin routes, SQLite persistence, and a stable map-screen/side-click e2e run.
+  - `WDT ADMIN TEST PASSED`: 401 without a token, rollover 1→2, disable makes
+    `/wdt/state` 503, enable restores 200, reset starts cycle 3.
+  - `WDT ADMIN PERSISTENCE PASSED`: after stopping and restarting on the same
+    `DB_PATH`, `/wdt/status` still reports cycle 3 and `enabled=true`.
+- **Next**: regenerate the lift for the current patches, run one stable browser
+  map-screen/side-click e2e, and add the SQLite round-trip to the release notes.
 
 ### First finding: the browser does not use the raw TCP path
 
