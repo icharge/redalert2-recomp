@@ -200,6 +200,30 @@ call). No state codec or server model exists yet.
   0x75E08F sees every entry, but GAM handling sits behind `[esp+0x20]` state and an earlier
   service branch; trace `[esp+0x20]` writes (0x75E5D2, 0x75E6C1) and the selected-server flag
   to learn which entry order/fields the client needs before it counts a mangler.
+- **Ordinal off-by-three (corrected)**: `event_call(N)` dispatches to vtable slot
+  **N+3**, so slot 16 (`0x762590`) is ordinal **13** and slot 17 (`0x762790`) is ordinal
+  **14** - the earlier "ordinal 16" reading was wrong. Slot 16 calls the handler with
+  `dl=0` (Fail/Info path); slot 17 passes `dl=1`, which `0x75B910` requires to take its
+  `Start <name>` branch (`0x75BB76 test bl,bl`). Delivering through the sink (ordinal 14
+  with a flag struct) crashed inside `0x75B910`; calling it directly from the bridge
+  (`ecx = line`, `dl = 1`, `hle_call_guest(0x75B910, 0)`) works: the probes show
+  `bl=1`, the name copy `#WDTmatch`, and the game's own log line `[game] #WDTmatch`.
+- **State 2 at LIST 33 removes 0xD0 (verified twice)**: setting `[0xA3D2A4] = 2` when the
+  client sends `list 33` puts it in the matching state before the reply arrives, so the
+  list handler (`0x763F3D`) takes its match branch instead of the "leave channel" branch.
+  Run evidence: `[wdt] trace state=2 games=0 screen=4`, `Received channel list, user list
+  is 1 long`, `[wdt] start direct`, `[wdt] h1 bl=1`, `[wdt] h2 '#WDTmatch'`,
+  `[game] #WDTmatch` - and **no `0xD0` dialog at all**.
+- **Where it stops now**: after the Start handler the client asks `getlocale wdtmatch`
+  (the bridge answers `309 ... for='wdtmatch'`), then sends `part #Lob_33_0` and returns to
+  the login dialog. It never sends `join`, so no `STARTG`/`MatchWDT` conflict. The handler's
+  own resolution path hashes the game name into the **user** container (`0xB2AC24`) and the
+  game container (`0xB293A0`) at `0x764033`/`0x764150`; neither contains a matching entry,
+  which is why the client aborts right after the locale reply.
+- **Next**: make the game name resolve - publish a user/channel entry named after the room
+  (or have the bridge answer `getlocale`/`RequestUserList` for it) so the hash lookups at
+  `0x764033`/`0x764150` find `#WDTmatch`, then the client should issue `join` and the
+  existing `WDT=`/`STARTG` assignment can create the conflict.
 - **Delivery confirmed, handler reached, still no match**: with a `receive_chat` log the server's
   line is observed (`chat line=':wol-ra2web PRIVMSG woltst9 :Start #WDTmatch' parsed=3`), and the
   bridge's ordinal-16 call executes (`start ordinal16 'Start #WDTmatch'`). Bypassing both the
