@@ -236,6 +236,18 @@ call). No state codec or server model exists yet.
   the territory ownership updates. After that, the next UI run's automatic pick moved to
   territory 11 (10 was now Allied), which shows the ownership change feeds back into match
   assignment.
+- **The map control does not exist yet at match start (verified)**: hooking the entry of the
+  WDT map update (`0x72E050`) to record its `ecx` object shows
+
+  ```text
+  [wdt] list33 map=00000000 selected=-1
+  [wdt] map object=03E36D20        # only after the match start
+  ```
+
+  i.e. the map object (whose `+0x460` holds the last picked territory) is created/updated only
+  after `list 33` has already gone out. So neither the map object nor a delayed list can supply
+  the clicked territory; the selection must be read from the *earlier* WDT screen/dialog state
+  (the side-select dialog or the screen object that calls `0x72ED80`), not from the map control.
 - **Deferring LIST 33 for the pick (negative)**: holding `list 33` for three `PumpMessages`
   ticks so the map could compute the clicked territory still reports `territory=-1` when the
   deferred line is finally sent; the map's pick only appears much later. Delaying the list is
