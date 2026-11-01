@@ -249,12 +249,13 @@ class WDTPatchTests(unittest.TestCase):
             code[corrupt] ^= 0xFF
         return bytes(code)
 
-    def test_every_edition_patches_the_same_two_sites(self):
+    def test_every_edition_patches_the_hover_site_only(self):
         for target in ('game', 'gamemd'):
             with self.subTest(target=target):
                 sites = WDT_SITES[target]
                 patches = wdt_patches(self.image(target), 0, target)
-                self.assertEqual(set(patches), {sites['hover'][0], sites['resolution'][0]})
+                self.assertIn(sites['hover'][0], patches)
+                self.assertNotIn(sites['resolution'][0], patches)
 
     def test_a_mouse_move_runs_the_same_hit_test_as_wm_nchittest(self):
         for target in ('game', 'gamemd'):
@@ -266,15 +267,13 @@ class WDTPatchTests(unittest.TestCase):
                               % sites['hover_target'], body)
                 self.assertIn('ebx = ebx - 0x202u;', body)
 
-    def test_the_640x480_query_and_prompt_are_skipped(self):
+    def test_the_stock_640x480_switch_is_kept(self):
+        """The WDT screen is authored for 640x480; its layout is wrong elsewhere."""
         for target in ('game', 'gamemd'):
             with self.subTest(target=target):
                 sites = WDT_SITES[target]
                 patches = wdt_patches(self.image(target), 0, target)
-                self.assertEqual(patches[sites['resolution'][0]],
-                                 '@replace:goto L_%08X; '
-                                 '/* remaster: World Domination hover and resolution, '
-                                 'run_lift.py wdt_patches */' % sites['resolution_target'])
+                self.assertNotIn(sites['resolution'][0], patches)
 
     def test_a_different_build_gets_no_wdt_patches(self):
         for target in ('game', 'gamemd'):
