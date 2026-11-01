@@ -16,6 +16,9 @@ export interface BuildInfo {
         exe: string;
         ini: string;
         script?: string;
+        /** Hashed module files in a production build (Vite plugin, vite.game-hashes.ts). */
+        wasm?: string;
+        data?: string;
         build?: string;
         /** the PE timestamp lifted */
         stamp: number;
