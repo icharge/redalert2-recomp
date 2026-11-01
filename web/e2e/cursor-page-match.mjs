@@ -127,5 +127,44 @@ console.log("state:", JSON.stringify(state));
 const shot = path.join(shots, "browser-cursor-page.png");
 await page.screenshot({ path: shot });
 console.log("shot:", shot);
+
+// Escape opens the pause dialog: the game hands the cursor back to Win32
+// (CursorKind.Overlay), and the page layer draws that arrow too
+// (docs/web/cursor-layer.md, "the whole game").
+await page.keyboard.press("Escape");
+await page.waitForTimeout(3000);
+const paused = await page.evaluate(async () => {
+  const handle = await window.ra2Session;
+  const { HEAP32 } = handle.memory();
+  const at = handle.shared >> 2;
+  const word = (index) => Atomics.load(HEAP32, at + index);
+  const layer = [...document.querySelectorAll("canvas")].find(
+    (c) => c.getAttribute("aria-hidden") === "true",
+  );
+  const overlay = document.querySelector("img[class*=cursor]");
+  return {
+    cursorKind: word(6),
+    pageCursorKind: word(1057),
+    pageCursorRequest: word(1062),
+    lock: document.pointerLockElement?.tagName ?? null,
+    layer: layer
+      ? {
+          visibility: getComputedStyle(layer).visibility,
+          width: layer.style.width,
+          transform: layer.style.transform,
+          backing: `${layer.width}x${layer.height}`,
+        }
+      : null,
+    overlay: overlay ? getComputedStyle(overlay).display : null,
+    canvasCursor: [...document.querySelectorAll("canvas")].find(
+      (c) => c.getAttribute("aria-hidden") !== "true",
+    )?.style.cursor,
+  };
+});
+console.log("pause:", JSON.stringify(paused));
+const pauseShot = path.join(shots, "browser-cursor-pause.png");
+await page.screenshot({ path: pauseShot });
+console.log("shot:", pauseShot);
+
 await browser.close();
-process.exit(state?.pageCursorRequest === 1 ? 0 : 1);
+process.exit(state?.pageCursorRequest === 1 && paused.cursorKind === 3 ? 0 : 1);

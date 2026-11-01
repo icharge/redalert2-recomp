@@ -363,9 +363,15 @@ export function Play({ files }: { files: FileSource }) {
             () => canvas.current,
             game.memory,
             game.shared,
+            {
+              // The menus' Win32 arrow and the pause overlay are drawn by the
+              // same layer as the match cursor; the presenter hides its CSS
+              // cursor and its overlay image while it does.
+              onActive: (active) => presenter?.setLayerCursor(active),
+            },
           );
           pageCursorLayer.start();
-          console.info("[cursor] the page draws the in-match cursor (?cursor=page)");
+          console.info("[cursor] the page draws the game's cursor (?cursor=page)");
         }
         // Debug marker: the position the page sends the game's cursor to. With
         // ?show-cursor=1 the browser pointer is visible too, so the game's drawn

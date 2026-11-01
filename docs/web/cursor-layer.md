@@ -1,12 +1,12 @@
 # The game cursor on a page layer
 
 **Status: implemented; verified on a headless skirmish run for Yuri's Revenge,
-same code path for Red Alert 2.** The art comes from the resources the game has
-already loaded (`MOUSE.SHA` + `MOUSEPAL.PAL`, the technique the sibling
-reimplementation `C:\Users\Norrapat\projects\ra2web` uses), decoded once per
-cursor change, and drawn on the page above the picture. The first design —
-capturing the cursor off the primary surface on every draw — froze the game and
-is gone.
+same code path for Red Alert 2, and in a browser match, its menus and its pause
+dialog.** The art comes from what the game already has — `MOUSE.SHA` +
+`MOUSEPAL.PAL` in a match, the 32×32 Win32 arrow it sets in the menus — decoded
+once per cursor change and drawn on one page canvas above the picture. The first
+design — capturing the cursor off the primary surface on every draw — froze the
+game and is gone.
 
 Related, already done:
 
@@ -120,7 +120,9 @@ game blit site → "page draws it?" ──────┘                   (own
    sequence number. No screen access, no allocation beyond a fixed buffer.
 3. **Suppress only when asked.** While `page_cursor_request` is set and a sprite
    is published, skip the blit. Otherwise the game draws exactly as it does now.
-4. Menus, pause, movies and the Windows-cursor path are untouched.
+4. The menus' Win32 cursor and the pause overlay are published too (they already
+   were, for the presenter's CSS cursor); the page now draws them on the same
+   canvas, so the game's own blit is the only one left to skip.
 
 **Protocol** (`src/web/web_api.h`, `web/src/game/protocol.ts`, [protocol.md](protocol.md))
 
@@ -142,6 +144,34 @@ Protocol 10 is uncommitted, so this is a reshape of the same version.
   changes (`palette[index]`, alpha 0 for index 0).
 - Draws at `pointer − hot` each animation frame; hidden when the game stops
   drawing the cursor or the game build is older than protocol 10.
+
+### The whole game (the menus and the pause dialog)
+
+The game has two cursor paths, and the page draws both on the same canvas:
+
+| Where                 | Art the game uses                  | Shared field                   | Position                                 |
+| --------------------- | ---------------------------------- | ------------------------------ | ---------------------------------------- |
+| A match               | `MOUSE.SHA` frame + `MOUSEPAL.PAL` | `page_cursor_*` (indices)      | `Shared.pointer_x/y` (Pointer Lock)      |
+| Menus (Win32 dialogs) | 32×32 AND/XOR arrow, resource 0x68 | `cursor_kind = Image` + RGBA   | the mouse's own `clientX/Y`              |
+| Pause over a match    | the same arrow, or the placeholder | `cursor_kind = Overlay` + RGBA | `Shared.pointer_x/y` (the game warps it) |
+
+- **The menus cannot use the shared pointer.** In the shell the game calls
+  `SetCursorPos`, which the web host turns into `warp_cursor`: it writes
+  `pointer_x/y`. Measured in the YR main menu, a real move to (640, 480) left
+  the shared pointer at 400,300 (the centre of 800×600) within 300 ms, because
+  the game put it back. The real pointer is where the player sees and clicks, so
+  the layer listens to `mousemove` and uses `clientX/Y` while the pointer is
+  free; under Pointer Lock (and for the pause overlay) it uses the shared one.
+- **The presenter steps aside.** `setLayerCursor(active)` on both presenters
+  hides the CSS cursor and the pause `<img>`, keeps the last `(kind, hot)` the
+  game announced, and puts it back when the layer lets go. Nothing calls it
+  without `?cursor=page`, so the CSS path is untouched for everyone else. The
+  CSS cursor remains the fallback for the first frames (no sprite or no mouse
+  position yet) and for `CursorKind.Arrow`, the plain system arrow.
+- **CSS cannot scale; the canvas can.** A CSS cursor image is drawn at its
+  intrinsic CSS size, so the 32×32 arrow stayed 32 px while the picture was
+  letterboxed or 2x. The layer multiplies the arrow and its hot spot by the same
+  picture scale as the match sprite.
 
 ## Decode split
 
@@ -203,14 +233,14 @@ RA2_PAGE_CURSOR_DEBUG=1`, the `tools/playtest.py skirmish-start` script):
 
 ### Phase 2 — page cursor (done)
 
-| ID   | Task                                                                             | Files                          | Done when                                 |
-| ---- | -------------------------------------------------------------------------------- | ------------------------------ | ----------------------------------------- |
-| P2.1 | Decode (A or B) and draw on the overlay canvas at `pointer − hot`                | `web/src/game/cursor-layer.ts` | known sprite lands exactly on the pointer |
-| P2.2 | Visibility: hide on menus/pause/movies/dialogs; clear the request on stop/hidden | `cursor-layer.ts`, `Play.tsx`  | exactly one cursor in every state         |
-| P2.3 | `?cursor=page` gate (already wired)                                              | `Play.tsx`                     | flag off ⇒ unchanged                      |
-| P2.4 | Compare with `?show-cursor=1`                                                    | manual                         | no drift                                  |
+| ID   | Task                                                                                                  | Files                          | Done when                                 |
+| ---- | ----------------------------------------------------------------------------------------------------- | ------------------------------ | ----------------------------------------- |
+| P2.1 | Decode (A or B) and draw on the overlay canvas at `pointer − hot`                                     | `web/src/game/cursor-layer.ts` | known sprite lands exactly on the pointer |
+| P2.2 | Visibility: hide in movies, and where the game has no cursor at all; clear the request on stop/hidden | `cursor-layer.ts`, `Play.tsx`  | exactly one cursor in every state         |
+| P2.3 | `?cursor=page` gate (already wired)                                                                   | `Play.tsx`                     | flag off ⇒ unchanged                      |
+| P2.4 | Compare with `?show-cursor=1`                                                                         | manual                         | no drift                                  |
 
-### Phase 3 — verification and docs (in progress)
+### Phase 3 — verification and docs (done)
 
 | ID   | Task                                                                                                                                  | Done when                                                                          |
 | ---- | ------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
@@ -224,6 +254,13 @@ RA2_PAGE_CURSOR_DEBUG=1`, the `tools/playtest.py skirmish-start` script):
 | ID   | Task                                                                                                    | Done when                               |
 | ---- | ------------------------------------------------------------------------------------------------------- | --------------------------------------- |
 | P4.1 | `present.c` composites the published frame (index→RGBA with the palette) at the real pointer, 1x and 2x | `RA2_PAGE_CURSOR=1` matches the browser |
+
+### Phase 5 — the whole game (done)
+
+| ID   | Task                                                                                                                     | Files                                         | Done when                                    |
+| ---- | ------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------- | -------------------------------------------- |
+| P5.1 | Draw the menus' Win32 arrow and the pause overlay on the same page canvas; the mouse's own position while it is unlocked | `cursor-layer.ts`                             | the arrow lands on the pointer in the menus  |
+| P5.2 | The presenters hide their CSS cursor and pause `<img>` while the layer draws, and restore them when it lets go           | `presenter.ts`, `gl-presenter.ts`, `Play.tsx` | one cursor, and the flag off changes nothing |
 
 ## Verification log
 
@@ -246,7 +283,7 @@ modes 800x600 -> 1280x720`, with `[cursor] palette: 00 00 16 | 3F 34 00` and
   fault (the earlier crash was the unpopped `0x2C`, now fixed).
 - **Lift patches**: `python tools/test_lift_patches.py` → 51 tests OK, covering
   the entry, blit and palette sites for both editions and the `esp += 0x2C` pop.
-- **Page**: `npx vitest run` → 54 files, 505 tests pass (9 of them
+- **Page**: `npx vitest run` → 53 files, 510 tests pass (15 of them
   `cursor-layer`); `npx tsc --noEmit` clean.
 - **Native and wasm, both editions**: `build.cmd` links `build\ra2.exe` (YR),
   `BUILD_DIR=build-game build.cmd` links Red Alert 2's host, and
@@ -320,16 +357,25 @@ browser-cursor-page.png` is the match with the page's arrow at the pointer
   `ra2md` for Yuri's Revenge (it was `yr`), so `web/e2e/playtest.mjs`'s import
   flow could not click Play and reported the dialogs as never opened even though
   the game had run. Both the flow and the probe use `ra2md` now.
-- **Not exercised**: the native presenter on a real screen by a person (the BMP
-  dumps cover the compositing itself), and a long session for feel.
-- **RA2's build** is blocked by the World Domination instrumentation in the
-  generated Red Alert 2 code: `src/recomp/gen_game/recomp_0049.c` calls
-  `ra2_wdt_debug_msg` and `ra2_wdt_set_screen`, which live (when they exist)
-  in `src/web/wolapi.c` — a file the native RA2 host does not compile, and one
-  that was being edited while this was tried (the definitions came and went).
-  Every cursor source file compiles for RA2, and the cursor patches are in
-  `src/recomp/gen_game` (entry `0x772744`, blit `0x772882`, palette `0x511D73`),
-  so RA2 needs only that unrelated instrumentation fixed before it links.
+- **Browser menus, end to end** (`web/e2e/cursor-page-menu.mjs`, a persistent
+  profile, the dev server): the launcher's YR card with `?cursor=page`, stopped
+  at the main menu. Shared words read `cursorKind 1` (Image), `pageCursorKind 0`,
+  `pageCursorRequest 0`, `lock null`; the page layer's canvas is 32×32 and
+  visible at the mouse, the picture canvas reads `cursor: none`, and the pause
+  `<img>` stays hidden. `work/tests/cursor-shots/browser-menu.png` is the YR main
+  menu with the page's arrow on it. The probe also showed why the menus cannot
+  use the shared pointer: a synthetic move set `pointer_x/y` to 600,450 and the
+  game had it back at 400,300 within 300 ms (its `SetCursorPos`), while the real
+  pointer had moved.
+- **Browser pause, end to end** (the same probe with a skirmish and Escape):
+  `cursorKind 3` (Overlay), `pageCursorKind 0`, the layer 32×32 at `(506,450)`
+  from `pointer_x/y` through the pause screen's 2580×1080 picture (scale 0.496),
+  the pause `<img>` `display: none`, the picture canvas `cursor: none`.
+  `work/tests/cursor-shots/browser-cursor-pause.png` is that frame.
+- **Played by hand (browser)**: with `?cursor=page` the in-match cursor follows
+  the pointer smoothly, and the menus now draw the game's own arrow on the page
+  layer rather than the CSS one. The native presenter on a real screen has still
+  not been driven by a person; its BMP dumps cover the compositing.
 
 ## Risks
 
@@ -340,8 +386,10 @@ browser-cursor-page.png` is the match with the page's arrow at the pointer
 - **Threads**: the hook runs on the mouse thread; publish behind a seqlock, and
   never cache the frame buffer beyond the call.
 - **Mods** are free: we read what the game loaded.
-- **Pointer position** stays the existing shared pointer — one source of truth,
-  warps and Pointer Lock included.
+- **Pointer position**: the shared pointer in a match and over the pause dialog
+  (warps and Pointer Lock included), the mouse's own `clientX/Y` in the menus,
+  where the game's `SetCursorPos` keeps resetting the shared one. Nothing here
+  changes input either way.
 
 ## Acceptance criteria
 

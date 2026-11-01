@@ -460,4 +460,30 @@ describe("Presenter2d", () => {
     expect(Number.parseFloat(cursor.style.top)).toBeCloseTo(340.16, 1);
     expect(Number.parseFloat(cursor.style.left)).toBeGreaterThan(1280 * (1778 / 2580));
   });
+
+  it("steps aside for the page layer and puts the game's cursor back", () => {
+    const { presenter, word, canvas, cursor } = setup({ width: 400, height: 300 });
+    vi.spyOn(HTMLCanvasElement.prototype, "toDataURL").mockReturnValue(
+      "data:image/png;base64,AAAA",
+    );
+    word(Shared.cursorKind, CursorKind.Image);
+    word(Shared.cursorSeq, 1);
+    presenter.draw();
+    expect(canvas.style.cursor).toContain("url(data:image/png;base64,AAAA)");
+    word(Shared.cursorKind, CursorKind.Overlay);
+    word(Shared.cursorSeq, 2);
+    presenter.draw();
+    expect(cursor.style.display).toBe("block");
+
+    // ?cursor=page: the page layer owns the cursor now
+    presenter.setLayerCursor(true);
+    expect(canvas.style.cursor).toBe("none");
+    presenter.setLayerCursor(true); // repeats cost nothing
+    expect(canvas.style.cursor).toBe("none");
+
+    // the layer lets go: the game's last cursor comes back, pause overlay included
+    presenter.setLayerCursor(false);
+    presenter.draw();
+    expect(cursor.style.display).toBe("block");
+  });
 });
