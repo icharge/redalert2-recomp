@@ -220,6 +220,24 @@ call). No state codec or server model exists yet.
   own resolution path hashes the game name into the **user** container (`0xB2AC24`) and the
   game container (`0xB293A0`) at `0x764033`/`0x764150`; neither contains a matching entry,
   which is why the client aborts right after the locale reply.
+- **Territory contract verified (server side)**: `wdtstart <id>` + `list 33 33` over a real
+  WebSocket session produces `STARTG` and a conflict **on that territory**:
+
+  ```text
+  startg: :wol-ra2web STARTG #WDTmatch :ws://127.0.0.1:19094/gserv :g6-mvx81lw9 ...
+  conflicts for this game: [{"id":6,"territoryId":14,"attacker":0,"defender":2,
+                             "gameId":"g6-mvx81lw9"}]
+  territory propagated OK
+  ```
+
+  The server only tags `WDT=<id>` when the territory exists and is not already owned by the
+  attacker; otherwise it falls back to `assignConflict`'s neutral pick, so a bad id never loses
+  the conflict.
+- **Why the browser still auto-picks**: the bridge cannot read the client's selection at
+  match-start time. Probing showed the WDT screen pointer `0xB2ADA4` is **0** when the client
+  sends `LIST 33`, and the map hit-test hook (`0x72E379`, id 18) fires only *after* the start
+  sequence (click events are processed late). So the bridge's `wdtstart` sender is wired but
+  currently sends nothing and the conflict stays on territory 10.
 - **Measurement bug, then the first real conflict (verified)**: `/wdt/status` returns
   `conflicts` and `history` at the **top level** of `service.summary()`, not inside `cycle`.
   Every earlier check read `cycle.conflicts`, which is absent, so "conflicts 0" was a
