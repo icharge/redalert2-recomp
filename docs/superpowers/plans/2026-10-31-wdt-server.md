@@ -220,6 +220,19 @@ call). No state codec or server model exists yet.
   own resolution path hashes the game name into the **user** container (`0xB2AC24`) and the
   game container (`0xB293A0`) at `0x764033`/`0x764150`; neither contains a matching entry,
   which is why the client aborts right after the locale reply.
+- **Match worker runs, then times out (verified)**: after the direct `Start` handler call the
+  bridge also invoked the match worker `0x75BE10` (the function that copies the room name from
+  `0xB2658C`, lists the games and joins them). It ran its full timeout loop - `start worker
+  begin state=2` at one timestamp, `start worker end` ~3.7 s later, i.e. the 30 x 100 ms loop -
+  and exited without sending `join`: no additional `list 33` and no `part` during the loop, then
+  the client left the lobby (`part #Lob_33_0`). The loop's list request goes through
+  `[0xA72CFC]`'s vtable (`+0x18`) and produced no WOL line, and its connection check
+  `0x73D8F0` gates the fail path, so the worker bails before the name comparison
+  (`0x75C155`) can select the room.
+- **Conclusion for the browser path**: the missing piece is not the room's name in a container;
+  it is the worker's own WOLAPI call contract. Either that `[0xA72CFC]+0x18` call must be
+  identified and served (so the loop re-lists games), or the match start must be performed
+  server-side instead of relying on the client's worker.
 - **Next**: make the game name resolve - publish a user/channel entry named after the room
   (or have the bridge answer `getlocale`/`RequestUserList` for it) so the hash lookups at
   `0x764033`/`0x764150` find `#WDTmatch`, then the client should issue `join` and the
