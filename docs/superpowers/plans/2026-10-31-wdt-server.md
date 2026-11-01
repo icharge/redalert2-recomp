@@ -200,6 +200,12 @@ call). No state codec or server model exists yet.
   0x75E08F sees every entry, but GAM handling sits behind `[esp+0x20]` state and an earlier
   service branch; trace `[esp+0x20]` writes (0x75E5D2, 0x75E6C1) and the selected-server flag
   to learn which entry order/fields the client needs before it counts a mangler.
+- **Delivery confirmed, handler reached, still no match**: with a `receive_chat` log the server's
+  line is observed (`chat line=':wol-ra2web PRIVMSG woltst9 :Start #WDTmatch' parsed=3`), and the
+  bridge's ordinal-16 call executes (`start ordinal16 'Start #WDTmatch'`). Bypassing both the
+  `0xB2ABD9` guard at `0x762599` and the state check at `0x7625B8` still ends at `0xD0` with zero
+  conflicts, so the failure is **after** the Start handler: the join path (`0x75C204` ->
+  `0x745780`) or a later screen check rejects `#WDTmatch` because no such server room exists.
 - **Ordinal-16 delivery (negative)**: delivering the server's `Start #WDTmatch` as chat event
   ordinal 16 with the sink's arguments (result, unused, flag byte struct, text pointer) and
   leaving the state gate open still never reaches `0x75B910` (`[wdt] start probe` never fires).
