@@ -5,11 +5,15 @@
 #include <assert.h>
 #include "wolapi.c"
 
-uint32_t g_eax, g_esp;
+uint32_t g_eax, g_ecx, g_edx, g_esp;
 int win32hle_trace;
 /* This selftest drives COM directly, so there is no HLE registry to resolve
  * names in (only the WDT watchdog path asks for one). */
 uint32_t hle_resolve(const char *name) { (void)name; return 0; }
+/* The bridge's World Domination mangler drains the HLE UDP queue; this
+ * selftest links no Winsock layer, so the queue is always empty. */
+int hle_ws_udp_pop(uint8_t *packet, uint32_t capacity) { (void)packet; (void)capacity; return 0; }
+int hle_ws_udp_push(const uint8_t *packet, uint32_t length) { (void)packet; (void)length; return 0; }
 static recomp_func_t test_methods[512];
 static uint32_t test_method_count;
 static struct { uint8_t clsid[16]; uint32_t (*create)(const uint8_t *, uint32_t *); } test_classes[3];
