@@ -806,12 +806,13 @@ def wdt_patches(code, cs, target):
         return {}
     tag = '/* remaster: World Domination hover and resolution, run_lift.py wdt_patches */'
     hover_va = sites['hover'][0]
-    resolution_va = sites['resolution'][0]
+    # Keep the stock 640x480 display switch when WDT opens: the WDT layout, click
+    # map and selection screen are authored for 640, and drawing them unscaled in
+    # a wide window misplaces the map/selection. Games and logout then use the
+    # configured resolution again (stock behaviour).
     out = {
         hover_va: ('@replace:if (ebx == 0x200u || ebx == 0x201u) goto L_%08X; '
                    'ebx = ebx - 0x202u; %s' % (sites['hover_target'], tag)),
-        resolution_va: ('@replace:goto L_%08X; %s'
-                        % (sites['resolution_target'], tag)),
     }
     theme = sites.get('theme')
     if theme and at(*theme):
