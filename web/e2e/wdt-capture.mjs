@@ -95,6 +95,20 @@ try {
     await run.page.waitForTimeout(1000);
     await run.shot("after-escape");
   }
+  if (process.env.WDT_BACK) {
+    // WDT sidebar Back (640 layout: sidebar starts at x=472, button centre ~556,412)
+    await run.clickGame(556, 412);
+    await run.page.waitForTimeout(2500);
+    await run.shot("after-wdt-back");
+    // The WOL welcome screen's Back returns to the main menu; the shell then
+    // restores its own (configured) display size.
+    await run.clickGame(707, 557);
+    await run.page.waitForTimeout(2500);
+    await run.shot("after-wol-back");
+    await run.page.keyboard.press("Escape");
+    await run.page.waitForTimeout(2500);
+    await run.shot("after-menu");
+  }
   if (process.env.WDT_DBLCLICK) {
     const [x, y] = process.env.WDT_DBLCLICK.split(",").map(Number);
     await run.page.mouse.dblclick(x, y);

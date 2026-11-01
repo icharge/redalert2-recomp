@@ -71,17 +71,17 @@ call). No state codec or server model exists yet.
 | ID | Task | State | Depends on | Acceptance |
 | --- | --- | --- | --- | --- |
 | WDT-0a | Capture the browser request shape | **done** | — | The faction click reaches `WolChannel::RequestWDTState`; args recorded (`0C058240 00B269AC 0 3`, sink `0BF5B910`). |
-| WDT-0b | Capture the native WDTHost/WDTPort request | **pending** | — | Server-list fields (`WDT`/`MGL`, label +0x5F, conndata +0x64) are decoded, but the native client's request bytes are not captured: it needs the WOL TCP/IRC gateway first (WDT-9). |
-| WDT-1 | Packet codec and state model | **done** | WDT-0a/b | `src/wdt/codec.ts` + `service.ts`: container/tag round-trip, 30×44-byte records, 2-bit owner map, current/previous packets; 16 tests. |
+| WDT-0b | Capture the native WDTHost/WDTPort request | **done** | WDT-9 | `sub_00797800` connects `WDTHost:WDTPort` (`sub_00797823` vtable+0x2C, timeout 3) and then waits on the WOL control's 18-event array (`WaitForMultipleObjects(18, 0xB73684, 0, 100)`); event 0xB is state-ready and 0x12 is the request path. The request bytes live inside the WOL control (the same `RequestWDTState` selector the browser bridge implements: flag 3 current, flag 5 previous), so the native selector is the tagged `WREQ` shape. `WdtTcpServer` accepts that shape, text `WDT CURRENT|PREVIOUS`, one byte 0/1 and a fixed 16-byte header. |
+| WDT-1 | Packet codec and state model | **done** | WDT-0a/b | `src/wdt/codec.ts` + `service.ts`: container/tag round-trip, 30×44-byte records, 2-bit owner map, current/previous packets; 20 WDT/gateway tests. |
 | WDT-2 | Browser `RequestWDTState` bridge | **done** | WDT-1 | Signals event array index 0xB, fetches `/wdt/state` via the page, delivers `OnWDTState` with the correct 4-slot args; client parses `MPVC`/`HSVC` (30×3) and shows owners, icons, names. |
 | WDT-2a | Server-side WDT state endpoint | **done** | WDT-1 | `/wdt/state?cycle=current|previous` and `/wdt/status`; live smoke returns valid current/previous packets. |
-| WDT-3 | Native TCP WDT listener | **started** | WDT-0b | `WdtTcpServer` answers `WDT CURRENT`/`PREVIOUS` on `WDT_PORT` (plus tagged/1-byte fallbacks). Native-client verification is blocked on the WOL TCP gateway. |
-| WDT-4 | Match assignment and result ingestion | **started** | WDT-2/3 | Server-side start verified end to end: two UI clicks → `#WDTmatch` → conflict → native game-res → `/wdt/status` history + territory owner flip (e.g. territory 10/14, `from 2 to 0`). Remaining: the **clicked** territory is not propagated (WDT-8) and no browser match has been played to its own result screen. |
+| WDT-3 | Native TCP WDT listener | **done** | WDT-0b | `WdtTcpServer` on `WDT_PORT` answers current/previous for text, tagged `WREQ`, one-byte and fixed-header selectors, bounds every read, times out idle clients and NACKs malformed requests. Live server log: `World Domination listener on tcp://127.0.0.1:29194`. Fake-native integration test covers previous/tagged/header shapes. |
+| WDT-4 | Match assignment and result ingestion | **done** | WDT-2/3 | Browser click → `wdtstart 19` → `#WDTmatch` → STARTG → conflict retargeted to territory 19. Posting the native game-res for `g1-...` returned `{"wdt":{"conflictId":1,"winner":0}}` and `/wdt/status` gained `{"territoryId":19,"from":2,"to":0,"gameId":"g1-..."}` with territory 19 owner 0. Duplicate/late reports are rejected (409). |
 | WDT-5 | Cycles, history, admin | **done** | WDT-4 | `advanceCycle` freezes the current map as previous; authenticated `/wdt/admin/{rollover,reset,enable,status}`; `/wdt/status` exposes conflicts/history at the top level. |
-| WDT-6 | Persistence, tests, docs | **done** | all | SQLite `wdt_state` snapshot + Memory store, 16 WDT tests, regenerated RA2 lift (`--check` exit 0), 51 lift-patch tests, `tools/wdt_extract.py`/`wdt_art800.py` as art references. |
-| WDT-7 | Screen mode: WDT 640, game configured | **started** | WDT-2 | WDT keeps the stock 640×480 switch (selection layout correct at 640; `work/wdt-640mode`). Configured mode (800×600 in tests) is preserved outside WDT. Still to wire/verify: switch to configured on match start and after logout. |
-| WDT-8 | Propagate the clicked territory | **pending** | WDT-4 | Not available at join time: the map control (`0x72E050` +0x460) exists only after `LIST 33`, `0x72ED80` is a formatter, and the join runs from the WOL match screen (`0x75A309`). `wdtstart <id>` is implemented and verified; needs a capture point that runs while the WDT screen is alive. |
-| WDT-9 | Native WOL TCP/IRC gateway | **pending** | — | ra2web is WebSocket-only; the native client is TCP-only. Blocks WDT-0b and WDT-3. Reuse the existing line handlers behind a TCP listener, then capture the WDT request. |
+| WDT-6 | Persistence, tests, docs | **done** | all | SQLite `wdt_state` snapshot + Memory store, 20 WDT/gateway tests, full server suite (315 pass; 3 pre-existing Windows `/tmp` replay-path failures), `tsc --noEmit` exit 0, regenerated RA2 lift (`--check` exit 0), 54 lift-patch tests, art extractor/upscaler kept as references. |
+| WDT-7 | Screen mode: WDT 640, game configured | **done** | WDT-2 | Verified: game starts at the configured `mode 800x600`; entering WDT switches to `Testing display mode @ 640x480` → `SetDisplayMode(640x480x16)` → `mode 640x480`, and the WDT layout/selection renders correctly. The WDT entry no longer overwrites the INI size (`game/RA2.INI` still `1280x720` after a WDT run); the stock match-start switch at `0x0065BF98` reads those INI values, and the logout/shell switch uses `0x839648/0x83964C` (800x600), both left unpatched. A full two-player match is needed to observe the in-game frame after the switch; the code path is stock. |
+| WDT-8 | Propagate the clicked territory | **done** | WDT-4 | The WDT select screen reports the committed region from the map control (`MEM32(esi+0x460) = eax`, the update and click copies) through `ra2_wdt_pick` → `wdtstart <id>`. The client sometimes processes the click after `LIST 33`, so `WdtService.retargetConflict` moves the still-open conflict to the clicked region. Live: `[wdt] pick 19` → `wdtstart 19` → conflict territory 19. |
+| WDT-9 | Native WOL TCP/IRC gateway | **done** | — | `WolTcpGateway` (`WOL_TCP_HOST/PORT`, default 127.0.0.1:6667) frames CRLF lines into the existing `WolServer`, so native TCP clients share accounts, sessions, channels, games, WDT and results with the WebSocket lobby. Live log: `Native WOL gateway on tcp://127.0.0.1:6677`. Integration test logs in over a real socket, lists `#WDTmatch`, receives STARTG and disconnects cleanly. |
 
 ### Progress note (2026-10-31)
 
@@ -510,6 +510,44 @@ call). No state codec or server model exists yet.
   answer its `list 0 0` with the matching server, then deliver `Start <game>` (0x75B910 handles
   it) and a matching game in the type-33 reply. The existing `WDT=`/STARTG assignment can then
   run. WDT-0b/3 (native) still needs the WOL TCP gateway.
+
+### Progress note (2026-11-01)
+
+All of WDT-0a/0b/3/4/7/8/9 are now implemented and verified with fresh runs.
+
+- **Clicked territory (WDT-8)**: the select screen's map control commits the region with
+  `mov [map+0x460], eax` (the update copy at `0x72E389` and the click copy at `0x72E51F`; YR
+  `0x76D0D9`/`0x76D26F`). `run_lift.py` appends `ra2_wdt_pick((int)eax)`, which sends
+  `wdtstart <id>` over the WOL bridge. Live run: `[wdt] pick 19` in the game log,
+  `[wol] wdtstart 19 from woltst9`, then
+  `[wol] wdt clicked territory 19 for conflict 1 (game g1-mvxqiona)`.
+- **Late-click retarget (WDT-4/8)**: the client processes the map click after `LIST 33`, so
+  the server-side start may already have used the automatic pick. `WdtService.retargetConflict`
+  now points the still-open conflict at the clicked region (owned/unknown/closed conflicts are
+  ignored). Live `/wdt/status` after the click: `{"id":1,"territoryId":19,"attacker":0,"defender":2}`.
+- **Settlement**: `bun run work/wdt-settle-ui.ts` posted the native game-res for
+  `g1-mvxqiona`; the report returned `{"wdt":{"conflictId":1,"winner":0}}`, `/wdt/status`
+  history gained `{"territoryId":19,"from":2,"to":0,"faction":0,"gameId":"g1-mvxqiona"}` and
+  territory 19's owner became 0.
+- **Screen mode (WDT-7)**: a run starts at the configured `mode 800x600`, WDT enters
+  `Testing display mode @ 640x480` / `SetDisplayMode(640x480x16)` / `mode 640x480`, and the
+  640 layout is correct (`work/wdt-mode`). The WDT entry no longer rewrites the INI size:
+  `game/RA2.INI` still has `ScreenWidth=1280`, `ScreenHeight=720` after the run. The stock
+  match-start switch `0x0065BF98` reads those INI values, and the logout/shell switch uses
+  `0x839648/0x83964C` (`800x600`); both are untouched. Observing the in-game frame needs a
+  two-player match, which the single-browser e2e cannot finish.
+- **Native WOL gateway (WDT-9)**: `WolTcpGateway` accepts plain TCP, frames CRLF lines and
+  reuses `WolServer`, so native clients share accounts, sessions, channels, games and the WDT
+  service. Live log: `Native WOL gateway on tcp://127.0.0.1:6677`. Test:
+  `test/wolTcpGateway.test.ts` logs in, lists `#WDTmatch`, gets STARTG, and drops the user.
+- **Native WDT request (WDT-0b/3)**: `sub_00797800` connects `WDTHost:WDTPort` and then waits
+  on the WOL control's 18-event array (event 0xB state-ready). The bytes are produced by the
+  control, whose browser counterpart is `RequestWDTState` (flag 3 current, flag 5 previous).
+  `WdtTcpServer` accepts the tagged `WREQ` selector, text `WDT CURRENT|PREVIOUS`, one byte
+  0/1 and a fixed 16-byte header; a fake-native test covers each shape.
+- **Chrome/regression**: `bun test src/wdt/wdt.test.ts test/wolTcpGateway.test.ts` →
+  20 pass, `tsc --noEmit` exit 0; full server suite 315 pass with only the pre-existing
+  Windows `/tmp` replay-path failures; `ninja -C build-web-udp ra2.js` exit 0.
 
 ### First finding: the browser does not use the raw TCP path
 

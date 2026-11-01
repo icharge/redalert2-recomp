@@ -241,7 +241,9 @@ class WDTPatchTests(unittest.TestCase):
     def image(target, corrupt=None):
         sites = WDT_SITES[target]
         code = bytearray(0x00800000)
-        for name in ('hover', 'resolution'):
+        for name in ('hover', 'resolution', 'prompt', 'ini_width', 'ini_height', 'pick', 'pick_update', 'conflict', 'art'):
+            if name not in sites:
+                continue
             va, shape = sites[name]
             raw = bytes.fromhex(shape)
             code[va:va + len(raw)] = raw
@@ -249,13 +251,43 @@ class WDTPatchTests(unittest.TestCase):
             code[corrupt] ^= 0xFF
         return bytes(code)
 
-    def test_every_edition_patches_the_hover_site_only(self):
+    def test_every_edition_patches_the_hover_site_and_keeps_the_640_switch(self):
         for target in ('game', 'gamemd'):
             with self.subTest(target=target):
                 sites = WDT_SITES[target]
                 patches = wdt_patches(self.image(target), 0, target)
                 self.assertIn(sites['hover'][0], patches)
                 self.assertNotIn(sites['resolution'][0], patches)
+
+    def test_wdt_switches_to_640_without_overwriting_the_configured_size(self):
+        for target in ('game', 'gamemd'):
+            with self.subTest(target=target):
+                sites = WDT_SITES[target]
+                patches = wdt_patches(self.image(target), 0, target)
+                self.assertIn('goto L_%08X;' % sites['prompt_target'], patches[sites['prompt'][0]])
+                self.assertIn('keep the configured width', patches[sites['ini_width'][0]])
+                self.assertIn('keep the configured height', patches[sites['ini_height'][0]])
+
+    def test_a_match_starts_at_the_configured_size(self):
+        for target in ('game', 'gamemd'):
+            with self.subTest(target=target):
+                sites = WDT_SITES[target]
+                patches = wdt_patches(self.image(target), 0, target)
+                body = patches[sites['conflict'][0]]
+                self.assertIn('sub_%08X' % sites['mode_set'], body)
+                self.assertIn('MEM32(0x%08Xu) > 0x280u' % sites['mode_width'], body)
+                self.assertIn('PUSH32(esp, 0x%08Xu);' % int.from_bytes(
+                    bytes.fromhex(sites['conflict'][1])[1:5], 'little'), body)
+
+    def test_a_territory_pick_is_reported_to_the_lobby(self):
+        for target in ('game', 'gamemd'):
+            with self.subTest(target=target):
+                sites = WDT_SITES[target]
+                patches = wdt_patches(self.image(target), 0, target)
+                for name in ('pick', 'pick_update'):
+                    body = patches[sites[name][0]]
+                    self.assertIn('ra2_wdt_pick((int)eax)', body)
+                    self.assertIn('MEM32(esi + 0x460) = eax;', body)
 
     def test_a_mouse_move_runs_the_same_hit_test_as_wm_nchittest(self):
         for target in ('game', 'gamemd'):

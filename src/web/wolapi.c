@@ -1087,8 +1087,20 @@ static void m_wdt_request_state(void) {
     wdt_events_ready();
     RET(S_OK, 4);
 }
-static void m_stub_5(void) { RET(E_NOTIMPL, 5); }
-static void m_stub_6(void) { RET(E_NOTIMPL, 6); }
+/* The WDT select screen commits the territory under the pointer
+ * (`sub_0072E050` at the pick branch: map hit test -> [map+0x460]). Report it
+ * to the lobby as soon as it changes so the server can attribute the match to
+ * the clicked region; the server holds its LIST 33 start briefly for this. */
+void ra2_wdt_pick(int territory) {
+    /* 0..29 is a continent's territory set; 0xFF is the hit test's "none". */
+    if (territory < 0 || territory > 29) return;
+    char line[48];
+    snprintf(line, sizeof line, "wdtstart %d", territory);
+    fprintf(stderr, "[wdt] pick %d\n", territory);
+    browser_send(line);
+}
+
+static void m_stub_5(void) { RET(E_NOTIMPL, 5); }static void m_stub_6(void) { RET(E_NOTIMPL, 6); }
 static void m_stub_7(void) { RET(E_NOTIMPL, 7); }
 static void m_stub_8(void) { RET(E_NOTIMPL, 8); }
 static void m_stub_9(void) { RET(E_NOTIMPL, 9); }

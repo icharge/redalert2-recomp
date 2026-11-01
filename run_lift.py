@@ -765,8 +765,27 @@ WDT_SITES = {
     'game': {
         'hover': (0x00768B29, '81eb02020000'),       # sub ebx, 0x202 (messages over WM_COMMAND)
         'hover_target': 0x00768A3B,                  # the WM_NCHITTEST hit test
-        'resolution': (0x00768EAA, '0f8ea0000000'),  # jle 0x768f50 (skip the 640x480 switch)
+        'resolution': (0x00768EAA, '0f8ea0000000'),  # jle 0x768f50 (the 640 check)
         'resolution_target': 0x00768F50,
+        # The WDT screen is authored for 640x480. Skip the "change to 640?"
+        # prompt and take the yes path directly. The two INI writes are skipped
+        # too: they used to overwrite the player's configured size with
+        # 640x480, so the match and logout inherited it.
+        'prompt': (0x00768EB0, '6881010000'),
+        'prompt_target': 0x00768F07,
+        'ini_width': (0x00768F32, '8935380ba400'),
+        'ini_height': (0x00768F38, 'c7053c0ba400e0010000'),
+        # A territory click commits at WDTSel: [map+0x460] = id. The update path
+        # (0x72E389) tracks the pointer and the click handler (0x72E51F) commits
+        # it; report both so a late click can retarget the started match.
+        'pick_update': (0x0072E389, '898660040000'),
+        'pick': (0x0072E51F, '898660040000'),
+        # Starting the game switches back to the configured size (the INI width
+        # and height the WDT entry deliberately leaves alone).
+        'conflict': (0x0072E592, '6870c47f00'),
+        'mode_set': 0x00543A70,
+        'mode_width': 0xA40B38,
+        'mode_height': 0xA40B3C,
         # A WDT theme with no song stream leaves [theme+0x24] null; the next
         # song lookup dereferences it and aborts the screen transition.
         'theme': (0x0072A685, '8b4e248b01ff507c'),
@@ -785,15 +804,28 @@ WDT_SITES = {
         'hover_target': 0x007AF73B,
         'resolution': (0x007AFBAA, '0f8ea0000000'),
         'resolution_target': 0x007AFC50,
+        'prompt': (0x007AFBB0, '6881010000'),
+        'prompt_target': 0x007AFC07,
+        'ini_width': (0x007AFC32, '893584eba800'),
+        'ini_height': (0x007AFC38, 'c70588eba800e0010000'),
+        'pick_update': (0x0076D0D9, '898660040000'),
+        'pick': (0x0076D26F, '898660040000'),
+        'conflict': (0x0076D2E2, '68408f8400'),
+        'mode_set': 0x00561180,
+        'mode_width': 0xA8EB84,
+        'mode_height': 0xA8EB88,
         'art': (0x007682AC, '8b15a4008a00'),
     },
 }
 
 
 def wdt_patches(code, cs, target):
-    """World Domination's mouse hover and its 640x480 display limit (WDT_SITES).
+    """World Domination: hover, territory pick and the 640x480 screen.
 
-    Every site is checked by its bytes first: a different build gets none."""
+    WDT is authored for 640x480, so entering it switches the display to 640 and
+    leaves the player's configured size alone; starting a game (or logging out)
+    then uses that configured size again. Every site is checked by its bytes
+    first: a different build gets none."""
     sites = WDT_SITES[target]
 
     def at(va, hexbytes):
@@ -804,16 +836,52 @@ def wdt_patches(code, cs, target):
                (sites['hover'], sites['resolution'])):
         print('[*] wdt_patches: a site does not match this build; no World Domination patches')
         return {}
-    tag = '/* remaster: World Domination hover and resolution, run_lift.py wdt_patches */'
+    tag = '/* remaster: World Domination hover and screen mode, run_lift.py wdt_patches */'
     hover_va = sites['hover'][0]
     # Keep the stock 640x480 display switch when WDT opens: the WDT layout, click
     # map and selection screen are authored for 640, and drawing them unscaled in
-    # a wide window misplaces the map/selection. Games and logout then use the
-    # configured resolution again (stock behaviour).
+    # a wide window misplaces the map/selection. The INI writes below are skipped
+    # so the switch is temporary (match and logout use the configured size).
     out = {
         hover_va: ('@replace:if (ebx == 0x200u || ebx == 0x201u) goto L_%08X; '
                    'ebx = ebx - 0x202u; %s' % (sites['hover_target'], tag)),
     }
+    prompt = sites.get('prompt')
+    if prompt and at(*prompt):
+        out[prompt[0]] = ('@replace:goto L_%08X; '
+                          '/* remaster: WDT switches to 640 without asking, run_lift.py wdt_patches */'
+                          % sites['prompt_target'])
+    ini_width = sites.get('ini_width')
+    if ini_width and at(*ini_width):
+        out[ini_width[0]] = ('@replace:/* remaster: keep the configured width, run_lift.py wdt_patches */')
+    ini_height = sites.get('ini_height')
+    if ini_height and at(*ini_height):
+        out[ini_height[0]] = ('@replace:/* remaster: keep the configured height, run_lift.py wdt_patches */')
+    pick = sites.get('pick')
+    if pick and at(*pick):
+        out[pick[0]] = ('@replace:{ extern void ra2_wdt_pick(int); '
+                        'MEM32(esi + 0x460) = eax; ra2_wdt_pick((int)eax); } '
+                        '/* remaster: report the clicked WDT territory, run_lift.py wdt_patches */')
+    pick_update = sites.get('pick_update')
+    if pick_update and at(*pick_update):
+        out[pick_update[0]] = ('@replace:{ extern void ra2_wdt_pick(int); '
+                               'MEM32(esi + 0x460) = eax; ra2_wdt_pick((int)eax); } '
+                               '/* remaster: report the hovered WDT territory, run_lift.py wdt_patches */')
+    conflict = sites.get('conflict')
+    if conflict and at(*conflict):
+        width_va = sites['mode_width']
+        height_va = sites['mode_height']
+        mode_set = sites['mode_set']
+        # The WDT entry switched to 640 but kept the configured size in the INI
+        # globals. Starting the game switches the display back to it.
+        push = 'PUSH32(esp, 0x%08Xu);' % int.from_bytes(
+            bytes.fromhex(conflict[1])[1:5], 'little')
+        out[conflict[0]] = (
+            '@replace:{ extern void sub_%08X(void); '
+            'if (MEM32(0x%08Xu) > 0x280u) { ecx = MEM32(0x%08Xu); edx = MEM32(0x%08Xu); '
+            'RECOMP_CALL(sub_%08X); } } %s '
+            '/* remaster: the match starts at the configured size, run_lift.py wdt_patches */'
+            % (mode_set, width_va, width_va, height_va, mode_set, push))
     theme = sites.get('theme')
     if theme and at(*theme):
         out[theme[0]] = ('@replace:if (MEM32(esi + 0x24) == 0) goto L_%08X; '
