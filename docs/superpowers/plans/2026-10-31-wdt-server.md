@@ -236,6 +236,22 @@ call). No state codec or server model exists yet.
   the territory ownership updates. After that, the next UI run's automatic pick moved to
   territory 11 (10 was now Allied), which shows the ownership change feeds back into match
   assignment.
+- **Decision: WDT keeps the stock 640x480 screen; no 800 art** (supersedes the 800 plan).
+  The WDT layout, click map, sidebar, help bar and selection panel are authored for
+  640x480. Drawing the 640 art unscaled in a wide window misplaced the selection/map, and
+  the generated 800 set also required an 800-only opening movie that is not skipped, so the
+  screen failed to open. `run_lift.py` no longer skips the stock display switch: entering WDT
+  tests and sets 640x480 (`Testing display mode @ 640x480`, `SetDisplayMode: 640x480x16`,
+  `AlternateSurface (640x480)`, page `mode 640x480`), and the screen renders and selects
+  correctly (`work/wdt-640mode/territory-click-game.png`: full sidebar, "Southern Rockies"
+  panel, "This territory is controlled by the Soviets" help bar).
+- **Configured mode is preserved around WDT**: the same run starts from the configured
+  `mode 800x600` (`AlternateSurface (800x600)` before WDT) and the WDT entry is a temporary
+  switch, so the remaining work is to confirm/restore the configured mode when a match starts
+  (currently WDT stays at 640 until the match path changes it) and after logout.
+- **800 experiment reverted**: generated `*_A.pcx` / `WDTSd800.pcx` / `WDTBtm800.pcx` removed
+  from `game/`; `tools/wdt_extract.py` and `tools/wdt_art800.py` stay in the repo as the
+  reference for extracting and upscaling the art if 800 is revisited.
 - **800 art decoded and generated (verified renders)**: `WDTMap.ini` (plaintext in
   `game/wdt.mix`) defines both sets per faction/map. The 640 set is
   `Size=472,448, SideBar=WDTSd640 (168,480), HelpBar=WDTBtm640 (472,32)`; the 800 set is
