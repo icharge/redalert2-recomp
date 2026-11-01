@@ -139,6 +139,19 @@ describe("GameStore", () => {
     expect(store.getSnapshot().phase).toBe("running");
   });
 
+  it("keeps a WOL page key apart from a URL", () => {
+    const store = new GameStore();
+    store.begin();
+    store.line(boot());
+    store.line('@ra2 {"e":"open","url":"","page":"News","ask":0,"seq":8}');
+    expect(store.getSnapshot().openLink).toEqual({
+      seq: 8,
+      url: "",
+      page: "News",
+      ask: 0,
+    });
+  });
+
   it("dismisses an open link if the game exits or crashes", () => {
     for (const finish of [
       (s: GameStore) => s.line('@ra2 {"e":"exit","code":0}'),

@@ -99,19 +99,21 @@ void ra2_open_url(uint32_t url_va, uint32_t ask) {
 
 /* DoWebPageDialog hands the embedded WOL browser a page key ("Ladder",
  * "Manage", ...), not a URL: its WebBrowser reads the real URL from the
- * registry. The lift returns here before the embedded browser is created, and
- * the host maps the key to the same sentinel the registry is seeded with; the
- * page maps the path to a topic. */
+ * registry. The lift returns here before the embedded browser is created, so
+ * no URL was asked for. Report the key itself; the page maps it to a topic and
+ * never shows the registry's ra2web.invalid sentinel as an original URL. */
+static void open_page_text(const char *page) {
+    char p[128], line[256];
+    fprintf(stderr, "[page] %s\n", page[0] ? page : "(none)");
+    web_json_escape(p, sizeof p, page);
+    snprintf(line, sizeof line,
+             "{\"e\":\"open\",\"url\":\"\",\"page\":\"%s\",\"ask\":0,\"seq\":%u}",
+             p, ++g_open_seq);
+    web_event_json(line);
+}
+
 void ra2_open_wol_page(uint32_t key_va) {
-    static const char *const names[] = { "Community", "Ladder", "Manage", "Battleclans", "NetStatus", "News" };
-    static const char *const paths[] = { "community", "ladder", "account", "clans", "status", "news" };
-    const char *key = key_va ? (const char *)(uintptr_t)key_va : "";
-    const char *path = "external";
-    char url[256];
-    for (size_t i = 0; i < sizeof names / sizeof names[0]; i++)
-        if (!strcmp(key, names[i])) { path = paths[i]; break; }
-    snprintf(url, sizeof url, "https://ra2web.invalid/%s", path);
-    open_url_text(url, 0);
+    open_page_text(key_va ? (const char *)(uintptr_t)key_va : "");
 }
 
 /* ---- the picture ------------------------------------------------------------- */

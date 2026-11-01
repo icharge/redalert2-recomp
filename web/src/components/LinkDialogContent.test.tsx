@@ -84,6 +84,32 @@ describe("LinkDialogContent", () => {
     expect(link).toHaveAttribute("href", `${SITE}/support/help`);
   });
 
+  it("labels the registry sentinel as this build's target, not the game's URL", () => {
+    show({
+      topic: "community",
+      url: "https://ra2web.invalid/community",
+      seeded: true,
+      external: false,
+      embed: true,
+    });
+
+    expect(screen.getByText("This build's registry target:")).toBeInTheDocument();
+    expect(screen.queryByText("The game asked for:")).toBeNull();
+    expect(screen.getByText("https://ra2web.invalid/community")).toBeInTheDocument();
+  });
+
+  it("names a WOL page key without showing the registry sentinel", () => {
+    show({ topic: "news", url: "", page: "News", external: false, embed: true });
+
+    expect(screen.getByRole("heading", { name: "News" })).toBeInTheDocument();
+    expect(screen.getByText("News page")).toBeInTheDocument();
+    expect(screen.queryByText(/ra2web\.invalid/)).toBeNull();
+    expect(screen.getByRole("link", { name: "Open in browser" })).toHaveAttribute(
+      "href",
+      `${SITE}/news`,
+    );
+  });
+
   it("asks before opening a live URL the page does not know", () => {
     show(external);
 

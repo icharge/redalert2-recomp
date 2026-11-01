@@ -41,14 +41,25 @@ try {
   });
   const link = await run.page.evaluate(() => window.ra2Store.getSnapshot().openLink);
   assert.ok(link?.seq, "the open event must carry a sequence");
-  assert.match(link.url, expected.url);
-  report.url = link.url;
-
-  // The host logs the URL it received, unchanged, before the event.
-  assert.ok(
-    run.all.some((line) => line === `[url] ${link.url}`),
-    "the host must log the original URL",
-  );
+  if (expected.page) {
+    // YR's DoWebPageDialog passes a page key, not a URL: the event names the
+    // page and leaves url empty instead of inventing the registry sentinel.
+    assert.equal(link.page, expected.page);
+    assert.equal(link.url, "");
+    report.page = link.page;
+    assert.ok(
+      run.all.some((line) => line === `[page] ${link.page}`),
+      "the host must log the page key",
+    );
+  } else {
+    assert.match(link.url, expected.url);
+    report.url = link.url;
+    // The host logs the URL it received, unchanged, before the event.
+    assert.ok(
+      run.all.some((line) => line === `[url] ${link.url}`),
+      "the host must log the original URL",
+    );
+  }
   assert.ok(
     !run.all.some((line) => line.includes("TXT_NOBROWSER")),
     "the game must never reach its no-browser message",
@@ -56,7 +67,8 @@ try {
 
   const heading = run.page.getByRole("heading", { name: expected.title });
   await heading.waitFor({ timeout: 10_000 });
-  await run.page.getByText(link.url, { exact: true }).waitFor({ timeout: 5_000 });
+  const shown = link.page ? `${link.page} page` : link.url;
+  await run.page.getByText(shown, { exact: true }).waitFor({ timeout: 5_000 });
   report.topic = expected.title;
 
   // An embeddable target (VITE_RA2WEB_SITE_URL set) renders the sandboxed

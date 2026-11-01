@@ -87,7 +87,10 @@ try {
     // URL; that is a valid outcome, not a failure of the hook.
     report.note = "the pressed controls did not ask for a URL";
   } else {
-    for (const line of opens) assert.match(line.url, /^https?:\/\//);
+    for (const line of opens) {
+      if (line.page) assert.equal(line.url, "", "a page key is not a URL");
+      else assert.match(line.url, /^https?:\/\//);
+    }
   }
   assert.ok(
     !run.all.some((line) => line.includes("TXT_NOBROWSER")),

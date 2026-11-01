@@ -21,8 +21,11 @@ export interface CopyProgress {
 /** A link the game asked the system browser to open (the `open` event). */
 export interface OpenLink {
   seq: number;
+  /** the game's own URL; "" when it only named a WOL page */
   url: string;
   ask: number;
+  /** the page key YR's embedded browser asked for (Community, Ladder, News, ...) */
+  page?: string;
 }
 
 export interface GameState {
@@ -165,9 +168,12 @@ export class GameStore {
       case "exitConfirm":
         this.set({ exitConfirmation: { request: event.request } });
         return;
-      case "open":
-        this.set({ openLink: { seq: event.seq, url: event.url, ask: event.ask } });
+      case "open": {
+        const link: OpenLink = { seq: event.seq, url: event.url, ask: event.ask };
+        if (event.page !== undefined) link.page = event.page;
+        this.set({ openLink: link });
         return;
+      }
       case "settingsSaved":
         return;
       case "error":

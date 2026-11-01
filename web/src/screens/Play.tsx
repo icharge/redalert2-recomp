@@ -102,7 +102,10 @@ export function Play({ files }: { files: FileSource }) {
   const exitCode = useGameState((s) => s.exitCode);
   const exitConfirmation = useGameState((s) => s.exitConfirmation);
   const openLink = useGameState((s) => s.openLink);
-  const linkDialogTarget = useMemo(() => (openLink ? linkTarget(openLink.url) : null), [openLink]);
+  const linkDialogTarget = useMemo(
+    () => (openLink ? linkTarget(openLink.url, undefined, openLink.page) : null),
+    [openLink],
+  );
   const settings = useGameState((s) => s.settings);
   const restart = useGameState((s) => s.restart);
   const cursorDebugMode = cursorDebug();

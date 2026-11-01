@@ -34,10 +34,10 @@ export function LinkDialogContent({ target, onClose }: { target: LinkTarget; onC
         />
       )}
       <Text as="p" size="1" className={styles.label}>
-        The game asked for:
+        {target.seeded ? "This build's registry target:" : "The game asked for:"}
       </Text>
       <Text as="p" size="1" className={styles.url}>
-        {target.url || "(no URL)"}
+        {target.page ? `${target.page} page` : target.url || "(no URL)"}
       </Text>
       <Flex justify="end" gap="2" mt="4">
         {outbound && (

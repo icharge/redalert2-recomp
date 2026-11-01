@@ -41,13 +41,19 @@ describe("linkTarget", () => {
     expect(community).toMatchObject({
       topic: "community",
       url: "https://ra2web.invalid/community",
+      seeded: true,
       external: false,
       embed: true,
     });
 
     // A sentinel the page does not map is not a real page; never offer it.
     const unknown = linkTarget("https://ra2web.invalid/mystery", SITE);
-    expect(unknown).toMatchObject({ topic: "external", external: false, embed: false });
+    expect(unknown).toMatchObject({
+      topic: "external",
+      seeded: true,
+      external: false,
+      embed: false,
+    });
 
     expect(linkTarget("https://ra2web.invalid/ladder", SITE)).toMatchObject({
       topic: "tournament",
@@ -55,11 +61,31 @@ describe("linkTarget", () => {
     });
     expect(linkTarget("https://ra2web.invalid/clans", SITE).topic).toBe("community");
     expect(linkTarget("https://ra2web.invalid/status", SITE).topic).toBe("status");
-    // YR's lobby News button (0x113:1958) asks DoWebPageDialog for this key.
-    expect(linkTarget("https://ra2web.invalid/news", SITE)).toMatchObject({
+  });
+
+  it("maps a WOL page key without inventing an original URL", () => {
+    // YR's DoWebPageDialog passes "News", not a URL. src/web/presenter.c
+    // reports the key and leaves url empty; the registry sentinel is only the
+    // embedded browser's fallback.
+    const news = linkTarget("", SITE, "News");
+    expect(news).toMatchObject({
       topic: "news",
+      url: "",
+      page: "News",
+      external: false,
       embed: true,
     });
+    expect(sitePageUrl(news, SITE)).toBe(`${SITE}/news`);
+
+    const unknown = linkTarget("", SITE, "Mystery");
+    expect(unknown).toMatchObject({
+      topic: "external",
+      url: "",
+      page: "Mystery",
+      external: false,
+      embed: false,
+    });
+    expect(linkCopy(unknown).title).toBe("Open external page");
   });
 
   it("maps the WOL Help URL to the support page", () => {
