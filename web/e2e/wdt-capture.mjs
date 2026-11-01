@@ -109,6 +109,11 @@ try {
     await run.clickGame(555, 432);
     await run.page.waitForTimeout(3000);
     await run.shot("after-wol-main-menu");
+    // After the 800x600 restore the WOL menu is laid out at 800; its Main Menu
+    // button is then at the 800x600 position and returns to the game shell.
+    await run.clickGame(719, 557);
+    await run.page.waitForTimeout(3000);
+    await run.shot("after-shell-menu");
   }
   if (process.env.WDT_DBLCLICK) {
     const [x, y] = process.env.WDT_DBLCLICK.split(",").map(Number);
