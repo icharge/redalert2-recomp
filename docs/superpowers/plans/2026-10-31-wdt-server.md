@@ -220,6 +220,32 @@ call). No state codec or server model exists yet.
   own resolution path hashes the game name into the **user** container (`0xB2AC24`) and the
   game container (`0xB293A0`) at `0x764033`/`0x764150`; neither contains a matching entry,
   which is why the client aborts right after the locale reply.
+- **Measurement bug, then the first real conflict (verified)**: `/wdt/status` returns
+  `conflicts` and `history` at the **top level** of `service.summary()`, not inside `cycle`.
+  Every earlier check read `cycle.conflicts`, which is absent, so "conflicts 0" was a
+  measurement error rather than a server result.
+- **UI-driven MatchWDT conflict (verified twice)**: with the server placing the player into the
+  room (`WolServer.handleList`, ra2web `ef0f2b9`), a fresh server plus the two-territory-click
+  e2e produces:
+
+  ```text
+  [wol] wdt match room #WDTmatch created for woltst9
+  [wol] join game #WDTmatch as woltst9 (now 1/2 players)
+  [wol] wdt conflict 1 for territory 10 (game g1-mvx7c1vl)
+  [wol] game start #WDTmatch by woltst9: instance g1-mvx7c1vl for woltst9
+  [native-relay] native relay: woltst9 joined g1-mvx7c1vl
+  ```
+
+  `/wdt/status` then reports `conflicts 1` with
+  `{ id: 1, territoryId: 10, attacker: 0, defender: 2, gameId: "g1-mvx7c1vl" }`, and the
+  client processes `STARTG` (it joins the native relay and opens dialog `0xC9`).
+- **How the server starts it**: on `LIST 33` with no game channel, the server creates the
+  `#WDTmatch` (channelType 33) room, makes the caller its host, sets `gameOpts = "WDS=0"`,
+  joins the caller and calls `handleStartg`. `assignConflict` picks the first neutral
+  territory. The clicked territory is **not** propagated yet (the client worker that would
+  send `WDT=<n>` never runs), so every start attacks the same territory until that is wired.
+- **Next**: carry the player's selected territory into the start (`WDS`/`WDT` tags) so the
+  conflict matches the click, then implement the native WOL TCP gateway for WDT-0b/3.
 - **Worker deferred to the pump tick, still bails (verified)**: running `0x75BE10` from the
   bridge's `PumpMessages` tick (instead of inside the chat line handler, to avoid re-entering
   the client's own pump) behaves the same: `worker tick state=2` then `worker tick end` ~3.5 s
