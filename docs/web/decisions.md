@@ -85,10 +85,21 @@ Gameplay, Audio, Video and Keyboard tabs read and write the edition's own
 saved `RA2.INI`/`RA2MD.INI` and `KEYBOARD.INI`/`KEYBOARDMD.INI` in
 `save/<storage>/`. It does not keep a second copy.
 
+CSF text overrides are a launcher build input, not a player setting. The
+launcher owns `web/public/strings.json`, served at `<base>/strings.json`; the
+page never edits it and it is never stored in a save namespace. At the next
+start the launcher builds a complete CSF from the active mod's, loose, or
+language-MIX table, applies the overrides, and writes it only into the in-memory
+`/game` folder. The player's imported files in OPFS are not changed, and the
+generated table is not persisted to the save store. An operator changes the
+JSON and redeploys the launcher.
+
 **Why.** One copy of each setting, the same on every platform. The launcher
 view is a convenience over the game's files: `restoreSaves` lays them over
 the import at the next start, and the save watcher persists changes from
-either side.
+either side. A CSF is different: labels are game data, so the launcher keeps
+only the small override map and generates the table from the player's own
+copy at launch.
 
 **Would change if.** The F10 menu turns out hard to use in a browser (for
 example with pointer lock). Even then, the page would call the host's
@@ -172,13 +183,13 @@ linear memory, warm reloads, page time to the menu): files ready in about 0.3 s,
 memory 256 MB at the menu and 307 MB in a skirmish. The copy it replaces took 1.5 to 1.9 s for the
 files, reached the menu at about 20 s and held 1.09 GB of JS heap. Menu time, in steps:
 
-| | menu |
-|---|---|
-| mounted, stock reads, `-O1` | 24 to 26 s |
-| + start-up movie and splash wait skipped, read cache, `-O1` | 7.1 to 7.7 s |
-| + handle pool, `-O1` | 3.5 to 6.4 s (median about 4.7 s) |
-| + handle pool, release `-O3` | 3.4 s (five reloads: 3.39 to 3.46 s; 4.0 s right after a fresh import) |
-| same, Red Alert 2, release `-O3` | 2.35 to 2.63 s (five reloads); 11 s on the first load of the new wasm |
+|                                                             | menu                                                                   |
+| ----------------------------------------------------------- | ---------------------------------------------------------------------- |
+| mounted, stock reads, `-O1`                                 | 24 to 26 s                                                             |
+| + start-up movie and splash wait skipped, read cache, `-O1` | 7.1 to 7.7 s                                                           |
+| + handle pool, `-O1`                                        | 3.5 to 6.4 s (median about 4.7 s)                                      |
+| + handle pool, release `-O3`                                | 3.4 s (five reloads: 3.39 to 3.46 s; 4.0 s right after a fresh import) |
+| same, Red Alert 2, release `-O3`                            | 2.35 to 2.63 s (five reloads); 11 s on the first load of the new wasm  |
 
 Where the 3.4 s goes: the wasm arrives and is up in about 1 s, the start-up movie is skipped at 1.2 s,
 the file scan runs to about 2.5 s, the menu opens shortly after. The first load of a newly built
