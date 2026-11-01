@@ -29,6 +29,8 @@ export interface GamePresenter {
   counters(): PresenterCounters;
   gameSize(): { width: number; height: number };
   cursorWarp(): { seq: number; x: number; y: number };
+  /** ?cursor=page: the page layer draws the cursor, so hide ours (or restore it). */
+  setLayerCursor(active: boolean): void;
   capture(options?: { hd?: boolean }): Promise<{
     width: number;
     height: number;
@@ -61,6 +63,9 @@ export class Presenter2d implements GamePresenter {
   private cursorHeight = Number.NaN;
   private cursorLeft = Number.NaN;
   private cursorTop = Number.NaN;
+  /** ?cursor=page: the page layer draws the cursor, so this one steps aside */
+  private layerCursor = false;
+  private lastCursor: { kind: number; hotX: number; hotY: number } | null = null;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -302,9 +307,32 @@ export class Presenter2d implements GamePresenter {
     return 0;
   }
 
+  /**
+   * ?cursor=page: the page layer draws every cursor itself. Hide this
+   * presenter's CSS cursor and the pause overlay image while it does, and put
+   * back exactly what the game asked for last when it stops.
+   */
+  setLayerCursor(active: boolean): void {
+    if (this.layerCursor === active) return;
+    this.layerCursor = active;
+    if (active) {
+      if (this.cursorOverlay && this.cursorOverlay.style.display !== "none")
+        this.cursorOverlay.style.display = "none";
+      this.canvas.style.cursor = "none";
+      return;
+    }
+    const last = this.lastCursor;
+    if (last) this.setCursor(last.kind, last.hotX, last.hotY, this.memory().HEAPU8);
+    else this.canvas.style.cursor = "default";
+  }
+
   private drawCursorOverlay(heap: Int32Array): void {
     const cursor = this.cursorOverlay;
     if (!cursor) return;
+    if (this.layerCursor) {
+      if (cursor.style.display !== "none") cursor.style.display = "none";
+      return;
+    }
     if (this.word(heap, Shared.cursorKind) !== CursorKind.Overlay) {
       if (cursor.style.display !== "none") cursor.style.display = "none";
       return;
@@ -364,8 +392,14 @@ export class Presenter2d implements GamePresenter {
   }
 
   private setCursor(kind: number, hotX: number, hotY: number, heap: Uint8Array): void {
+    this.lastCursor = { kind, hotX, hotY };
     const style = this.canvas.style;
     if (this.cursorOverlay) this.cursorOverlay.style.display = "none";
+    if (this.layerCursor) {
+      // the page layer is drawing: it owns the cursor until it says otherwise
+      style.cursor = "none";
+      return;
+    }
     // Pointer Lock hides CSS cursors. Release it when a dialog asks for the
     // Windows cursor; pause draws a positioned image over the game/sidebar.
     if (

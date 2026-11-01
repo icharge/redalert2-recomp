@@ -34,6 +34,9 @@ export class GlPresenter implements GamePresenter {
   private cursorHeight = Number.NaN;
   private cursorLeft = Number.NaN;
   private cursorTop = Number.NaN;
+  /** ?cursor=page: the page layer draws the cursor, so this one steps aside */
+  private layerCursor = false;
+  private lastCursor: { kind: number; hotX: number; hotY: number } | null = null;
   private observer: ResizeObserver;
 
   constructor(
@@ -442,9 +445,32 @@ export class GlPresenter implements GamePresenter {
     gl.deleteTexture(target);
     return { width, height, frameSeq, data };
   }
+  /**
+   * ?cursor=page: the page layer draws every cursor itself. Hide this
+   * presenter's CSS cursor and the pause overlay image while it does, and put
+   * back exactly what the game asked for last when it stops.
+   */
+  setLayerCursor(active: boolean): void {
+    if (this.layerCursor === active) return;
+    this.layerCursor = active;
+    if (active) {
+      if (this.cursorOverlay && this.cursorOverlay.style.display !== "none")
+        this.cursorOverlay.style.display = "none";
+      this.canvas.style.cursor = "none";
+      return;
+    }
+    const last = this.lastCursor;
+    if (last) this.setCursor(last.kind, last.hotX, last.hotY, this.memory().HEAPU8);
+    else this.canvas.style.cursor = "default";
+  }
+
   private drawCursorOverlay(): void {
     const cursor = this.cursorOverlay;
     if (!cursor) return;
+    if (this.layerCursor) {
+      if (cursor.style.display !== "none") cursor.style.display = "none";
+      return;
+    }
     if (this.word(Shared.cursorKind) !== CursorKind.Overlay) {
       if (cursor.style.display !== "none") cursor.style.display = "none";
       return;
@@ -486,7 +512,13 @@ export class GlPresenter implements GamePresenter {
     if (cursor.style.display !== "block") cursor.style.display = "block";
   }
   private setCursor(kind: number, hotX: number, hotY: number, heap: Uint8Array): void {
+    this.lastCursor = { kind, hotX, hotY };
     if (this.cursorOverlay) this.cursorOverlay.style.display = "none";
+    if (this.layerCursor) {
+      // the page layer is drawing: it owns the cursor until it says otherwise
+      this.canvas.style.cursor = "none";
+      return;
+    }
     if (
       kind !== CursorKind.None &&
       kind !== CursorKind.Overlay &&

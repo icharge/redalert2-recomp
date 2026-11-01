@@ -518,4 +518,20 @@ describe("GlPresenter", () => {
     ).toThrow("WebGL2 unavailable");
     expect(fallback).not.toHaveBeenCalled();
   });
+
+  it("steps aside for the page layer and puts the game's cursor back", () => {
+    const { presenter, word, canvas } = setup();
+    word(Shared.cursorKind, CursorKind.Image);
+    word(Shared.cursorSeq, 1);
+    presenter.draw();
+    expect(canvas.style.cursor).not.toBe("none");
+
+    presenter.setLayerCursor(true);
+    expect(canvas.style.cursor).toBe("none");
+    presenter.setLayerCursor(true); // repeats cost nothing
+    expect(canvas.style.cursor).toBe("none");
+
+    presenter.setLayerCursor(false);
+    expect(canvas.style.cursor).not.toBe("none");
+  });
 });

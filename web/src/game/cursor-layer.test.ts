@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { PageCursor, placeCursor } from "./cursor-layer";
+import { PageCursor, placeCursor, type PageCursorOptions } from "./cursor-layer";
 import {
+  CURSOR_PX,
+  CURSOR_RGBA_OFFSET,
+  CursorKind,
   PAGE_CURSOR_INDICES_OFFSET,
   PAGE_CURSOR_PALETTE_OFFSET,
   PageCursorKind,
@@ -60,6 +63,25 @@ function publishFrame(
 
 function fakeCanvas() {
   return document.createElement("canvas");
+}
+
+/** Publish the Win32 cursor the menus and the pause overlay use. */
+function publishWindowsCursor(
+  memory: ReturnType<typeof fakeMemory>,
+  kind: number = CursorKind.Image,
+) {
+  const { HEAP32, at } = memory;
+  const seq = Atomics.load(HEAP32, at + Shared.cursorSeq) + 1;
+  Atomics.store(HEAP32, at + Shared.cursorKind, kind);
+  Atomics.store(HEAP32, at + Shared.cursorHotX, 0);
+  Atomics.store(HEAP32, at + Shared.cursorHotY, 0);
+  memory.HEAPU8[SHARED + CURSOR_RGBA_OFFSET + 3] = 255; // one opaque pixel
+  Atomics.store(HEAP32, at + Shared.cursorSeq, seq);
+  return seq;
+}
+
+function moveMouse(x: number, y: number) {
+  window.dispatchEvent(new MouseEvent("mousemove", { clientX: x, clientY: y }));
 }
 
 function picture(box: { left: number; top: number; width: number; height: number }) {
@@ -140,13 +162,14 @@ describe("PageCursor", () => {
     canvas = fakeCanvas();
   });
 
-  const layer = () => {
+  const layer = (options: PageCursorOptions = {}) => {
     canvas = fakeCanvas();
     return new PageCursor(
       canvas,
       () => picture({ left: 0, top: 0, width: 640, height: 480 }),
       () => memory,
       SHARED,
+      options,
     );
   };
 
@@ -207,5 +230,89 @@ describe("PageCursor", () => {
     cursor.release();
     expect(memory.HEAP32[memory.at + Shared.pageCursorRequest]).toBe(0);
     expect(canvas.style.visibility).toBe("hidden");
+  });
+
+  it("draws the game's Win32 arrow in the menus at the mouse's own position", () => {
+    publishWindowsCursor(memory);
+    const cursor = layer();
+    cursor.start();
+    moveMouse(100, 200);
+    cursor.frameStep();
+    expect(memory.HEAP32[memory.at + Shared.pageCursorRequest]).toBe(0); // nothing to skip
+    expect(canvas.style.visibility).toBe("visible");
+    expect(canvas.width).toBe(CURSOR_PX);
+    expect(canvas.style.width).toBe(`${CURSOR_PX}px`);
+    expect(canvas.style.transform).toBe("translate(100px, 200px)");
+    cursor.stop();
+  });
+
+  it("scales the menu arrow and its hot spot with the picture", () => {
+    publishWindowsCursor(memory);
+    Atomics.store(memory.HEAP32, memory.at + Shared.cursorHotX, 4);
+    Atomics.store(memory.HEAP32, memory.at + Shared.cursorHotY, 8);
+    canvas = fakeCanvas();
+    const scaled = new PageCursor(
+      canvas,
+      () => picture({ left: 0, top: 0, width: 1280, height: 960 }),
+      () => memory,
+      SHARED,
+    );
+    scaled.start();
+    moveMouse(200, 400);
+    scaled.frameStep();
+    expect(canvas.style.transform).toBe("translate(192px, 384px)"); // (100-4, 200-8) x2
+    expect(canvas.style.width).toBe(`${CURSOR_PX * 2}px`);
+    scaled.stop();
+  });
+
+  it("waits for a real mouse position before taking the menus over", () => {
+    publishWindowsCursor(memory);
+    const calls: boolean[] = [];
+    const cursor = layer({ onActive: (active) => calls.push(active) });
+    cursor.frameStep();
+    expect(canvas.style.visibility).toBe("hidden");
+    expect(calls).toEqual([false]); // the presenter's CSS cursor stays
+  });
+
+  it("leaves the plain system arrow to the presenter", () => {
+    publishWindowsCursor(memory, CursorKind.Arrow);
+    const cursor = layer();
+    cursor.start();
+    moveMouse(100, 200);
+    cursor.frameStep();
+    expect(canvas.style.visibility).toBe("hidden");
+    cursor.stop();
+  });
+
+  it("uses the shared pointer under Pointer Lock, as the pause overlay does", () => {
+    publishWindowsCursor(memory, CursorKind.Overlay);
+    Object.defineProperty(document, "pointerLockElement", {
+      configurable: true,
+      get: () => document.body,
+    });
+    try {
+      const cursor = layer();
+      cursor.frameStep();
+      expect(canvas.style.visibility).toBe("visible");
+      expect(canvas.style.transform).toBe("translate(100px, 200px)"); // Shared.pointerX/Y
+    } finally {
+      Reflect.deleteProperty(document, "pointerLockElement");
+    }
+  });
+
+  it("tells the presenter to hide its cursor, and gives it back on release", () => {
+    publishWindowsCursor(memory);
+    const calls: boolean[] = [];
+    const cursor = layer({ onActive: (active) => calls.push(active) });
+    cursor.start();
+    moveMouse(10, 20);
+    cursor.frameStep();
+    expect(calls).toContain(true);
+    publishFrame(memory, 55, 43, 22, 17); // the match takes the layer over
+    cursor.frameStep();
+    expect(memory.HEAP32[memory.at + Shared.pageCursorRequest]).toBe(1);
+    cursor.release();
+    expect(calls.at(-1)).toBe(false);
+    cursor.stop();
   });
 });
