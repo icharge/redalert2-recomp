@@ -200,6 +200,13 @@ call). No state codec or server model exists yet.
   0x75E08F sees every entry, but GAM handling sits behind `[esp+0x20]` state and an earlier
   service branch; trace `[esp+0x20]` writes (0x75E5D2, 0x75E6C1) and the selected-server flag
   to learn which entry order/fields the client needs before it counts a mangler.
+- **Deterministic trace (single run)**: logging `[0xA3D2A4]` (WDT state), `[0xB2A648]`
+  (client game list) and `[0xA3D298]` (screen) at the chat channel-list handler (`0x763F3D`)
+  gives the same values every time it runs: **state=3, games=0, screen=4**. The `Start`/`Fail`
+  sink only accepts state **1 or 2**, and the WDT state is written by the WOL menu
+  (`0x752BD1=1`, `0x752C35=2`, `0x752BEF=3`, `0x752C0D=4`), not by the WDT screen. So the
+  client is in state 3 (game/menu) when `LIST 33` arrives and ignores `Start <game>` entirely.
+  The match flow cannot advance until the client is in state 1/2 at LIST time.
 - **Correction: the 0xD0 removal is intermittent**: a later run with the same synthetic
   `LIST 33` entry showed `0xD0` again, so that result is not deterministic. Creating a real
   `#WDTmatch` channel and sending `Start #WDTmatch` after `LISTEND` (server log:
