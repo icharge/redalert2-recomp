@@ -169,10 +169,13 @@ function Main() {
       installations={installations}
       modManager={(game) => <ModLibrary game={game.storage} manifest={manifest} target={target} />}
       onPlay={(game) => {
-        // A debugging switch given to the launcher follows the game it opens.
-        const showCursor = query.get("show-cursor") === "1";
+        // Debugging switches given to the launcher follow the game they open.
         const path = gamePath(game.slot, game.id);
-        navigate(showCursor ? `${path}${path.includes("?") ? "&" : "?"}show-cursor=1` : path);
+        const flags = new URLSearchParams();
+        if (query.get("show-cursor") === "1") flags.set("show-cursor", "1");
+        if (query.get("cursor") === "page") flags.set("cursor", "page");
+        const suffix = flags.toString();
+        navigate(suffix ? `${path}${path.includes("?") ? "&" : "?"}${suffix}` : path);
       }}
       onImport={() => navigate("/import")}
       onResume={(slot) => navigate(`/import?resume=${slot}`)}
