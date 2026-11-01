@@ -8,16 +8,16 @@ created. The current Release builds were YR `f05cb27819923f29` (Wasm
 matrices are in `work/perf/task12-yr-release-matrix-20261029/run.json` and
 `work/perf/task12-ra2-current-release-20261029/run.json`.
 
-| Edition / busy case, HD off | Median / 1% low FPS | Worst gap | Result |
-|---|---:|---:|---|
-| YR 720p | 61 / 54 | 37 ms | FPS low and gap bars miss |
-| YR 1080p | 55 / 43 | 109 ms | FPS low and gap bars miss |
-| YR 1440p | 43 / 32 | 70 ms | Median, low, and gap bars miss |
-| YR 4K | 30 / 21 | 92 ms | Record-only |
-| RA2 720p | 62 / 61 | 31 ms | FPS and gap bars pass |
-| RA2 1080p | 62 / 55 | 49 ms | FPS bars pass; gap bar misses |
-| RA2 1440p | 62 / 59 | 56 ms | FPS bars pass; gap bar misses |
-| RA2 4K | 54 / 41 | 154 ms | Record-only |
+| Edition / busy case, HD off | Median / 1% low FPS | Worst gap | Result                         |
+| --------------------------- | ------------------: | --------: | ------------------------------ |
+| YR 720p                     |             61 / 54 |     37 ms | FPS low and gap bars miss      |
+| YR 1080p                    |             55 / 43 |    109 ms | FPS low and gap bars miss      |
+| YR 1440p                    |             43 / 32 |     70 ms | Median, low, and gap bars miss |
+| YR 4K                       |             30 / 21 |     92 ms | Record-only                    |
+| RA2 720p                    |             62 / 61 |     31 ms | FPS and gap bars pass          |
+| RA2 1080p                   |             62 / 55 |     49 ms | FPS bars pass; gap bar misses  |
+| RA2 1440p                   |             62 / 59 |     56 ms | FPS bars pass; gap bar misses  |
+| RA2 4K                      |             54 / 41 |    154 ms | Record-only                    |
 
 YR's `menu/idle` CPU median was 171.98% versus 246.59% at baseline (30.3%
 lower; short of the 40% target). RA2's was 161.08%; no RA2-specific baseline
@@ -50,15 +50,15 @@ at the sizes listed above.
 
 YR values below use the baseline from 26 October and the current Release run:
 
-| Case | Before | After current changes | Evidence state |
-|---|---:|---:|---|
-| 1280×720 busy save, HD off | 23 fps median / 22 1% low; 82 ms worst gap; 256.15% CPU | 61 / 54; 37 ms; 256.73% CPU | FPS low and gap bars miss; CPU is 0.2% above baseline. |
-| 1920×1080 busy save, HD off | 20 / 18; 83 ms; 276.98% CPU | 55 / 43; 109 ms; 257.73% CPU | Median, low, and gap bars miss; CPU is lower. |
-| 2560×1440 busy save, HD off | 18 / 15; 99 ms; 306.07% CPU | 43 / 32; 70 ms; 257.12% CPU | FPS and gap bars fail; CPU is lower. |
-| Idle main menu | 246.59% CPU | 171.98% CPU | 30.3% lower; misses the 40% reduction target. |
-| 2560×1440, 10-minute busy soak, HD off | 768 MiB peak; 137.7 MiB growth after 60 s | 640 MiB peak; 0 Wasm growth after 60 s; 2,571,580 bytes JS heap growth | Wasm growth gate passes; FPS is recorded without a soak target. |
-| 3840×2160 busy, HD off | Could not be selected | 30 / 21 fps; 92 ms worst gap; 640 MiB peak | Record-only. |
-| 3840×2160 soak, HD off | Could not be selected | 640 MiB peak; zero Wasm growth after 60 s; 748,740 bytes JS heap growth | Current-build record; zero-growth gate passes. |
+| Case                                   |                                                  Before |                                                   After current changes | Evidence state                                                  |
+| -------------------------------------- | ------------------------------------------------------: | ----------------------------------------------------------------------: | --------------------------------------------------------------- |
+| 1280×720 busy save, HD off             | 23 fps median / 22 1% low; 82 ms worst gap; 256.15% CPU |                                             61 / 54; 37 ms; 256.73% CPU | FPS low and gap bars miss; CPU is 0.2% above baseline.          |
+| 1920×1080 busy save, HD off            |                             20 / 18; 83 ms; 276.98% CPU |                                            55 / 43; 109 ms; 257.73% CPU | Median, low, and gap bars miss; CPU is lower.                   |
+| 2560×1440 busy save, HD off            |                             18 / 15; 99 ms; 306.07% CPU |                                             43 / 32; 70 ms; 257.12% CPU | FPS and gap bars fail; CPU is lower.                            |
+| Idle main menu                         |                                             246.59% CPU |                                                             171.98% CPU | 30.3% lower; misses the 40% reduction target.                   |
+| 2560×1440, 10-minute busy soak, HD off |               768 MiB peak; 137.7 MiB growth after 60 s |  640 MiB peak; 0 Wasm growth after 60 s; 2,571,580 bytes JS heap growth | Wasm growth gate passes; FPS is recorded without a soak target. |
+| 3840×2160 busy, HD off                 |                                   Could not be selected |                              30 / 21 fps; 92 ms worst gap; 640 MiB peak | Record-only.                                                    |
+| 3840×2160 soak, HD off                 |                                   Could not be selected | 640 MiB peak; zero Wasm growth after 60 s; 748,740 bytes JS heap growth | Current-build record; zero-growth gate passes.                  |
 
 Exact run files and baseline rows remain in the [plan results](../superpowers/plans/2026-10-26-web-frame-performance.md).
 
@@ -189,7 +189,6 @@ The verified run rendered 4,012 lit samples on the host and 4,066 on the guest
 at 2580x1080. Screenshots and full logs are in
 `work/web-lan-match-frames/`; see [testing.md](testing.md#lan-transport-two-real-browsers)
 for the command.
-
 
 ## 24 October 2026: installation routes and exit cleanup
 
@@ -376,8 +375,7 @@ Both native editions passed the extended two-player browser regression:
 protected room, wrong key, native error message, acknowledge/recover to lobby,
 retry the correct key, roster/options, Accept/Start, matching handoffs, native
 instance IDs and full session retained in WASM memory. YR exercised its original
-resolution confirmation. Captures are build-web/wol-yr-password-start (instance
-6) and build-web/wol-ra2-password-start (instance 7). Both COM selftest editions,
+resolution confirmation. Captures are build-web/wol-yr-password-start (instance 6) and build-web/wol-ra2-password-start (instance 7). Both COM selftest editions,
 TypeScript, scoped ESLint and all 246 frontend tests passed. Both modules were
 rebuilt; no commit was made. W13.2 still needs chat and start-abort/disconnect
 handling; W13.3 still needs a compatible native Internet packet transport.
@@ -475,3 +473,29 @@ loads a mismatched wasm. The host hook is in `../pcrecomp` commit `3f78d82`
 (`kernel32: keep profile writes in place and notify settings changes`); this
 repo needs that commit (and the sibling working tree's remaining edits) to
 build.
+
+## CSF string overrides from the launcher, 1 November 2026
+
+The launcher owns a static `web/public/strings.json`, served at
+`<base>/strings.json`. It can override individual CSF labels per edition, choose
+`windows-1252` or `windows-874`, and inject missing labels. It is not in a
+player's save store and the page has no editor for it; an operator changes the
+file and redeploys. `csf.ts` parses and rewrites the table, keeping every
+untouched entry's original bytes (including `WRTS` extras); `csf-source.ts`
+takes the active mod's CSF, then a loose import CSF, then the copy in
+`language.mix`/`langmd.mix`; `mix.ts` reads the encrypted MIX index with the
+public RSA key and Blowfish. The loader applies the overrides after the game's
+files are staged and before `startSaveSync`, so the generated table is in the
+in-memory `/game` only and is never written to OPFS. A failure leaves the game
+untouched and logs a warning.
+
+Unit coverage: `csf.test.ts` 15, `mix.test.ts` 9 (including real archive
+extraction), `csf-source.test.ts` 8, `launcher-strings.test.ts` 9,
+`csf-apply.test.ts` 9, and `loader-csf.test.ts` 2. The full frontend suite
+passes 54 files / 505 tests; typecheck and scoped ESLint pass.
+`csf-strings.mjs` read the static file, started the game from an imported
+profile, read the generated `/game/ra2.csf` and `/game/ra2md.csf`, captured the
+main menu, and exited. Both editions passed:
+`work/csf-strings/{ra2,ra2md}-static/main-menu.png` and `csf-strings.json` show
+`GUI:ExitGame` as **Exit to Launcher**. The base table came from the language
+MIX on a normal install, so no loose CSF was needed.

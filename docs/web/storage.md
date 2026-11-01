@@ -8,11 +8,11 @@ project.
 
 ## Getting the files in
 
-| Browser | How |
-|---|---|
+| Browser                           | How                                                                                                      |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------- |
 | Chrome, Edge (and other Chromium) | `showDirectoryPicker()`: the player picks the install folder, and the page reads only the files it needs |
-| Firefox, Safari | drag the folder onto the drop zone. `DataTransferItem.webkitGetAsEntry()` walks it |
-| Either | an `<input type="file" webkitdirectory>` button as a last resort |
+| Firefox, Safari                   | drag the folder onto the drop zone. `DataTransferItem.webkitGetAsEntry()` walks it                       |
+| Either                            | an `<input type="file" webkitdirectory>` button as a last resort                                         |
 
 ## What is copied
 
@@ -22,15 +22,15 @@ repo was developed against is 2.6 GB, of which about 1 GB is the game). So
 the import uses an allowlist, matched case-insensitively at the folder's top
 level:
 
-| Kind | Files |
-|---|---|
-| User game content | `*.mix` (but not `*.mix.bak`), sound banks, INI and map/data files |
-| Local runtime bundle | The web build's matching `game.exe` or `gamemd.exe`, plus `Blowfish.dll`; neither is imported into OPFS |
-| Sound | `audio.bag`, `audio.idx`, `audiomd.bag`, `audiomd.idx` |
-| Data | `*.ini`, `*.csf`, `*.fnt`, `*.mmx`, `*.map`, `*.mpr`, `*.yrm` (except the settings files below) |
-| Settings | `RA2.INI`, `RA2MD.INI`, `KEYBOARD.INI`, `KEYBOARDMD.INI`: left out by default so a fresh import starts from the game's own defaults; offered as "bring my settings and hotkeys" |
-| Movies | `movies*.mix`, `movmd*.mix`: optional. If the source has no `MOVIES01.MIX` or `MOVMD03.MIX`, Import creates an empty 12-byte startup placeholder; when movies are skipped, available movie packs are replaced with empty archives. Without the real archives, video cutscenes are skipped; static loading-screen images are separate game assets. The Import screen shows their size and lets the player skip them; the menu's own movies are in `ra2md.mix`. |
-| Saves | `*.sav` at the top level (the game writes `SAVE0001.sav` beside its exe), and `Saved Games/*` of an older layout, if present: offered as "bring your saves" |
+| Kind                 | Files                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| User game content    | `*.mix` (but not `*.mix.bak`), sound banks, INI and map/data files                                                                                                                                                                                                                                                                                                                                                                                            |
+| Local runtime bundle | The web build's matching `game.exe` or `gamemd.exe`, plus `Blowfish.dll`; neither is imported into OPFS                                                                                                                                                                                                                                                                                                                                                       |
+| Sound                | `audio.bag`, `audio.idx`, `audiomd.bag`, `audiomd.idx`                                                                                                                                                                                                                                                                                                                                                                                                        |
+| Data                 | `*.ini`, `*.csf`, `*.fnt`, `*.mmx`, `*.map`, `*.mpr`, `*.yrm` (except the settings files below)                                                                                                                                                                                                                                                                                                                                                               |
+| Settings             | `RA2.INI`, `RA2MD.INI`, `KEYBOARD.INI`, `KEYBOARDMD.INI`: left out by default so a fresh import starts from the game's own defaults; offered as "bring my settings and hotkeys"                                                                                                                                                                                                                                                                               |
+| Movies               | `movies*.mix`, `movmd*.mix`: optional. If the source has no `MOVIES01.MIX` or `MOVMD03.MIX`, Import creates an empty 12-byte startup placeholder; when movies are skipped, available movie packs are replaced with empty archives. Without the real archives, video cutscenes are skipped; static loading-screen images are separate game assets. The Import screen shows their size and lets the player skip them; the menu's own movies are in `ra2md.mix`. |
+| Saves                | `*.sav` at the top level (the game writes `SAVE0001.sav` beside its exe), and `Saved Games/*` of an older layout, if present: offered as "bring your saves"                                                                                                                                                                                                                                                                                                   |
 
 A loose `game.fnt` placed at the top of the selected game folder is imported and
 read by the game before its MIX archive copy. Font overrides take effect on the
@@ -110,11 +110,11 @@ namespace. The guest still sees its fixed `/game` filesystem.
 
 IndexedDB database `ra2-web`, schema version 2:
 
-| Store | Key | Value |
-|---|---|---|
-| `installations` | auto-incremented numeric slot | name, import time, planned editions |
-| `installation-games` | `[slot, edition]` | edition metadata, file references, save/mod namespace |
-| `settings` | setting name | application settings and namespaced mod lists |
+| Store                | Key                           | Value                                                 |
+| -------------------- | ----------------------------- | ----------------------------------------------------- |
+| `installations`      | auto-incremented numeric slot | name, import time, planned editions                   |
+| `installation-games` | `[slot, edition]`             | edition metadata, file references, save/mod namespace |
+| `settings`           | setting name                  | application settings and namespaced mod lists         |
 
 The schema upgrade groups existing v1 RA2/Yuri records into one installation.
 Their explicit legacy file references (`game/ra2`, `game/ra2md`) and save/mod
@@ -147,6 +147,54 @@ reads through `src/web/opfs_read.js`, which keeps a read-only handle open betwee
 file, and `src/web/read_cache.c`, which answers repeated small `ReadFile` calls from 1 MiB blocks in
 memory. A write to `/game` never goes through a link: saves, the
 Thai font and mod overlays remove a link first (`replaceFile`), and the save watcher skips links.
+
+## String tables and `strings.json`
+
+The launcher's CSF overrides are a static file in the launcher build:
+`web/public/strings.json`, served at `<base>/strings.json`. It is not in a
+player's save store, and the page does not edit it:
+
+```json
+{
+  "version": 1,
+  "ra2": {
+    "encoding": "windows-1252",
+    "strings": { "GUI:ExitGame": "Exit to Launcher" }
+  },
+  "ra2md": {
+    "encoding": "windows-1252",
+    "strings": { "GUI:ExitGame": "Exit to Launcher" }
+  }
+}
+```
+
+`web/src/storage/launcher-strings.ts` validates and fetches it (256 KiB cap,
+printable ASCII labels, known encoding). Each edition may also set `enabled`,
+`inject` and `extra`. An operator changes the file and redeploys the launcher;
+players cannot edit it from the page.
+
+`web/src/storage/csf.ts` parses and rewrites the CSF; untouched entries are
+copied byte for byte, including `WRTS` extra bytes.
+`web/src/storage/csf-source.ts` finds the base table in this order:
+
+1. the active mod's `<edition>.csf` (`/game/mods/<name>/`);
+2. the import's loose `<edition>.csf`;
+3. `ra2.csf` inside `language.mix`, or `ra2md.csf` inside `langmd.mix`, read by
+   `web/src/storage/mix.ts` (RSA key block + Blowfish index);
+4. another small top-level `*.mix`.
+
+The page can read a large imported archive through its OPFS record even though
+the game thread sees it as a symlink, so `readBigFile` is passed for the
+language MIX. The rewritten table is written to the active mod's path when the
+mod supplied the base, otherwise to `/game/<edition>.csf`, before the game
+starts. A loose table shadows the MIX copy. The generated file exists only in
+the in-memory `/game`; it is applied before `startSaveSync` takes its opening
+snapshot and is not copied to `save/<storage>/`.
+
+`windows-1252` is the shipped English encoding. `windows-874` is for Thai text
+and should be used with the Thai font fix (the launcher warns when it is off).
+A missing label is left unchanged and reported; `inject` appends it. Invalid
+JSON, an unrepresentable character, or no base table leaves the game unchanged.
 
 ## Saves
 
