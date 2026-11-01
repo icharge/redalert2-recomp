@@ -539,7 +539,7 @@ All of WDT-0a/0b/3/4/7/8/9 are now implemented and verified with fresh runs.
   Live mode logs from the same client:
   `800x600` (launch) -> `640x480` (WDT entry) -> `1280x720` (WDT match start);
   and the logout run: `800x600` -> `640x480` (WDT) -> `800x600` (Westwood Online Main Menu).
-  Evidence: `work/wdt-mode4/game.log`, `work/wdt-back6/game.log`. The browser match itself
+  Evidence: \work/wdt-mode4/game.log\, \work/wdt-back7/game.log\ (shell main menu at 800x600: \work/wdt-back7/after-shell-menu.png\). The browser match itself
   still aborts without a second player, but every display transition runs in the real client.
 - **Browser WDT start (WDT-4/8)**: the bridge now sends `wdtarmed` when `RequestWDTState`
   runs, and only an armed `LIST 33` (or a `wdtstart` click) starts a match. The server starts
