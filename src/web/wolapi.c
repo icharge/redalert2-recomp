@@ -88,6 +88,7 @@ static uint32_t g_pending_logout;
 static uint32_t g_creating_channel;
 static uint32_t g_joining_channel;
 static uint32_t g_starting_game, g_connected, g_connection_pending;
+static int g_wdt_mode_pending;
 static char g_login[64], g_password[64], g_nick[32], g_current_channel[48];
 static struct { char nick[10], password[10]; } g_saved_nicks[11];
 static char g_attribute_name[64], g_attribute_value[256];
@@ -749,6 +750,7 @@ static void handle_line(const char *line) {
         session.timestamp = (uint32_t)time;
         invalidate_reports();
         g_session = session;
+        if (strstr(session.channel, "WDT")) g_wdt_mode_pending = 1;
         g_starting_game = 0;
         wol_channel *channel = current_channel();
         uint32_t values[] = { S_OK, (uint32_t)(uintptr_t)channel,
@@ -1074,6 +1076,9 @@ static void wdt_events_ready(void) {
 static void m_wdt_request_state(void) {
     fprintf(stderr, "[wdt] RequestWDTState args %08X %08X %08X %08X sink %08X chat %08X\n",
             A32(0), A32(1), A32(2), A32(3), g_channel.sink, g_chat.sink);
+    /* The WDT screen is up: the next LIST 33 from the match screen is the WDT
+     * match start, not the ordinary lobby game-list refresh. */
+    browser_send("wdtarmed");
     int previous = (A32(3) & 4u) != 0;
     int fetched = wdt_fetch_from_page(previous, g_wdt_packet, (int)sizeof g_wdt_packet);
     if (fetched > 0) {
@@ -1098,6 +1103,15 @@ void ra2_wdt_pick(int territory) {
     snprintf(line, sizeof line, "wdtstart %d", territory);
     fprintf(stderr, "[wdt] pick %d\n", territory);
     browser_send(line);
+}
+
+/* Starting a WDT match switches the display from the 640 select screen back to
+ * the configured size. The lobby's STARTG handler sets this flag only for the
+ * WDT room, so ordinary WOL matches are untouched. */
+int ra2_wdt_take_mode_switch(void) {
+    int pending = g_wdt_mode_pending;
+    g_wdt_mode_pending = 0;
+    return pending;
 }
 
 static void m_stub_5(void) { RET(E_NOTIMPL, 5); }static void m_stub_6(void) { RET(E_NOTIMPL, 6); }
@@ -1305,6 +1319,7 @@ static void m_chat_request_logout(void) {
     memset(&g_session, 0, sizeof g_session);
     g_connected = g_connection_pending = g_starting_game = 0;
     g_creating_channel = g_joining_channel = 0;
+    g_wdt_mode_pending = 0;
     browser_stop(); g_pending_logout = 1; RET(S_OK, 1);
 }
 static void m_chat_request_private_game_options(void) {

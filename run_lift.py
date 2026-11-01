@@ -781,8 +781,13 @@ WDT_SITES = {
         'pick_update': (0x0072E389, '898660040000'),
         'pick': (0x0072E51F, '898660040000'),
         # Starting the game switches back to the configured size (the INI width
-        # and height the WDT entry deliberately leaves alone).
-        'conflict': (0x0072E592, '6870c47f00'),
+        # and height the WDT entry deliberately leaves alone). OnGameStart
+        # (slot 23) is the deterministic point: it runs for every STARTG.
+        'game_start': (0x00761570, '81ec90000000'),
+        # Leaving Westwood Online returns to the 800x600 shell menu, whatever
+        # the 640 WDT screen left the display at.
+        'logout': (0x0075EEB0, '8b44240885c07c09'),
+        'current_width': 0x8523E0,
         'mode_set': 0x00543A70,
         'mode_width': 0xA40B38,
         'mode_height': 0xA40B3C,
@@ -810,7 +815,9 @@ WDT_SITES = {
         'ini_height': (0x007AFC38, 'c70588eba800e0010000'),
         'pick_update': (0x0076D0D9, '898660040000'),
         'pick': (0x0076D26F, '898660040000'),
-        'conflict': (0x0076D2E2, '68408f8400'),
+        'game_start': (0x007A7B60, '81ec90000000'),
+        'logout': (0x007A5220, '8b44240885c07c09'),
+        'current_width': 0x8A00A4,
         'mode_set': 0x00561180,
         'mode_width': 0xA8EB84,
         'mode_height': 0xA8EB88,
@@ -867,21 +874,33 @@ def wdt_patches(code, cs, target):
         out[pick_update[0]] = ('@replace:{ extern void ra2_wdt_pick(int); '
                                'MEM32(esi + 0x460) = eax; ra2_wdt_pick((int)eax); } '
                                '/* remaster: report the hovered WDT territory, run_lift.py wdt_patches */')
-    conflict = sites.get('conflict')
-    if conflict and at(*conflict):
+    game_start = sites.get('game_start')
+    if game_start and at(*game_start):
         width_va = sites['mode_width']
         height_va = sites['mode_height']
         mode_set = sites['mode_set']
         # The WDT entry switched to 640 but kept the configured size in the INI
-        # globals. Starting the game switches the display back to it.
-        push = 'PUSH32(esp, 0x%08Xu);' % int.from_bytes(
-            bytes.fromhex(conflict[1])[1:5], 'little')
-        out[conflict[0]] = (
-            '@replace:{ extern void sub_%08X(void); '
-            'if (MEM32(0x%08Xu) > 0x280u) { ecx = MEM32(0x%08Xu); edx = MEM32(0x%08Xu); '
-            'RECOMP_CALL(sub_%08X); } } %s '
+        # globals. OnGameStart (the sink slot that receives STARTG) switches the
+        # display back to it before the game creates its surfaces.
+        out[game_start[0]] = (
+            '@replace:esp = esp - 0x90u; { extern void sub_%08X(void); '
+            'extern int ra2_wdt_take_mode_switch(void); '
+            'if (ra2_wdt_take_mode_switch() && MEM32(0x%08Xu) > 0x280u) { '
+            'ecx = MEM32(0x%08Xu); edx = MEM32(0x%08Xu); '
+            'RECOMP_CALL(sub_%08X); } } /* 0x%08X: sub esp, 0x90 */ '
             '/* remaster: the match starts at the configured size, run_lift.py wdt_patches */'
-            % (mode_set, width_va, width_va, height_va, mode_set, push))
+            % (mode_set, width_va, width_va, height_va, mode_set, game_start[0]))
+    logout = sites.get('logout')
+    if logout and at(*logout):
+        mode_set = sites['mode_set']
+        current = sites['current_width']
+        out[logout[0]] = (
+            '@replace:{ extern void sub_%08X(void); '
+            'if (MEM32(0x%08Xu) != 0x320u) { ecx = 0x320u; edx = 0x258u; '
+            'RECOMP_CALL(sub_%08X); } } eax = MEM32(esp + 0x8); '
+            '/* 0x%08X: mov eax, dword ptr [esp + 8] */ '
+            '/* remaster: logout returns to the 800x600 shell, run_lift.py wdt_patches */'
+            % (mode_set, current, mode_set, logout[0]))
     theme = sites.get('theme')
     if theme and at(*theme):
         out[theme[0]] = ('@replace:if (MEM32(esi + 0x24) == 0) goto L_%08X; '

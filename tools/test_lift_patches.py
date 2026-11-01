@@ -241,7 +241,7 @@ class WDTPatchTests(unittest.TestCase):
     def image(target, corrupt=None):
         sites = WDT_SITES[target]
         code = bytearray(0x00800000)
-        for name in ('hover', 'resolution', 'prompt', 'ini_width', 'ini_height', 'pick', 'pick_update', 'conflict', 'art'):
+        for name in ('hover', 'resolution', 'prompt', 'ini_width', 'ini_height', 'pick', 'pick_update', 'game_start', 'logout', 'art'):
             if name not in sites:
                 continue
             va, shape = sites[name]
@@ -273,11 +273,21 @@ class WDTPatchTests(unittest.TestCase):
             with self.subTest(target=target):
                 sites = WDT_SITES[target]
                 patches = wdt_patches(self.image(target), 0, target)
-                body = patches[sites['conflict'][0]]
+                body = patches[sites['game_start'][0]]
                 self.assertIn('sub_%08X' % sites['mode_set'], body)
                 self.assertIn('MEM32(0x%08Xu) > 0x280u' % sites['mode_width'], body)
-                self.assertIn('PUSH32(esp, 0x%08Xu);' % int.from_bytes(
-                    bytes.fromhex(sites['conflict'][1])[1:5], 'little'), body)
+                self.assertIn('esp = esp - 0x90u;', body)
+                self.assertIn('ra2_wdt_take_mode_switch()', body)
+                self.assertIn('RECOMP_CALL(sub_%08X)' % sites['mode_set'], body)
+
+    def test_logout_returns_to_the_800x600_shell(self):
+        for target in ('game', 'gamemd'):
+            with self.subTest(target=target):
+                sites = WDT_SITES[target]
+                patches = wdt_patches(self.image(target), 0, target)
+                body = patches[sites['logout'][0]]
+                self.assertIn('ecx = 0x320u; edx = 0x258u;', body)
+                self.assertIn('MEM32(0x%08Xu) != 0x320u' % sites['current_width'], body)
 
     def test_a_territory_pick_is_reported_to_the_lobby(self):
         for target in ('game', 'gamemd'):

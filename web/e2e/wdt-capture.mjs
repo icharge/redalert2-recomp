@@ -96,18 +96,19 @@ try {
     await run.shot("after-escape");
   }
   if (process.env.WDT_BACK) {
-    // WDT sidebar Back (640 layout: sidebar starts at x=472, button centre ~556,412)
-    await run.clickGame(556, 412);
+    // WDT map Back (640 art: BackButtonRectangle=490,415,136,25) returns to
+    // the side-select screen; its Back leaves World Domination.
+    await run.clickGame(558, 427);
     await run.page.waitForTimeout(2500);
     await run.shot("after-wdt-back");
-    // The WOL welcome screen's Back returns to the main menu; the shell then
-    // restores its own (configured) display size.
-    await run.clickGame(707, 557);
+    await run.clickGame(558, 427);
     await run.page.waitForTimeout(2500);
-    await run.shot("after-wol-back");
-    await run.page.keyboard.press("Escape");
-    await run.page.waitForTimeout(2500);
-    await run.shot("after-menu");
+    await run.shot("after-wdt-back2");
+    // The WOL main menu's "Main Menu" button returns to the game shell, whose
+    // own (configured) display size is restored on the way out.
+    await run.clickGame(555, 432);
+    await run.page.waitForTimeout(3000);
+    await run.shot("after-wol-main-menu");
   }
   if (process.env.WDT_DBLCLICK) {
     const [x, y] = process.env.WDT_DBLCLICK.split(",").map(Number);
@@ -141,6 +142,14 @@ try {
     const lines = run.all.filter((line) => /WDT|Match|match|STARTG|GAMEOPT|dialog/i.test(line));
     console.log("territory game click dialogs", JSON.stringify(lines.slice(-20)));
     console.log("territory game phase", (await run.state())?.phase);
+  }
+
+  if (process.env.WDT_HOLD) {
+    const seconds = Number(process.env.WDT_HOLD);
+    for (let elapsed = 0; elapsed < seconds; elapsed += 5) {
+      await run.page.waitForTimeout(5000);
+      await run.shot(`hold-${elapsed + 5}`);
+    }
   }
 
   const serverCurrent = run.all.some((line) => line.includes("[wdt] server state current"));

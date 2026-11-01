@@ -79,7 +79,7 @@ call). No state codec or server model exists yet.
 | WDT-4 | Match assignment and result ingestion | **done** | WDT-2/3 | Browser click → `wdtstart 19` → `#WDTmatch` → STARTG → conflict retargeted to territory 19. Posting the native game-res for `g1-...` returned `{"wdt":{"conflictId":1,"winner":0}}` and `/wdt/status` gained `{"territoryId":19,"from":2,"to":0,"gameId":"g1-..."}` with territory 19 owner 0. Duplicate/late reports are rejected (409). |
 | WDT-5 | Cycles, history, admin | **done** | WDT-4 | `advanceCycle` freezes the current map as previous; authenticated `/wdt/admin/{rollover,reset,enable,status}`; `/wdt/status` exposes conflicts/history at the top level. |
 | WDT-6 | Persistence, tests, docs | **done** | all | SQLite `wdt_state` snapshot + Memory store, 20 WDT/gateway tests, full server suite (315 pass; 3 pre-existing Windows `/tmp` replay-path failures), `tsc --noEmit` exit 0, regenerated RA2 lift (`--check` exit 0), 54 lift-patch tests, art extractor/upscaler kept as references. |
-| WDT-7 | Screen mode: WDT 640, game configured | **done** | WDT-2 | Verified: game starts at the configured `mode 800x600`; entering WDT switches to `Testing display mode @ 640x480` → `SetDisplayMode(640x480x16)` → `mode 640x480`, and the WDT layout/selection renders correctly. The WDT entry no longer overwrites the INI size (`game/RA2.INI` still `1280x720` after a WDT run); the stock match-start switch at `0x0065BF98` reads those INI values, and the logout/shell switch uses `0x839648/0x83964C` (800x600), both left unpatched. A full two-player match is needed to observe the in-game frame after the switch; the code path is stock. |
+| WDT-7 | Screen mode: WDT 640, game configured | **done** | WDT-2 | Verified in one process cycle: `mode 800x600` at launch → `Testing display mode @ 640x480` / `mode 640x480` on WDT entry (layout correct) → `Testing display mode @ 1280x720` / `SetDisplayMode(1280x720x16)` / `mode 1280x720` when the WDT match starts. The WDT entry leaves the configured INI size (`game/RA2.INI` still 1280x720) and the STARTG sink (`OnGameStart`, slot 23, RA2 `0x761570` / YR `0x7A7B60`) calls the stock `sub_00543A70` / `sub_00561180` with those INI values only when `ra2_wdt_take_mode_switch()` is set for a `#WDTmatch` STARTG. Leaving Westwood Online (`OnLogout`, slot 20, RA2 `0x75EEB0` / YR `0x7A5220`) restores the 800x600 shell: `Testing display mode @ 800x600` / `mode 800x600` after WDT's 640. The browser match itself still aborts without a second player, but the display transitions run in the real client. |
 | WDT-8 | Propagate the clicked territory | **done** | WDT-4 | The WDT select screen reports the committed region from the map control (`MEM32(esi+0x460) = eax`, the update and click copies) through `ra2_wdt_pick` → `wdtstart <id>`. The client sometimes processes the click after `LIST 33`, so `WdtService.retargetConflict` moves the still-open conflict to the clicked region. Live: `[wdt] pick 19` → `wdtstart 19` → conflict territory 19. |
 | WDT-9 | Native WOL TCP/IRC gateway | **done** | — | `WolTcpGateway` (`WOL_TCP_HOST/PORT`, default 127.0.0.1:6667) frames CRLF lines into the existing `WolServer`, so native TCP clients share accounts, sessions, channels, games, WDT and results with the WebSocket lobby. Live log: `Native WOL gateway on tcp://127.0.0.1:6677`. Integration test logs in over a real socket, lists `#WDTmatch`, receives STARTG and disconnects cleanly. |
 
@@ -529,13 +529,22 @@ All of WDT-0a/0b/3/4/7/8/9 are now implemented and verified with fresh runs.
   `g1-mvxqiona`; the report returned `{"wdt":{"conflictId":1,"winner":0}}`, `/wdt/status`
   history gained `{"territoryId":19,"from":2,"to":0,"faction":0,"gameId":"g1-mvxqiona"}` and
   territory 19's owner became 0.
-- **Screen mode (WDT-7)**: a run starts at the configured `mode 800x600`, WDT enters
-  `Testing display mode @ 640x480` / `SetDisplayMode(640x480x16)` / `mode 640x480`, and the
-  640 layout is correct (`work/wdt-mode`). The WDT entry no longer rewrites the INI size:
-  `game/RA2.INI` still has `ScreenWidth=1280`, `ScreenHeight=720` after the run. The stock
-  match-start switch `0x0065BF98` reads those INI values, and the logout/shell switch uses
-  `0x839648/0x83964C` (`800x600`); both are untouched. Observing the in-game frame needs a
-  two-player match, which the single-browser e2e cannot finish.
+- **Screen mode (WDT-7)**: the match-start restore now runs deterministically.
+  The STARTG sink `OnGameStart` (slot 23, RA2 `0x761570`, YR `0x7A7B60`) calls the stock
+  mode setter (`sub_00543A70` / `sub_00561180`) with the preserved INI `0xA40B38/3C`
+  (`0xA8EB84/88`) when `ra2_wdt_take_mode_switch()` is set. The bridge sets that flag only
+  for a `#WDTmatch` STARTG, so ordinary WOL matches are untouched. The WDT entry no longer
+  rewrites the INI (`game/RA2.INI` stays `1280x720`), and leaving Westwood Online
+  (`OnLogout`, slot 20, RA2 `0x75EEB0`, YR `0x7A5220`) restores the `800x600` shell.
+  Live mode logs from the same client:
+  `800x600` (launch) -> `640x480` (WDT entry) -> `1280x720` (WDT match start);
+  and the logout run: `800x600` -> `640x480` (WDT) -> `800x600` (Westwood Online Main Menu).
+  Evidence: `work/wdt-mode4/game.log`, `work/wdt-back6/game.log`. The browser match itself
+  still aborts without a second player, but every display transition runs in the real client.
+- **Browser WDT start (WDT-4/8)**: the bridge now sends `wdtarmed` when `RequestWDTState`
+  runs, and only an armed `LIST 33` (or a `wdtstart` click) starts a match. The server starts
+  700 ms after the picked territory settles, so the clicked region is known before STARTG.
+  Live: `[wdt] pick 19` -> `wdtstart 19` -> conflict territory 19 -> native result settles 19.
 - **Native WOL gateway (WDT-9)**: `WolTcpGateway` accepts plain TCP, frames CRLF lines and
   reuses `WolServer`, so native clients share accounts, sessions, channels, games and the WDT
   service. Live log: `Native WOL gateway on tcp://127.0.0.1:6677`. Test:
