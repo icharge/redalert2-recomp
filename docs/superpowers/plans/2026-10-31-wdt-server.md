@@ -236,6 +236,16 @@ call). No state codec or server model exists yet.
   the territory ownership updates. After that, the next UI run's automatic pick moved to
   territory 11 (10 was now Allied), which shows the ownership change feeds back into match
   assignment.
+- **The selection panel is a formatter; the join comes from the WOL match screen**:
+  hooking/inspecting the `0x72ED80` call sites shows it is invoked as
+  `ecx = <map control>`, with a string argument (`Info` panel text), i.e. it renders the
+  territory description and does not store the selection. The match worker `0x75BE10` is called
+  from `0x75A309` (`cmp esi, 0x10; call 0x75be10`) inside the WOL matching window, so the join is
+  driven by that screen's message 0x10 - not by the WDT map. In this flow the clicked territory
+  never travels to the join; the room name is the only WDT context that reaches it.
+- **Consequence**: browser territory propagation needs either the WDT screen's own dialog object
+  state (captured while `0xB2ADA4` is alive, before message 0x10) or an explicit design decision
+  to keep the server-side territory choice. The `wdtstart <id>` contract is ready for either.
 - **The map control does not exist yet at match start (verified)**: hooking the entry of the
   WDT map update (`0x72E050`) to record its `ecx` object shows
 
