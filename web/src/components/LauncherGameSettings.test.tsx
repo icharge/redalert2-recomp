@@ -177,6 +177,18 @@ describe("LauncherGameSettings", () => {
     expect(written.at(-1)?.text).toContain("bars=black");
   });
 
+  it("stores the software-cursor choice for the next launch", async () => {
+    setup();
+    const cursor = screen.getByRole("combobox", { name: "Cursor" });
+    expect(cursor).toHaveTextContent("Page layer");
+    await userEvent.click(cursor);
+    await userEvent.click(await screen.findByRole("option", { name: /Game's own/ }));
+    expect(localStorage.getItem("ra2.software-cursor.slot-1-ra2md")).toBe("1");
+    await userEvent.click(cursor);
+    await userEvent.click(await screen.findByRole("option", { name: /Page layer/ }));
+    expect(localStorage.getItem("ra2.software-cursor.slot-1-ra2md")).toBeNull();
+  });
+
   it("writes the MOBA-style control to the host file", async () => {
     const { written } = setup();
     await gameplay();

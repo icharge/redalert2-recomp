@@ -164,10 +164,20 @@ The game has two cursor paths, and the page draws both on the same canvas:
   free; under Pointer Lock (and for the pause overlay) it uses the shared one.
 - **The presenter steps aside.** `setLayerCursor(active)` on both presenters
   hides the CSS cursor and the pause `<img>`, keeps the last `(kind, hot)` the
-  game announced, and puts it back when the layer lets go. Nothing calls it
-  without `?cursor=page`, so the CSS path is untouched for everyone else. The
-  CSS cursor remains the fallback for the first frames (no sprite or no mouse
-  position yet) and for `CursorKind.Arrow`, the plain system arrow.
+  game announced, and puts it back when the layer lets go. It runs whenever the
+  page cursor is on, which is the default; with `?cursor=game` the layer never
+  starts and the CSS path is exactly as it was. The CSS cursor remains the
+  fallback for the first frames (no sprite or no mouse position yet) and for
+  `CursorKind.Arrow`, the plain system arrow.
+- **Default on, with a launcher option.** The browser draws the cursor on the
+  page unless the installation chose the game's own software cursor: the
+  Launcher tab's **Cursor** setting (`Page layer (smooth)` / `Game's own
+(software, traditional)`), stored per installation in `localStorage`
+  (`ra2.software-cursor.<installation>`, `web/src/storage/cursor-preferences.ts`).
+  The launcher passes the choice on the game's address as `?cursor=game`;
+  `?cursor=page`, `?cursor=game`, `?cursor=software` and `?cursor=off` on the
+  launcher's own address override it for one launch. The native presenter's
+  `RA2_PAGE_CURSOR` is a separate switch and keeps its opt-in default.
 - **CSS cannot scale; the canvas can.** A CSS cursor image is drawn at its
   intrinsic CSS size, so the 32×32 arrow stayed 32 px while the picture was
   letterboxed or 2x. The layer multiplies the arrow and its hot spot by the same
@@ -233,12 +243,12 @@ RA2_PAGE_CURSOR_DEBUG=1`, the `tools/playtest.py skirmish-start` script):
 
 ### Phase 2 — page cursor (done)
 
-| ID   | Task                                                                                                  | Files                          | Done when                                 |
-| ---- | ----------------------------------------------------------------------------------------------------- | ------------------------------ | ----------------------------------------- |
-| P2.1 | Decode (A or B) and draw on the overlay canvas at `pointer − hot`                                     | `web/src/game/cursor-layer.ts` | known sprite lands exactly on the pointer |
-| P2.2 | Visibility: hide in movies, and where the game has no cursor at all; clear the request on stop/hidden | `cursor-layer.ts`, `Play.tsx`  | exactly one cursor in every state         |
-| P2.3 | `?cursor=page` gate (already wired)                                                                   | `Play.tsx`                     | flag off ⇒ unchanged                      |
-| P2.4 | Compare with `?show-cursor=1`                                                                         | manual                         | no drift                                  |
+| ID   | Task                                                                                                  | Files                                    | Done when                                 |
+| ---- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------- | ----------------------------------------- |
+| P2.1 | Decode (A or B) and draw on the overlay canvas at `pointer − hot`                                     | `web/src/game/cursor-layer.ts`           | known sprite lands exactly on the pointer |
+| P2.2 | Visibility: hide in movies, and where the game has no cursor at all; clear the request on stop/hidden | `cursor-layer.ts`, `Play.tsx`            | exactly one cursor in every state         |
+| P2.3 | ?cursor=game turns the page layer off (on by default); the launcher stores the choice                 | Play.tsx, App.tsx, cursor-preferences.ts | game's own ⇒ unchanged                    |
+| P2.4 | Compare with `?show-cursor=1`                                                                         | manual                                   | no drift                                  |
 
 ### Phase 3 — verification and docs (done)
 
@@ -372,10 +382,18 @@ browser-cursor-page.png` is the match with the page's arrow at the pointer
   from `pointer_x/y` through the pause screen's 2580×1080 picture (scale 0.496),
   the pause `<img>` `display: none`, the picture canvas `cursor: none`.
   `work/tests/cursor-shots/browser-cursor-pause.png` is that frame.
-- **Played by hand (browser)**: with `?cursor=page` the in-match cursor follows
-  the pointer smoothly, and the menus now draw the game's own arrow on the page
-  layer rather than the CSS one. The native presenter on a real screen has still
-  not been driven by a person; its BMP dumps cover the compositing.
+- **Default on, with a way out** (`web/e2e/cursor-page-menu.mjs`, no `?cursor`):
+  the game page logs `[cursor] the page draws the game's cursor (default;
+?cursor=game keeps the game's own)`, the layer is visible in the menu and the
+  picture canvas reads `cursor: none`. With `--cursor game` the same run logs no
+  page-cursor line and the picture canvas carries the CSS image cursor again
+  (`cursor: url(data:image/png;base64,…)`). The launcher stores the choice per
+  installation (`ra2.software-cursor.<installation>`); its **Cursor** setting
+  writes it and `App.tsx` appends `?cursor=game` when it is "Game's own".
+- **Played by hand (browser)**: by default the in-match cursor follows the
+  pointer smoothly, and the menus draw the game's own arrow on the page layer.
+  The native presenter on a real screen has still not been driven by a person;
+  its BMP dumps cover the compositing.
 
 ## Risks
 
@@ -393,9 +411,11 @@ browser-cursor-page.png` is the match with the page's arrow at the pointer
 
 ## Acceptance criteria
 
-- With `?cursor=page`, a match shows exactly one cursor, with the game's art and
-  hot spot, moving at display refresh rate, at no measurable cost to the game.
-- Without the flag, behaviour is unchanged.
+- By default (and with `?cursor=page`), a match shows exactly one cursor, with
+  the game's art and hot spot, moving at display refresh rate, at no measurable
+  cost to the game.
+- With `?cursor=game` (or the launcher's "Game's own" cursor), behaviour is
+  unchanged: the game draws its software cursor as before.
 - No input, click-routing or warp changes.
 - Both editions, plus the menu/pause cursor paths, pass the existing tests and
   the new checks.

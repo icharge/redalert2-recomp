@@ -475,7 +475,7 @@ describe("Presenter2d", () => {
     presenter.draw();
     expect(cursor.style.display).toBe("block");
 
-    // ?cursor=page: the page layer owns the cursor now
+    // the page layer owns the cursor now
     presenter.setLayerCursor(true);
     expect(canvas.style.cursor).toBe("none");
     presenter.setLayerCursor(true); // repeats cost nothing

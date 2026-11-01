@@ -33,6 +33,7 @@ import {
 import { gamePath, slotFromPath } from "./paths";
 import { leaveGame } from "./game/lifecycle";
 import { readVideoPreference } from "./storage/video-preferences";
+import { cursorChoice } from "./storage/cursor-preferences";
 
 type Boot =
   | { name: "loading" }
@@ -173,7 +174,9 @@ function Main() {
         const path = gamePath(game.slot, game.id);
         const flags = new URLSearchParams();
         if (query.get("show-cursor") === "1") flags.set("show-cursor", "1");
-        if (query.get("cursor") === "page") flags.set("cursor", "page");
+        // The page layer draws the cursor unless this installation chose the
+        // game's own software cursor (LauncherGameSettings, ?cursor=game).
+        if (cursorChoice(location.search, game.storage) === "game") flags.set("cursor", "game");
         const suffix = flags.toString();
         navigate(suffix ? `${path}${path.includes("?") ? "&" : "?"}${suffix}` : path);
       }}

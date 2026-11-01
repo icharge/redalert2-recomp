@@ -62,13 +62,15 @@ To see the real pointer beside the game's software cursor, open the game with
 a green ring at the position it reports to the game (the shared pointer), so the
 browser pointer, the input position and the game's drawn cursor can be compared.
 
-`?cursor=page` draws the game's cursor on its own canvas above the picture —
-the MOUSE.SHA frame the game loaded and MOUSEPAL.PAL's colours in a match, the
-game's Win32 arrow in the menus and over the pause dialog — and asks the game to
-stop blitting its own (`docs/web/cursor-layer.md`). The cursor then moves at the
-page's refresh rate everywhere. Without the flag the game draws its cursor
-exactly as before. Both flags can be combined: `?show-cursor=1&cursor=page`
-shows the system crosshair, the green input marker, and the page's game cursor.
+The page draws the game's cursor by default — the MOUSE.SHA frame the game
+loaded and MOUSEPAL.PAL's colours in a match, the game's Win32 arrow in the
+menus and over the pause dialog — on its own canvas above the picture, at the
+page's refresh rate, and asks the game to stop blitting its own
+(`docs/web/cursor-layer.md`). `?cursor=game` (or the launcher's Cursor setting,
+"Game's own (software, traditional)") leaves the game's own software cursor in
+the picture, drawn at the game's frame rate as before. It combines with the
+debug pointer: `?show-cursor=1` shows the system crosshair, the green input
+marker, and the page's game cursor.
 
 `drive.mjs` takes steps `click X,Y`, `rclick`, `move`, `key CODE`, `shot NAME`,
 `picture NAME` (is the canvas lit, and a checksum that changes when it draws) and

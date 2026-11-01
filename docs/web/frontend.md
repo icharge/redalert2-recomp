@@ -121,7 +121,8 @@ is never reused for another slot. Mod/font restarts reload the same game URL.
 Game settings stay in the game's own F10 menu during play, drawn by the host as
 on Linux, so each setting has one copy. The launcher's `LauncherGameSettings`
 dialog edits the same files: its Launcher tab has the host presentation
-settings (scaling, blur menu bars, HD vehicles, FPS overlay), and its Gameplay,
+settings (scaling, blur menu bars, HD vehicles, cursor, FPS overlay), and its
+Gameplay,
 Audio, Video and Keyboard tabs read and write the per-edition
 `RA2.INI`/`RA2MD.INI` and `KEYBOARD.INI`/`KEYBOARDMD.INI` in
 `save/<storage>/`. The host settings live in `.host/<edition>.ini`; a fresh
