@@ -725,19 +725,29 @@ int main(int argc, char **argv) {
     recomp_host_init();
 #ifndef RA2_TARGET_GAME
     /* YR's WOL buttons read their target from this key; without it they
-     * return silently. Point them at the page's own mapped pages. */
-    hle_reg_set_string(0x80000002u, "Software\\Westwood\\Yuri's Revenge\\URL",
-                       "Community", "https://ra2web.invalid/community");
-    hle_reg_set_string(0x80000002u, "Software\\Westwood\\Yuri's Revenge\\URL",
-                       "Ladder", "https://ra2web.invalid/ladder");
-    hle_reg_set_string(0x80000002u, "Software\\Westwood\\Yuri's Revenge\\URL",
-                       "Manage", "https://ra2web.invalid/account");
-    hle_reg_set_string(0x80000002u, "Software\\Westwood\\Yuri's Revenge\\URL",
-                       "Battleclans", "https://ra2web.invalid/clans");
-    hle_reg_set_string(0x80000002u, "Software\\Westwood\\Yuri's Revenge\\URL",
-                       "NetStatus", "https://ra2web.invalid/status");
-    hle_reg_set_string(0x80000002u, "Software\\Westwood\\Yuri's Revenge\\URL",
-                       "News", "https://ra2web.invalid/news");
+     * return silently. These are the retail installer's values (see
+     * src/web/wol_pages.h), so the game asks for its original URLs and the
+     * page maps them; the lift intercepts every entry before anything loads. */
+    static const struct { const char *name, *url; } wol_urls[] = {
+        { "Community", "http://westwood.ea.com/games/ccuniverse/redalert2/index.html" },
+        { "Ladder", "http://battleclans.westwood.com/cgi-bin/cgiclient?rosetta&request=do_ladder&LANGCODE=0&SKU=10496&embedded=1" },
+        { "LadderX", "http://battleclans.westwood.com/cgi-bin/cgiclient?rosetta&request=do_ladder&LANGCODE=0&SKU=10496" },
+        { "NetStatus", "http://battleclans.westwood.com/cgi-bin/cgiclient?rosetta&request=do_netstatus&LANGCODE=0&SKU=10496&embedded=1" },
+        { "NetStatusX", "http://battleclans.westwood.com/cgi-bin/cgiclient?rosetta&request=do_netstatus&LANGCODE=0&SKU=10496" },
+        { "Signup", "http://games2.westwood.com/cgi-bin/cgiclient?register&request=expand_template&Template=newreg_install.html&LANGCODE=0&embedded=1&SKU=10496" },
+        { "SignupX", "http://games2.westwood.com/cgi-bin/cgiclient?register&request=expand_template&Template=newreg_install.html&LANGCODE=0&SKU=10496" },
+        { "BattleClans", "http://battleclans.westwood.com/cgi-bin/cgiclient?rosetta&request=do_clan&LANGCODE=0&SKU=8448&embedded=1" },
+        { "BattleClansX", "http://battleclans.westwood.com/cgi-bin/cgiclient?rosetta&request=do_clan&LANGCODE=0&SKU=8448" },
+        { "News", "http://battleclans.westwood.com/cgi-bin/cgiclient?rosetta&request=do_news&LANGCODE=0&SKU=10496&embedded=1" },
+        { "NewsX", "http://battleclans.westwood.com/cgi-bin/cgiclient?rosetta&request=do_news&LANGCODE=0&SKU=10496" },
+        { "Insider", "http://games2.westwood.com/cgi-bin/cgiclient?register_insider&request=expand_template&Template=yuri_insider_login.html&LANGCODE=0" },
+        { "InsiderX", "http://games2.westwood.com/cgi-bin/cgiclient?register_insider&request=expand_template&Template=yuri_insider_login.html&LANGCODE=0" },
+        { "Manage", "http://games2.westwood.com/cgi-bin/cgiclient?register&request=expand_template&Template=newreg_menu.html&LANGCODE=0&embedded=1&SKU=10496" },
+        { "ManageX", "http://games2.westwood.com/cgi-bin/cgiclient?register&request=expand_template&Template=newreg_menu.html&LANGCODE=0&SKU=10496" },
+    };
+    for (unsigned i = 0; i < sizeof wol_urls / sizeof wol_urls[0]; i++)
+        hle_reg_set_string(0x80000002u, "Software\\Westwood\\Yuri's Revenge\\URL",
+                           wol_urls[i].name, wol_urls[i].url);
 #endif
     hle_com_register_class(CLSID_Blowfish, ra2_blowfish_create);
 #ifdef RA2_TARGET_GAME

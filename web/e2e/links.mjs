@@ -29,7 +29,7 @@ for (const press of pathArgs) opts.pageArgs.push("--press", press);
 
 const expected = ra2
   ? { title: "Manage account", url: /^https?:\/\/games2\.westwood\.com\// }
-  : { title: "Community", url: /^https:\/\/ra2web\.invalid\/community$/ };
+  : { title: "Community", url: /^http:\/\/westwood\.ea\.com\/games\/ccuniverse\/redalert2\// };
 
 const run = opts.testGame ? await startPage(opts) : await openGame(opts, { shots: opts.shots });
 const report = { edition: ra2 ? "ra2" : "gamemd" };
