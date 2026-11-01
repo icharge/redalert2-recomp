@@ -10,7 +10,10 @@
 #define RA2_WEB_PROTOCOL 10
 
 #define RA2_CURSOR_PX 32
+/* The largest cursor frame the page accepts. MOUSE.SHA's header gives 55x43 as
+ * the biggest frame the game has (RA2 and YR), so 64 is the next power of two. */
 #define RA2_PAGE_CURSOR_PX 64
+#define RA2_PALETTE_BYTES 768
 
 /* The picture and the cursor, published by the game thread and read by the
  * page in wasm's shared memory (ra2_shared() says where). Every field up to
@@ -48,19 +51,24 @@ typedef struct ra2_shared {
     volatile uint32_t republish;     /* the page sets 1 to ask for a full picture; the game clears it */
     volatile uint32_t present_mode;  /* written by the page: RA2_PRESENT_*, read at each publish */
     /* protocol 10: the in-match game cursor, drawn by the page instead of inside the picture
-     * (docs/web/cursor-layer.md). Same shape as the cursor block above: a seqlock, the kind,
-     * the hot spot and the pixels. The page sets page_cursor_request while it draws the cursor
-     * itself; the game then skips its own blit (src/runtime/page_cursor.c). */
-    volatile uint32_t page_cursor_seq;      /* seqlock: odd while the sprite is published */
+     * (docs/web/cursor-layer.md). The frame is palette indices, not colours: the game's cursor
+     * has its own palette (MOUSEPAL.PAL), copied here once, and the page colours the indices.
+     * The page sets page_cursor_request while it draws the cursor itself; the game then skips
+     * its own blit (src/runtime/page_cursor.c). */
+    volatile uint32_t page_cursor_seq;      /* seqlock: odd while a frame is published */
     volatile uint32_t page_cursor_kind;     /* RA2_PAGE_CURSOR_* */
     volatile int32_t  page_cursor_hot_x, page_cursor_hot_y;
-    volatile uint32_t page_cursor_w, page_cursor_h;
+    volatile uint32_t page_cursor_w, page_cursor_h;          /* the frame's size */
     volatile int32_t  page_cursor_request;  /* written by the page with Atomics.store */
-    uint8_t  page_cursor_rgba[RA2_PAGE_CURSOR_PX * RA2_PAGE_CURSOR_PX * 4];
+    volatile uint32_t page_cursor_sheet_w, page_cursor_sheet_h;  /* the SHP's largest frame */
+    volatile int32_t  page_cursor_x, page_cursor_y;          /* the frame's offset in the sheet */
+    volatile uint32_t page_cursor_palette_seq;               /* up whenever the palette is copied */
+    uint8_t  page_cursor_palette[RA2_PALETTE_BYTES];         /* r, g, b, each 0..63 */
+    uint8_t  page_cursor_indices[RA2_PAGE_CURSOR_PX * RA2_PAGE_CURSOR_PX];
 } ra2_shared_t;
 
-enum { RA2_PAGE_CURSOR_NONE = 0,        /* no sprite yet, or the game stopped drawing it */
-       RA2_PAGE_CURSOR_IMAGE = 1 };     /* page_cursor_rgba, with its hot spot */
+enum { RA2_PAGE_CURSOR_NONE = 0,        /* no frame yet, or the game stopped drawing it */
+       RA2_PAGE_CURSOR_IMAGE = 1 };     /* page_cursor_indices, with its palette and hot spot */
 
 enum { RA2_CURSOR_NONE = 0,          /* the game draws its own: hide the system one */
        RA2_CURSOR_IMAGE = 1,         /* cursor_rgba, with its hot spot */
@@ -92,7 +100,10 @@ _Static_assert(__builtin_offsetof(ra2_shared_t, republish) == 1054 * 4, "web/src
 _Static_assert(__builtin_offsetof(ra2_shared_t, present_mode) == 1055 * 4, "web/src/game/protocol.ts reads presentMode at word 1055");
 _Static_assert(__builtin_offsetof(ra2_shared_t, page_cursor_seq) == 1056 * 4, "web/src/game/protocol.ts reads pageCursorSeq at word 1056");
 _Static_assert(__builtin_offsetof(ra2_shared_t, page_cursor_request) == 1062 * 4, "web/src/game/protocol.ts reads pageCursorRequest at word 1062");
-_Static_assert(__builtin_offsetof(ra2_shared_t, page_cursor_rgba) == 1063 * 4, "web/src/game/protocol.ts reads PAGE_CURSOR_RGBA_OFFSET");
+_Static_assert(__builtin_offsetof(ra2_shared_t, page_cursor_sheet_w) == 1063 * 4, "web/src/game/protocol.ts reads pageCursorSheetW at word 1063");
+_Static_assert(__builtin_offsetof(ra2_shared_t, page_cursor_palette_seq) == 1067 * 4, "web/src/game/protocol.ts reads pageCursorPaletteSeq at word 1067");
+_Static_assert(__builtin_offsetof(ra2_shared_t, page_cursor_palette) == 1068 * 4, "web/src/game/protocol.ts reads PAGE_CURSOR_PALETTE_OFFSET");
+_Static_assert(__builtin_offsetof(ra2_shared_t, page_cursor_indices) == 1068 * 4 + RA2_PALETTE_BYTES, "web/src/game/protocol.ts reads PAGE_CURSOR_INDICES_OFFSET");
 
 /* events: one line on stdout, "@ra2 " and JSON (presenter.c) */
 void web_event_boot(const char *title, const char *exe, uint32_t stamp);

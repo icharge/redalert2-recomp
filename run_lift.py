@@ -565,12 +565,20 @@ def web_url_patches(code, cs, target):
 # the captured sprite instead) and learns the sprite from the screen otherwise
 # (src/runtime/page_cursor.c). Sites are byte-checked: a different build keeps
 # the game's own cursor.
+# Each Draw_Cursor records its object at the entry: the blit site's stack slot
+# held 0 in a run (both a menu and a match), so the hook cannot take `this` from
+# there. YR keeps it at [esp] (mov [esp],eax); RA2 keeps it in ebx (mov ebx,ecx).
+PAGE_CURSOR_ENTRY = {
+    'gamemd': (0x007B93F5, '89442400', 'eax'),
+    'game': (0x00772744, '8bd9', 'ecx'),
+}
+
 PAGE_CURSOR_SITES = {
     'gamemd': {
         'draw': 0x007B93F0,
         'blit': 0x007B9516,
         'blit_fn': 0x004AF2A0,
-        'this': 'MEM32(esp)',                 # the function kept this at [esp]
+        'args': 0x2C,                         # 11 stack arguments the blit pops
         'shape': '83ec488bc189442400',        # sub esp,0x48; mov eax,ecx; mov [esp],eax
         'call': 'e8855dcfff',                 # call 0x004af2a0
     },
@@ -578,7 +586,7 @@ PAGE_CURSOR_SITES = {
         'draw': 0x00772740,
         'blit': 0x00772882,
         'blit_fn': 0x0049F3A0,
-        'this': 'ebx',                        # mov ebx,ecx at the entry
+        'args': 0x28,                         # 10 arguments: this blit's ret 0x28
         'shape': '83ec48538bd9',              # sub esp,0x48; push ebx; mov ebx,ecx
         'call': 'e819cbd2ff',                 # call 0x0049f3a0
     },
@@ -594,13 +602,52 @@ def page_cursor_patches(code, cs, target):
     if code[at:at + len(shape)] != shape or code[blit:blit + len(call)] != call:
         print('[*] page_cursor_patches: %s does not match this build; the game keeps its own cursor' % target)
         return {}
-    return {t['blit']: (
-        '@replace:{ extern int ra2_page_cursor_suppress(void); '
-        'extern void ra2_page_cursor_drawn(uint32_t); '
-        'if (!ra2_page_cursor_suppress()) { RECOMP_CALL(sub_%08X); RECOMP_FLAGS_IN(); } '
-        'ra2_page_cursor_drawn(%s); } '
-        '/* remaster: the page draws the in-match cursor, run_lift.py page_cursor_patches */'
-        % (t['blit_fn'], t['this']))}
+    entry_va, entry_bytes, entry_reg = PAGE_CURSOR_ENTRY[target]
+    raw = bytes.fromhex(entry_bytes)
+    at = entry_va - cs
+    if code[at:at + len(raw)] != raw:
+        print('[*] page_cursor_patches: %s entry does not match this build; no cursor hook' % target)
+        return {}
+    return {
+        entry_va: ('{ extern void ra2_page_cursor_this(uint32_t); ra2_page_cursor_this(%s); } '
+                   '/* the cursor object, run_lift.py page_cursor_patches */' % entry_reg),
+        # Skipping the call must also do what its `ret n` does to esp: without
+        # this the caller's frame was left 0x2C low and the next instructions
+        # read and wrote the wrong stack slots (a crash in the sidebar).
+        t['blit']: (
+            '@replace:{ extern int ra2_page_cursor_suppress(void); '
+            'extern void ra2_page_cursor_drawn(void); '
+            'if (ra2_page_cursor_suppress()) esp += 0x%Xu; '
+            'else { RECOMP_CALL(sub_%08X); RECOMP_FLAGS_IN(); } '
+            'ra2_page_cursor_drawn(); } '
+            '/* remaster: the page draws the in-match cursor, run_lift.py page_cursor_patches */'
+            % (t['args'], t['blit_fn']))}
+
+
+# MOUSEPAL.PAL, the cursor's own palette (docs/web/cursor-layer.md). Each game
+# loads it once while it sets the video mode and builds the ConvertClass its
+# cursor blit converts through (YR 0x87F6C8, RA2 0x8323C8); the load call
+# returns the file's 768 bytes. Captured here for the page cursor probe.
+PAGE_CURSOR_PALETTE_SITES = {
+    'gamemd': dict(load=0x0052C142, loader=0x005B40B0, string=0x00826084),
+    'game':   dict(load=0x00511D73, loader=0x005956C0, string=0x007DB99C),
+}
+
+
+def page_cursor_palette_patches(code, cs, target):
+    """Hand the cursor palette to the host as the game loads it (page_cursor_palette)."""
+    t = PAGE_CURSOR_PALETTE_SITES[target]
+    at = t['load'] - cs
+    if (at < 5 or code[at - 5] != 0xB9 or int.from_bytes(code[at - 4:at], 'little') != t['string']
+            or code[at] != 0xE8):
+        print('[*] page_cursor_palette_patches: %s does not match this build; no cursor palette' % target)
+        return {}
+    if cs + at + 5 + int.from_bytes(code[at + 1:at + 5], 'little', signed=True) != t['loader']:
+        print('[*] page_cursor_palette_patches: the load does not call the file loader; no cursor palette')
+        return {}
+    return {t['load']: (
+        '{ extern void ra2_page_cursor_palette(uint32_t); ra2_page_cursor_palette(eax); } '
+        '/* the cursor palette, MOUSEPAL.PAL: run_lift.py page_cursor_palette_patches */')}
 
 
 def apply_patches(body, patches):
@@ -1067,6 +1114,7 @@ def targets():
                                                  **modern_controls_patches('gamemd'), **queue_five_patches('gamemd'),
                                                  **theme_song_guard(code, cs, 'gamemd'),
                                                  **page_cursor_patches(code, cs, 'gamemd'),
+                                                 **page_cursor_palette_patches(code, cs, 'gamemd'),
                                                  **yr_online_patches(code, cs),
                                                  **wdt_patches(code, cs, 'gamemd'),
                                                  **web_exit_confirmation_patches(code, cs, 'gamemd'),
@@ -1087,6 +1135,7 @@ def targets():
                                                **modern_controls_patches('game'), **queue_five_patches('game'),
                                                **theme_song_guard(code, cs, 'game'),
                                                **page_cursor_patches(code, cs, 'game'),
+                                               **page_cursor_palette_patches(code, cs, 'game'),
                                                **web_exit_confirmation_patches(code, cs, 'game'),
                                                **ra2_shell_patches(code, cs), **ra2_hires_patches(code, cs),
                                                **ra2_online_patches(code, cs), **ra2_confirm_patches(code, cs),

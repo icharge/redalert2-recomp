@@ -355,13 +355,23 @@ static void update_cursor(void) {
 }
 
 /* The in-match cursor on the page (docs/web/cursor-layer.md). src/runtime/page_cursor.c
- * captured it read from the game; this copies it to shared memory when it changed. The
- * page's request travels the other way: while it holds, the lift skips the game's blit. */
+ * decoded the game's own MOUSE.SHA frame to palette indices; this copies it, and the
+ * 768-byte cursor palette, to shared memory when they change. The page's request
+ * travels the other way: while it holds, the lift skips the game's blit. */
 static void update_page_cursor(void) {
-    static uint32_t shown = ~0u;
+    static uint32_t shown = ~0u, shown_palette = ~0u;
     ra2_page_cursor_request(__atomic_load_n(&g_sh.page_cursor_request, __ATOMIC_RELAXED));
     ra2_page_cursor_tick();
     const ra2_page_cursor_t *cursor = ra2_page_cursor_state();
+
+    uint32_t pseq = __atomic_load_n(&cursor->palette_seq, __ATOMIC_ACQUIRE);
+    if (pseq && pseq != shown_palette && (pseq & 1u) == 0) {
+        uint32_t at = __atomic_add_fetch(&g_sh.page_cursor_palette_seq, 1, __ATOMIC_SEQ_CST);
+        memcpy(g_sh.page_cursor_palette, cursor->palette, RA2_PALETTE_BYTES);
+        __atomic_store_n(&g_sh.page_cursor_palette_seq, at + 1, __ATOMIC_SEQ_CST);
+        shown_palette = pseq;
+    }
+
     uint32_t seq = __atomic_load_n(&cursor->seq, __ATOMIC_ACQUIRE);
     if (seq & 1u) return;                                /* the game thread is mid-update */
     uint32_t kind = cursor->visible ? RA2_PAGE_CURSOR_IMAGE : RA2_PAGE_CURSOR_NONE;
@@ -373,12 +383,14 @@ static void update_page_cursor(void) {
     g_sh.page_cursor_kind = kind;
     g_sh.page_cursor_w = kind == RA2_PAGE_CURSOR_IMAGE ? (uint32_t)w : 0;
     g_sh.page_cursor_h = kind == RA2_PAGE_CURSOR_IMAGE ? (uint32_t)h : 0;
+    g_sh.page_cursor_sheet_w = kind == RA2_PAGE_CURSOR_IMAGE ? (uint32_t)cursor->sheet_w : 0;
+    g_sh.page_cursor_sheet_h = kind == RA2_PAGE_CURSOR_IMAGE ? (uint32_t)cursor->sheet_h : 0;
+    g_sh.page_cursor_x = kind == RA2_PAGE_CURSOR_IMAGE ? cursor->x : 0;
+    g_sh.page_cursor_y = kind == RA2_PAGE_CURSOR_IMAGE ? cursor->y : 0;
     g_sh.page_cursor_hot_x = kind == RA2_PAGE_CURSOR_IMAGE ? cursor->hot_x : 0;
     g_sh.page_cursor_hot_y = kind == RA2_PAGE_CURSOR_IMAGE ? cursor->hot_y : 0;
-    if (kind == RA2_PAGE_CURSOR_IMAGE) memcpy(g_sh.page_cursor_rgba, cursor->rgba, (size_t)w * h * 4);
-    __atomic_store_n(&g_sh.page_cursor_seq, at + 1, __ATOMIC_SEQ_CST);         /* even: whole */
-    /* A change that landed while this copy ran moves the state's seq, so the next
-     * pump publishes again; the page rejects a read whose sequence changed. */
+    if (kind == RA2_PAGE_CURSOR_IMAGE) memcpy(g_sh.page_cursor_indices, cursor->indices, (size_t)w * h);
+    __atomic_store_n(&g_sh.page_cursor_seq, at + 1, __ATOMIC_SEQ_CST);             /* even: whole */
     shown = seq;
 }
 

@@ -1,13 +1,21 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { PageCursor, placeCursor } from "./cursor-layer";
-import { PAGE_CURSOR_RGBA_OFFSET, PageCursorKind, RA2_WEB_PROTOCOL, Shared } from "./protocol";
+import {
+  PAGE_CURSOR_INDICES_OFFSET,
+  PAGE_CURSOR_PALETTE_OFFSET,
+  PageCursorKind,
+  RA2_WEB_PROTOCOL,
+  Shared,
+} from "./protocol";
 
 const SHARED = 4096; // where the fake ra2_shared_t sits in the fake heap
 const PAGE = 64;
+const PALETTE = SHARED + PAGE_CURSOR_PALETTE_OFFSET;
+const INDICES = SHARED + PAGE_CURSOR_INDICES_OFFSET;
 
-/** A fake wasm memory with a ra2_shared_t at SHARED and a 16 KB sprite after it. */
+/** A fake wasm memory with a ra2_shared_t at SHARED, its palette and a frame. */
 function fakeMemory(protocol = RA2_WEB_PROTOCOL) {
-  const bytes = new Uint8Array(SHARED + PAGE_CURSOR_RGBA_OFFSET + PAGE * PAGE * 4);
+  const bytes = new Uint8Array(INDICES + PAGE * PAGE);
   const words = new Int32Array(bytes.buffer);
   const at = SHARED >> 2;
   Atomics.store(words, at + Shared.protocol, protocol);
@@ -16,34 +24,42 @@ function fakeMemory(protocol = RA2_WEB_PROTOCOL) {
   Atomics.store(words, at + Shared.pointerX, 100);
   Atomics.store(words, at + Shared.pointerY, 200);
   Atomics.store(words, at + Shared.pageCursorKind, PageCursorKind.None);
+  // a two-entry palette: 0 = transparent, 1 = yellow (63, 52, 0), 2 = red
+  bytes[PALETTE + 1 * 3] = 63;
+  bytes[PALETTE + 1 * 3 + 1] = 52;
+  bytes[PALETTE + 2 * 3] = 63;
+  Atomics.store(words, at + Shared.pageCursorPaletteSeq, 2);
   return { HEAPU8: bytes, HEAP32: words, at };
 }
 
-function publishSprite(
+/** Publish a frame: w x h of index 1 at (x, y) in a sheet w x h. */
+function publishFrame(
   memory: ReturnType<typeof fakeMemory>,
+  sheetW: number,
+  sheetH: number,
   w: number,
   h: number,
-  hotX: number,
-  hotY: number,
+  x = 0,
+  y = 0,
 ) {
   const { HEAPU8, HEAP32, at } = memory;
   const seq = Atomics.load(HEAP32, at + Shared.pageCursorSeq) + 2;
   Atomics.store(HEAP32, at + Shared.pageCursorKind, PageCursorKind.Image);
+  Atomics.store(HEAP32, at + Shared.pageCursorSheetW, sheetW);
+  Atomics.store(HEAP32, at + Shared.pageCursorSheetH, sheetH);
+  Atomics.store(HEAP32, at + Shared.pageCursorX, x);
+  Atomics.store(HEAP32, at + Shared.pageCursorY, y);
   Atomics.store(HEAP32, at + Shared.pageCursorW, w);
   Atomics.store(HEAP32, at + Shared.pageCursorH, h);
-  Atomics.store(HEAP32, at + Shared.pageCursorHotX, hotX);
-  Atomics.store(HEAP32, at + Shared.pageCursorHotY, hotY);
-  for (let i = 0; i < w * h; i++) {
-    HEAPU8[SHARED + PAGE_CURSOR_RGBA_OFFSET + i * 4] = 255;
-    HEAPU8[SHARED + PAGE_CURSOR_RGBA_OFFSET + i * 4 + 3] = 255;
-  }
+  Atomics.store(HEAP32, at + Shared.pageCursorHotX, 2);
+  Atomics.store(HEAP32, at + Shared.pageCursorHotY, 3);
+  for (let i = 0; i < w * h; i++) HEAPU8[INDICES + i] = 1;
   Atomics.store(HEAP32, at + Shared.pageCursorSeq, seq);
   return seq;
 }
 
 function fakeCanvas() {
-  const canvas = document.createElement("canvas");
-  return canvas;
+  return document.createElement("canvas");
 }
 
 function picture(box: { left: number; top: number; width: number; height: number }) {
@@ -61,38 +77,40 @@ function picture(box: { left: number; top: number; width: number; height: number
 }
 
 describe("placeCursor", () => {
-  it("centres the picture in the box and puts the hot spot under the pointer", () => {
-    // 640x480 in a 800x600 box: the picture is 800x600 scaled? No: 800/640 = 1.25,
-    // 600/480 = 1.25, so it fills the box exactly.
+  it("scales the hot spot under the pointer through the letterbox", () => {
+    const placement = placeCursor({
+      gameWidth: 640,
+      gameHeight: 480,
+      box: { left: 0, top: 0, width: 800, height: 600 },
+      x: 100,
+      y: 200,
+      hotX: 4,
+      hotY: 8,
+      spriteWidth: 32,
+      spriteHeight: 32,
+    });
+    expect(placement).toEqual({
+      left: 96 * 1.25,
+      top: 192 * 1.25,
+      width: 32 * 1.25,
+      height: 32 * 1.25,
+    });
+  });
+
+  it("leaves equal bars on both sides of a wider window", () => {
     expect(
       placeCursor({
         gameWidth: 640,
         gameHeight: 480,
-        box: { left: 0, top: 0, width: 800, height: 600 },
-        x: 100,
-        y: 200,
-        hotX: 4,
-        hotY: 8,
-        spriteWidth: 32,
-        spriteHeight: 32,
+        box: { left: 0, top: 0, width: 1000, height: 600 },
+        x: 0,
+        y: 0,
+        hotX: 0,
+        hotY: 0,
+        spriteWidth: 10,
+        spriteHeight: 10,
       }),
-    ).toEqual({ left: 96 * 1.25, top: 192 * 1.25, width: 32 * 1.25, height: 32 * 1.25 });
-  });
-
-  it("leaves equal bars on both sides of a wider window", () => {
-    const placement = placeCursor({
-      gameWidth: 640,
-      gameHeight: 480,
-      box: { left: 0, top: 0, width: 1000, height: 600 },
-      x: 0,
-      y: 0,
-      hotX: 0,
-      hotY: 0,
-      spriteWidth: 10,
-      spriteHeight: 10,
-    });
-    // scale is 600/480 = 1.25; the picture is 800 wide, so 100 px of bars each side
-    expect(placement).toEqual({ left: 100, top: 0, width: 12.5, height: 12.5 });
+    ).toEqual({ left: 100, top: 0, width: 12.5, height: 12.5 });
   });
 
   it("has no place for a picture or a sprite that is not there", () => {
@@ -115,12 +133,13 @@ describe("placeCursor", () => {
 
 describe("PageCursor", () => {
   let memory: ReturnType<typeof fakeMemory>;
+  let canvas: HTMLCanvasElement;
 
   beforeEach(() => {
     memory = fakeMemory();
+    canvas = fakeCanvas();
   });
 
-  let canvas = fakeCanvas();
   const layer = () => {
     canvas = fakeCanvas();
     return new PageCursor(
@@ -131,41 +150,44 @@ describe("PageCursor", () => {
     );
   };
 
-  it("draws the sprite at the pointer and asks the game to stop drawing its own", () => {
+  it("draws the game's frame and asks it to stop drawing its own", () => {
     const cursor = layer();
-    publishSprite(memory, 32, 32, 2, 3);
-    cursor.frame();
+    publishFrame(memory, 55, 43, 22, 17);
+    cursor.frameStep();
     expect(memory.HEAP32[memory.at + Shared.pageCursorRequest]).toBe(1);
     expect(canvas.style.visibility).toBe("visible");
-    expect(canvas.style.width).toBe("32px");
+    expect(canvas.style.width).toBe("55px"); // the sheet, at 1:1
+    expect(canvas.width).toBe(55);
+    expect(canvas.height).toBe(43);
   });
 
-  it("draws nothing and asks for nothing without a sprite", () => {
+  it("draws nothing and asks for nothing without a frame", () => {
     const cursor = layer();
-    cursor.frame();
+    cursor.frameStep();
     expect(memory.HEAP32[memory.at + Shared.pageCursorRequest]).toBe(0);
     expect(canvas.style.visibility).toBe("hidden");
   });
 
   it("stops asking when the game says the cursor is gone", () => {
     const cursor = layer();
-    publishSprite(memory, 32, 32, 0, 0);
-    cursor.frame();
+    publishFrame(memory, 55, 43, 22, 17);
+    cursor.frameStep();
     expect(memory.HEAP32[memory.at + Shared.pageCursorRequest]).toBe(1);
     const seq = Atomics.load(memory.HEAP32, memory.at + Shared.pageCursorSeq) + 2;
     Atomics.store(memory.HEAP32, memory.at + Shared.pageCursorKind, PageCursorKind.None);
     Atomics.store(memory.HEAP32, memory.at + Shared.pageCursorSeq, seq);
-    cursor.frame();
+    cursor.frameStep();
     expect(memory.HEAP32[memory.at + Shared.pageCursorRequest]).toBe(0);
+    expect(canvas.style.visibility).toBe("hidden");
   });
 
-  it("keeps the last sprite while the game is publishing a new one", () => {
+  it("keeps the last frame while the game is publishing a new one", () => {
     const cursor = layer();
-    publishSprite(memory, 32, 32, 0, 0);
-    cursor.frame();
+    publishFrame(memory, 55, 43, 22, 17);
+    cursor.frameStep();
     const seq = Atomics.load(memory.HEAP32, memory.at + Shared.pageCursorSeq);
     Atomics.store(memory.HEAP32, memory.at + Shared.pageCursorSeq, seq + 1); // odd: mid-publish
-    cursor.frame();
+    cursor.frameStep();
     expect(memory.HEAP32[memory.at + Shared.pageCursorRequest]).toBe(1);
     expect(canvas.style.visibility).toBe("visible");
   });
@@ -173,15 +195,15 @@ describe("PageCursor", () => {
   it("ignores a game build from before the page cursor", () => {
     memory = fakeMemory(9);
     const cursor = layer();
-    cursor.frame();
+    cursor.frameStep();
     expect(memory.HEAP32[memory.at + Shared.pageCursorRequest]).toBe(0);
     expect(canvas.style.visibility).toBe("hidden");
   });
 
   it("releases the request when the page goes away", () => {
     const cursor = layer();
-    publishSprite(memory, 32, 32, 0, 0);
-    cursor.frame();
+    publishFrame(memory, 55, 43, 22, 17);
+    cursor.frameStep();
     cursor.release();
     expect(memory.HEAP32[memory.at + Shared.pageCursorRequest]).toBe(0);
     expect(canvas.style.visibility).toBe("hidden");
