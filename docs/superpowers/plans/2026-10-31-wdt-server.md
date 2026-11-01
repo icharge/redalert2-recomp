@@ -200,6 +200,13 @@ call). No state codec or server model exists yet.
   0x75E08F sees every entry, but GAM handling sits behind `[esp+0x20]` state and an earlier
   service branch; trace `[esp+0x20]` writes (0x75E5D2, 0x75E6C1) and the selected-server flag
   to learn which entry order/fields the client needs before it counts a mangler.
+- **Synthetic WDT room published (verified)**: `WolServer.handleList` now emits a
+  `#WDTmatch` entry with `channelType 33` when a `LIST 33` request finds no such game
+  (ra2web `a6291d3`). Live two-click run: the `0xD0` "Matching Server Not Found" dialog is
+  **gone** (0 occurrences; previously every run), the client leaves the lobby after
+  `LIST 33`/`clearing game list`, reconnects and returns to the main menu. `/wdt/status` still
+  shows 0 conflicts, so the client does not join the synthetic room yet - the join
+  (`joingame`/STARTG) and the `Start <game>` line are the next server-side step.
 - **Root cause of 0xD0 found (server side)**: forcing the client's match loop to treat the first
   listed game as the matching server (`0x75C155 je` -> jump) changes nothing, because the loop
   never runs: its list (`0xB29990`, filled from the `LIST 33` reply) is **empty**. The WOL lobby
