@@ -200,6 +200,13 @@ call). No state codec or server model exists yet.
   0x75E08F sees every entry, but GAM handling sits behind `[esp+0x20]` state and an earlier
   service branch; trace `[esp+0x20]` writes (0x75E5D2, 0x75E6C1) and the selected-server flag
   to learn which entry order/fields the client needs before it counts a mangler.
+- **44-byte AA03 reply (negative)**: sending a 44-byte payload that keeps the query header,
+  magic `0xAA03` and sets the length word at payload offset 0x14 to `0x2C` is also ignored —
+  the validator's success log (`Mangler is seeing packets...`) never appears and the client still
+  ends at `0xD0`. Behaves as if the receive buffer layout is not the datagram payload: the
+  validator reads `[esp+0xe]` (magic) and `[esp+0x3c]` (length) inside `sub_005BA0D0`, whose
+  `recv` call passes buffers at `S+0x0E`/`S+0x3C`; the exact payload offset of each field still
+  needs mapping before the reply can be constructed.
 - **Mangler receive validator located**: the matchmaker reply is checked at `0x5BA194`:
   `cmp word [esp+0xe], 0xAA03` (magic) and `cmp dword [esp+0x3c], 0x2C` (payload length 44),
   after which it logs `Mangler is seeing packets from port %d as coming from port %d` and calls
