@@ -200,6 +200,12 @@ call). No state codec or server model exists yet.
   0x75E08F sees every entry, but GAM handling sits behind `[esp+0x20]` state and an earlier
   service branch; trace `[esp+0x20]` writes (0x75E5D2, 0x75E6C1) and the selected-server flag
   to learn which entry order/fields the client needs before it counts a mangler.
+- **Root cause of 0xD0 found (server side)**: forcing the client's match loop to treat the first
+  listed game as the matching server (`0x75C155 je` -> jump) changes nothing, because the loop
+  never runs: its list (`0xB29990`, filled from the `LIST 33` reply) is **empty**. The WOL lobby
+  has no game with `channelType 33`, so `handleList` returns only the lobby and the client retries
+  then shows `0xD0`. The fix is server-side: publish a WDT game (`channelType 33`) in the
+  `LIST 33` response (a synthetic matching room the client can copy and, with the loop, name-match).
 - **Validator is on the send path**: `0x525AF0` is only a vtable forwarder (`[eax+0x38]`, six
   stack args); `sub_005BA0D0` builds/validates its own packet (magic `0xAA03`, length `0x2C`)
   before transmitting, so `[esp+0xe]`/`[esp+0x3c]` are locals of that builder, not datagram
