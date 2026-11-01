@@ -51,6 +51,22 @@ export function gameModuleFile(game: GameId, moduleBase: string, file: string): 
       : file;
   return `${moduleBase}${moduleFile}`;
 }
+
+/** A module file URL pinned to the build id from build.json.
+ *
+ * ra2.js is served with a cache lifetime, while the wasm is revalidated; after
+ * a deploy an old cached ra2.js next to a new wasm reaches
+ * `__emscripten_receive_on_main_thread_js` with a stale function table. The
+ * build query makes every module URL change with the build. */
+export function gameModuleUrl(
+  game: GameId,
+  moduleBase: string,
+  file: string,
+  build: string,
+): string {
+  const url = gameModuleFile(game, moduleBase, file);
+  return build ? `${url}?v=${encodeURIComponent(build)}` : url;
+}
 const gameIni = (game: GameId) => (game === "ra2" ? "ra2.ini" : "ra2md.ini");
 
 /** No module for this game is present (docs/web/toolchain.md). */
@@ -515,13 +531,16 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
   const store = options.store ?? gameStore;
   const game = sourceGame(options.files);
   const thaiFontFix = options.thaiFontFix ?? { enabled: false, fontId: "" };
-  const scriptUrl = gameScript(game);
-  const moduleBase = scriptUrl.slice(0, scriptUrl.lastIndexOf("/") + 1);
+  const baseScriptUrl = gameScript(game);
+  const moduleBase = baseScriptUrl.slice(0, baseScriptUrl.lastIndexOf("/") + 1);
   store.begin();
   if (!(await isBuilt(fetch, game))) throw new GameNotBuilt(game);
   const buildInfo = await loadBuildInfo(fetch);
   const runtimeGame = buildInfo.games[game];
   if (!runtimeGame) throw new GameNotBuilt(game);
+  const scriptUrl = runtimeGame.build
+    ? `${baseScriptUrl}?v=${encodeURIComponent(runtimeGame.build)}`
+    : baseScriptUrl;
 
   return new Promise<GameHandle>((resolve, reject) => {
     const fail = (error: unknown) => {
@@ -544,7 +563,7 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
         if (store.getSnapshot().phase !== "exited")
           fail(new Error(`The game aborted: ${String(what)}`));
       },
-      locateFile: (path: string) => gameModuleFile(game, moduleBase, path),
+      locateFile: (path: string) => gameModuleUrl(game, moduleBase, path, runtimeGame.build ?? ""),
     } as Partial<Ra2Module> as Ra2Module;
     let wolClient: WolClient | null = null;
     let udpRelay: UdpRelay | null = null;
