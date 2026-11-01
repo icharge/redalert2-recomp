@@ -42,6 +42,9 @@ try {
     await filesServer.route(context);
   }
   const page = await context.newPage();
+  // An OPFS import of a full install is minutes of work on a slow disk; a click
+  // that waits for it should not give up after the 30 s default.
+  page.setDefaultTimeout(180_000);
   let menuAt = 0;
   let ended = false;
   await page.exposeFunction("ra2Tap", (text) => {
@@ -83,11 +86,14 @@ try {
     });
     if (await edition.count()) await edition.click();
     const card = installation.locator(
-      `[data-game-id="${config.target === "game" ? "ra2" : "yr"}"]`,
+      `[data-game-id="${config.target === "game" ? "ra2" : "ra2md"}"]`,
     );
     await card.getByRole("button", { name: "Play" }).click();
     await page.waitForURL(/\/game\/1(?:\?|$)/, { timeout: 30_000 });
     url = new URL(page.url());
+    // page flags from --web-url (cursor=page, ...) survive the import flow's own URL
+    for (const [key, value] of new URL(config.url).searchParams)
+      if (!url.searchParams.has(key)) url.searchParams.set(key, value);
   } else {
     url.searchParams.set("test", "1");
     url.searchParams.set("target", config.target ?? "gamemd");

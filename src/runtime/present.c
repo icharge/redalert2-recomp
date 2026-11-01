@@ -203,19 +203,55 @@ static RECT fit(int cw, int ch, int gw, int gh, int integer) {
  * frame. It is the same cursor the page draws in the browser
  * (docs/web/cursor-layer.md); off, the game draws its own as before. */
 static int g_page_cursor;
+static const char* g_page_cursor_dump;            /* RA2_PAGE_CURSOR_DUMP=<prefix>: write BMPs */
+static int g_page_cursor_dumps;
+static int g_page_cursor_drawn;                    /* the last compose drew the cursor */
 static POINT to_game(int x, int y);               /* below: client point -> game pixels */
 
+/* RA2_PAGE_CURSOR_DUMP=<prefix>: write the cursor's rect before and after the
+ * compose as BMPs (five times), so a run without a screen shows exactly which
+ * pixels the presenter drew and where. */
+static void dump_rect(const char* prefix, const char* when, const uint32_t* frame, int fw, int fh, int left,
+                      int top, int w, int h) {
+    char path[MAX_PATH];
+    _snprintf(path, sizeof path - 1, "%s_%02d_%s.bmp", prefix, g_page_cursor_dumps, when), path[sizeof path - 1] = 0;
+    FILE* f = fopen(path, "wb");
+    if (!f) return;
+    BITMAPINFOHEADER ih = { sizeof ih, w, -h, 1, 32, BI_RGB };
+    uint32_t off = 14 + sizeof ih, size = off + (uint32_t)w * h * 4, zero = 0;
+    fwrite("BM", 1, 2, f), fwrite(&size, 4, 1, f), fwrite(&zero, 4, 1, f), fwrite(&off, 4, 1, f);
+    fwrite(&ih, sizeof ih, 1, f);
+    for (int y = 0; y < h; y++) {
+        int fy = top + y;
+        if (fy < 0 || fy >= fh) { uint32_t blank = 0; for (int x = 0; x < w; x++) fwrite(&blank, 4, 1, f); continue; }
+        for (int x = 0; x < w; x++) {
+            int fx = left + x;
+            uint32_t px = (fx < 0 || fx >= fw) ? 0 : frame[(size_t)fy * fw + fx];
+            fwrite(&px, 4, 1, f);
+        }
+    }
+    fclose(f);
+    fprintf(stderr, "[present] %s %s (%d,%d %dx%d)\n", when, path, left, top, w, h);
+}
+
 static void page_cursor_compose(uint32_t* frame, int fw, int fh) {
-    static uint8_t sprite[RA2_PAGE_CURSOR_PX * RA2_PAGE_CURSOR_PX * 4];
+    g_page_cursor_drawn = 0;
+    static uint8_t indices[RA2_PAGE_CURSOR_PX * RA2_PAGE_CURSOR_PX];
+    static uint8_t palette[RA2_PALETTE_BYTES];
     const ra2_page_cursor_t* c;
     uint32_t seq;
     if (!g_page_cursor || !d.hwnd) return;
+    /* The menus and the pause overlay have the game's own cursor (host_menu_cursor
+     * is non-NULL there); the page cursor is for the match only. */
+    if (host_menu_cursor()) return;
     ra2_page_cursor_tick();
     c = ra2_page_cursor_state();
-    if (!c->visible || c->w <= 0 || c->h <= 0) return;
+    if (!c->visible || c->w <= 0 || c->h <= 0 || c->sheet_w <= 0 || c->sheet_h <= 0) return;
+    if ((uint32_t)(c->w * c->h) > sizeof indices) return;
     seq = c->seq;
-    if ((seq & 1u) || (uint32_t)(c->w * c->h * 4) > sizeof sprite) return;
-    memcpy(sprite, c->rgba, (size_t)c->w * c->h * 4);
+    if (seq & 1u) return;
+    memcpy(indices, c->indices, (size_t)c->w * c->h);
+    memcpy(palette, c->palette, sizeof palette);
     if (c->seq != seq) return;                    /* the game wrote it again: next frame */
     POINT p;
     if (!GetCursorPos(&p) || !ScreenToClient(d.hwnd, &p)) return;
@@ -224,7 +260,10 @@ static void page_cursor_compose(uint32_t* frame, int fw, int fh) {
     if (gw <= 0 || gh <= 0) return;
     int scale = fw / gw;                          /* 1, or 2 with HD voxels */
     if (scale < 1) scale = 1;
-    int left = (at.x - c->hot_x) * scale, top = (at.y - c->hot_y) * scale;
+    /* The sheet's top-left sits at pointer - hot, and this frame at (x, y) in it. */
+    int left = (at.x - c->hot_x + c->x) * scale, top = (at.y - c->hot_y + c->y) * scale;
+    int dump = g_page_cursor_dump && g_page_cursor_dumps < 5;
+    if (dump) dump_rect(g_page_cursor_dump, "before", frame, fw, fh, left, top, c->w * scale, c->h * scale);
     for (int y = 0; y < c->h * scale; y++) {
         int fy = top + y;
         if (fy < 0 || fy >= fh) continue;
@@ -232,11 +271,17 @@ static void page_cursor_compose(uint32_t* frame, int fw, int fh) {
         for (int x = 0; x < c->w * scale; x++) {
             int fx = left + x;
             if (fx < 0 || fx >= fw) continue;
-            const uint8_t* px = sprite + ((size_t)(y / scale) * c->w + (size_t)(x / scale)) * 4;
-            if (!px[3]) continue;
-            row[fx] = (uint32_t)px[0] << 16 | (uint32_t)px[1] << 8 | px[2];
+            unsigned index = indices[(size_t)(y / scale) * c->w + (size_t)(x / scale)];
+            if (!index) continue;                 /* index 0 is transparent */
+            const uint8_t* rgb = palette + index * 3;
+            row[fx] = (uint32_t)(rgb[0] << 2) << 16 | (uint32_t)(rgb[1] << 2) << 8 | (uint32_t)(rgb[2] << 2);
         }
     }
+    if (dump) {
+        dump_rect(g_page_cursor_dump, "after", frame, fw, fh, left, top, c->w * scale, c->h * scale);
+        g_page_cursor_dumps++;
+    }
+    g_page_cursor_drawn = 1;
 }
 
 static void draw(const uint32_t* frame, int gw, int gh) {
@@ -864,6 +909,7 @@ void present_start(int mode, int fullscreen) {
      * soon as the sprite is captured, and the presenter draws it (page_cursor.c).
      * RA2_PAGE_CURSOR_DEBUG adds a line a second or so while it is learnt. */
     g_page_cursor = getenv("RA2_PAGE_CURSOR") != NULL;
+    g_page_cursor_dump = getenv("RA2_PAGE_CURSOR_DUMP");
     if (g_page_cursor) {
         ra2_page_cursor_on(1);
         ra2_page_cursor_request(1);

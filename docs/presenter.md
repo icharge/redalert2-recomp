@@ -13,11 +13,11 @@ build\ra2.exe --run --scale crt                   # sharp | smooth | crt | neare
 build\ra2.exe --run --classic                     # the original display
 ```
 
-| Key | |
-|---|---|
-| F11, Alt+Enter | borderless fullscreen on the window's monitor, and back |
-| F12 | scaling: sharp-bilinear, smooth, CRT, nearest, integer |
-| F10, or right-click beside the picture | the settings menu |
+| Key                                    |                                                         |
+| -------------------------------------- | ------------------------------------------------------- |
+| F11, Alt+Enter                         | borderless fullscreen on the window's monitor, and back |
+| F12                                    | scaling: sharp-bilinear, smooth, CRT, nearest, integer  |
+| F10, or right-click beside the picture | the settings menu                                       |
 
 The F10 menu includes **Controls**. **Classic** keeps the original games'
 controls. **Modern** uses left-click to select, left-click on open ground to
@@ -67,13 +67,13 @@ A `--scale` or `--fullscreen` on the command line wins over the file.
 
 ## How it fits together
 
-| Part | Where | What it does |
-|---|---|---|
-| Virtual display | `host.c` (headless DirectDraw) | The game's mode is remembered, not set; its primary is a system-memory surface the host owns |
-| Invisible game windows | `host.c` | Layered at alpha 0: painted by Windows, shown nowhere |
-| Virtual screen | `host.c` (`vorigin`) | Every screen coordinate the game sees is relative to its main window's client corner |
-| Presenter window | `present.c` | Copies the primary each vsync (`host_frame`), uploads it, draws it letterboxed through a shader |
-| Input | `present.c`, `input.c` | Maps the player's mouse into game coordinates, posts it to the game window under it, answers `GetCursorPos`/`GetKeyState` |
+| Part                   | Where                          | What it does                                                                                                              |
+| ---------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| Virtual display        | `host.c` (headless DirectDraw) | The game's mode is remembered, not set; its primary is a system-memory surface the host owns                              |
+| Invisible game windows | `host.c`                       | Layered at alpha 0: painted by Windows, shown nowhere                                                                     |
+| Virtual screen         | `host.c` (`vorigin`)           | Every screen coordinate the game sees is relative to its main window's client corner                                      |
+| Presenter window       | `present.c`                    | Copies the primary each vsync (`host_frame`), uploads it, draws it letterboxed through a shader                           |
+| Input                  | `present.c`, `input.c`         | Maps the player's mouse into game coordinates, posts it to the game window under it, answers `GetCursorPos`/`GetKeyState` |
 
 ## Why it is built this way
 
@@ -150,6 +150,16 @@ see both, set `RA2_SHOW_CURSOR`:
 
 ```
 cmd /c "set RA2_SHOW_CURSOR=1 && build\ra2.exe --run"
+
+`RA2_PAGE_CURSOR=1` has the presenter draw the in-match cursor itself, from the
+game's own cursor art, and the game skip its blit — the same split as the
+browser's `?cursor=page`, so the cursor moves at display rate. It is off by
+default; `RA2_PAGE_CURSOR_DEBUG=1` logs each frame it decodes, and
+`RA2_PAGE_CURSOR_NOSUPPRESS=1` keeps the game's blit (to tell a decode problem
+from a suppression one). `RA2_PAGE_CURSOR_DUMP=<prefix>` writes the cursor's
+rect before and after the compose as BMPs (five of them), for a run without a
+screen. Headless and `--classic` runs honour it too, which is
+how `tools/playtest.py` checks it.
 ```
 
 A crosshair then stays over the picture at the real pointer's place (the log

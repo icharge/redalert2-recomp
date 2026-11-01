@@ -204,6 +204,14 @@ export const Shared = {
   pageCursorH: 1061,
   /** the page sets 1 here while it draws the cursor itself; the game then skips its own blit */
   pageCursorRequest: 1062,
+  /** the SHP's largest frame: the sheet the frame is placed in */
+  pageCursorSheetW: 1063,
+  pageCursorSheetH: 1064,
+  /** the frame's offset inside that sheet */
+  pageCursorX: 1065,
+  pageCursorY: 1066,
+  /** goes up whenever the cursor palette below is copied */
+  pageCursorPaletteSeq: 1067,
 } as const;
 
 /** The pixel formats of a raw picture (Shared.format). */
@@ -227,8 +235,11 @@ export const CursorKind = {
 } as const;
 export type CursorKind = (typeof CursorKind)[keyof typeof CursorKind];
 
-/** Byte offset of the page cursor's 64x64 RGBA pixels in the struct. */
-export const PAGE_CURSOR_RGBA_OFFSET = 1063 * 4;
+/** Byte offset of the cursor palette (768 bytes of r, g, b, each 0..63). */
+export const PAGE_CURSOR_PALETTE_OFFSET = 1068 * 4;
+export const PALETTE_BYTES = 768;
+/** Byte offset of the frame: w*h palette indices, index 0 transparent. */
+export const PAGE_CURSOR_INDICES_OFFSET = PAGE_CURSOR_PALETTE_OFFSET + PALETTE_BYTES;
 export const PAGE_CURSOR_PX = 64;
 
 /** Shared.pageCursorKind: the in-match cursor the game captured for the page. */

@@ -6,6 +6,20 @@ versions follow [SemVer](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+
+- **The in-match cursor on a page layer** (`?cursor=page` in the browser,
+  `RA2_PAGE_CURSOR=1` for the presenter): the game's own cursor — the
+  MOUSE.SHA frame it loaded and MOUSEPAL.PAL's colours, so mods are covered —
+  is decoded once per cursor change and drawn on its own canvas above the
+  picture, at the pointer's own rate, while the game skips its own blit.
+  The cursor therefore moves at display refresh rate instead of the game's
+  frame rate. Off by default; without the flag nothing changes. The first
+  design (reading the primary surface under a DirectDraw lock on the game's
+  mouse thread) froze the game and is not used: the host reads only the
+  cursor object the game already has, never the screen.
+  (`src/runtime/page_cursor.c`, `src/web/presenter.c`, `src/runtime/present.c`,
+  `web/src/game/cursor-layer.ts`, `run_lift.py`'s `page_cursor_patches` and
+  `page_cursor_palette_patches`, protocol 10.)
 - **Web links**: the browser build no longer hands WOL-era links to the
   system browser. `run_lift.py`'s `web_url_patches` intercepts the three
   routines that write a probe `.html`, find the default browser and start it
@@ -67,10 +81,10 @@ versions follow [SemVer](https://semver.org/).
 - `CONTRIBUTORS.md`.
 - Setup.cmd builds both games: Yuri's Revenge, then Red Alert 2, each with
   its own shortcut (`Yuri's Revenge (recomp).cmd`, `Red Alert 2
-  (recomp).cmd`); `-Games yr` or `-Games ra2` builds one. `Red Alert 2
-  (recomp).cmd` used to start Yuri's Revenge; it now starts Red Alert 2.
+(recomp).cmd`); `-Games yr` or `-Games ra2` builds one. `Red Alert 2
+(recomp).cmd` used to start Yuri's Revenge; it now starts Red Alert 2.
 - Red Alert 2 itself (`game.exe`) as a second target: `run_lift.py --target
-  game`, CMake `RA2_TARGET=game`, `recomp_target.h` for what the host needs
+game`, CMake `RA2_TARGET=game`, `recomp_target.h` for what the host needs
   to know about the binary; the sidebar fix, the options object and HD
   vehicles found again by shape; the playtest suite and conformance with
   `RA2_TARGET=game`.
