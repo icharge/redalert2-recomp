@@ -200,6 +200,13 @@ call). No state codec or server model exists yet.
   0x75E08F sees every entry, but GAM handling sits behind `[esp+0x20]` state and an earlier
   service branch; trace `[esp+0x20]` writes (0x75E5D2, 0x75E6C1) and the selected-server flag
   to learn which entry order/fields the client needs before it counts a mangler.
+- **Start handler event ordinal found (decisive)**: dumping the game's chat sink vtable from the
+  bridge (`sink vt=007AF77C`, entries 0..59) shows **ordinal 16 = `0x00762590`**, the function
+  that calls the `Start <game>` handler (`0x75B910`). The bridge only uses ordinal 16 for
+  `OnNetStatus` (a single integer), while a server `PRIVMSG` is delivered as ordinal 38
+  (`OnPrivateUnicodeMessage`) — which is why the `Start` line never reaches the handler, with or
+  without the state gate. Ordinal 16 must be called with the message arguments the sink expects
+  (the flag struct at `[esp+0x18]` and the text pointer at `[esp+0x1c]`), not a status integer.
 - **State-gate patch (negative)**: patching the sink gate (`0x7625B8`, `jne` removed so any
   WDT state is accepted) together with a server-issued `:RA2Web!service@local PRIVMSG <nick>
   :Start #WDTmatch` after `RPL_LISTEND` still ends at `0xD0` with `/wdt/status` conflicts 0.
