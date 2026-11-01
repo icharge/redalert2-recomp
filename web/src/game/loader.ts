@@ -19,6 +19,7 @@ import {
   type SaveSync,
 } from "../storage/saves";
 import { loadMods } from "../storage/mods";
+import { applyCsfOverrides } from "./csf-apply";
 import {
   checkExe,
   EMPTY_ARCHIVE,
@@ -30,6 +31,7 @@ import {
 } from "../storage/install";
 import { liveGameFileSource, type ReadOnlyFileSource } from "../storage/file-browser";
 import { ensureDefaultHostSettings, ensureDefaultMainSettings } from "../storage/game-settings";
+import type { LauncherStringsConfig } from "../storage/launcher-strings";
 import {
   readThaiFont,
   shouldLoadImportedGameFile,
@@ -263,6 +265,8 @@ export interface StartOptions {
   /** extra game arguments, after --run and --game */
   args?: string[];
   store?: GameStore;
+  /** Tests and hosts that already hold strings.json; normally fetched from the app root. */
+  readStrings?: () => Promise<LauncherStringsConfig>;
 }
 
 /** The `arg=` values of a URL query, for tests and debugging (docs/web/protocol.md). */
@@ -677,8 +681,36 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
         );
         const fs = module.FS;
         if (!fs) throw new Error("the game's file system is not up yet");
+        const csfFs = {
+          readdir: (path: string) => fs.readdir(path),
+          readFile: (path: string) => fs.readFile(path),
+          stat: (path: string) => fs.stat(path),
+          writeFile: (path: string, data: Uint8Array) => fs.writeFile(path, data),
+          readBigFile:
+            files.kind === "opfs"
+              ? async (path: string) => {
+                  const relative = path.replace(/^\/game\//, "");
+                  if (relative.toLowerCase().startsWith("mods/"))
+                    return readGameFile(files.record.storage, relative);
+                  const entry = Object.entries(files.record.files).find(
+                    ([key]) => key.toLowerCase() === relative.toLowerCase(),
+                  );
+                  if (!entry) throw new Error(`${relative} is not an imported file`);
+                  return readGameFile(entry[1].home, entry[0]);
+                }
+              : undefined,
+        };
         loadFiles(fs)
           .then(() => stageRuntimeBundle(fs, game, runtimeGame))
+          .then(() =>
+            applyCsfOverrides(csfFs, game, {
+              thaiFontFixEnabled: thaiFontFix.enabled,
+              readStrings: options.readStrings,
+            }),
+          )
+          .then((csf) => {
+            if (csf.warning) console.warn(`[csf] ${csf.warning}`);
+          })
           .then(() => {
             if (files.kind === "opfs")
               saves = startSaveSync(fs, opfsTarget(), files.record.storage);
