@@ -200,6 +200,17 @@ call). No state codec or server model exists yet.
   0x75E08F sees every entry, but GAM handling sits behind `[esp+0x20]` state and an earlier
   service branch; trace `[esp+0x20]` writes (0x75E5D2, 0x75E6C1) and the selected-server flag
   to learn which entry order/fields the client needs before it counts a mangler.
+- **Validator is on the send path**: `0x525AF0` is only a vtable forwarder (`[eax+0x38]`, six
+  stack args); `sub_005BA0D0` builds/validates its own packet (magic `0xAA03`, length `0x2C`)
+  before transmitting, so `[esp+0xe]`/`[esp+0x3c]` are locals of that builder, not datagram
+  offsets. The reply layout therefore cannot be derived from that site. The `0xAA03` word is the
+  netcode's global game id (`0xA3F818`), so the 76-byte frames the client sends to the mangler are
+  the ordinary RA2 UDP netcode, not a dedicated matchmaker protocol.
+- **Where this leaves the browser path**: the mangler may not be the WDT matchmaker at all. The
+  client's actual match start is the chat-side `LIST 33` + `Start <game>` exchange, and with the
+  browser bridge answering `LIST 33` from the lobby there is no matching game. The remaining
+  routes are (1) a deeper decode of the WDT match-start state machine, (2) a client patch that
+  creates the game channel directly, or (3) the native WOL TCP gateway.
 - **44-byte AA03 reply (negative)**: sending a 44-byte payload that keeps the query header,
   magic `0xAA03` and sets the length word at payload offset 0x14 to `0x2C` is also ignored —
   the validator's success log (`Mangler is seeing packets...`) never appears and the client still
