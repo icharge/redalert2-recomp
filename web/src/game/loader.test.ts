@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   argsFromQuery,
   createWolDataKey,
-  GAME_SCRIPT,
   gameScript,
   gameModuleFile,
   gameModulePath,
@@ -131,11 +130,13 @@ describe("WOL identity", () => {
 });
 
 describe("isBuilt", () => {
-  it("loads both runtimes under the configured context path", async () => {
+  it("reads build.json for the requested game under the configured context path", async () => {
     vi.stubEnv("BASE_URL", "/emu/");
-    const fetcher = vi.fn(() => answer(true, "text/javascript"));
+    const fetcher = vi.fn(() =>
+      Promise.resolve(Response.json({ games: { ra2md: { build: "b" }, ra2: { build: "c" } } })),
+    );
     expect(await isBuilt(fetcher as unknown as typeof fetch, "ra2md")).toBe(true);
-    expect(fetcher).toHaveBeenLastCalledWith("/emu/game/ra2md.js", { method: "HEAD" });
+    expect(fetcher).toHaveBeenLastCalledWith("/emu/game/build.json", { cache: "no-store" });
     expect(gameScript("ra2")).toBe("/emu/game/ra2.js");
     expect(gameModuleFile("ra2md", "/emu/game/", "ra2.wasm")).toBe("/emu/game/ra2md.wasm");
     expect(gameModuleFile("ra2md", "/emu/game/", "ra2.data")).toBe("/emu/game/ra2md.data");
@@ -155,14 +156,20 @@ describe("isBuilt", () => {
     expect(gameModulePath("ra2", "/emu/game/", "ra2.wasm")).toBe("/emu/game/ra2.wasm");
     vi.unstubAllEnvs();
   });
-  it("is true when ra2.js comes back as JavaScript", async () => {
-    const fetcher = vi.fn(() => answer(true, "text/javascript"));
+
+  it("is true when the requested game is listed", async () => {
+    const fetcher = vi.fn(() => Promise.resolve(Response.json({ games: { ra2md: { build: "b" } } })));
     expect(await isBuilt(fetcher as unknown as typeof fetch)).toBe(true);
-    expect(fetcher).toHaveBeenCalledWith(GAME_SCRIPT, { method: "HEAD" });
+    expect(fetcher).toHaveBeenCalledWith("/game/build.json", { cache: "no-store" });
   });
 
-  it("is false when the dev server answers a missing file with the page", async () => {
+  it("is false when build.json is the page or lists no build", async () => {
     expect(await isBuilt((() => answer(true, "text/html")) as unknown as typeof fetch)).toBe(false);
+    expect(
+      await isBuilt(
+        (() => Promise.resolve(Response.json({ games: { ra2md: {} } }))) as unknown as typeof fetch,
+      ),
+    ).toBe(false);
   });
 
   it("is false for a 404, and for no network", async () => {
@@ -175,10 +182,12 @@ describe("isBuilt", () => {
   });
 
   it("checks Red Alert 2's separately built module", async () => {
-    const fetcher = vi.fn(() => answer(true, "text/javascript"));
-    expect(gameScript("ra2")).toBe("/game/ra2.js");
-    expect(await isBuilt(fetcher as unknown as typeof fetch, "ra2")).toBe(true);
-    expect(fetcher).toHaveBeenCalledWith("/game/ra2.js", { method: "HEAD" });
+    const both = vi.fn(() =>
+      Promise.resolve(Response.json({ games: { ra2md: { build: "b" }, ra2: { build: "c" } } })),
+    );
+    expect(await isBuilt(both as unknown as typeof fetch, "ra2")).toBe(true);
+    const onlyYuri = vi.fn(() => Promise.resolve(Response.json({ games: { ra2md: { build: "b" } } })));
+    expect(await isBuilt(onlyYuri as unknown as typeof fetch, "ra2")).toBe(false);
     expect(new GameNotBuilt("ra2").message).toContain("RA2_TARGET=game");
   });
 

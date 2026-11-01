@@ -41,7 +41,6 @@ import { toWolSocketUrl, withBrowserWolPort, wolLineBytes, WolClient } from "./w
 import { UdpRelay, parseStartHandoff } from "./udp-relay";
 
 /** The two edition bundles share /game and use edition-specific filenames. */
-export const GAME_SCRIPT = appPath("game/ra2md.js");
 export const gameScript = (game: GameId) =>
   appPath(game === "ra2" ? "game/ra2.js" : "game/ra2md.js");
 export function gameModuleFile(game: GameId, moduleBase: string, file: string): string {
@@ -321,14 +320,18 @@ export function gameArguments(
   ];
 }
 
-/** Whether this game's module is there. The dev server answers a missing file with the page, so check its content type. */
+/** Whether this game's module is there. The dev server answers a missing file with the page, so check build.json. */
 export async function isBuilt(
   fetcher: typeof fetch = fetch,
   game: GameId = "ra2md",
 ): Promise<boolean> {
   try {
-    const response = await fetcher(gameScript(game), { method: "HEAD" });
-    return response.ok && (response.headers.get("content-type") ?? "").includes("javascript");
+    const response = await fetcher(`${import.meta.env.BASE_URL}game/build.json`, {
+      cache: "no-store",
+    });
+    if (!response.ok) return false;
+    const value = (await response.json()) as BuildInfo;
+    return Boolean(value?.games?.[game]?.build);
   } catch {
     return false;
   }
