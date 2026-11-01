@@ -92,10 +92,9 @@ full folder (1.07 GB) does not fit the page's 768 MB Wasm heap; an imported
 game in OPFS links the big MIX files in place. The YR folder fits.
 
 It opens the WOL welcome from the main menu (no server needed), presses YR's
-YuriWebSite (which reads the seeded registry `Community` value) or RA2's
-Manage Account, and checks that the page receives `open` with the URL the game
-read (`[url] <url>`; the dialog labels a `ra2web.invalid` value as "This
-build's registry target"), that `TXT_NOBROWSER` never appears, and that Cancel
+YuriWebSite (the registry's original `Community` URL) or RA2's Manage Account,
+and checks that the page receives `open` with the original URL, that the host
+logged `[url] <url>`, that `TXT_NOBROWSER` never appears, and that Cancel
 closes the dialog while the game keeps running.
 
 The server-only lobby controls need the local RA2Web (`../ra2web/server`,
@@ -123,10 +122,11 @@ node e2e/links-lobby.mjs --url 'http://127.0.0.1:5173/?target=yuri' --edition ra
 It logs in and presses the lobby controls; `--press DLG:CTRL@s` replaces the
 defaults. YR's `0x113` Tournament/News use the embedded WOL browser
 (`DoWebPageDialog`, `HTML\frame.htm`), which `web_url_patches` intercepts by
-page key: `1955` -> `[page] Ladder`, `1958` -> `[page] News` (the dialog says
-"Ladder page"/"News page"). The offline `0x114` Manage Account/Tournament
-controls (`0x114:1772`/`1955`) exercise that same path without a server:
-`[page] Manage` and `[page] Ladder`.
+page key: `1955` -> `[url] http://battleclans.westwood.com/...do_ladder...`,
+`1958` -> `[url] ...do_news...`. The offline `0x114` Manage
+Account/Tournament controls (`0x114:1772`/`1955`) exercise that same path
+without a server: `[url] http://games2.westwood.com/...newreg_menu...` and
+`...do_ladder...`.
 
 RA2's ladder controls are reached through the custom-match lobby:
 `0x113:1368` (`GUI:ClanAndLadder`) opens the tournament page

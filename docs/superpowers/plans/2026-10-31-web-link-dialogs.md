@@ -132,11 +132,13 @@ destination is never presented as the original.
   link; non-`http(s)` schemes are blocked.
 - **D4 — Windows native32 keeps the real browser for now.** Only web and Linux define
   `RA2_URL_HOST`/`__EMSCRIPTEN__` to take the patched path. Task 9 can extend it.
-- **D5 — A page key is not a URL.** YR's `DoWebPageDialog` passes a key
-  (`"News"`, `"Ladder"`, ...), not a URL. The event carries that key in `page`
-  and leaves `url` empty; the dialog shows "News page". The seeded
-  `https://ra2web.invalid/<path>` value is only the embedded browser's fallback
-  and is never reported as an original URL.
+- **D5 — A page key resolves to its retail URL.** YR's `DoWebPageDialog`
+  passes a key (`"News"`, `"Ladder"`, ...), not a URL. The host maps the key to
+  the retail installer's registry URL (`src/web/wol_pages.h`, from the Windows
+  registry export at regfiles.net) and reports that original URL, so the page
+  shows the real Westwood link. An unknown key has no URL and is reported with
+  `page` set and `url` empty. The registry is seeded with the same original
+  values; no `ra2web.invalid` placeholder is reported.
 
 ## Global constraints
 
@@ -604,27 +606,35 @@ the fallback for all of them.
 
 ### Rebuild and live verification (1 November 2026, later)
 
-- **YR rebuild (page-key events).** `set RA2_TARGET=gamemd && build-web.cmd`
-  -> `[76/76] Linking C executable ra2md.js`, published
-  `web/public/game/ra2md.*` (build `50ed8cb7dc4ff7bc`).
+- **Original YR registry URLs.** A retail Windows registry export
+  (`HKLM\SOFTWARE\WOW6432Node\Westwood\Yuri's Revenge\URL`, via regfiles.net)
+  gives the installer values: `Community` -> `westwood.ea.com/.../redalert2/`,
+  `Ladder`/`News`/`BattleClans`/`NetStatus` -> `battleclans.westwood.com/...`
+  with `request=do_ladder|do_news|do_clan|do_netstatus`, and `Manage`/`Signup`
+  -> `games2.westwood.com/...`. `src/web/wol_pages.h` maps the page keys back
+  to those exact strings; both hosts seed the same values into the registry.
+- **YR rebuild (original URLs).** `set RA2_TARGET=gamemd && build-web.cmd`
+  -> `[4/4] Linking C executable ra2md.js`, published
+  `web/public/game/ra2md.*` (build `3c351dfa206bcafc`).
   `node build-web/ra2md.js --run --game ./game --headless --mute` ->
   `@ra2 {"e":"boot","protocol":10,"title":"Yuri's Revenge",...}`.
-  The wasm contains `{"e":"open","url":"","page"`, the `News` registry value
-  and `https://ra2web.invalid/support/help.html` (byte search).
+  The wasm contains `http://battleclans.westwood.com` and
+  `http://westwood.ea.com/games/ccuniverse/redalert2/index.html`; the
+  `ra2web.invalid/news` sentinel is gone.
 - **YR lobby e2e, rebuilt module.**
   `node e2e/links-lobby.mjs --edition ra2md --profile <ra2prof2>` ->
-  `"joined": true`, `0x113:1955` -> `{"url":"","page":"Ladder"}`,
-  `0x113:1958` -> `{"url":"","page":"News"}`; the screenshot shows
-  "News page", never the registry sentinel.
-- **Registry-read URL.** YR's YuriWebSite (`0x10E:1375`) reads the registry
-  value and passes `https://ra2web.invalid/community` through
-  `ra2_open_url`; the dialog labels it "This build's registry target:" rather
-  than "The game asked for:", since the host owns that value.
+  `"joined": true`, `0x113:1955` -> `http://battleclans.westwood.com/...do_ladder...`,
+  `0x113:1958` -> `http://battleclans.westwood.com/...do_news...`; the
+  screenshot shows the original News URL in the dialog.
+- **YR registry-read URL.** YuriWebSite (`0x10E:1375`) reads
+  `Community` and passes
+  `http://westwood.ea.com/games/ccuniverse/redalert2/index.html` through
+  `ra2_open_url`; the dialog shows it as the game's URL.
 - **RA2 rebuild.** The first attempt raced a concurrent
   `run_lift.py --all --target game` and failed with missing `sub_*`
   declarations in `gen_game`; after that lift finished,
   `build-web.cmd` rebuilt 70 objects and linked, publishing
-  `web/public/game/ra2.*` (build `991cad758374b72f`).
+  `web/public/game/ra2.*` (build `35aeab24e5ba46dc`).
   `node build-web-game/ra2.js --run --game ./game --headless --mute` ->
   `@ra2 {"e":"boot","protocol":10,"title":"Red Alert 2",...}`.
 - **RA2 lobby e2e, rebuilt module.** `0x113:1368` -> `open`

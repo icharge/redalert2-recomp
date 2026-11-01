@@ -165,6 +165,18 @@ export function linkTarget(url: string, site = ra2webSite(), page?: string): Lin
     if (path.startsWith("/consent_form/")) return make("consent", url, undefined, false, site);
     return { topic: "external", url, external: false, embed: false };
   }
+  // The retail YR registry's battle-clan pages name their topic in `request`.
+  if (host === "battleclans.westwood.com") {
+    const request = parsed.searchParams.get("request") ?? "";
+    if (request === "do_ladder") return make("tournament", url, undefined, false, site);
+    if (request === "do_news") return make("news", url, undefined, false, site);
+    if (request === "do_clan") return make("community", url, undefined, false, site);
+    if (request === "do_netstatus") return make("status", url, undefined, false, site);
+    return { topic: "external", url, external: false, embed: false };
+  }
+  if (host === "westwood.ea.com" && path.includes("/redalert2/"))
+    return make("community", url, undefined, false, site);
+
   if (host === "www.westwood.com" || host.endsWith(".westwood.com")) {
     if (path.includes("/tournaments/")) return make("tournament", url, undefined, false, site);
     if (path.includes("/news")) return make("news", url, undefined, false, site);

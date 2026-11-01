@@ -29,6 +29,7 @@
 #include "hdvox.h"
 #include "mods.h"
 #include "page_cursor.h"
+#include "wol_pages.h"
 
 #define WM_CHAR         0x0102u
 #define WM_ACTIVATEAPP  0x001Cu
@@ -83,13 +84,13 @@ void web_event_exit(int code) {
  * default browser and start it. The lift returns here instead, and the page
  * shows the URL in our dialog (or asks before opening it). Log the URL the
  * game asked for, unchanged, and carry it in the event. */
+static unsigned g_open_seq;      /* one sequence across URLs and page keys */
 static void open_url_text(const char *url, uint32_t ask) {
-    static unsigned seq;
     char u[512], line[640];
     fprintf(stderr, "[url] %s\n", url);
     web_json_escape(u, sizeof u, url);
     snprintf(line, sizeof line,
-             "{\"e\":\"open\",\"url\":\"%s\",\"ask\":%u,\"seq\":%u}", u, ask, ++seq);
+             "{\"e\":\"open\",\"url\":\"%s\",\"ask\":%u,\"seq\":%u}", u, ask, ++g_open_seq);
     web_event_json(line);
 }
 
@@ -113,7 +114,10 @@ static void open_page_text(const char *page) {
 }
 
 void ra2_open_wol_page(uint32_t key_va) {
-    open_page_text(key_va ? (const char *)(uintptr_t)key_va : "");
+    const char *key = key_va ? (const char *)(uintptr_t)key_va : "";
+    const char *url = ra2_wol_page_url_for(key);
+    if (url) open_url_text(url, 0);          /* the retail registry URL, unchanged */
+    else open_page_text(key);                /* a key this build has no URL for */
 }
 
 /* ---- the picture ------------------------------------------------------------- */

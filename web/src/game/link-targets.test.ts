@@ -88,6 +88,39 @@ describe("linkTarget", () => {
     expect(linkCopy(unknown).title).toBe("Open external page");
   });
 
+  it("maps the retail YR registry URLs by their request", () => {
+    const base = "http://battleclans.westwood.com/cgi-bin/cgiclient?rosetta";
+    const ladder = linkTarget(`${base}&request=do_ladder&LANGCODE=0&SKU=10496&embedded=1`, SITE);
+    expect(ladder).toMatchObject({ topic: "tournament", external: false, embed: true });
+    expect(sitePageUrl(ladder, SITE)).toBe(`${SITE}/tournament`);
+
+    const news = linkTarget(`${base}&request=do_news&LANGCODE=0&SKU=10496&embedded=1`, SITE);
+    expect(news).toMatchObject({ topic: "news", embed: true });
+    expect(sitePageUrl(news, SITE)).toBe(`${SITE}/news`);
+
+    expect(linkTarget(`${base}&request=do_clan&LANGCODE=0&SKU=8448&embedded=1`, SITE).topic).toBe(
+      "community",
+    );
+    expect(linkTarget(`${base}&request=do_netstatus&LANGCODE=0&SKU=10496`, SITE).topic).toBe(
+      "status",
+    );
+    // An unknown request on the dead host is shown, never offered outbound.
+    expect(linkTarget(`${base}&request=do_mystery`, SITE)).toMatchObject({
+      topic: "external",
+      external: false,
+      embed: false,
+    });
+
+    const community = linkTarget(
+      "http://westwood.ea.com/games/ccuniverse/redalert2/index.html",
+      SITE,
+    );
+    expect(community).toMatchObject({ topic: "community", embed: true });
+    expect(linkTarget("http://games2.westwood.com/cgi-bin/cgiclient?register", SITE).topic).toBe(
+      "account",
+    );
+  });
+
   it("maps the WOL Help URL to the support page", () => {
     // src/web/wolapi.c's GetHelpURL hands the game this seeded URL.
     const help = linkTarget("https://ra2web.invalid/support/help.html", SITE);

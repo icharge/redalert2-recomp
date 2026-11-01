@@ -177,9 +177,10 @@ dialog for each and gates game input while one is open; closing them only
 clears the field, so the game keeps running. `openLink` is mapped by
 `link-targets.ts` into a topic, the original URL, and whether the page may be
 framed or offered as an outbound link ([protocol.md](protocol.md), "Web
-links"). YR's embedded browser supplies a page key instead of a URL, so that
-target has `url: ""` and `page: "News"` (for example) and the dialog says
-"News page"; the registry's `ra2web.invalid` value is only its fallback.
+links"). YR's embedded browser supplies a page key; the host maps a known key
+to the retail installer's registry URL (`src/web/wol_pages.h`), so the event
+carries the real Westwood URL. An unknown key has `url: ""` and the key in
+`page`, and the dialog names the page.
 
 ### Link dialog art
 
