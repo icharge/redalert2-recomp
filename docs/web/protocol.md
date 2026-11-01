@@ -153,7 +153,7 @@ in test logs.
 | `fps`           | `fps`, `ms`, and `worst`, `late`, `pub`, `pubms` | once a second: the game's own frames per second, the longest gap between two game frames (ms), how many came more than 25 ms after the one before, how many pictures were published and the mean ms to make one. The page shows them only if the overlay is on |
 | `exit`          | `code`                                           | the game's entry returned                                                                                                                                                                                                                                      |
 | `exitConfirm`   | `request`                                        | the main menu's Exit confirmation call was intercepted before native dialog creation; reply using `ra2_exit_confirmation_reply`                                                                                                                                |
-| `open`          | `url`, `ask`, `seq`                              | the game asked the system browser to open a WOL-era link; `url` is the game's own string, unchanged. The page shows its link dialog instead (below)                                                                                                            |
+| `open`          | `url`, `ask`, `seq`, optional `page`             | the game asked the system browser to open a WOL-era link; `url` is the game's own string, unchanged, or "" when the game named a WOL page (`page`). The page shows its link dialog instead (below)                                                              |
 | `settingsSaved` | `path`                                           | the game closed or rewrote a settings file; the page flushes its waiting settings copy                                                                                                                                                                         |
 | `error`         | `message`                                        | something the player should see that isn't a crash (a missing file)                                                                                                                                                                                            |
 
@@ -170,21 +170,28 @@ YR `0x0077DC90` and `0x00551630`) at their entry, calls
 `DoWebPageDialog` (`0x00773E90`) takes a page key (`"Ladder"`, `"Manage"`,
 `"Battleclans"`, ...), reads the registry URL and wraps it in
 `HTML\frame.htm`. The same lift patch intercepts it and calls
-`ra2_open_wol_page(key)`, which maps the key to the seeded sentinel URL and
-returns before the embedded browser is created. That path's `url` is the
-seeded sentinel (`https://ra2web.invalid/<path>`), not a dead Westwood host:
-the host owns the registry value the game would have read. The host logs the
-URL unchanged (`[url] <url>`) and emits `open`. On Linux the hooks only log;
-the Windows native32 build keeps the system browser and the embedded browser.
+`ra2_open_wol_page(key)`, which returns before the embedded browser is
+created. That path has no URL from the game: the host logs the key
+(`[page] <key>`) and emits `open` with `page` set and `url` empty. The
+registry is still seeded with `https://ra2web.invalid/<path>` values, but that
+is only the embedded browser's fallback; it is never reported as an original
+URL. On Linux the hooks only log (`[url]` / `[page]`); the Windows native32
+build keeps the system browser and the embedded browser.
 
-The page maps the URL to a `LinkTarget` (`web/src/game/link-targets.ts`):
+The page maps a URL to a `LinkTarget` (`web/src/game/link-targets.ts`):
 `topic`, the original `url`, a `detail` (a support kind, a locale), `external`
 (whether the original URL may be offered as an outbound link) and `embed`
-(whether a configured page may be framed). Dead Westwood hosts are never
-offered outbound. A target with `embed` renders in a sandboxed iframe; every
-other one shows "The game asked to open an external link" with the original
-URL. "Open in browser" is a plain `target="_blank"` / `rel="noopener
-noreferrer"` anchor, and only `http:`/`https:` URLs can become one.
+(whether a configured page may be framed). A `page` key maps by name
+(`Community`, `Ladder`, `Manage`, `Battleclans`, `NetStatus`, `News`) and
+leaves `url` empty, so the dialog says "Community page" instead of showing a
+made-up URL. A URL read from the registry that matches the seeded
+`ra2web.invalid` host is labelled "This build's registry target", not "The
+game asked for", because the host owns that value. Dead Westwood hosts are
+never offered outbound. A target with
+`embed` renders in a sandboxed iframe; every other one shows "The game asked
+to open an external link" with the original URL. "Open in browser" is a plain
+`target="_blank"` / `rel="noopener noreferrer"` anchor, and only
+`http:`/`https:` URLs can become one.
 
 ## Exit confirmation proof of concept
 

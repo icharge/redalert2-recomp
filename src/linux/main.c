@@ -77,17 +77,12 @@ void ra2_open_url(uint32_t url_va, uint32_t ask) {
     fprintf(stderr, "[url] %s\n", url_va ? (const char *)(uintptr_t)url_va : "");
 }
 
-/* DoWebPageDialog's embedded WOL browser takes a page key, not a URL; map it
- * to the same sentinel the registry is seeded with (the page does the topic
- * mapping). */
+/* DoWebPageDialog's embedded WOL browser takes a page key, not a URL. Log the
+ * key the game asked for; the registry's ra2web.invalid value is only the
+ * browser's fallback and is not an original URL. */
 void ra2_open_wol_page(uint32_t key_va) {
-    static const char *const names[] = { "Community", "Ladder", "Manage", "Battleclans", "NetStatus", "News" };
-    static const char *const paths[] = { "community", "ladder", "account", "clans", "status", "news" };
     const char *key = key_va ? (const char *)(uintptr_t)key_va : "";
-    const char *path = "external";
-    for (size_t i = 0; i < sizeof names / sizeof names[0]; i++)
-        if (!strcmp(key, names[i])) { path = paths[i]; break; }
-    fprintf(stderr, "[url] https://ra2web.invalid/%s\n", path);
+    fprintf(stderr, "[page] %s\n", key[0] ? key : "(none)");
 }
 
 /* HD voxels (src/runtime/hdvox.c): the lift's patches call it, and the

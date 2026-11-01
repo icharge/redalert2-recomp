@@ -177,7 +177,9 @@ dialog for each and gates game input while one is open; closing them only
 clears the field, so the game keeps running. `openLink` is mapped by
 `link-targets.ts` into a topic, the original URL, and whether the page may be
 framed or offered as an outbound link ([protocol.md](protocol.md), "Web
-links").
+links"). YR's embedded browser supplies a page key instead of a URL, so that
+target has `url: ""` and `page: "News"` (for example) and the dialog says
+"News page"; the registry's `ra2web.invalid` value is only its fallback.
 
 ### Link dialog art
 

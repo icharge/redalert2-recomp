@@ -40,7 +40,12 @@ export type GameEvent =
   | { e: "fps"; fps: number; ms: number; pacing: Pacing | null }
   | { e: "exit"; code: number }
   | { e: "exitConfirm"; request: number }
-  | { e: "open"; url: string; ask: number; seq: number }
+  /**
+   * A WOL-era link. `url` is the game's own string, unchanged, or "" when the
+   * game only named a WOL page (YR's DoWebPageDialog passes a page key, not a
+   * URL); `page` carries that key so the dialog never shows a made-up URL.
+   */
+  | { e: "open"; url: string; ask: number; seq: number; page?: string }
   | { e: "settingsSaved"; path: string }
   | { e: "error"; message: string };
 
@@ -133,11 +138,16 @@ export function parseEventLine(line: string): GameEvent | null {
     case "settingsSaved":
       return typeof value.path === "string" ? { e: "settingsSaved", path: value.path } : null;
     case "open":
-      return typeof value.url === "string" &&
-        typeof value.ask === "number" &&
-        typeof value.seq === "number"
+      if (
+        typeof value.url !== "string" ||
+        typeof value.ask !== "number" ||
+        typeof value.seq !== "number"
+      )
+        return null;
+      if (value.page !== undefined && typeof value.page !== "string") return null;
+      return value.page === undefined
         ? { e: "open", url: value.url, ask: value.ask, seq: value.seq }
-        : null;
+        : { e: "open", url: value.url, ask: value.ask, seq: value.seq, page: value.page };
     case "error":
       return typeof value.message === "string" ? { e: "error", message: value.message } : null;
     default:

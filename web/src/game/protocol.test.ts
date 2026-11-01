@@ -49,6 +49,15 @@ describe("parseEventLine", () => {
       ask: 0,
       seq: 2,
     });
+    expect(
+      parseEventLine('@ra2 {"e":"open","url":"","page":"News","ask":0,"seq":3}'),
+    ).toEqual({
+      e: "open",
+      url: "",
+      page: "News",
+      ask: 0,
+      seq: 3,
+    });
     expect(parseEventLine('@ra2 {"e":"error","message":"no gamemd.exe in /game"}')).toEqual({
       e: "error",
       message: "no gamemd.exe in /game",
@@ -74,5 +83,6 @@ describe("parseEventLine", () => {
     expect(parseEventLine('@ra2 {"e":"settingsSaved"}')).toBeNull();
     expect(parseEventLine('@ra2 {"e":"open"}')).toBeNull();
     expect(parseEventLine('@ra2 {"e":"open","url":1,"ask":0,"seq":2}')).toBeNull();
+    expect(parseEventLine('@ra2 {"e":"open","url":"","page":1,"ask":0,"seq":2}')).toBeNull();
   });
 });

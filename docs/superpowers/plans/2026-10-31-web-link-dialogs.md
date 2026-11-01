@@ -132,6 +132,11 @@ destination is never presented as the original.
   link; non-`http(s)` schemes are blocked.
 - **D4 — Windows native32 keeps the real browser for now.** Only web and Linux define
   `RA2_URL_HOST`/`__EMSCRIPTEN__` to take the patched path. Task 9 can extend it.
+- **D5 — A page key is not a URL.** YR's `DoWebPageDialog` passes a key
+  (`"News"`, `"Ladder"`, ...), not a URL. The event carries that key in `page`
+  and leaves `url` empty; the dialog shows "News page". The seeded
+  `https://ra2web.invalid/<path>` value is only the embedded browser's fallback
+  and is never reported as an original URL.
 
 ## Global constraints
 
@@ -283,10 +288,11 @@ hle_reg_set_string(0x80000002u, "Software\\Westwood\\Yuri's Revenge\\URL",
 
   Seed the other traced names to `https://ra2web.invalid/<name>`.
 - [ ] **Step 3: Verify the button reaches the hook.** In YR, click `GUI:Tournament`/`GUI:News`
-  (1955/1958) and `GUI:YuriWebSite` (1375); expect the `open` event with the seeded URL, not a
-  silent no-op.
+  (1955/1958) and `GUI:YuriWebSite` (1375); expect the `open` event with `page` set and `url`
+  empty, not a silent no-op.
 - [ ] **Step 4: Note the sentinel.** `.invalid` guarantees a missed interception cannot reach a
-  real host; the page maps it by path.
+  real host; the registry seed uses it only as the embedded browser's fallback. The event
+  reports the page key, never the sentinel as an original URL (D5).
 
 ---
 
@@ -598,22 +604,27 @@ the fallback for all of them.
 
 ### Rebuild and live verification (1 November 2026, later)
 
-- **YR rebuild.** `set RA2_TARGET=gamemd && build-web.cmd` ->
-  `[1/1] Linking C executable ra2md.js`, published
-  `web/public/game/ra2md.*` (build `736df3192fa11d23`, 3:01).
+- **YR rebuild (page-key events).** `set RA2_TARGET=gamemd && build-web.cmd`
+  -> `[76/76] Linking C executable ra2md.js`, published
+  `web/public/game/ra2md.*` (build `50ed8cb7dc4ff7bc`).
   `node build-web/ra2md.js --run --game ./game --headless --mute` ->
-  `@ra2 {"e":"boot","protocol":10,"title":"Yuri's Revenge",...}` and `menu`.
-  The wasm now contains `News\0`, `https://ra2web.invalid/news` and
-  `https://ra2web.invalid/support/help.html` (byte search).
+  `@ra2 {"e":"boot","protocol":10,"title":"Yuri's Revenge",...}`.
+  The wasm contains `{"e":"open","url":"","page"`, the `News` registry value
+  and `https://ra2web.invalid/support/help.html` (byte search).
 - **YR lobby e2e, rebuilt module.**
   `node e2e/links-lobby.mjs --edition ra2md --profile <ra2prof2>` ->
-  `"joined": true`, `0x113:1955` -> `https://ra2web.invalid/ladder`,
-  `0x113:1958` -> `https://ra2web.invalid/news` (no longer `/external`).
+  `"joined": true`, `0x113:1955` -> `{"url":"","page":"Ladder"}`,
+  `0x113:1958` -> `{"url":"","page":"News"}`; the screenshot shows
+  "News page", never the registry sentinel.
+- **Registry-read URL.** YR's YuriWebSite (`0x10E:1375`) reads the registry
+  value and passes `https://ra2web.invalid/community` through
+  `ra2_open_url`; the dialog labels it "This build's registry target:" rather
+  than "The game asked for:", since the host owns that value.
 - **RA2 rebuild.** The first attempt raced a concurrent
   `run_lift.py --all --target game` and failed with missing `sub_*`
   declarations in `gen_game`; after that lift finished,
   `build-web.cmd` rebuilt 70 objects and linked, publishing
-  `web/public/game/ra2.*` (build `b9bf3c5b9eccb472`, 3:27).
+  `web/public/game/ra2.*` (build `991cad758374b72f`).
   `node build-web-game/ra2.js --run --game ./game --headless --mute` ->
   `@ra2 {"e":"boot","protocol":10,"title":"Red Alert 2",...}`.
 - **RA2 lobby e2e, rebuilt module.** `0x113:1368` -> `open`

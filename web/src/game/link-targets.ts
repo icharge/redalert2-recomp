@@ -17,8 +17,12 @@ export type LinkTopic =
 
 export interface LinkTarget {
   topic: LinkTopic;
-  /** the URL the game asked for, never rewritten */
+  /** the URL the game asked for, never rewritten; "" for a page key */
   url: string;
+  /** the WOL page key when the game named a page instead of a URL */
+  page?: string;
+  /** the URL is this build's registry value, not an original Westwood URL */
+  seeded?: boolean;
   /** the support kind, locale, or other detail parsed from the URL */
   detail?: string;
   /** whether the original URL may be offered as an outbound link */
@@ -43,7 +47,7 @@ const RA2WEB_PATHS: Partial<Record<LinkTopic, string>> = {
   status: "/status",
 };
 
-/** Paths the seeded YR registry values (and the WOL browser page keys) use. */
+/** Paths the seeded YR registry values use (the embedded browser's fallback). */
 const SENTINEL_TOPICS: Record<string, LinkTopic> = {
   community: "community",
   ladder: "tournament",
@@ -53,6 +57,16 @@ const SENTINEL_TOPICS: Record<string, LinkTopic> = {
   privacy: "privacy",
   news: "news",
   consent: "consent",
+};
+
+/** The page keys YR's DoWebPageDialog passes (run_lift.py intercepts 0x773E90). */
+const PAGE_TOPICS: Record<string, LinkTopic> = {
+  Community: "community",
+  Ladder: "tournament",
+  Manage: "account",
+  Battleclans: "community",
+  NetStatus: "status",
+  News: "news",
 };
 
 /** The configured RA2Web page for a topic, or null when there is none. */
@@ -88,15 +102,28 @@ function make(
   detail: string | undefined,
   external: boolean,
   site: string,
+  page?: string,
 ): LinkTarget {
   const target: LinkTarget = { topic, url, external, embed: false };
+  if (page) target.page = page;
   if (detail) target.detail = detail;
   target.embed = external === false && sitePageUrl(target, site) !== null;
   return target;
 }
 
-/** Map the URL the game asked for to a topic and the dialog's behaviour. */
-export function linkTarget(url: string, site = ra2webSite()): LinkTarget {
+/**
+ * Map what the game asked for to a topic and the dialog's behaviour. A WOL page
+ * key (YR's embedded browser) has no URL: `page` names it, and the dialog says
+ * so instead of pretending the registry sentinel is the original.
+ */
+export function linkTarget(url: string, site = ra2webSite(), page?: string): LinkTarget {
+  if (page !== undefined) {
+    const topic = PAGE_TOPICS[page];
+    // An unknown page still came from the game; show the key, never a URL.
+    return topic
+      ? make(topic, "", undefined, false, site, page)
+      : { topic: "external", url: "", page, external: false, embed: false };
+  }
   let parsed: URL;
   try {
     parsed = new URL(url);
@@ -110,16 +137,22 @@ export function linkTarget(url: string, site = ra2webSite()): LinkTarget {
   const host = parsed.hostname.toLowerCase();
   const path = parsed.pathname;
 
-  // The sentinel host YR's registry is seeded with: map by path.
+  // The sentinel host this build seeds into YR's registry: map by path. The
+  // game did read this URL from its registry, but it is our value, so the
+  // dialog labels it as the build's target rather than an original URL.
   if (host === "ra2web.invalid" || host === "ra2web.local" || host.endsWith(".invalid")) {
     const first = path.split("/").filter(Boolean)[0] ?? "";
     if (first === "support") {
-      return make("support", url, supportKind(path) ?? "support", false, site);
+      const target = make("support", url, supportKind(path) ?? "support", false, site);
+      target.seeded = true;
+      return target;
     }
     const known = SENTINEL_TOPICS[first];
     // A sentinel we do not map is not a real page: never offer it outbound.
-    if (!known) return { topic: "external", url, external: false, embed: false };
-    return make(known, url, undefined, false, site);
+    if (!known) return { topic: "external", url, seeded: true, external: false, embed: false };
+    const target = make(known, url, undefined, false, site);
+    target.seeded = true;
+    return target;
   }
 
   if (host === "privacypolicy.westwood.com") return make("privacy", url, undefined, false, site);
@@ -193,10 +226,15 @@ export function linkCopy(target: LinkTarget): LinkCopy {
         body: "Westwood's network status page is offline. The online menu shows the server this build talks to.",
       };
     case "external":
-      return {
-        title: "Open external link",
-        body: "The game asked to open an external link.",
-      };
+      return target.page
+        ? {
+            title: "Open external page",
+            body: "The game asked for a WOL page this build does not know.",
+          }
+        : {
+            title: "Open external link",
+            body: "The game asked to open an external link.",
+          };
     case "blocked":
       return {
         title: "Link blocked",
