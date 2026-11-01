@@ -220,6 +220,27 @@ call). No state codec or server model exists yet.
   own resolution path hashes the game name into the **user** container (`0xB2AC24`) and the
   game container (`0xB293A0`) at `0x764033`/`0x764150`; neither contains a matching entry,
   which is why the client aborts right after the locale reply.
+- **UI-created conflict settled (verified)**: a two-territory-click run created conflict 11
+  (territory 10, game `g11-mvx8hlfe`); posting the native game-res packet for **that** game id
+  produced
+
+  ```text
+  report 200 {"gameId":"g11-mvx8hlfe","stored":true,"ranked":false,
+              "wdt":{"conflictId":11,"winner":0}}
+  history 2 {"territoryId":10,"from":2,"to":0,"faction":0,"gameId":"g11-mvx8hlfe"}
+  owner 0
+  UI conflict settled OK
+  ```
+
+  so a conflict created by the browser flow settles through the real native-result endpoint and
+  the territory ownership updates. After that, the next UI run's automatic pick moved to
+  territory 11 (10 was now Allied), which shows the ownership change feeds back into match
+  assignment.
+- **Deferring LIST 33 for the pick (negative)**: holding `list 33` for three `PumpMessages`
+  ticks so the map could compute the clicked territory still reports `territory=-1` when the
+  deferred line is finally sent; the map's pick only appears much later. Delaying the list is
+  therefore not enough - the selection has to be captured while the WDT screen is actually
+  processing input.
 - **Settlement verified end to end (server path)**: starting a WDT match with `wdtstart 14`
   then posting a native game-res packet for that game (the same `POST /native-results/<gameId>`
   the native client uses) settles the conflict:
