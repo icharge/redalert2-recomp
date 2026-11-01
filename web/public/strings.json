@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "ra2": {
+    "encoding": "windows-1252",
+    "strings": {
+      "GUI:ExitGame": "Exit to Launcher"
+    }
+  },
+  "ra2md": {
+    "encoding": "windows-1252",
+    "strings": {
+      "GUI:ExitGame": "Exit to Launcher"
+    }
+  }
+}

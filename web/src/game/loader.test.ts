@@ -56,6 +56,7 @@ async function runtimeFetch(
     if (init?.method === "HEAD") return answer(true, "text/javascript");
     const url = String(input);
     if (url.endsWith("/game/build.json")) return Promise.resolve(Response.json(build));
+    if (url.endsWith("/strings.json")) return Promise.resolve(Response.json({ version: 1 }));
     if (url.endsWith("/game/runtime/ra2md/gamemd.exe"))
       return Promise.resolve(new Response(runtimeExe));
     if (url.endsWith("/game/runtime/ra2md/Blowfish.dll"))
