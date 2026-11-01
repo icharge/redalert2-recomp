@@ -200,6 +200,13 @@ call). No state codec or server model exists yet.
   0x75E08F sees every entry, but GAM handling sits behind `[esp+0x20]` state and an earlier
   service branch; trace `[esp+0x20]` writes (0x75E5D2, 0x75E6C1) and the selected-server flag
   to learn which entry order/fields the client needs before it counts a mangler.
+- **Ordinal-16 delivery (negative)**: delivering the server's `Start #WDTmatch` as chat event
+  ordinal 16 with the sink's arguments (result, unused, flag byte struct, text pointer) and
+  leaving the state gate open still never reaches `0x75B910` (`[wdt] start probe` never fires).
+  The line is therefore not reaching the sink at all on this path — the `PRIVMSG` either fails
+  the bridge's `receive_chat` routing (sender/target checks) or `handle_line` returns before it.
+  Next probe: log `receive_chat` entry and the parsed sender/command/target for the server line,
+  and confirm the sink is the same object whose vtable was dumped.
 - **Start handler event ordinal found (decisive)**: dumping the game's chat sink vtable from the
   bridge (`sink vt=007AF77C`, entries 0..59) shows **ordinal 16 = `0x00762590`**, the function
   that calls the `Start <game>` handler (`0x75B910`). The bridge only uses ordinal 16 for
