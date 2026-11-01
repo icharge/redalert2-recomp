@@ -64,14 +64,17 @@ the fallback, not the plan ([decisions.md](decisions.md), D2).
 ## Memory size
 
 - `-sINITIAL_MEMORY=640MB`, `-sALLOW_MEMORY_GROWTH=1`,
-  `-sMAXIMUM_MEMORY=768MB`. This caps Wasm linear memory below 1 GiB, leaving
-  room for compiled code and small browser-side buffers. This is not a total
-  browser-process cap. To keep the game within that total budget the archives
-  stay in OPFS and are read in place through WasmFS ([storage.md](storage.md),
-  "How the game reads its files"): copying a 1 GB install into memory would
-  not fit under this cap. WasmFS's in-memory files live in this linear memory,
-  so only the small files (under 1 MiB) are copied into it. Growth with
-  pthreads makes every JS view of memory re-check its buffer.
+  `-sMAXIMUM_MEMORY=4GB`. The initial 640 MB is the measured steady-state menu
+  and game peak; the 4 GB maximum is wasm32's address-space limit and leaves
+  room for large-file paths (the import/copy of a 1 GB archive grows past the
+  old 768 MB cap) and small browser-side buffers. This is not a total
+  browser-process cap. To keep the game within the steady-state budget the
+  archives stay in OPFS and are read in place through WasmFS
+  ([storage.md](storage.md), "How the game reads its files"): copying a 1 GB
+  install into memory would not fit under the initial cap. WasmFS's in-memory
+  files live in this linear memory, so only the small files (under 1 MiB) are
+  copied into it. Growth with pthreads makes every JS view of memory re-check
+  its buffer.
 - The host's C stack: `-sSTACK_SIZE=8MB` and
   `-sDEFAULT_PTHREAD_STACK_SIZE=8MB`, as on Linux. Every `RECOMP_CALL` is a
   real C call, and the game's call chains are deep. The guest's own stack
@@ -105,8 +108,9 @@ bytes, and every running-game sample published a picture. The previous run
 with 256 MiB initial memory grew 137.7 MiB after the automatic save reload and
 reached 768 MiB. The main-menu peak was 627.5 MiB, which rounds to 640 MiB for
 `INITIAL_MEMORY`. An earlier 4K HD-off soak peaked at 442.5 MiB with no Wasm
-growth after the first minute. Its peak plus 25% is below the 768 MiB floor,
-so `MAXIMUM_MEMORY` remains 768 MiB. Repeat the 4K soak on the final build.
+growth after the first minute. Its peak plus 25% is below the 640 MiB floor, so
+the initial size stays at 640 MiB; `MAXIMUM_MEMORY` is 4 GB for the large-file
+paths. Repeat the 4K soak on the final build.
 
 ## Check
 
