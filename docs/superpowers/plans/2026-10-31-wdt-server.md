@@ -220,6 +220,20 @@ call). No state codec or server model exists yet.
   own resolution path hashes the game name into the **user** container (`0xB2AC24`) and the
   game container (`0xB293A0`) at `0x764033`/`0x764150`; neither contains a matching entry,
   which is why the client aborts right after the locale reply.
+- **Worker deferred to the pump tick, still bails (verified)**: running `0x75BE10` from the
+  bridge's `PumpMessages` tick (instead of inside the chat line handler, to avoid re-entering
+  the client's own pump) behaves the same: `worker tick state=2` then `worker tick end` ~3.5 s
+  later, with **no `join`** and no extra `list 33`. Probes at the worker's WOLAPI list call
+  (`0x75C0DB`, both code copies, logging the object/vtable/slot and the result) **never fire**,
+  so the worker does not even reach its `list` request - it exits earlier, at the pump check
+  `0x73D8F0` (`0x75C08F`, which waits on the 18 events at `0xB264F8` via
+  `MsgWaitForMultipleObjects` and returns false after consuming a signaled event) or at the
+  `[0xB29390]` guard.
+- **Consequence**: `0x75BE10` is coupled to the client's own WOL message pump and cannot be
+  driven from the bridge as-is. The practical remaining routes are (a) make that pump check
+  succeed (find what event it consumes and why it reports failure), or (b) perform the WDT
+  match start server-side (`join` + `STARTG` with the WDT tags) instead of relying on the
+  client worker.
 - **Match worker runs, then times out (verified)**: after the direct `Start` handler call the
   bridge also invoked the match worker `0x75BE10` (the function that copies the room name from
   `0xB2658C`, lists the games and joins them). It ran its full timeout loop - `start worker
