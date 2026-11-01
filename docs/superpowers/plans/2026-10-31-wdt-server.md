@@ -220,6 +220,21 @@ call). No state codec or server model exists yet.
   own resolution path hashes the game name into the **user** container (`0xB2AC24`) and the
   game container (`0xB293A0`) at `0x764033`/`0x764150`; neither contains a matching entry,
   which is why the client aborts right after the locale reply.
+- **Settlement verified end to end (server path)**: starting a WDT match with `wdtstart 14`
+  then posting a native game-res packet for that game (the same `POST /native-results/<gameId>`
+  the native client uses) settles the conflict:
+
+  ```text
+  report 200 {"gameId":"g8-mvx87prj","stored":true,"ranked":false,
+              "wdt":{"conflictId":8,"winner":0}}
+  history 1 {"at":1793501043255,"territoryId":14,"from":2,"to":0,"faction":0,
+             "gameId":"g8-mvx87prj"}
+  owner 0            # territory 14 flipped from neutral (2) to Allied (0)
+  settlement OK
+  ```
+
+  So conflict -> result -> history -> ownership works with the server-started match; only a
+  **finished browser match** is missing (the browser run never reaches an end screen).
 - **Territory contract verified (server side)**: `wdtstart <id>` + `list 33 33` over a real
   WebSocket session produces `STARTG` and a conflict **on that territory**:
 
