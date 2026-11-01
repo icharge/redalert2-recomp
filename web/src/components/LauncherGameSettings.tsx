@@ -54,6 +54,11 @@ import {
   readCampaignSpeedControlPreference,
   writeCampaignSpeedControlPreference,
 } from "../storage/speed-control-preferences";
+import {
+  readCursorPreference,
+  writeCursorPreference,
+  type CursorChoice,
+} from "../storage/cursor-preferences";
 
 const thaiFonts = [...BUILT_IN_THAI_FONTS].sort((a, b) => a.name.localeCompare(b.name));
 
@@ -75,6 +80,11 @@ const SCALING = [
   { value: "crt", label: "CRT" },
   { value: "nearest", label: "Nearest" },
   { value: "integer", label: "Integer" },
+];
+
+const CURSOR_CHOICES = [
+  { value: "page", label: "Page layer (smooth)" },
+  { value: "game", label: "Game's own (software, traditional)" },
 ];
 
 const SCROLL_RATE = [
@@ -495,6 +505,9 @@ export function LauncherGameSettings({
 }) {
   const [preference, setPreference] = useState(() => readThaiFontPreference(game.storage));
   const [videoPreference, setVideoPreference] = useState(() => readVideoPreference(game.storage));
+  const [cursorPreference, setCursorPreference] = useState<CursorChoice>(() =>
+    readCursorPreference(game.storage),
+  );
   const [fpsOverlay, setFpsOverlay] = useState(() => readStatsPreference());
   const [skipIntro, setSkipIntro] = useState(() => readSkipIntroPreference(game.storage));
   const [campaignSpeedControl, setCampaignSpeedControl] = useState(() =>
@@ -832,6 +845,18 @@ export function LauncherGameSettings({
                       "Could not save the HD vehicles setting",
                     )
                   }
+                />
+                <StringChoiceRow
+                  id={`launcher-cursor-${game.slot}-${game.id}`}
+                  label="Cursor"
+                  hint="The page layer draws the game's own cursor at the display's rate. The game's own software cursor is drawn into the picture at the game's frame rate (the traditional way)."
+                  value={cursorPreference}
+                  choices={CURSOR_CHOICES}
+                  onChange={(value) => {
+                    const choice: CursorChoice = value === "game" ? "game" : "page";
+                    setCursorPreference(choice);
+                    writeCursorPreference(game.storage, choice);
+                  }}
                 />
                 <ToggleRow
                   id={`launcher-fps-overlay-${game.slot}-${game.id}`}

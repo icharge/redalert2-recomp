@@ -51,8 +51,13 @@ const runtimeLive = () => !["exited", "crashed"].includes(gameStore.getSnapshot(
 /** ?show-cursor=1: the debug mode that keeps the browser cursor visible. */
 const cursorDebug = () => new URLSearchParams(window.location.search).get("show-cursor") === "1";
 
-/** ?cursor=page: draw the game's in-match cursor on the page (docs/web/cursor-layer.md). */
-const cursorPage = () => new URLSearchParams(window.location.search).get("cursor") === "page";
+/** The page draws the game's cursor (docs/web/cursor-layer.md) unless the game's
+ * own software cursor was asked for: `?cursor=game` (the launcher's "Game's own"
+ * choice), `?cursor=software`, or `?cursor=off`. */
+const cursorPage = () => {
+  const value = new URLSearchParams(window.location.search).get("cursor");
+  return value !== "game" && value !== "software" && value !== "off";
+};
 
 // The game starts once per page load, whatever React remounts (StrictMode, a screen switch).
 declare global {
@@ -353,9 +358,10 @@ export function Play({ files }: { files: FileSource }) {
         bindCanvas(activeCanvas);
         setPresenter(initialPresenter);
         window.ra2Presenter = initialPresenter;
-        // ?cursor=page: once the game has published the in-match cursor, it
-        // stops drawing it and the page draws it at display rate
-        // (docs/web/cursor-layer.md). The game keeps its own until then.
+        // The page draws the game's cursor, the default: in a match it stops
+        // drawing its own and the page draws it at display rate
+        // (docs/web/cursor-layer.md); with ?cursor=game the game keeps its own
+        // software cursor and this layer stays off.
         let pageCursorLayer: PageCursor | null = null;
         if (pageCursorMode && pageCursorCanvas.current) {
           pageCursorLayer = new PageCursor(
@@ -371,7 +377,9 @@ export function Play({ files }: { files: FileSource }) {
             },
           );
           pageCursorLayer.start();
-          console.info("[cursor] the page draws the game's cursor (?cursor=page)");
+          console.info(
+            "[cursor] the page draws the game's cursor (default; ?cursor=game keeps the game's own)",
+          );
         }
         // Debug marker: the position the page sends the game's cursor to. With
         // ?show-cursor=1 the browser pointer is visible too, so the game's drawn

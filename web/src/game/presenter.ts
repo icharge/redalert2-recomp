@@ -29,7 +29,7 @@ export interface GamePresenter {
   counters(): PresenterCounters;
   gameSize(): { width: number; height: number };
   cursorWarp(): { seq: number; x: number; y: number };
-  /** ?cursor=page: the page layer draws the cursor, so hide ours (or restore it). */
+  /** The page layer draws the cursor (the default): hide ours, or restore it. */
   setLayerCursor(active: boolean): void;
   capture(options?: { hd?: boolean }): Promise<{
     width: number;
@@ -63,7 +63,7 @@ export class Presenter2d implements GamePresenter {
   private cursorHeight = Number.NaN;
   private cursorLeft = Number.NaN;
   private cursorTop = Number.NaN;
-  /** ?cursor=page: the page layer draws the cursor, so this one steps aside */
+  /** The page layer draws the cursor (the default), so this one steps aside */
   private layerCursor = false;
   private lastCursor: { kind: number; hotX: number; hotY: number } | null = null;
 
@@ -308,7 +308,7 @@ export class Presenter2d implements GamePresenter {
   }
 
   /**
-   * ?cursor=page: the page layer draws every cursor itself. Hide this
+   * The page layer draws every cursor itself (the default; ?cursor=game turns it off). Hide this
    * presenter's CSS cursor and the pause overlay image while it does, and put
    * back exactly what the game asked for last when it stops.
    */

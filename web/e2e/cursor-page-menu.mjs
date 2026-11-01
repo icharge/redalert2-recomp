@@ -1,7 +1,8 @@
 // What the browser shows for the cursor in the shell's menus (docs/web/cursor-layer.md).
-// Opens the launcher's YR card with ?cursor=page, stops at the main menu (no scripted
-// presses), moves the real pointer over the picture and reads the shared words and the
-// elements the presenters draw the cursor with. Run the dev server first.
+// Opens the launcher's YR card and stops at the main menu (no scripted presses), moves
+// the real pointer over the picture and reads the shared words and the elements the
+// presenters draw the cursor with. The page draws the cursor by default; --cursor game
+// asks for the game's own software cursor instead. Run the dev server first.
 //
 //   node e2e/cursor-page-menu.mjs --game ../game \
 //        --url "http://127.0.0.1:5173/" --profile ../../work/tests/cursor-profile
@@ -20,6 +21,9 @@ const profile = path.resolve(
   option("--profile", path.resolve("..", "work", "tests", "cursor-profile")),
 );
 const shots = path.resolve(option("--shots", path.resolve("..", "work", "tests", "cursor-shots")));
+const cursorParam = option("--cursor", "");
+/** --software: choose the game's own cursor in the launcher (its stored setting). */
+const software = argv.includes("--software");
 mkdirSync(shots, { recursive: true });
 mkdirSync(profile, { recursive: true });
 
@@ -47,11 +51,21 @@ if (!(await slot.count())) {
   await page.getByRole("button", { name: /^Import / }).click();
   await slot.waitFor({ timeout: 900_000 });
 }
+if (software) {
+  // The launcher's Cursor setting, as LauncherGameSettings stores it.
+  await page.evaluate(() => localStorage.setItem("ra2.software-cursor.slot-1-ra2md", "1"));
+  console.log("[browser] launcher cursor setting: game's own (software)");
+}
 await slot.locator('[data-game-id="ra2md"]').getByRole("button", { name: "Play" }).click();
 await page.waitForURL(/\/game\/1(?:\?|$)/, { timeout: 120_000 });
+console.log("[browser] the game was opened at", page.url());
+if (software) {
+  // The URL carries the choice for this launch; leave the profile as it was.
+  await page.evaluate(() => localStorage.removeItem("ra2.software-cursor.slot-1-ra2md"));
+}
 
 const gameUrl = new URL(page.url());
-gameUrl.searchParams.set("cursor", "page");
+if (cursorParam) gameUrl.searchParams.set("cursor", cursorParam);
 for (const arg of ["--mute", "--debuglog"]) gameUrl.searchParams.append("arg", arg);
 await page.goto(gameUrl.toString());
 

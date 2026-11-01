@@ -7,21 +7,23 @@ versions follow [SemVer](https://semver.org/).
 
 ### Added
 
-- **The game's cursor on a page layer** (`?cursor=page` in the browser,
-  `RA2_PAGE_CURSOR=1` for the presenter): the game's own cursor - the
+- **The game's cursor on a page layer** (the browser's default; `?cursor=game`
+  or the launcher's Cursor setting “Game's own (software, traditional)” keeps the
+  game's own; `RA2_PAGE_CURSOR=1` for the presenter): the game's own cursor - the
   MOUSE.SHA frame it loaded and MOUSEPAL.PAL's colours in a match, the Win32
   arrow it sets in the menus and over the pause dialog - is decoded once per
   cursor change and drawn on one canvas above the picture, at the pointer's own
   rate, while the game skips its own blit. The cursor therefore moves at display
-  refresh rate instead of the game's frame rate, everywhere. Off by default;
-  without the flag nothing changes, CSS cursor and pause overlay included. The
+  refresh rate instead of the game's frame rate, everywhere. With the game's own
+  cursor chosen, nothing changes: CSS cursor and pause overlay included. The
   first design (reading the primary surface under a DirectDraw lock on the
   game's mouse thread) froze the game and is not used: the host reads only the
   cursor object the game already has, never the screen.
   (`src/runtime/page_cursor.c`, `src/web/presenter.c`, `src/runtime/present.c`,
   `web/src/game/cursor-layer.ts`, `web/src/game/presenter.ts`,
-  `web/src/game/gl-presenter.ts`, `run_lift.py`'s `page_cursor_patches` and
-  `page_cursor_palette_patches`, protocol 10.)
+  `web/src/game/gl-presenter.ts`, `web/src/storage/cursor-preferences.ts`,
+  `run_lift.py`'s `page_cursor_patches` and `page_cursor_palette_patches`,
+  protocol 10.)
 - **Web links**: the browser build no longer hands WOL-era links to the
   system browser. `run_lift.py`'s `web_url_patches` intercepts the three
   routines that write a probe `.html`, find the default browser and start it
