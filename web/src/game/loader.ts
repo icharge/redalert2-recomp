@@ -67,6 +67,19 @@ export function gameModuleUrl(
   const url = gameModuleFile(game, moduleBase, file);
   return build ? `${url}?v=${encodeURIComponent(build)}` : url;
 }
+
+/** Resolve one of Emscripten's module files to its production (hashed) name. */
+export function gameModulePath(
+  game: GameId,
+  moduleBase: string,
+  file: string,
+  wasm?: string,
+  data?: string,
+): string {
+  if (wasm && file.endsWith(".wasm")) return `${moduleBase}${wasm}`;
+  if (data && file.endsWith(".data")) return `${moduleBase}${data}`;
+  return gameModuleFile(game, moduleBase, file);
+}
 const gameIni = (game: GameId) => (game === "ra2" ? "ra2.ini" : "ra2md.ini");
 
 /** No module for this game is present (docs/web/toolchain.md). */
@@ -538,9 +551,15 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
   const buildInfo = await loadBuildInfo(fetch);
   const runtimeGame = buildInfo.games[game];
   if (!runtimeGame) throw new GameNotBuilt(game);
-  const scriptUrl = runtimeGame.build
-    ? `${baseScriptUrl}?v=${encodeURIComponent(runtimeGame.build)}`
-    : baseScriptUrl;
+  // A production build hashes the Emscripten files (vite.game-hashes.ts) and
+  // records their names in build.json; a dev/unhashed build falls back to the
+  // fixed names with the build id as a cache-busting query.
+  const scriptName = runtimeGame.script?.replace(/^\/+/, "");
+  const scriptUrl = scriptName
+    ? appPath(scriptName)
+    : runtimeGame.build
+      ? `${baseScriptUrl}?v=${encodeURIComponent(runtimeGame.build)}`
+      : baseScriptUrl;
 
   return new Promise<GameHandle>((resolve, reject) => {
     const fail = (error: unknown) => {
@@ -563,7 +582,10 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
         if (store.getSnapshot().phase !== "exited")
           fail(new Error(`The game aborted: ${String(what)}`));
       },
-      locateFile: (path: string) => gameModuleUrl(game, moduleBase, path, runtimeGame.build ?? ""),
+      locateFile: (path: string) =>
+        runtimeGame.wasm || runtimeGame.data
+          ? gameModulePath(game, moduleBase, path, runtimeGame.wasm, runtimeGame.data)
+          : gameModuleUrl(game, moduleBase, path, runtimeGame.build ?? ""),
     } as Partial<Ra2Module> as Ra2Module;
     let wolClient: WolClient | null = null;
     let udpRelay: UdpRelay | null = null;

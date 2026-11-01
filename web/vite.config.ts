@@ -4,6 +4,7 @@ import { loadEnv } from "vite";
 import { defineConfig } from "vitest/config";
 import { devGame } from "./vite.dev-game";
 import { precompressedWasm } from "./vite.precompressed-wasm";
+import { gameModuleHashes } from "./vite.game-hashes";
 
 // The game uses threads, so the page must be cross-origin isolated
 // (docs/web/deploy.md). A host that cannot send these headers gets them from the
@@ -23,6 +24,7 @@ export default defineConfig(({ mode }) => {
       react(),
       devGame(),
       precompressedWasm(),
+      gameModuleHashes(),
       // The service worker is src/sw.ts (docs/web/deploy.md). It is built for `pnpm build` only: the dev
       // server has none, so a reload there is always the files on disk. The game's own files (public/game)
       // are not in its list: it keeps those itself, by build.

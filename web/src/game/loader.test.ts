@@ -5,6 +5,7 @@ import {
   GAME_SCRIPT,
   gameScript,
   gameModuleFile,
+  gameModulePath,
   gameModuleUrl,
   GameNotBuilt,
   gameArguments,
@@ -145,6 +146,13 @@ describe("isBuilt", () => {
     expect(gameModuleUrl("ra2md", "/emu/game/", "ra2.wasm", "a b")).toBe(
       "/emu/game/ra2md.wasm?v=a%20b",
     );
+    expect(gameModulePath("ra2", "/emu/game/", "ra2.wasm", "ra2-abc.wasm", "ra2-abc.data")).toBe(
+      "/emu/game/ra2-abc.wasm",
+    );
+    expect(
+      gameModulePath("ra2md", "/emu/game/", "ra2.data", "ra2md-abc.wasm", "ra2md-abc.data"),
+    ).toBe("/emu/game/ra2md-abc.data");
+    expect(gameModulePath("ra2", "/emu/game/", "ra2.wasm")).toBe("/emu/game/ra2.wasm");
     vi.unstubAllEnvs();
   });
   it("is true when ra2.js comes back as JavaScript", async () => {
