@@ -236,6 +236,22 @@ call). No state codec or server model exists yet.
   the territory ownership updates. After that, the next UI run's automatic pick moved to
   territory 11 (10 was now Allied), which shows the ownership change feeds back into match
   assignment.
+- **800 art decoded and generated (verified renders)**: `WDTMap.ini` (plaintext in
+  `game/wdt.mix`) defines both sets per faction/map. The 640 set is
+  `Size=472,448, SideBar=WDTSd640 (168,480), HelpBar=WDTBtm640 (472,32)`; the 800 set is
+  `Size=632,568, SideBar=WDTSd800 (168,600), HelpBar=WDTBtm800 (632,32)`, with assets named
+  `America_WorldDom_A.pcx` / `Amer_ClikMap_Temp.pcx` (the shipping 640 files are the `_B`
+  variants). A header scan of `wdt.mix` finds **only** 472x448 / 168x480 / 472x32 art - the
+  800 assets were never shipped.
+  `tools/wdt_extract.py` recovers the PCX bodies (3-plane RGB backgrounds/sidebar/helpbar,
+  indexed click maps) and `tools/wdt_art800.py` upscales them into the 800 names as loose
+  files in `game/`. With those files present and the forced-640 line left at its original
+  width-derived value, the client loads `Art_800` and draws the map at **632x568**
+  (`work/wdt-800a/tick19.png`), so the generated set is valid and accepted.
+- **800 caveat**: on a freshly fully-lifted build with the `edx = 0x280` patch removed the WDT
+  screen did not open (dialogs 0xC9/0xC3, `mapScreen:false`), so the 800 path still needs a
+  missing asset or layout dependency resolved before it can replace the 640 patch. The 640
+  patch is therefore kept as the default; the 800 files and tools are committed as the base.
 - **The selection panel is a formatter; the join comes from the WOL match screen**:
   hooking/inspecting the `0x72ED80` call sites shows it is invoked as
   `ecx = <map control>`, with a string argument (`Info` panel text), i.e. it renders the
