@@ -248,6 +248,50 @@ describe("WolClient", () => {
     client.close();
     expect(closed).toHaveBeenCalledOnce();
   });
+  it("queues a game command sent while the HTTP login is still in flight", async () => {
+    let answerLogin!: (response: Response) => void;
+    const fetcher = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          answerLogin = resolve;
+        }),
+    ) as unknown as typeof fetch;
+    const sent: string[] = [];
+    class Socket extends EventTarget {
+      readyState = 1;
+      send(data: string): void {
+        sent.push(data.trim());
+        const reply = data.startsWith("cvers ")
+          ? ":wol 700 * :ok"
+          : data.startsWith("setlocale ")
+            ? ":wol 310 * :ok"
+            : ":wol 376 test :done";
+        queueMicrotask(() => this.dispatchEvent(new MessageEvent("message", { data: reply })));
+      }
+      close(): void {
+        this.readyState = 3;
+      }
+    }
+    const client = new WolClient(
+      "http://wol.test",
+      "test",
+      "password123",
+      fetcher,
+      () => new Socket(),
+      1_000,
+    );
+    try {
+      const outcome = client.connect({ joinLobby: false });
+      client.sendRaw("wdtarmed");
+      expect(sent).toEqual([]);
+      answerLogin(new Response(JSON.stringify({ sessionToken: "token" }), { status: 200 }));
+      await outcome;
+      expect(sent.indexOf("wdtarmed")).toBeGreaterThan(sent.indexOf("session token"));
+    } finally {
+      client.close();
+    }
+  });
+
   it("does not open a socket when logout happens during HTTP login", async () => {
     let answerLogin!: (response: Response) => void;
     const fetcher = vi.fn(

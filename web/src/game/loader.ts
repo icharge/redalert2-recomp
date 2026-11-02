@@ -649,15 +649,22 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
       );
     };
     module.ra2WolSend = (line) => {
+      const client = wolClient;
+      if (!client) return;
       try {
         // Entering a new lobby/room ends the previous match. PART happens while
         // the native game is still starting, so its relay must stay alive then.
         if (/^(?:join|joingame)\s/i.test(line)) udpRelay?.stop();
-        wolClient?.sendRaw(line);
+        client.sendRaw(line);
       } catch (error) {
-        module.ra2WolReceiveLine?.(
-          `@wolapi error ${error instanceof Error ? error.message : String(error)}`,
-        );
+        // A closed socket is already reported through onDisconnect. Replaying
+        // a send failure as `@wolapi error` would instead abort a login that
+        // is still in flight and can leave the game at the 800x600 shell.
+        if (client.connected) {
+          module.ra2WolReceiveLine?.(
+            `@wolapi error ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
       }
     };
     module.ra2WolReport = (requestId, gameNumber, packet) => {
