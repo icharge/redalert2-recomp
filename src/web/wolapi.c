@@ -74,7 +74,7 @@ static volatile uint32_t g_line_write, g_line_read;
 static wol_server g_server;
 static wol_server g_server_entry, g_server_mgl, g_server_wdt;
 static wol_channel g_channels[64];
-static wol_channel g_lobby, g_active_channel;
+static wol_channel g_active_channel;
 static wol_user g_users[32];
 static wol_user g_locale_user;
 static uint32_t g_channel_count, g_user_count, g_channel_type = WOL_LOBBY_TYPE;
@@ -89,6 +89,10 @@ static uint32_t g_creating_channel;
 static uint32_t g_joining_channel;
 static uint32_t g_starting_game, g_connected, g_connection_pending;
 static int g_wdt_mode_pending;
+/* The WDT select screen is up (it asked for the cycle state). The match
+ * worker then looks for a "matching server" lobby, which the browser lobby
+ * does not have; see emit_channel_list. */
+static int g_wdt_screen;
 static char g_login[64], g_password[64], g_nick[32], g_current_channel[48];
 static struct { char nick[10], password[10]; } g_saved_nicks[11];
 static char g_attribute_name[64], g_attribute_value[256];
@@ -319,15 +323,30 @@ static void emit_channel_list(void) {
          * exists yet it has nothing to report, but the native directory still
          * needs the configured lobby so the game can find and join it. */
         if (g_channel_count == 0) {
-            memset(&g_lobby, 0, sizeof g_lobby);
-            snprintf(g_lobby.name, sizeof g_lobby.name, "Lob_%u_0", (unsigned)WOL_LOBBY_TYPE);
-            copy_text(g_lobby.topic, sizeof g_lobby.topic, "RA2Web");
-            g_lobby.max_users = 100;
-            g_lobby.official = 1;
-            g_lobby.current_users = g_lobby_users;
-            uint32_t values[] = { S_OK, (uint32_t)(uintptr_t)&g_lobby };
-            event_call(5, 2, values); /* IChatEvent::OnChannelList */
-            return;
+            memset(&g_channels[0], 0, sizeof g_channels[0]);
+            snprintf(g_channels[0].name, sizeof g_channels[0].name, "Lob_%u_0", (unsigned)WOL_LOBBY_TYPE);
+            copy_text(g_channels[0].topic, sizeof g_channels[0].topic, "RA2Web");
+            g_channels[0].max_users = 100;
+            g_channels[0].official = 1;
+            g_channels[0].current_users = g_lobby_users;
+            g_channel_count = 1;
+        }
+        /* The WDT select screen's match worker looks for a WOL "matching
+         * server" lobby (Lob_35_/Lob_38_) in this list. The browser lobby has
+         * no such channel, so show a synthetic one while the WDT screen is up;
+         * without it the client reports "Matching Server Not Found" and never
+         * starts the match. */
+        if (g_wdt_screen) {
+            for (int i = 0; i < 2 && g_channel_count < sizeof g_channels / sizeof g_channels[0]; i++) {
+                wol_channel *m = &g_channels[g_channel_count++];
+                memset(m, 0, sizeof *m);
+                snprintf(m->name, sizeof m->name, "Lob_%d_0", i ? 38 : 35);
+                copy_text(m->topic, sizeof m->topic, "RA2Web WDT matching");
+                m->max_users = 100;
+                m->min_users = 1;
+                m->current_users = 1;
+                m->official = 1;
+            }
         }
     }
     for (uint32_t i = 0; i < g_channel_count; i++)
@@ -482,6 +501,17 @@ static void parse_roster(const char *line) {
         user->ipaddr = virtual_ip(name);
         user->flags = flags | (strcmp(name, g_nick) == 0 ? 0x8000u : 0u);
     }
+    /* The WDT match worker pings the users of the matching lobby to find the
+     * matching agent. The browser lobby only lists the player, so show the
+     * server's match bot as that agent. */
+    if ((!strncmp(g_current_channel, "#Lob_35_", 8) ||
+         !strncmp(g_current_channel, "#Lob_38_", 8)) &&
+        g_user_count < sizeof g_users / sizeof g_users[0]) {
+        wol_user *bot = &g_users[g_user_count++];
+        memset(bot, 0, sizeof *bot);
+        copy_text(bot->name, sizeof bot->name, "matchbot");
+        bot->ipaddr = virtual_ip("matchbot");
+    }
     emit_user_list();
 }
 
@@ -563,6 +593,7 @@ static int channel_error(const char *line) {
 static void disconnected(void) {
     if (!g_connected) return;
     g_connected = g_connection_pending = g_creating_channel = g_joining_channel = g_starting_game = 0;
+    g_wdt_screen = 0;
     memset(&g_session, 0, sizeof g_session);
     g_current_channel[0] = '\0';
     g_user_count = g_channel_count = g_lobby_users = g_channel_list_lobby = 0;
@@ -1078,6 +1109,7 @@ static void m_wdt_request_state(void) {
             A32(0), A32(1), A32(2), A32(3), g_channel.sink, g_chat.sink);
     /* The WDT screen is up: the next LIST 33 from the match screen is the WDT
      * match start, not the ordinary lobby game-list refresh. */
+    g_wdt_screen = 1;
     browser_send("wdtarmed");
     int previous = (A32(3) & 4u) != 0;
     int fetched = wdt_fetch_from_page(previous, g_wdt_packet, (int)sizeof g_wdt_packet);
@@ -1343,6 +1375,7 @@ static void m_chat_request_logout(void) {
     g_connected = g_connection_pending = g_starting_game = 0;
     g_creating_channel = g_joining_channel = 0;
     g_wdt_mode_pending = 0;
+    g_wdt_screen = 0;
     browser_stop(); g_pending_logout = 1; RET(S_OK, 1);
 }
 static void m_chat_request_private_game_options(void) {
