@@ -803,6 +803,12 @@ WDT_SITES = {
         # wider resolutions the loader reads Art_<width>/Art_800, whose assets
         # are not shipped, and the map draws blank. Force the 640 key.
         'art': (0x007295DC, '8b15e0238500'),
+        # The WOL game list builds a gt%d.bmp thumbnail for each room. A room
+        # with no game type yields a negative index, and the loader returns an
+        # invalid bitmap that BSurface copies from (memory access out of bounds
+        # on the second login after a WDT match). Skip the surface for gt<0.
+        'thumbnail': (0x0075F1CB, 'e870cef2ff'),
+        'thumbnail_call': 'BSurface__constructor_0068C040',
     },
     'gamemd': {
         'hover': (0x007AF829, '81eb02020000'),
@@ -822,6 +828,8 @@ WDT_SITES = {
         'mode_width': 0xA8EB84,
         'mode_height': 0xA8EB88,
         'art': (0x007682AC, '8b15a4008a00'),
+        'thumbnail': (0x007A552B, 'e81042f1ff'),
+        'thumbnail_call': 'BSurface__constructor_006B9740',
     },
 }
 
@@ -915,6 +923,12 @@ def wdt_patches(code, cs, target):
     if art and at(*art):
         out[art[0]] = ('@replace:edx = 0x280u; '
                        '/* remaster: WDT uses the shipped 640 art set, run_lift.py wdt_patches */')
+    thumbnail = sites.get('thumbnail')
+    if thumbnail and at(*thumbnail):
+        out[thumbnail[0]] = (
+            '@replace:if ((int32_t)esi >= 0) { RECOMP_CALL(%s); } '
+            '/* remaster: no gt<0 thumbnail surface, run_lift.py wdt_patches */'
+            % sites['thumbnail_call'])
     return out
 
 

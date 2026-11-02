@@ -241,7 +241,7 @@ class WDTPatchTests(unittest.TestCase):
     def image(target, corrupt=None):
         sites = WDT_SITES[target]
         code = bytearray(0x00800000)
-        for name in ('hover', 'resolution', 'prompt', 'ini_width', 'ini_height', 'pick', 'pick_update', 'game_start', 'logout', 'art'):
+        for name in ('hover', 'resolution', 'prompt', 'ini_width', 'ini_height', 'pick', 'pick_update', 'game_start', 'logout', 'art', 'thumbnail'):
             if name not in sites:
                 continue
             va, shape = sites[name]
@@ -316,6 +316,16 @@ class WDTPatchTests(unittest.TestCase):
                 sites = WDT_SITES[target]
                 patches = wdt_patches(self.image(target), 0, target)
                 self.assertNotIn(sites['resolution'][0], patches)
+
+    def test_a_negative_gt_index_skips_the_thumbnail_surface(self):
+        """A game-list row with no type used to build gt-1.bmp and crash."""
+        for target in ('game', 'gamemd'):
+            with self.subTest(target=target):
+                sites = WDT_SITES[target]
+                patches = wdt_patches(self.image(target), 0, target)
+                body = patches[sites['thumbnail'][0]]
+                self.assertIn('if ((int32_t)esi >= 0)', body)
+                self.assertIn(sites['thumbnail_call'], body)
 
     def test_a_different_build_gets_no_wdt_patches(self):
         for target in ('game', 'gamemd'):
