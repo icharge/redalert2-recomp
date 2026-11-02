@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { GameRecord } from "./manifest";
 import {
   compactIniLast,
+  compactIniSections,
   defaultKeyboardIni,
   defaultMainIni,
   emptyIni,
@@ -10,14 +11,17 @@ import {
   ensureDefaultMainSettings,
   formatHandle,
   getIniValue,
+  getIniValueLast,
   hotkeyFromEvent,
   hotkeyLabel,
   loadGameSettings,
+  MATCH_SPEED_SECTIONS,
   parseHandle,
   parseHotkeys,
   parseIni,
   serializeIni,
   setIniValue,
+  setIniValueLast,
   settingsFileNames,
   withDefaultHotkeys,
   writeGameSettings,
@@ -97,6 +101,30 @@ describe("INI editing", () => {
     const changed = setIniValue(ini, "Options", "GameSpeed", "5");
     const saved = text(serializeIni(changed));
     expect(saved.startsWith("[Options]\nGameSpeed=5\n[Options]\nGameSpeed=9\n")).toBe(true);
+  });
+
+  it("reads and writes the last value for the game's match-mode sections", () => {
+    const ini = parseIni(
+      bytes("[Skirmish]\nGameSpeed=1\n[LAN]\nGameSpeed=2\n[Skirmish]\nGameSpeed=6\n"),
+    );
+    expect(getIniValue(ini, "Skirmish", "GameSpeed")).toBe("1");
+    expect(getIniValueLast(ini, "skirmish", "gamespeed")).toBe("6");
+    expect(getIniValueLast(ini, "LAN", "GameSpeed")).toBe("2");
+    expect(getIniValueLast(ini, "WonlinePref", "GameSpeed")).toBeNull();
+
+    const changed = setIniValueLast(ini, "Skirmish", "GameSpeed", "5");
+    expect(getIniValue(changed, "Skirmish", "GameSpeed")).toBe("1");
+    expect(getIniValueLast(changed, "Skirmish", "GameSpeed")).toBe("5");
+    expect(text(serializeIni(changed))).toBe(
+      "[Skirmish]\nGameSpeed=1\n[LAN]\nGameSpeed=2\n[Skirmish]\nGameSpeed=5\n",
+    );
+
+    const added = setIniValueLast(ini, "LAN", "GameSpeed", "5");
+    expect(getIniValueLast(added, "LAN", "GameSpeed")).toBe("5");
+    expect(getIniValueLast(added, "Skirmish", "GameSpeed")).toBe("6");
+
+    const compacted = compactIniSections(ini, ["Skirmish"]);
+    expect(text(serializeIni(compacted))).toBe("[LAN]\nGameSpeed=2\n[Skirmish]\nGameSpeed=6");
   });
 
   it("adds a missing key inside the section and a missing section at the end", () => {
@@ -265,6 +293,9 @@ describe("loadGameSettings", () => {
     expect(getIniValue(ra2, "Options", "CampDifficulty")).toBeNull();
     expect(getIniValue(ra2, "Audio", "IsScoreShuffle")).toBe("yes");
     expect(getIniValue(yuri, "Audio", "IsScoreShuffle")).toBe("yes");
+    for (const edition of [ra2, yuri])
+      for (const section of MATCH_SPEED_SECTIONS)
+        expect(getIniValueLast(edition, section, "GameSpeed")).toBe("1");
   });
 
   it("does not treat an imported settings file as a missing one", async () => {

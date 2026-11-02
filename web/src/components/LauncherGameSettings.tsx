@@ -13,18 +13,22 @@ import {
 } from "@radix-ui/themes";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import {
+  compactIniSections,
   defaultKeyboardIni,
   defaultMainIni,
   emptyIni,
   formatHandle,
   getIniValue,
+  getIniValueLast,
   hotkeyFromEvent,
   hotkeyLabel,
   loadGameSettings,
+  MATCH_SPEED_SECTIONS,
   parseHandle,
   parseHotkeys,
   serializeIni,
   setIniValue,
+  setIniValueLast,
   withDefaultHotkeys,
   writeGameSettings,
   type GameSettingsDeps,
@@ -609,6 +613,31 @@ export function LauncherGameSettings({
     await writeMain(setIniValue(ini, section, key, value));
   }
 
+  /**
+   * The game's skirmish screen shows the slider position, which is the inverse of the speed stored
+   * in its INI: a stored 1 is shown as 5. Match is also where the screen writes that value back, so
+   * the launcher uses the same view as the screen instead of the [Options] value.
+   */
+  const showMatchSpeed = (stored: number): number => Math.max(0, Math.min(6, 6 - stored));
+
+  const matchSpeed = (): number => {
+    for (const section of MATCH_SPEED_SECTIONS) {
+      const raw = loaded?.main.ini ? getIniValueLast(loaded.main.ini, section, "GameSpeed") : null;
+      const stored = raw === null ? Number.NaN : Number(raw);
+      if (Number.isFinite(stored)) return showMatchSpeed(stored);
+    }
+    return 5;
+  };
+
+  async function saveMatchSpeed(value: number) {
+    const current = loadedRef.current;
+    if (!current) return;
+    let ini = compactIniSections(current.main.ini ?? emptyIni(), MATCH_SPEED_SECTIONS);
+    for (const section of MATCH_SPEED_SECTIONS)
+      ini = setIniValueLast(ini, section, "GameSpeed", String(6 - value));
+    await writeMain(ini);
+  }
+
   async function saveHost(section: string, key: string, value: string, errorText: string) {
     const current = loadedRef.current;
     if (!current) return;
@@ -651,6 +680,11 @@ export function LauncherGameSettings({
     for (const section of sections)
       for (const [key, value] of Object.entries(defaults[section]))
         ini = setIniValue(ini, section, key, value);
+    if (sections.includes("Options")) {
+      const stored = Math.max(0, Math.min(6, 6 - Number(defaults.Options.GameSpeed ?? "5")));
+      for (const section of MATCH_SPEED_SECTIONS)
+        ini = setIniValueLast(ini, section, "GameSpeed", String(stored));
+    }
     await writeMain(ini, "Could not reset the game settings");
   }
 
@@ -938,13 +972,14 @@ export function LauncherGameSettings({
                       <SliderRow
                         id={settingId("Options", "GameSpeed")}
                         label="Game speed"
-                        value={mainNumber("Options", "GameSpeed", 5)}
+                        hint="Match speed as the Skirmish screen numbers it; the game's INI stores 6 minus this value."
+                        value={matchSpeed()}
                         min={0}
                         max={6}
                         format={(value) =>
                           value === 0 ? "0 (slowest)" : value === 6 ? "6 (fastest)" : String(value)
                         }
-                        onChange={(value) => void saveMain("Options", "GameSpeed", String(value))}
+                        onChange={(value) => void saveMatchSpeed(value)}
                       />
                       <ChoiceRow
                         id={settingId("Options", "Difficulty")}
