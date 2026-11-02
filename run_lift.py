@@ -926,7 +926,7 @@ def wdt_patches(code, cs, target):
     thumbnail = sites.get('thumbnail')
     if thumbnail and at(*thumbnail):
         out[thumbnail[0]] = (
-            '@replace:if ((int32_t)esi >= 0) { RECOMP_CALL(%s); } '
+            '@replace:if ((int32_t)esi >= 0 && (int32_t)edx >= 0) { RECOMP_CALL(%s); } '
             '/* remaster: no gt<0 thumbnail surface, run_lift.py wdt_patches */'
             % sites['thumbnail_call'])
     return out

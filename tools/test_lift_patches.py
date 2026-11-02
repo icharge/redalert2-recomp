@@ -324,7 +324,7 @@ class WDTPatchTests(unittest.TestCase):
                 sites = WDT_SITES[target]
                 patches = wdt_patches(self.image(target), 0, target)
                 body = patches[sites['thumbnail'][0]]
-                self.assertIn('if ((int32_t)esi >= 0)', body)
+                self.assertIn('if ((int32_t)esi >= 0 && (int32_t)edx >= 0)', body)
                 self.assertIn(sites['thumbnail_call'], body)
 
     def test_a_different_build_gets_no_wdt_patches(self):
