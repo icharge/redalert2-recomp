@@ -1114,6 +1114,29 @@ int ra2_wdt_take_mode_switch(void) {
     return pending;
 }
 
+/* WOLAPI's gametype table: the game turns each entry's bitmap name into a
+ * gtNN.bmp surface. The browser has no gametype table, and returning
+ * E_NOTIMPL left the caller's out parameters uninitialized; the game then fed
+ * garbage to BSurface (memory access out of bounds on a later WOL login).
+ * Clear every plausible out pointer and report no gametypes. */
+static int wol_out_pointer(uint32_t p) { return p >= 0x10000u && p < 0x40000000u; }
+static void m_chat_get_gametype_list(void) {
+    uint32_t a = A32(1), b = A32(2);
+    if (wol_out_pointer(a)) MEM32(a) = 0;
+    if (wol_out_pointer(b)) MEM32(b) = 0;
+    fprintf(stderr, "[wol] GetGametypeList %08X %08X\n", a, b);
+    RET(S_OK, 2);
+}
+static void m_chat_get_gametype_info(void) {
+    uint32_t a[6];
+    for (int i = 0; i < 6; i++) {
+        a[i] = A32((uint32_t)i + 1);
+        if (wol_out_pointer(a[i])) MEM32(a[i]) = 0;
+    }
+    fprintf(stderr, "[wol] GetGametypeInfo %08X %08X %08X %08X %08X %08X\n",
+            a[0], a[1], a[2], a[3], a[4], a[5]);
+    RET(E_FAIL, 7);
+}
 static void m_stub_5(void) { RET(E_NOTIMPL, 5); }static void m_stub_6(void) { RET(E_NOTIMPL, 6); }
 static void m_stub_7(void) { RET(E_NOTIMPL, 7); }
 static void m_stub_8(void) { RET(E_NOTIMPL, 8); }
@@ -1477,10 +1500,10 @@ static void m_chat_get_attribute_value(void) {
     { "WolChat::RequestPublicAction", m_chat_request_public_action }, { "WolChat::RequestPrivateAction", m_chat_request_private_action }, \
     { "WolChat::RequestGameStart", m_chat_request_game_start }, { "WolChat::RequestChannelTopic", m_chat_request_channel_topic }, \
     { "WolChat::GetVersion", m_chat_get_version }, { "WolChat::RequestUserKick", m_stub_2 }, { "WolChat::RequestUserIP", m_stub_2 }, \
-    { "WolChat::GetGametypeInfo", m_stub_7 }, { "WolChat::RequestFind", m_stub_2 }, { "WolChat::RequestPage", m_stub_3 }, \
+    { "WolChat::GetGametypeInfo", m_chat_get_gametype_info }, { "WolChat::RequestFind", m_stub_2 }, { "WolChat::RequestPage", m_stub_3 }, \
     { "WolChat::SetFindPage", m_stub_3 }, { "WolChat::SetSquelch", m_stub_3 }, { "WolChat::GetSquelch", m_stub_2 }, \
     { "WolChat::SetChannelFilter", m_stub_2 }, { "WolChat::RequestGameEnd", m_chat_game_end }, { "WolChat::SetLangFilter", m_stub_2 }, \
-    { "WolChat::RequestChannelBan", m_stub_3 }, { "WolChat::GetGametypeList", m_stub_2 }, { "WolChat::GetHelpURL", m_chat_get_help_url }, \
+    { "WolChat::RequestChannelBan", m_stub_3 }, { "WolChat::GetGametypeList", m_chat_get_gametype_list }, { "WolChat::GetHelpURL", m_chat_get_help_url }, \
     { "WolChat::SetProductSKU", m_chat_profile_value }, { "WolChat::GetNick", m_chat_get_nick }, { "WolChat::SetNick", m_chat_set_nick }, \
     { "WolChat::GetLobbyCount", m_chat_get_lobby_count }, { "WolChat::RequestRawMessage", m_chat_raw_message }, \
     { "WolChat::GetAttributeValue", m_chat_get_attribute_value }, { "WolChat::SetAttributeValue", m_chat_set_value }, \
