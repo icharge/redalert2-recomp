@@ -297,6 +297,38 @@ export class Manifest {
   }
 
   /**
+   * Sets several files' copied flags in one transaction. Used when the actual OPFS copy is checked
+   * against the record: a file that is whole becomes done, a file that is gone or changed becomes
+   * not done. `complete` follows from the resulting flags.
+   */
+  async setFileStatuses(
+    id: GameId,
+    statuses: { name: string; done: boolean }[],
+    slot = 1,
+  ): Promise<void> {
+    if (statuses.length === 0) return;
+    const tx = this.db.transaction(GAMES, "readwrite");
+    const store = tx.objectStore(GAMES);
+    const record = (await request(store.get([slot, id]))) as GameRecord | undefined;
+    if (!record) {
+      tx.abort();
+      throw new Error(`${id} is not part of this installation`);
+    }
+    let changed = false;
+    for (const status of statuses) {
+      const entry = record.files[status.name];
+      if (!entry || entry.done === status.done) continue;
+      entry.done = status.done;
+      changed = true;
+    }
+    if (changed) {
+      record.complete = Object.values(record.files).every((file) => file.done);
+      store.put(record);
+    }
+    await finished(tx);
+  }
+
+  /**
    * Adds files to editions of an installation, or replaces what they list under that name: the player
    * put them there from the Library. A file two editions share is listed by both, with the same `home`.
    */

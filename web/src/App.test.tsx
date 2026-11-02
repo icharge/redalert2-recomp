@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { IDBFactory } from "fake-indexeddb";
 import { Manifest } from "./storage/manifest";
@@ -108,6 +108,35 @@ describe("App", () => {
     await userEvent.setup().click(screen.getByRole("link", { name: "Back to launcher" }));
     expect(await screen.findByRole("heading", { name: "Yuri's Revenge" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Resume import" })).toBeInTheDocument();
+    m.close();
+  });
+  it("clears a stale Resume prompt when OPFS has every recorded file", async () => {
+    vi.stubGlobal("crossOriginIsolated", true);
+    vi.stubGlobal("indexedDB", new IDBFactory());
+    vi.stubGlobal("navigator", {
+      storage: {
+        estimate: async () => ({ quota: 1e12, usage: 0 }),
+        getDirectory: async () => fakeOpfs({ "game/slot-1/ra2.mix": 4 }),
+      },
+    });
+    vi.stubGlobal("fetch", () => Promise.resolve(new Response(JSON.stringify({ games: {} }))));
+    const m = await Manifest.open();
+    const installation = await m.createInstallation("Copied but unmarked");
+    await m.beginImport(
+      "ra2md",
+      "Yuri's Revenge",
+      1,
+      [{ name: "ra2.mix", size: 4, lastModified: 1, needs: ["ra2md"] }],
+      installation.slot,
+    );
+    window.history.replaceState({}, "", "/");
+    render(<App />);
+    expect(await screen.findByRole("heading", { name: "Yuri's Revenge" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Resume import" })).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Resume import" })).not.toBeInTheDocument(),
+    );
+    expect((await m.getGame("ra2md", installation.slot))?.complete).toBe(true);
     m.close();
   });
   it("offers resume when the record says complete but the browser's copy lost a file", async () => {
