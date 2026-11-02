@@ -67,7 +67,21 @@ export function gameModuleUrl(
   return build ? `${url}?v=${encodeURIComponent(build)}` : url;
 }
 
-/** Resolve one of Emscripten's module files to its production (hashed) name. */
+/** Resolve build.json's `script` to a page URL.
+ *
+ * The Vite production build records a bare hashed name (`ra2md-<build>.js`),
+ * which belongs in `game/`; older/dev build.json files record `/game/ra2md.js`.
+ * The bare name must be joined to the module base, not to the site root. */
+export function gameScriptUrl(game: GameId, script?: string, build?: string): string {
+  const base = gameScript(game);
+  const name = script?.replace(/^\/+/, "");
+  if (name) {
+    return name.includes("/")
+      ? appPath(name)
+      : `${base.slice(0, base.lastIndexOf("/") + 1)}${name}`;
+  }
+  return build ? `${base}?v=${encodeURIComponent(build)}` : base;
+}
 export function gameModulePath(
   game: GameId,
   moduleBase: string,
@@ -557,12 +571,7 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
   // A production build hashes the Emscripten files (vite.game-hashes.ts) and
   // records their names in build.json; a dev/unhashed build falls back to the
   // fixed names with the build id as a cache-busting query.
-  const scriptName = runtimeGame.script?.replace(/^\/+/, "");
-  const scriptUrl = scriptName
-    ? appPath(scriptName)
-    : runtimeGame.build
-      ? `${baseScriptUrl}?v=${encodeURIComponent(runtimeGame.build)}`
-      : baseScriptUrl;
+  const scriptUrl = gameScriptUrl(game, runtimeGame.script, runtimeGame.build);
 
   return new Promise<GameHandle>((resolve, reject) => {
     const fail = (error: unknown) => {
