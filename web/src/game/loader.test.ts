@@ -327,6 +327,65 @@ describe("startGame", () => {
       }
     },
   );
+  it("queues a WOL command sent during the HTTP login instead of failing the login", async () => {
+    const sent: string[] = [];
+    class Socket extends EventTarget {
+      readyState = 1;
+      send(data: string): void {
+        sent.push(data.trim());
+        const reply = data.startsWith("cvers ")
+          ? ":wol 700 * :ok"
+          : data.startsWith("setlocale ")
+            ? ":wol 310 * :ok"
+            : data.startsWith("session ")
+              ? ":wol 376 test :done"
+              : null;
+        if (reply) queueMicrotask(() => this.receive(reply));
+      }
+      receive(data: string): void {
+        this.dispatchEvent(new MessageEvent("message", { data }));
+      }
+      close(): void {
+        this.readyState = 3;
+        this.dispatchEvent(new Event("close"));
+      }
+    }
+    vi.stubGlobal("WebSocket", Socket);
+    let answerRegister!: (response: Response) => void;
+    vi.stubGlobal(
+      "fetch",
+      await runtimeFetch((input) => {
+        if (String(input).endsWith("/register"))
+          return new Promise<Response>((resolve) => {
+            answerRegister = resolve;
+          });
+        return Promise.resolve(new Response(JSON.stringify({ sessionToken: "token" })));
+      }),
+    );
+    const startup = startGame({ files: { kind: "already-there" }, store: new GameStore() });
+    await vi.waitFor(() => expect(window.Module?.onRuntimeInitialized).toBeTypeOf("function"));
+    const module = window.Module!;
+    module.FS = testFs();
+    module.cwrap = (() => () => 0) as never;
+    module.callMain = vi.fn();
+    module.HEAPU8 = new Uint8Array(2048);
+    module.onRuntimeInitialized!();
+    await startup;
+    const receive = vi.fn();
+    module.ra2WolReceiveLine = receive;
+    try {
+      module.ra2WolStart!("test", "password");
+      module.ra2WolSend!("wdtarmed");
+      expect(sent).toEqual([]);
+      answerRegister(new Response(JSON.stringify({ sessionToken: "token" })));
+      await vi.waitFor(() => expect(receive).toHaveBeenCalledWith("@wolapi connected"));
+      expect(sent.indexOf("wdtarmed")).toBeGreaterThan(sent.indexOf("session token"));
+      expect(receive).not.toHaveBeenCalledWith(expect.stringContaining("@wolapi error"));
+    } finally {
+      module.ra2WolStop!();
+    }
+  });
+
   it("uses the operator's build setting for WOL authentication", async () => {
     vi.stubEnv("VITE_WOL_HTTP_URL", "https://wol.test/service/");
     vi.stubEnv("VITE_WOL_SOCKET_URL", "wss://wol.test/service/wol");
