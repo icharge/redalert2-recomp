@@ -144,6 +144,8 @@ export class WolClient {
   private connecting = false;
   private cancelOpen: ((error: Error) => void) | null = null;
   private readonly buffered: string[] = [];
+  /** Lines the game sent before the HTTP login and WebSocket handshake finished. */
+  private readonly outbox: string[] = [];
   private readonly pending: Pending[] = [];
   private readonly listeners = new Set<(line: string) => void>();
   private readonly disconnectListeners = new Set<() => void>();
@@ -201,6 +203,10 @@ export class WolClient {
       await this.waitFor((line) => /\s376\s/.test(line), "authenticated MOTD");
 
       if (options.joinLobby !== false) await this.joinLobby();
+      // The game can issue a command while the HTTP login is still in flight
+      // (the World Domination screen asks for its state as soon as it opens).
+      // Send those only after SESSION was accepted, not before.
+      this.flushOutbox();
     } catch (error) {
       if (generation === this.generation) this.close();
       throw error;
@@ -222,7 +228,22 @@ export class WolClient {
 
   /** Send a WOL command issued by the game's COM interface. */
   sendRaw(line: string): void {
+    // A native screen can send before the page has finished logging in. Queue
+    // it; throwing here would be relayed as an `@wolapi error` and fail the
+    // pending login (the WDT screen does exactly this on a slow connection).
+    if (!this.connected && (this.connecting || this.socket)) {
+      this.outbox.push(line);
+      return;
+    }
     this.send(line);
+  }
+
+  private flushOutbox(): void {
+    const lines = this.outbox.splice(0);
+    for (const line of lines) {
+      if (!this.connected) break;
+      this.send(line);
+    }
   }
 
   /** Save a native Custom Match report; it never enters ranked scoring. */
@@ -326,6 +347,7 @@ export class WolClient {
     socket?.close();
     this.failPending(error);
     this.buffered.length = 0;
+    this.outbox.length = 0;
   }
 
   private send(line: string): void {
