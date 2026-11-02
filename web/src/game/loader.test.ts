@@ -3,6 +3,7 @@ import {
   argsFromQuery,
   createWolDataKey,
   gameScript,
+  gameScriptUrl,
   gameModuleFile,
   gameModulePath,
   gameModuleUrl,
@@ -138,6 +139,8 @@ describe("isBuilt", () => {
     expect(await isBuilt(fetcher as unknown as typeof fetch, "ra2md")).toBe(true);
     expect(fetcher).toHaveBeenLastCalledWith("/emu/game/build.json", { cache: "no-store" });
     expect(gameScript("ra2")).toBe("/emu/game/ra2.js");
+    expect(gameScriptUrl("ra2md", "ra2md-abc.js", "abc")).toBe("/emu/game/ra2md-abc.js");
+    expect(gameScriptUrl("ra2md", "/game/ra2md.js", "abc")).toBe("/emu/game/ra2md.js");
     expect(gameModuleFile("ra2md", "/emu/game/", "ra2.wasm")).toBe("/emu/game/ra2md.wasm");
     expect(gameModuleFile("ra2md", "/emu/game/", "ra2.data")).toBe("/emu/game/ra2md.data");
     expect(gameModuleFile("ra2", "/emu/game/", "ra2.wasm")).toBe("/emu/game/ra2.wasm");
@@ -193,6 +196,7 @@ describe("isBuilt", () => {
 
   it("uses the edition-specific Yuri Wasm filename", () => {
     expect(gameScript("ra2md")).toBe("/game/ra2md.js");
+    expect(gameScriptUrl("ra2md", undefined, "abc")).toBe("/game/ra2md.js?v=abc");
     expect(gameModuleFile("ra2md", "/game/", "ra2.wasm")).toBe("/game/ra2md.wasm");
   });
 });
