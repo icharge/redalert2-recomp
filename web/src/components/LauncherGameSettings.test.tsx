@@ -20,12 +20,17 @@ const game: GameRecord = {
 
 const decoded = (data: Uint8Array) => new TextDecoder("latin1").decode(data);
 
-function setup({ keyboard = true, main = true }: { keyboard?: boolean; main?: boolean } = {}) {
+function setup({
+  keyboard = true,
+  main = true,
+  mainIni,
+}: { keyboard?: boolean; main?: boolean; mainIni?: string } = {}) {
   const saved = new Map<string, string>();
   if (main)
     saved.set(
       "ra2md.ini",
-      "[Options]\nGameSpeed=1\nDifficulty=1\nAutoScroll=yes\nScrollRate=3\n[Audio]\nSoundVolume=0.700000\n[Video]\nScreenWidth=800\nScreenHeight=600\n[MultiPlayer]\nHandle=50,6c,61,79,65,72,\n",
+      mainIni ??
+        "[Options]\nGameSpeed=1\nDifficulty=1\nAutoScroll=yes\nScrollRate=3\n[Audio]\nSoundVolume=0.700000\n[Video]\nScreenWidth=800\nScreenHeight=600\n[MultiPlayer]\nHandle=50,6c,61,79,65,72,\n[Skirmish]\nGameSpeed=1\n[LAN]\nGameSpeed=1\n[WonlinePref]\nGameSpeed=1\n",
     );
   if (keyboard) saved.set("keyboardmd.ini", "[Hotkey]\nTeamCreate_1=561\nTeamSelect_1=49\n");
   const written: { name: string; text: string }[] = [];
@@ -105,14 +110,52 @@ describe("LauncherGameSettings", () => {
     expect(written.at(-1)?.text).toContain("ScrollRate=0");
   });
 
-  it("writes a slider when it is committed", async () => {
+  it("writes the match speed to every mode, keeping the global options speed", async () => {
     const { written } = setup();
     await gameplay();
     const slider = screen.getByRole("slider", { name: "Game speed" });
     fireEvent.keyDown(slider, { key: "ArrowRight" });
     fireEvent.keyUp(slider, { key: "ArrowRight" });
     await waitFor(() => expect(written.length).toBeGreaterThan(0));
-    expect(written.at(-1)?.text).toContain("GameSpeed=2");
+    const text = written.at(-1)?.text ?? "";
+    expect(text).toContain("[Options]\nGameSpeed=1");
+    expect(text).toContain("[Skirmish]\nGameSpeed=0");
+    expect(text).toContain("[LAN]\nGameSpeed=0");
+    expect(text).toContain("[WonlinePref]\nGameSpeed=0");
+  });
+
+  it("shows the match speed when it differs from the global options speed", async () => {
+    setup({
+      mainIni:
+        "[Options]\nGameSpeed=2\nDifficulty=1\n[Skirmish]\nGameSpeed=1\n[LAN]\nGameSpeed=4\n[WonlinePref]\nGameSpeed=3\n",
+    });
+    await gameplay();
+    expect(screen.getByRole("slider", { name: "Game speed" })).toHaveAttribute(
+      "aria-valuenow",
+      "5",
+    );
+  });
+
+  it("defaults the match speed to 5 when the file has no match section", async () => {
+    setup({ mainIni: "[Options]\nGameSpeed=2\nDifficulty=1\n" });
+    await gameplay();
+    expect(screen.getByRole("slider", { name: "Game speed" })).toHaveAttribute(
+      "aria-valuenow",
+      "5",
+    );
+  });
+
+  it("resets the match speed to the default 5", async () => {
+    const { written } = setup();
+    await gameplay();
+    const slider = screen.getByRole("slider", { name: "Game speed" });
+    fireEvent.keyDown(slider, { key: "ArrowRight" });
+    fireEvent.keyUp(slider, { key: "ArrowRight" });
+    await waitFor(() => expect(written.length).toBeGreaterThan(0));
+    await userEvent.click(screen.getByRole("button", { name: "Reset gameplay defaults" }));
+    await waitFor(() => expect(written.at(-1)?.text).toContain("[Skirmish]\nGameSpeed=1"));
+    expect(written.at(-1)?.text).toContain("[LAN]\nGameSpeed=1");
+    expect(written.at(-1)?.text).toContain("[WonlinePref]\nGameSpeed=1");
   });
 
   it("writes the player name as the game's Handle bytes", async () => {

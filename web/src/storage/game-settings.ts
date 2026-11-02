@@ -14,6 +14,9 @@ import { settingsFileNames, type SettingsFileNames } from "./settings-files";
 
 export { settingsFileNames, type SettingsFileNames };
 
+/** The sections the game saves a match's speed in. Its session reader takes the last occurrence. */
+export const MATCH_SPEED_SECTIONS = ["Skirmish", "LAN", "WonlinePref"] as const;
+
 export interface Ini {
   /** The line ending the file uses. */
   eol: "\n" | "\r\n";
@@ -66,7 +69,10 @@ const keyName = (line: string): string | null => {
   return match ? (match[1] ?? "") : null;
 };
 
-/** The first value of a section/key, which is the one the game's INI reader uses. */
+/**
+ * The first value of a section/key. The game's main settings reader takes the first; the match-mode
+ * sections ([Skirmish], [LAN], [WonlinePref]) take the last and use getIniValueLast.
+ */
 export function getIniValue(ini: Ini, section: string, key: string): string | null {
   const wantedSection = section.toLowerCase();
   const wantedKey = key.toLowerCase();
@@ -103,9 +109,33 @@ function sectionRange(ini: Ini, section: string): { header: number; end: number 
 }
 
 /**
+ * The last value of a section/key. The game's main settings reader takes the first value, but its
+ * match-mode reader (used for [Skirmish], [LAN] and [WonlinePref]) takes the last, and its session
+ * writer appends new copies of those sections.
+ */
+export function getIniValueLast(ini: Ini, section: string, key: string): string | null {
+  const wantedSection = section.toLowerCase();
+  const wantedKey = key.toLowerCase();
+  let current = "";
+  let found: string | null = null;
+  for (const line of ini.lines) {
+    const header = sectionHeader(line);
+    if (header !== null) {
+      current = header.toLowerCase();
+      continue;
+    }
+    if (current !== wantedSection) continue;
+    if (keyName(line)?.toLowerCase() !== wantedKey) continue;
+    found = line.slice(line.indexOf("=") + 1).trim();
+  }
+  return found;
+}
+
+/**
  * The effective Red Alert 2 profile: the last value of each key, in first-seen order. Red Alert 2's
  * reader takes the last duplicate, so a file with the game's appended copies is normalized before the
- * launcher edits it. (Yuri's Revenge takes the first, so it needs no normalization.)
+ * launcher edits it. (Yuri's Revenge takes the first for [Options], so it needs no whole-file
+ * normalization; its match-mode sections take the last and use setIniValueLast.)
  */
 export function compactIniLast(ini: Ini): Ini {
   interface Section {
@@ -165,6 +195,93 @@ export function setIniValue(ini: Ini, section: string, key: string, value: strin
   let insertAt = range.end;
   while (insertAt > range.header + 1 && (lines[insertAt - 1] ?? "") === "") insertAt--;
   lines.splice(insertAt, 0, replacement);
+  return { ...ini, lines };
+}
+
+/** Replaces (or adds) the last value of a section/key, for the reader that takes the last value. */
+export function setIniValueLast(ini: Ini, section: string, key: string, value: string): Ini {
+  const lines = [...ini.lines];
+  const replacement = `${key}=${value}`;
+  const wantedSection = section.toLowerCase();
+  const wantedKey = key.toLowerCase();
+  let header = -1;
+  for (let index = 0; index < lines.length; index++) {
+    if (sectionHeader(lines[index] ?? "")?.toLowerCase() === wantedSection) header = index;
+  }
+  if (header < 0) {
+    while (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
+    lines.push(`[${section}]`, replacement);
+    return { ...ini, lines };
+  }
+
+  let end = lines.length;
+  for (let index = header + 1; index < lines.length; index++) {
+    if (sectionHeader(lines[index] ?? "") !== null) {
+      end = index;
+      break;
+    }
+  }
+  let at = -1;
+  for (let index = header + 1; index < end; index++) {
+    if (keyName(lines[index] ?? "")?.toLowerCase() === wantedKey) at = index;
+  }
+  if (at >= 0) {
+    lines[at] = replacement;
+    return { ...ini, lines };
+  }
+  let insertAt = end;
+  while (insertAt > header + 1 && (lines[insertAt - 1] ?? "") === "") insertAt--;
+  lines.splice(insertAt, 0, replacement);
+  return { ...ini, lines };
+}
+
+/**
+ * Merges the given sections, keeping the last value of each key and one copy of the section. The
+ * game's session writer appends a new [Skirmish]/[LAN]/[WonlinePref] section on each save, and its
+ * reader then has several copies to choose from; reducing them to one makes the launcher's value
+ * unambiguous. Other sections keep their lines and order.
+ */
+export function compactIniSections(ini: Ini, sections: readonly string[]): Ini {
+  interface Merged {
+    header: string;
+    keys: Map<string, string>;
+    order: string[];
+  }
+  const wanted = new Set(sections.map((section) => section.toLowerCase()));
+  const merged = new Map<string, Merged>();
+  const lines: string[] = [];
+  let current: Merged | null = null;
+  for (const line of ini.lines) {
+    const header = sectionHeader(line);
+    if (header !== null) {
+      const name = header.toLowerCase();
+      if (!wanted.has(name)) {
+        lines.push(line);
+        current = null;
+        continue;
+      }
+      let section = merged.get(name);
+      if (!section) {
+        section = { header: `[${header}]`, keys: new Map(), order: [] };
+        merged.set(name, section);
+      }
+      current = section;
+      continue;
+    }
+    if (current) {
+      const name = keyName(line);
+      if (!name) continue;
+      const key = name.toLowerCase();
+      if (!current.keys.has(key)) current.order.push(key);
+      current.keys.set(key, line);
+      continue;
+    }
+    lines.push(line);
+  }
+  for (const section of merged.values()) {
+    lines.push(section.header);
+    for (const key of section.order) lines.push(section.keys.get(key)!);
+  }
   return { ...ini, lines };
 }
 
@@ -468,6 +585,11 @@ export function defaultMainIni(game: GameId): Ini {
     for (const [key, value] of entries) lines.push(`${key}=${value}`);
     lines.push("");
   }
+  // The skirmish screen shows the position, so the stored value is the inverse of the chosen 5.
+  const matchSpeed = Number(defaults.Options.GameSpeed ?? "5");
+  const storedMatchSpeed = Math.max(0, Math.min(6, 6 - matchSpeed));
+  for (const section of MATCH_SPEED_SECTIONS)
+    lines.push(`[${section}]`, `GameSpeed=${storedMatchSpeed}`, "");
   while (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
   return { eol: "\n", lines };
 }
@@ -648,6 +770,11 @@ export async function loadGameSettings(
     main.data = serializeIni(main.ini);
   } else if (game.id === "ra2" && main.ini) {
     const ini = compactIniLast(main.ini);
+    main.ini = ini;
+    main.data = serializeIni(ini);
+  }
+  if (main.ini) {
+    const ini = compactIniSections(main.ini, MATCH_SPEED_SECTIONS);
     main.ini = ini;
     main.data = serializeIni(ini);
   }
