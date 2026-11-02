@@ -233,6 +233,21 @@ describe("startSaveSync", () => {
     expect(await sync.flush()).toBe(1);
     expect(target.files.get("save/ra2/RA2.INI")).toBe(repeated);
   });
+
+  it("compacts repeated copies even when the profile INI is small", async () => {
+    const first =
+      "[Video]\r\nScreenWidth=1920\r\nScreenHeight=1080\r\n[Options]\r\nGameSpeed=1\r\n";
+    const repeated =
+      "[Video]\r\nScreenWidth=1280\r\nScreenHeight=720\r\n[Options]\r\nGameSpeed=5\r\n";
+    const game = fakeFs({ "/game/RA2.INI": first + repeated.repeat(4) });
+    const target = memoryTarget();
+    const sync = startSaveSync(game.fs, target, "ra2", 1e9, 0);
+    stop = sync.stop;
+
+    game.put("/game/RA2.INI", first + repeated.repeat(5));
+    expect(await sync.flush()).toBe(1);
+    expect(target.files.get("save/ra2/RA2.INI")).toBe(repeated);
+  });
 });
 
 describe("restoreSaves", () => {
@@ -253,6 +268,26 @@ describe("restoreSaves", () => {
     expect(await restoreSaves(game.fs, store, "slot-1-ra2md", undefined, target)).toBe(1);
     expect(new TextDecoder().decode(game.fs.readFile("/game/RA2MD.INI"))).toBe(compact);
     expect(target.files.get("save/slot-1-ra2md/RA2MD.INI")).toBe(compact);
+  });
+
+  it("keeps the first main settings and the last match speed in a Yuri INI", async () => {
+    const text =
+      "[Options]\r\nGameSpeed=5\r\n[Skirmish]\r\nGameSpeed=6\r\n[Options]\r\nGameSpeed=2\r\n[Skirmish]\r\nGameSpeed=1\r\n";
+    const bytes = new TextEncoder().encode(text);
+    const game = fakeFs();
+    const target = memoryTarget();
+    const store: SaveStore = {
+      async list() {
+        return [{ path: "RA2MD.INI", size: bytes.length, read: async () => bytes }];
+      },
+    };
+
+    await restoreSaves(game.fs, store, "slot-1-ra2md", undefined, target);
+    const restored = new TextDecoder().decode(game.fs.readFile("/game/RA2MD.INI"));
+    expect(restored).toContain("[Options]\r\nGameSpeed=5");
+    expect(restored).toContain("[Skirmish]\r\nGameSpeed=1");
+    expect(restored).not.toContain("GameSpeed=2");
+    expect(restored).not.toContain("GameSpeed=6");
   });
 
   it("keeps the last copy of an oversized saved Red Alert 2 INI before restoring it", async () => {

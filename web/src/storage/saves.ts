@@ -61,85 +61,50 @@ export function replaceFile(fs: FsLike, path: string, data: Uint8Array): void {
 }
 
 const GAME = "/game";
-const PROFILE_INI_COMPACT_THRESHOLD = 1024 * 1024;
+/** Stop retaining a prefix larger than this, so a legitimate huge INI is left alone. */
+const PROFILE_INI_COMPACT_LIMIT = 1024 * 1024;
 
 /**
- * Which duplicate the game's INI reader uses. Yuri's Revenge takes the first section and key match; Red
- * Alert 2 takes the last (a duplicated RA2.INI with 640x480 then 800x600 started at 800x600). Each edition
- * reads its own file, so the name picks the rule. The raw byte slices preserve the game's ANSI values;
- * only ASCII section and key names are decoded for comparison.
+ * Which duplicate the game's main INI reader uses. Yuri's Revenge takes the first section and key
+ * match; Red Alert 2 takes the last (a duplicated RA2.INI with 640x480 then 800x600 started at
+ * 800x600). The match sections are always last-value (PROFILE_MATCH_SECTIONS). The raw byte slices
+ * preserve the game's ANSI values; only ASCII section and key names are decoded for comparison.
  */
 type IniOrder = "first" | "last";
 const profileIniOrder = (path: string): IniOrder => (/^ra2\.ini$/i.test(path) ? "last" : "first");
 
-/** Keep the first copy of each section and key (Yuri's Revenge). */
-function compactProfileIniFirst(data: Uint8Array): Uint8Array {
-  const decoder = new TextDecoder();
-  const chunks: Uint8Array[] = [];
-  const sections = new Set<string>();
-  let sectionDuplicate = false;
-  let keys = new Set<string>();
-  let size = 0;
-
-  const keep = (start: number, end: number) => {
-    const chunk = data.subarray(start, end);
-    chunks.push(chunk);
-    size += chunk.byteLength;
-  };
-
-  for (let start = 0; start < data.byteLength;) {
-    let end = start;
-    while (end < data.byteLength && data[end] !== 0x0a) end++;
-    if (end < data.byteLength) end++;
-
-    const contentEnd = end > start && data[end - 1] === 0x0a ? end - 1 : end;
-    const lineEnd =
-      contentEnd > start && data[contentEnd - 1] === 0x0d ? contentEnd - 1 : contentEnd;
-    const lineBytes = data.subarray(start, lineEnd);
-    const line = lineBytes.byteLength <= 4096 ? decoder.decode(lineBytes) : "";
-    const header = /^\[([^\]]+)\]$/.exec(line);
-
-    if (header) {
-      const section = header[1]?.toLowerCase() ?? "";
-      sectionDuplicate = sections.has(section);
-      if (!sectionDuplicate) {
-        sections.add(section);
-        keys = new Set();
-        keep(start, end);
-      }
-    } else if (!sectionDuplicate) {
-      const key = /^([^=\s]+)=/.exec(line)?.[1]?.toLowerCase();
-      if (!key || !keys.has(key)) {
-        if (key) keys.add(key);
-        keep(start, end);
-      }
-    }
-
-    // No useful compaction is possible once the retained prefix is already large.
-    if (size > PROFILE_INI_COMPACT_THRESHOLD) return data;
-    start = end;
-  }
-
-  if (size >= data.byteLength) return data;
-  const compacted = new Uint8Array(size);
-  let offset = 0;
-  for (const chunk of chunks) {
-    compacted.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return compacted;
-}
+/** The match sections whose reader takes the last duplicate (see game-settings.ts). */
+const PROFILE_MATCH_SECTIONS = new Set(["skirmish", "lan", "wonlinepref"]);
 
 interface ProfileSection {
   header: Uint8Array;
   keys: Map<string, Uint8Array>;
   order: string[];
+  keepLast: boolean;
 }
 
-/** Keep the last value of each key in each section (Red Alert 2), in the order the keys first appeared. */
+/** Keep the first copy of each section and key, except the match sections (Yuri's Revenge). */
+function compactProfileIniFirst(data: Uint8Array): Uint8Array {
+  return compactProfileIni(data, PROFILE_MATCH_SECTIONS);
+}
+
+/** Keep the last value of each key in each section (Red Alert 2). */
 function compactProfileIniLast(data: Uint8Array): Uint8Array {
+  return compactProfileIni(data, "all");
+}
+
+/**
+ * Keeps one copy of each section/key. Sections in `lastSections` keep their last value; the others
+ * keep their first. The raw byte slices preserve the game's ANSI values; only ASCII section and key
+ * names are decoded for comparison.
+ */
+function compactProfileIni(
+  data: Uint8Array,
+  lastSections: ReadonlySet<string> | "all",
+): Uint8Array {
   const decoder = new TextDecoder();
   const sections = new Map<string, ProfileSection>();
+  const preamble: Uint8Array[] = [];
   let section: ProfileSection | null = null;
 
   for (let start = 0; start < data.byteLength;) {
@@ -158,28 +123,41 @@ function compactProfileIniLast(data: Uint8Array): Uint8Array {
       const name = header[1]?.toLowerCase() ?? "";
       section = sections.get(name) ?? null;
       if (!section) {
-        section = { header: data.subarray(start, end), keys: new Map(), order: [] };
+        section = {
+          header: data.subarray(start, end),
+          keys: new Map(),
+          order: [],
+          keepLast: lastSections === "all" || lastSections.has(name),
+        };
         sections.set(name, section);
       }
     } else if (section) {
       const key = /^([^=\s]+)=/.exec(line)?.[1]?.toLowerCase();
       if (key) {
         if (!section.keys.has(key)) section.order.push(key);
-        section.keys.set(key, data.subarray(start, end));
+        if (section.keepLast || !section.keys.has(key))
+          section.keys.set(key, data.subarray(start, end));
       }
+    } else {
+      preamble.push(data.subarray(start, end));
     }
     start = end;
   }
 
   let size = 0;
+  for (const chunk of preamble) size += chunk.byteLength;
   for (const kept of sections.values()) {
     size += kept.header.byteLength;
     for (const key of kept.order) size += kept.keys.get(key)?.byteLength ?? 0;
   }
-  if (size >= data.byteLength) return data;
+  if (size > PROFILE_INI_COMPACT_LIMIT || size >= data.byteLength) return data;
 
   const compacted = new Uint8Array(size);
   let offset = 0;
+  for (const chunk of preamble) {
+    compacted.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
   for (const kept of sections.values()) {
     compacted.set(kept.header, offset);
     offset += kept.header.byteLength;
@@ -193,9 +171,9 @@ function compactProfileIniLast(data: Uint8Array): Uint8Array {
   return compacted;
 }
 
-/** An oversized profile INI without its repeated copies; anything else unchanged. */
+/** Every profile INI is compacted when it is stored; no duplicates survive a save. */
 function storedBytes(path: string, data: Uint8Array): Uint8Array {
-  if (!isProfileIniPath(path) || data.byteLength <= PROFILE_INI_COMPACT_THRESHOLD) return data;
+  if (!isProfileIniPath(path)) return data;
   return profileIniOrder(path) === "last"
     ? compactProfileIniLast(data)
     : compactProfileIniFirst(data);
