@@ -47,13 +47,20 @@ import {
 } from "../storage/thai-fonts";
 import type { GameRecord } from "../storage/manifest";
 import {
-  LAUNCHER_VIDEO_SIZES,
+  launcherVideoOptions,
+  nativeVideoSize,
   readVideoPreference,
   writeVideoPreference,
 } from "../storage/video-preferences";
 import styles from "./LauncherGameSettings.module.css";
 import { readStatsPreference, writeStatsPreference } from "../storage/stats-preferences";
 import { readSkipIntroPreference, writeSkipIntroPreference } from "../storage/intro-preferences";
+import {
+  readFullscreenPreference,
+  writeFullscreenPreference,
+  type FullscreenPreference,
+} from "../storage/fullscreen-preferences";
+import { enterFullscreen, leaveFullscreen } from "../game/browser-controls";
 import {
   readCampaignSpeedControlPreference,
   writeCampaignSpeedControlPreference,
@@ -509,6 +516,10 @@ export function LauncherGameSettings({
 }) {
   const [preference, setPreference] = useState(() => readThaiFontPreference(game.storage));
   const [videoPreference, setVideoPreference] = useState(() => readVideoPreference(game.storage));
+  const [fullscreenPreference, setFullscreenPreference] = useState<FullscreenPreference>(() =>
+    readFullscreenPreference(game.storage),
+  );
+  const [nativeSize] = useState(() => nativeVideoSize());
   const [cursorPreference, setCursorPreference] = useState<CursorChoice>(() =>
     readCursorPreference(game.storage),
   );
@@ -549,6 +560,16 @@ export function LauncherGameSettings({
   const save = (next: typeof preference) => {
     setPreference(next);
     writeThaiFontPreference(game.storage, next);
+  };
+  /** Fullscreen is a browser privilege, so a change here asks for it while the
+   * click still counts as the gesture the browser requires. */
+  const saveFullscreen = (next: FullscreenPreference) => {
+    setFullscreenPreference(next);
+    writeFullscreenPreference(game.storage, next);
+    const ask = next.enabled && !next.onlyInGame;
+    void (ask ? enterFullscreen(document.documentElement) : leaveFullscreen()).catch(
+      (cause: unknown) => setError(`The browser did not change fullscreen: ${message(cause)}`),
+    );
   };
 
   const settingId = (section: string, key: string) =>
@@ -1182,7 +1203,7 @@ export function LauncherGameSettings({
             <Flex direction="column" gap="4" pt="4">
               <Section
                 title="Display"
-                hint="The launcher resolution overrides the game's saved size for the next launch."
+                hint="The launcher resolution overrides the game's saved size for the next launch. It starts at the desktop's own size."
               >
                 <Row id={`launcher-resolution-${game.slot}-${game.id}`} label="Resolution">
                   <Select.Root
@@ -1205,14 +1226,39 @@ export function LauncherGameSettings({
                     />
                     <Select.Content>
                       <Select.Item value="game">Use game setting</Select.Item>
-                      {LAUNCHER_VIDEO_SIZES.map(({ w, h }) => (
+                      {launcherVideoOptions(nativeSize).map(({ w, h, native }) => (
                         <Select.Item key={`${w}x${h}`} value={`${w}x${h}`}>
                           {w} × {h}
+                          {native ? " (Native)" : ""}
                         </Select.Item>
                       ))}
                     </Select.Content>
                   </Select.Root>
                 </Row>
+                <ToggleRow
+                  id={`launcher-fullscreen-${game.slot}-${game.id}`}
+                  label="Full screen"
+                  hint="Enter fullscreen when a game starts. Turning this on fullscreens the launcher now."
+                  checked={fullscreenPreference.enabled}
+                  onChange={(enabled) =>
+                    saveFullscreen({
+                      ...fullscreenPreference,
+                      enabled,
+                      onlyInGame: enabled && fullscreenPreference.onlyInGame,
+                    })
+                  }
+                />
+                {fullscreenPreference.enabled ? (
+                  <ToggleRow
+                    id={`launcher-fullscreen-ingame-${game.slot}-${game.id}`}
+                    label="Full screen only in game"
+                    hint="Keep the launcher windowed: the game page enters fullscreen at the loading screen and returns to a window when the game ends."
+                    checked={fullscreenPreference.onlyInGame}
+                    onChange={(onlyInGame) =>
+                      saveFullscreen({ ...fullscreenPreference, onlyInGame })
+                    }
+                  />
+                ) : null}
                 {!loaded ? (
                   <Text color="gray">Reading the game's settings…</Text>
                 ) : (

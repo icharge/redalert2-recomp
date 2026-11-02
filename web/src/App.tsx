@@ -34,7 +34,9 @@ import {
 import { gamePath, slotFromPath } from "./paths";
 import { leaveGame } from "./game/lifecycle";
 import { readVideoPreference } from "./storage/video-preferences";
+import { readFullscreenPreference } from "./storage/fullscreen-preferences";
 import { cursorChoice } from "./storage/cursor-preferences";
+import { enterFullscreen } from "./game/browser-controls";
 
 type Boot =
   | { name: "loading" }
@@ -179,6 +181,11 @@ function Main() {
       installations={installations}
       modManager={(game) => <ModLibrary game={game.storage} manifest={manifest} target={target} />}
       onPlay={(game) => {
+        // Asking here keeps the Play click as the gesture the browser wants,
+        // before the file check can outlast it; the game page also asks for
+        // fullscreen when it mounts, for a direct visit.
+        if (readFullscreenPreference(game.storage).enabled && !document.fullscreenElement)
+          void enterFullscreen(document.documentElement).catch(() => {});
         // Debugging switches given to the launcher follow the game they open.
         const path = gamePath(game.slot, game.id);
         const flags = new URLSearchParams();
