@@ -47,4 +47,15 @@ describe("LoadingScreen", () => {
     expect(screen.getByText(/200 MB of 1.00 GB/)).toBeInTheDocument();
     expect(screen.getByRole("progressbar")).toBeInTheDocument();
   });
+
+  it("shows only a small status while the game's own boot screen is up", () => {
+    render(
+      <Theme>
+        <LoadingScreen state={{ phase: "booting", copy: null }} variant="chip" />
+      </Theme>,
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("Starting the game");
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+    expect(screen.queryByText("The game is setting itself up")).not.toBeInTheDocument();
+  });
 });
