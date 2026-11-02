@@ -20,6 +20,7 @@ import {
 import { useUpdate } from "./update";
 import { exportSaves, importSaves, isSavePath } from "./storage/saves";
 import { managedInstallationSource } from "./storage/file-manager";
+import { reconcileInstallation } from "./storage/reconcile";
 import { ModLibrary } from "./components/ModLibrary";
 import {
   BrowserRouter,
@@ -118,22 +119,30 @@ function Main() {
 
   useEffect(() => {
     const manifest = manifestRef.current;
-    if (fixture || location.pathname !== "/" || !manifest) return;
+    if (fixture || location.pathname !== "/" || boot.name !== "ready" || !manifest) return;
     let live = true;
-    void refresh(manifest)
-      .then((records) => {
+    void (async () => {
+      try {
+        const records = await refresh(manifest);
+        // The record can be stale: a file was dropped, replaced, or copied but never marked done.
+        await Promise.all(
+          records.installations.map((installation) =>
+            reconcileInstallation(manifest, target, installation.slot).catch(() => {}),
+          ),
+        );
+        const reconciled = await refresh(manifest);
         if (live)
           setBoot((previous) =>
-            previous.name === "ready" ? { ...previous, ...records } : previous,
+            previous.name === "ready" ? { ...previous, ...reconciled } : previous,
           );
-      })
-      .catch((error: unknown) => {
+      } catch (error) {
         if (live) setBoot({ name: "failed", message: String(error) });
-      });
+      }
+    })();
     return () => {
       live = false;
     };
-  }, [location.pathname, fixture, refresh]);
+  }, [location.pathname, fixture, refresh, target, boot.name]);
 
   if (leaving) return <UnloadGame destination={window.location.href} />;
   const video = videoFromQuery(location.search);
