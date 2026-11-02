@@ -477,8 +477,7 @@ export function Play({ files }: { files: FileSource }) {
 
   const crashed = phase === "crashed";
   const liveFiles = handle.current?.files ?? null;
-  const waiting =
-    !startError && !crashed && (phase === "idle" || phase === "loading" || phase === "booting");
+  const waiting = !startError && !crashed && (phase === "idle" || phase === "loading");
 
   if (phase === "exited")
     return (
@@ -639,6 +638,9 @@ export function Play({ files }: { files: FileSource }) {
         />
       )}
       {waiting && <LoadingScreen state={{ phase, copy, title }} />}
+      {phase === "booting" && !startError && !crashed && (
+        <LoadingScreen state={{ phase, copy, title }} variant="chip" />
+      )}
       {startError instanceof GameNotBuilt && (
         <Flex className={styles.overlay} align="center" justify="center" p="6">
           <Callout.Root color="amber" role="alert" size="3">

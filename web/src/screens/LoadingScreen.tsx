@@ -40,17 +40,46 @@ export function describeLoading(state: Pick<GameState, "phase" | "copy">) {
 }
 
 /**
- * Shown from the page load until the game's main menu is up: the files going into memory, with how
- * far along that is, then the game starting (it prints no progress of its own, so that part is a bar
- * that fills over the time it usually takes).
+ * The full screen covers the file copy; once the game starts, only a small chip remains so the
+ * game's own boot/logo screen is visible underneath.
  */
 export function LoadingScreen({
   state,
+  variant = "full",
 }: {
   state: Pick<GameState, "phase" | "copy"> & { title?: string | null };
+  /** full: the file copy and start-up card. chip: a small status over the game's own boot screen. */
+  variant?: "full" | "chip";
 }) {
   const seconds = useElapsed();
   const { step, detail, percent } = describeLoading(state);
+  if (variant === "chip") {
+    return (
+      <Flex
+        style={{
+          position: "absolute",
+          left: "var(--space-3)",
+          bottom: "var(--space-3)",
+          zIndex: 5,
+          padding: "var(--space-1) var(--space-3)",
+          borderRadius: "var(--radius-3)",
+          background: "color-mix(in srgb, var(--color-background) 72%, transparent)",
+          pointerEvents: "none",
+        }}
+        align="center"
+        gap="2"
+        role="status"
+        aria-live="polite"
+      >
+        <Text size="1" weight="medium">
+          {step}
+        </Text>
+        <Text size="1" color="gray">
+          {seconds} s
+        </Text>
+      </Flex>
+    );
+  }
   return (
     <Flex
       className={styles.screen}
