@@ -7,6 +7,16 @@ versions follow [SemVer](https://semver.org/).
 
 ### Added
 
+- **Launcher display options**: the resolution list detects the desktop's own
+  pixel size (`screen` × `devicePixelRatio`), uses it by default, and marks it
+  "(Native)", adding it when the catalog lacks it. A Full screen setting enters
+  fullscreen when a game starts, with a "Full screen only in game" sub-option
+  that keeps the launcher windowed, enters fullscreen at the loading screen and
+  restores the window when the gameplay ends. A fullscreen button sits beside
+  the in-game volume control.
+  (`web/src/storage/video-preferences.ts`,
+  `web/src/storage/fullscreen-preferences.ts`,
+  `web/src/components/LauncherGameSettings.tsx`, `web/src/screens/Play.tsx`)
 - **The game's cursor on a page layer** (the browser's default; `?cursor=game`
   or the launcher's Cursor setting “Game's own (software, traditional)” keeps the
   game's own; `RA2_PAGE_CURSOR=1` for the presenter): the game's own cursor - the

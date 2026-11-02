@@ -1,5 +1,19 @@
-import { CrossCircledIcon, ExclamationTriangleIcon } from "@radix-ui/react-icons";
-import { Button, Callout, Dialog, Flex, Heading, ScrollArea, Text } from "@radix-ui/themes";
+import {
+  CrossCircledIcon,
+  EnterFullScreenIcon,
+  ExclamationTriangleIcon,
+  ExitFullScreenIcon,
+} from "@radix-ui/react-icons";
+import {
+  Button,
+  Callout,
+  Dialog,
+  Flex,
+  Heading,
+  IconButton,
+  ScrollArea,
+  Text,
+} from "@radix-ui/themes";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SoundControl } from "../components/SoundControl";
 import { SettingsDialog } from "../components/SettingsDialog";
@@ -27,6 +41,10 @@ import {
   type GameHandle,
 } from "../game/loader";
 import { readThaiFontPreference, type ThaiFontPreference } from "../storage/thai-fonts";
+import {
+  readFullscreenPreference,
+  type FullscreenPreference,
+} from "../storage/fullscreen-preferences";
 import { Presenter2d, type GamePresenter } from "../game/presenter";
 import { GlPresenter } from "../game/gl-presenter";
 import { presenterKind } from "../game/choose-presenter";
@@ -97,6 +115,9 @@ export function Play({ files }: { files: FileSource }) {
   const [browserError, setBrowserError] = useState<string | null>(null);
   const gameId = sourceStorage(files);
   const [thaiFontFix] = useState(() => readThaiFontPreference(gameId));
+  const [fullscreenPreference] = useState<FullscreenPreference>(() =>
+    readFullscreenPreference(gameId),
+  );
   const handle = useRef<GameHandle | null>(null);
   const cursorMarker = useRef<HTMLDivElement | null>(null);
   const pageCursorCanvas = useRef<HTMLCanvasElement | null>(null);
@@ -227,6 +248,53 @@ export function Play({ files }: { files: FileSource }) {
       releaseBrowserControls();
     };
   }, []);
+
+  // A game asked to start in fullscreen enters it with the loading screen. The
+  // click that launched the game usually still counts as the gesture browsers
+  // require; if it does not, the first click or key inside the page asks again.
+  useEffect(() => {
+    if (!fullscreenPreference.enabled || document.fullscreenElement) return;
+    let live = true;
+    let requesting = false;
+    const ask = () => {
+      if (!live || requesting || document.fullscreenElement) return;
+      requesting = true;
+      void enterFullscreen(document.documentElement)
+        .catch(() => {
+          // no gesture yet: the listeners below get another chance
+        })
+        .finally(() => {
+          requesting = false;
+          if (document.fullscreenElement) stopAsking();
+        });
+    };
+    const stopAsking = () => {
+      window.removeEventListener("pointerdown", ask, true);
+      window.removeEventListener("keydown", ask, true);
+      document.removeEventListener("fullscreenchange", onFullscreen);
+    };
+    const onFullscreen = () => {
+      if (document.fullscreenElement) stopAsking();
+    };
+    ask();
+    if (!document.fullscreenElement) {
+      window.addEventListener("pointerdown", ask, true);
+      window.addEventListener("keydown", ask, true);
+      document.addEventListener("fullscreenchange", onFullscreen);
+    }
+    return () => {
+      live = false;
+      stopAsking();
+    };
+  }, [fullscreenPreference.enabled]);
+
+  // "Only in game" gives the window back as soon as the game is over: the
+  // launcher must not stay fullscreen after the gameplay ended.
+  useEffect(() => {
+    if (!fullscreenPreference.onlyInGame) return;
+    if (phase !== "exited" && phase !== "crashed") return;
+    void leaveFullscreen().catch(() => {});
+  }, [phase, fullscreenPreference.onlyInGame]);
 
   useEffect(() => {
     const element = canvas.current;
@@ -620,6 +688,16 @@ export function Play({ files }: { files: FileSource }) {
         </Callout.Root>
       )}
       <FrameStats presenter={presenter} on={statsOn} onToggle={toggleStats} />
+      <IconButton
+        className={styles.fullscreenButton}
+        variant="soft"
+        color="gray"
+        aria-label={fullscreen ? "Leave fullscreen" : "Fullscreen"}
+        aria-pressed={fullscreen}
+        onClick={toggleFullscreen}
+      >
+        {fullscreen ? <ExitFullScreenIcon /> : <EnterFullScreenIcon />}
+      </IconButton>
       {audio && (
         <SoundControl
           audio={audio}

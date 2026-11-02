@@ -23,6 +23,20 @@
   z-index: 3;
 }
 
+/* beside the sound popover, which sits at the bottom-right corner */
+.fullscreenButton {
+  position: absolute;
+  right: calc(var(--space-2) + 40px);
+  bottom: var(--space-2);
+  z-index: 3;
+  opacity: 0.55;
+}
+
+.fullscreenButton:hover,
+.fullscreenButton:focus-visible {
+  opacity: 1;
+}
+
 /* the picture is the game's own size; CSS fits it to the window with its aspect kept */
 .canvas {
   position: relative;
