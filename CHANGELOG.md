@@ -7,6 +7,14 @@ versions follow [SemVer](https://semver.org/).
 
 ### Added
 
+- **Start-up logo override**: the launcher ships the original
+  `WESTLOGO.BIK` / `EA_WWLOGO.BIK` assets and stages them into the browser's
+  game folder when the import has no loose logo. The game then uses the loose
+  file before the `LANGUAGE.MIX` / `LANGMD.MIX` copy, and falls back to the MIX
+  when the asset is absent. A logo uploaded through the Library file manager,
+  or imported from the source folder, wins over both. (`web/public/logos`,
+  `web/src/game/loader.ts`, `web/src/storage/install.ts`,
+  `web/src/storage/file-manager.ts`)
 - **Startup order**: boot screen first is Red Alert 2's stock order and is the
   default for both editions; Yuri's Revenge's stock logo-first order remains
   available. The setting is `[present] startup` in

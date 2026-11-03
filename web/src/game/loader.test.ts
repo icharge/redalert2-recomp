@@ -12,6 +12,7 @@ import {
   isBuilt,
   readBody,
   startGame,
+  stageBundledLogo,
   stageVideoSize,
   videoFromQuery,
   withVideoSize,
@@ -161,7 +162,9 @@ describe("isBuilt", () => {
   });
 
   it("is true when the requested game is listed", async () => {
-    const fetcher = vi.fn(() => Promise.resolve(Response.json({ games: { ra2md: { build: "b" } } })));
+    const fetcher = vi.fn(() =>
+      Promise.resolve(Response.json({ games: { ra2md: { build: "b" } } })),
+    );
     expect(await isBuilt(fetcher as unknown as typeof fetch)).toBe(true);
     expect(fetcher).toHaveBeenCalledWith("/game/build.json", { cache: "no-store" });
   });
@@ -169,9 +172,8 @@ describe("isBuilt", () => {
   it("is false when build.json is the page or lists no build", async () => {
     expect(await isBuilt((() => answer(true, "text/html")) as unknown as typeof fetch)).toBe(false);
     expect(
-      await isBuilt(
-        (() => Promise.resolve(Response.json({ games: { ra2md: {} } }))) as unknown as typeof fetch,
-      ),
+      await isBuilt((() =>
+        Promise.resolve(Response.json({ games: { ra2md: {} } }))) as unknown as typeof fetch),
     ).toBe(false);
   });
 
@@ -189,7 +191,9 @@ describe("isBuilt", () => {
       Promise.resolve(Response.json({ games: { ra2md: { build: "b" }, ra2: { build: "c" } } })),
     );
     expect(await isBuilt(both as unknown as typeof fetch, "ra2")).toBe(true);
-    const onlyYuri = vi.fn(() => Promise.resolve(Response.json({ games: { ra2md: { build: "b" } } })));
+    const onlyYuri = vi.fn(() =>
+      Promise.resolve(Response.json({ games: { ra2md: { build: "b" } } })),
+    );
     expect(await isBuilt(onlyYuri as unknown as typeof fetch, "ra2")).toBe(false);
     expect(new GameNotBuilt("ra2").message).toContain("RA2_TARGET=game");
   });
@@ -558,6 +562,39 @@ describe("startGame", () => {
       GameNotBuilt,
     );
     expect(store.getSnapshot().phase).toBe("loading"); // begin() ran; Play shows the not-built message itself
+  });
+});
+
+describe("bundled start-up logos", () => {
+  it("writes the launcher's logo when the import has none", async () => {
+    const writeFile = vi.fn();
+    const fetcher = vi.fn(async () => ({
+      ok: true,
+      arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
+    })) as unknown as typeof fetch;
+    await stageBundledLogo({ writeFile } as never, "ra2", new Set(), fetcher);
+    expect(fetcher).toHaveBeenCalledWith(expect.stringContaining("logos/WESTLOGO.BIK"));
+    expect(writeFile).toHaveBeenCalledWith("/game/WESTLOGO.BIK", expect.any(Uint8Array));
+  });
+
+  it("keeps the logo the import already has", async () => {
+    const writeFile = vi.fn();
+    const fetcher = vi.fn();
+    await stageBundledLogo(
+      { writeFile } as never,
+      "ra2md",
+      new Set(["ea_wwlogo.bik"]),
+      fetcher as never,
+    );
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(writeFile).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the game's MIX when the asset is missing", async () => {
+    const writeFile = vi.fn();
+    const fetcher = vi.fn(async () => ({ ok: false })) as unknown as typeof fetch;
+    await stageBundledLogo({ writeFile } as never, "ra2", new Set(), fetcher);
+    expect(writeFile).not.toHaveBeenCalled();
   });
 });
 

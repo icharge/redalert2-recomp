@@ -41,6 +41,9 @@ describe("classify", () => {
     expect(classify("Blowfish.dll")).toBeNull();
     expect(classify("movmd01.mix")?.kind).toBe("movie");
     expect(classify("MOVIES01.MIX")?.kind).toBe("movie");
+    expect(classify("WESTLOGO.BIK")).toEqual({ kind: "logo", needs: ["ra2"] });
+    expect(classify("EA_WWLOGO.BIK")).toEqual({ kind: "logo", needs: ["ra2md"] });
+    expect(classify("westlogo.bik")).toEqual({ kind: "logo", needs: ["ra2"] });
     expect(classify("Saved Games\\a.sav")?.kind).toBe("save");
     // what the game writes beside its exe: SAVE%04lX.sav
     expect(classify("SAVE0001.SAV")).toEqual({ kind: "save", needs: ["ra2", "ra2md"] });
@@ -132,6 +135,31 @@ describe("planImport", () => {
     expect(plan.skipped.map((s) => s.path)).toContain("Ares.dll");
     expect(plan.skipped.find((s) => s.path === "game.exe")?.reason).toMatch(/not read/);
     expect(plan.warnings).toEqual([]);
+  });
+
+  it("copies a browser logo override even when the movies are skipped", () => {
+    const plan = planImport([...folder, { path: "EA_WWLOGO.BIK", size: 1_140_588 }], yuri, {
+      movies: false,
+      saves: false,
+      settings: false,
+    });
+    expect(plan.copy).toContainEqual({
+      path: "EA_WWLOGO.BIK",
+      size: 1_140_588,
+      kind: "logo",
+      needs: ["ra2md"],
+    });
+    expect(plan.movieBytes).toBe(280_000_000);
+  });
+
+  it("does not mistake a logo for game data", () => {
+    const plan = planImport([{ path: "EA_WWLOGO.BIK", size: 100 }], yuri, {
+      movies: false,
+      saves: false,
+      settings: false,
+    });
+    expect(plan.games).toEqual([]);
+    expect(plan.error).not.toBeNull();
   });
 
   it("leaves the movies and the saves out when asked, and says how big the movies are", () => {

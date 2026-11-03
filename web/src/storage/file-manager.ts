@@ -168,11 +168,16 @@ export function managedInstallationSource(
         report.problems.push(`${name || "(no name)"}: not a usable file name.`);
         continue;
       }
-      const wanted = [...folder, name].join("/");
-      const kind = classify(wanted);
+      let wanted = [...folder, name].join("/");
+      let kind = classify(wanted);
       if (!kind) {
         report.problems.push(`${name}: the game does not read a file like this from here.`);
         continue;
+      }
+      if (kind.kind === "logo") {
+        // The game asks for one canonical spelling; store it under that name.
+        wanted = [...folder, kind.needs[0] === "ra2" ? "WESTLOGO.BIK" : "EA_WWLOGO.BIK"].join("/");
+        kind = classify(wanted) ?? kind;
       }
       if (kind.kind === "save" || isSavePath(wanted)) {
         report.problems.push(`${name}: saved games go in the ${SAVES_DIR} folder.`);
