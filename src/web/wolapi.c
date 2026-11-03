@@ -905,7 +905,8 @@ static void m_chat_get_gametype_info(void) {
     fprintf(stderr, "[wol] GetGametypeInfo %08X %08X %08X %08X %08X %08X\n",
             a[0], a[1], a[2], a[3], a[4], a[5]);
     RET(E_FAIL, 7);
-}static void m_stub_5(void) { RET(E_NOTIMPL, 5); }
+}
+static void m_stub_5(void) { RET(E_NOTIMPL, 5); }
 static void m_stub_6(void) { RET(E_NOTIMPL, 6); }
 static void m_stub_7(void) { RET(E_NOTIMPL, 7); }
 static void m_stub_8(void) { RET(E_NOTIMPL, 8); }
