@@ -28,6 +28,12 @@
 #include "hdvox.h"
 #include "mods.h"
 #include "page_cursor.h"
+#include "startup_order.h"
+
+/* World Domination's page bridge is in src/web/wolapi.c; the native host has no
+ * WDT client, so the lifted patches' two page callbacks are no-ops here. */
+void ra2_wdt_pick(int territory) { (void)territory; }
+int ra2_wdt_take_mode_switch(void) { return 0; }
 #include "recomp_target.h"   /* the binary this build runs: run_lift.py --target */
 
 extern const uint32_t ra2_entry_va;    /* recomp_dispatch.c */
@@ -1465,6 +1471,10 @@ int main(int argc, char** argv) {
         else if (!strcmp(argv[i], "--frames") && i + 1 < argc) g_record_frames = strtol(argv[++i], NULL, 0);
         else if (!strcmp(argv[i], "--exe") && i + 1 < argc) exe = argv[++i];
         else if (!strcmp(argv[i], "--game") && i + 1 < argc) game = argv[++i];
+        else if (!strcmp(argv[i], "--startup-order") && i + 1 < argc) {
+            ra2_startup_set_logo_first(!strcmp(argv[++i], "logo-first"));
+            fprintf(stderr, "[present] startup order: %s\n", ra2_startup_logo_first() ? "logo first" : "boot screen first");
+        }
         else if (!strcmp(argv[i], "--mod") && i + 1 < argc) mod = argv[++i];
         else if (!strcmp(argv[i], "--watchdog") && i + 1 < argc) g_watchdog_s = strtoul(argv[++i], NULL, 0);
         else if (!strcmp(argv[i], "--native-trace")) native32_trace_native = 1;
@@ -1473,6 +1483,7 @@ int main(int argc, char** argv) {
             printf("usage: ra2 [--run] [--headless | --classic | [--fullscreen] [--scale sharp|smooth|crt|nearest|integer]] [--record out.mp4] [--frames N] [--exe game\\" RA2_EXE_NAME "] [--game game] [--mod NAME|none]\n"
                    "           [--press DLG:CTRL@s] [--select DLG:CTRL=N@s] [--waitlog TEXT@s] [--move|--click x,y@s] [--key [c][s][a]+vk@s] [--wait VA@s]\n"
                    "           [--watchdog S] [--probe VA] [--debuglog] [--original] [--native-trace] [--callbacks]\n"
+                   "           [--startup-order boot-first|logo-first]\n"
                    "           [--hd-voxels] [--hd-voxels-dump DIR] [--mute] [--args FILE]\n");
             recomp_trace_help();
             return argv[i][1] == 'h' || argv[i][2] == 'h' ? 0 : 1;

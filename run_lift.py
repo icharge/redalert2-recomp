@@ -790,6 +790,108 @@ YR_ONLINE_TARGETS = {'jle_accept': ('rel32', 0x00789A58),
                      'force_off': ('rel8', 0x00789B82)}
 
 
+# The start-up order of the animated logo and the "Loading..." boot screen is
+# a remaster setting: boot screen first is Red Alert 2's stock order, logo first
+# is Yuri's Revenge's. Both editions get both orders at run time; the host's
+# [present] startup setting (ra2_startup_logo_first) selects one. Yuri's stock
+# logo runs early, before the loading work; boot-first moves it to the intro
+# call, so the boot screen stays up while the game loads and the order becomes
+# boot screen -> logo -> intro -> main menu.
+YR_STARTUP_ORDER = {
+    'logo': (0x0052C5EE, 0x005BED40),      # call sub_005BED40 (EA_WWLOGO)
+    'boot': (0x0052C5F3, 0x005312A0),      # call sub_005312A0 (LoadingEx boot screen)
+    'setup': (0x0052C5E0, '8bd5'),         # mov edx, ebp: insert the boot screen before this
+    'after': (0x0052C5F8, '68105f8200'),   # push "Init Campaigns\n": the label after the logo
+    'intro': (0x0052CA65, 0x0052CB50),     # call sub_0052CB50 (intro)
+}
+RA2_STARTUP_ORDER = {
+    'boot': (0x00511808, 0x00516560),      # call sub_00516560 (LoadingEx boot screen)
+    'logo': ((0x0051269A, 0x005A02D0, 0x0051269F, '8bd3'),    # logo, then mov edx, ebx
+             (0x005126BB, 0x005A02B0, 0x005126C0, '8bd3'),    # logo, then mov edx, ebx
+             (0x005126EE, 0x005A02D0, 0x005126F3, 'b201')),   # logo, then mov dl, 1
+}
+STARTUP_DECL = ('{ extern int ra2_startup_logo_first(void); '
+                'extern int ra2_startup_take_boot_screen(void); ')
+
+
+def _call_matches(code, cs, site, target):
+    raw = code[site - cs:site - cs + 5]
+    return raw[:1] == b'\xe8' and site + 5 + int.from_bytes(raw[1:5], 'little', signed=True) == target
+
+
+def yr_startup_order_patches(code, cs):
+    """Yuri's Revenge plays the boot screen and logo in the configured order.
+
+    Stock is logo (0x0052C5EE), then the LoadingEx boot screen (0x0052C5F3).
+    With logo-first selected that stays; otherwise the boot screen is called
+    before the logo's argument setup and the later call is skipped. Every site
+    is checked first, so a different build keeps the stock order.
+    """
+    if not _call_matches(code, cs, *YR_STARTUP_ORDER['logo']) or \
+       not _call_matches(code, cs, *YR_STARTUP_ORDER['boot']):
+        print('[*] yr_startup_order_patches: the start-up calls do not match this build; no order patch')
+        return {}
+    setup, setup_bytes = YR_STARTUP_ORDER['setup']
+    after, after_bytes = YR_STARTUP_ORDER['after']
+    if code[setup - cs:setup - cs + 2] != bytes.fromhex(setup_bytes):
+        print('[*] yr_startup_order_patches: the edx setup does not match this build; no order patch')
+        return {}
+    if code[after - cs:after - cs + 5] != bytes.fromhex(after_bytes):
+        print('[*] yr_startup_order_patches: the Init Campaigns push does not match this build; no order patch')
+        return {}
+    if not _call_matches(code, cs, *YR_STARTUP_ORDER['intro']):
+        print('[*] yr_startup_order_patches: the intro call does not match this build; no order patch')
+        return {}
+    return {
+        # Boot-first: draw the boot screen, then jump past the logo. The logo
+        # plays at the intro site (0x0052CA65) after the loading work.
+        setup: ('@replace:' + STARTUP_DECL +
+                'if (!ra2_startup_logo_first()) { RECOMP_CALL(sub_005312A0); RECOMP_FLAGS_IN(); '
+                'goto L_ra2_startup_after_logo; } } edx = ebp; '
+                '/* remaster: configurable start-up order, run_lift.py yr_startup_order_patches */'),
+        YR_STARTUP_ORDER['boot'][0]: ('@replace:' + STARTUP_DECL +
+                                      'if (ra2_startup_logo_first()) { RECOMP_CALL(sub_005312A0); '
+                                      'RECOMP_FLAGS_IN(); } }'),
+        after: ('@replace:L_ra2_startup_after_logo: PUSH32(esp, 0x00825F10u); /* 0x0052C5F8: '
+                'push "Init Campaigns\\n" */'),
+        # Boot-first: the logo now plays after the loading work, before the intro.
+        YR_STARTUP_ORDER['intro'][0]: ('@replace:{ extern int ra2_startup_logo_first(void); '
+                                       'if (!ra2_startup_logo_first()) { edx = ebp; ecx = 0x00825F20u; '
+                                       'PUSH32(esp, ebx); PUSH32(esp, 1); PUSH32(esp, 1); PUSH32(esp, 1); '
+                                       'RECOMP_CALL(sub_005BED40); RECOMP_FLAGS_IN(); } } '
+                                       'RECOMP_CALL(sub_0052CB50);'),
+    }
+
+
+def ra2_startup_order_patches(code, cs):
+    """Red Alert 2 plays the boot screen and logo in the configured order.
+
+    Stock is the boot screen (0x00511808) early, then the logo. With logo-first
+    selected the early call is skipped and the boot screen is played after the
+    logo, before the intro. The boot screen plays once per start-up, whichever
+    path reaches it first.
+    """
+    if not _call_matches(code, cs, *RA2_STARTUP_ORDER['boot']):
+        print('[*] ra2_startup_order_patches: the boot-screen call does not match this build; no order patch')
+        return {}
+    patches = {
+        RA2_STARTUP_ORDER['boot'][0]: (
+            '@replace:' + STARTUP_DECL +
+            'if (!ra2_startup_logo_first()) { RECOMP_CALL(sub_00516560); RECOMP_FLAGS_IN(); } } '
+            '/* remaster: configurable start-up order, run_lift.py ra2_startup_order_patches */'),
+    }
+    for logo, target, after, after_bytes in RA2_STARTUP_ORDER['logo']:
+        if not _call_matches(code, cs, logo, target) or code[after - cs:after - cs + 2] != bytes.fromhex(after_bytes):
+            print('[*] ra2_startup_order_patches: a logo site does not match this build; no order patch')
+            return {}
+        patches[after] = (
+            '@replace:' + STARTUP_DECL +
+            'if (ra2_startup_logo_first() && ra2_startup_take_boot_screen()) '
+            '{ RECOMP_CALL(sub_00516560); RECOMP_FLAGS_IN(); } } ' +
+            ('edx = ebx;' if after_bytes == '8bd3' else 'SET_LO8(edx, 1);'))
+    return patches
+
+
 def yr_online_patches(code, cs):
     """Yuri's Revenge's 1920 online cap and its optional prompt (see YR_ONLINE_SITES).
 
@@ -1185,8 +1287,9 @@ def targets():
                                                  **theme_song_guard(code, cs, 'gamemd'),
                                                  **page_cursor_patches(code, cs, 'gamemd'),
                                                  **page_cursor_palette_patches(code, cs, 'gamemd'),
-                                                 **yr_online_patches(code, cs),
-                                                 **web_exit_confirmation_patches(code, cs, 'gamemd')}),
+                                                 **yr_online_patches(code, cs), **yr_startup_order_patches(code, cs),
+                                                 **web_exit_confirmation_patches(code, cs, 'gamemd'),
+                                                 **web_url_patches(code, cs, 'gamemd')}),
         'game': dict(exe=os.path.join(_HERE, 'game', 'game.exe'),
                      catalog=os.path.join(_HERE, 'work', 'game', 'functions.json'),
                      seeds=os.path.join(_HERE, 'work', 'game', 'rtti_seeds.json'),
@@ -1206,7 +1309,8 @@ def targets():
                                                **page_cursor_palette_patches(code, cs, 'game'),
                                                **web_exit_confirmation_patches(code, cs, 'game'),
                                                **ra2_shell_patches(code, cs), **ra2_hires_patches(code, cs),
-                                               **ra2_online_patches(code, cs), **ra2_confirm_patches(code, cs),
+                                               **ra2_online_patches(code, cs), **ra2_startup_order_patches(code, cs),
+                                               **ra2_confirm_patches(code, cs),
                                                **ra2_cache_patches(code, cs), **ra2_mode_cap_patches(code, cs),
                                                **ra2_load_patches(code, cs), **ra2_profile_patches(code, cs),
                                                **ra2_tab_patches(code, cs)}),

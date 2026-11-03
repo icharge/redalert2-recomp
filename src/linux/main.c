@@ -92,6 +92,12 @@ void ra2_open_wol_page(uint32_t key_va) {
  * presenter shows its 2x picture. */
 #include "hdvox.h"
 #include "mods.h"
+#include "startup_order.h"
+
+/* World Domination's page bridge is in src/web/wolapi.c; this host has no WDT
+ * client, so the lifted patches' two page callbacks are no-ops here. */
+void ra2_wdt_pick(int territory) { (void)territory; }
+int ra2_wdt_take_mode_switch(void) { return 0; }
 static int compose_hd(const uint8_t *px16, int pitch, int w, int h, uint32_t *out) {
     if (!ra2_vox_hd_on) return 0;
     hdvox_compose(px16, pitch, w, h, out);
@@ -423,6 +429,10 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--mute")) hle_dsound_set_master(0.0f);
         else if (!strcmp(argv[i], "--game") && i + 1 < argc) game = argv[++i];
         else if (!strcmp(argv[i], "--mod") && i + 1 < argc) g_mod = argv[++i];
+        else if (!strcmp(argv[i], "--startup-order") && i + 1 < argc) {
+            ra2_startup_set_logo_first(!strcmp(argv[++i], "logo-first"));
+            fprintf(stderr, "[present] startup order: %s\n", ra2_startup_logo_first() ? "logo first" : "boot screen first");
+        }
         else if (!strcmp(argv[i], "--watchdog") && i + 1 < argc) g_watchdog_s = (unsigned)strtoul(argv[++i], NULL, 0);
         else if (!strcmp(argv[i], "--trace")) win32hle_trace = 1;
         else if (!strcmp(argv[i], "--record") && i + 1 < argc) {
@@ -450,7 +460,8 @@ int main(int argc, char **argv) {
         else {
             printf("usage: ra2 [--run] [--headless | --fullscreen] [--scale sharp|smooth|crt|nearest|integer] [--game DIR] [--mod NAME|none] [--debuglog] [--mute] [--watchdog S] [--trace] [--dump-frames DIR] [--record out.mp4] [--frames N] [--hd-voxels] [--hd-voxels-dump DIR]\n"
                    "           [--press DLG:CTRL@s] [--select DLG:CTRL=N@s] [--waitlog TEXT@s] [--move|--click x,y@s]\n"
-                   "           [--key [c][s][a]+vk@s] [--wait VA@s] [--drag x1,y1,x2,y2@s]\n");
+                   "           [--key [c][s][a]+vk@s] [--wait VA@s] [--drag x1,y1,x2,y2@s]\n"
+                   "           [--startup-order boot-first|logo-first]\n");
             return !strcmp(argv[i], "--help") || !strcmp(argv[i], "-h") ? 0 : 1;
         }
     }
