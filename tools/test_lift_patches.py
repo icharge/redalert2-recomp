@@ -28,6 +28,10 @@ from run_lift import (
     ra2_tab_patches,
     ra2_online_patches,
     yr_online_patches,
+    YR_STARTUP_ORDER,
+    RA2_STARTUP_ORDER,
+    yr_startup_order_patches,
+    ra2_startup_order_patches,
     WDT_SITES,
     wdt_patches,
     ra2_shell_patches,
@@ -689,6 +693,66 @@ class PageCursorPalettePatchTests(unittest.TestCase):
             with self.subTest(target=target):
                 self.assertEqual(page_cursor_palette_patches(self.image(target, corrupt=at - 5), 0, target), {})
                 self.assertEqual(page_cursor_palette_patches(self.image(target, corrupt=at), 0, target), {})
+
+
+class StartupOrderPatchTests(unittest.TestCase):
+    """Both editions support boot-screen-first and logo-first at run time."""
+
+    @staticmethod
+    def put_call(code, cs, site, target):
+        code[site - cs] = 0xE8
+        code[site - cs + 1:site - cs + 5] = (target - (site + 5)).to_bytes(4, 'little', signed=True)
+
+    def yr_image(self):
+        cs = 0x0052C000
+        code = bytearray(0x0052CA70 - cs)
+        self.put_call(code, cs, *YR_STARTUP_ORDER['logo'])
+        self.put_call(code, cs, *YR_STARTUP_ORDER['boot'])
+        self.put_call(code, cs, *YR_STARTUP_ORDER['intro'])
+        for site, raw in (YR_STARTUP_ORDER['setup'], YR_STARTUP_ORDER['after']):
+            code[site - cs:site - cs + len(bytes.fromhex(raw))] = bytes.fromhex(raw)
+        return bytes(code), cs
+
+    def ra2_image(self):
+        cs = 0x00511000
+        code = bytearray(0x005126F8 - cs)
+        self.put_call(code, cs, *RA2_STARTUP_ORDER['boot'])
+        for logo, target, after, after_bytes in RA2_STARTUP_ORDER['logo']:
+            self.put_call(code, cs, logo, target)
+            code[after - cs:after - cs + 2] = bytes.fromhex(after_bytes)
+        return bytes(code), cs
+
+    def test_yuri_gets_a_conditional_boot_screen(self):
+        code, cs = self.yr_image()
+        patches = yr_startup_order_patches(code, cs)
+        self.assertEqual(set(patches), {YR_STARTUP_ORDER['setup'][0], YR_STARTUP_ORDER['boot'][0],
+                                        YR_STARTUP_ORDER['after'][0], YR_STARTUP_ORDER['intro'][0]})
+        self.assertIn('ra2_startup_logo_first()', patches[YR_STARTUP_ORDER['setup'][0]])
+        self.assertIn('if (!ra2_startup_logo_first())', patches[YR_STARTUP_ORDER['setup'][0]])
+        self.assertIn('goto L_ra2_startup_after_logo', patches[YR_STARTUP_ORDER['setup'][0]])
+        self.assertIn('if (ra2_startup_logo_first())', patches[YR_STARTUP_ORDER['boot'][0]])
+        self.assertIn('L_ra2_startup_after_logo', patches[YR_STARTUP_ORDER['after'][0]])
+        self.assertIn('sub_005BED40', patches[YR_STARTUP_ORDER['intro'][0]])
+
+    def test_yuri_order_is_untouched_when_a_call_changed(self):
+        code, cs = self.yr_image()
+        bad = bytearray(code)
+        bad[YR_STARTUP_ORDER['boot'][0] - cs + 1] ^= 0xFF
+        self.assertEqual(yr_startup_order_patches(bytes(bad), cs), {})
+
+    def test_ra2_gets_both_boot_screen_paths(self):
+        code, cs = self.ra2_image()
+        patches = ra2_startup_order_patches(code, cs)
+        self.assertEqual(set(patches), {0x00511808, 0x0051269F, 0x005126C0, 0x005126F3})
+        self.assertIn('if (!ra2_startup_logo_first())', patches[0x00511808])
+        for site in (0x0051269F, 0x005126C0, 0x005126F3):
+            self.assertIn('ra2_startup_take_boot_screen()', patches[site])
+
+    def test_ra2_order_is_untouched_when_a_logo_call_changed(self):
+        code, cs = self.ra2_image()
+        bad = bytearray(code)
+        bad[RA2_STARTUP_ORDER['logo'][0][0] - cs + 1] ^= 0xFF
+        self.assertEqual(ra2_startup_order_patches(bytes(bad), cs), {})
 
 
 if __name__ == '__main__':

@@ -13,6 +13,7 @@
 #include "recomp_target.h"
 #include "hdvox.h"
 #include "mods.h"
+#include "startup_order.h"
 #include "web_api.h"
 #include "video_modes.h"
 
@@ -82,9 +83,10 @@ void web_settings_event(void) {
 static void save(void) {
     FILE *f = fopen(HOST_INI, "w");
     if (!f) { web_event_error("Could not save the host settings."); return; }
-    fprintf(f, "[present]\nscale=%s\nbars=%s\nhdvox=%d\ncontrols=%s\n[mods]\nactive=%s\n",
+    fprintf(f, "[present]\nscale=%s\nbars=%s\nhdvox=%d\ncontrols=%s\nstartup=%s\n[mods]\nactive=%s\n",
         scales[scale_mode], blur_bars ? "blur" : "black", ra2_vox_hd_on,
-        modern ? "modern" : "classic", mods_active());
+        modern ? "modern" : "classic", ra2_startup_logo_first() ? "logo-first" : "boot-first",
+        mods_active());
     fclose(f);
 }
 void web_settings_save_mod(void) { save(); }
@@ -118,6 +120,10 @@ void web_settings_start(const char *override_scale) {
         if (!strcasecmp(key, "bars")) blur_bars = strcasecmp(value, "black") != 0;
         if (!strcasecmp(key, "hdvox")) hdvox_configure(atoi(value) != 0, NULL);
         if (!strcasecmp(key, "controls")) modern = !strcasecmp(value, "modern");
+        if (!strcasecmp(key, "startup")) {
+            ra2_startup_set_logo_first(!strcasecmp(value, "logo-first"));
+            fprintf(stderr, "[present] startup order: %s\n", ra2_startup_logo_first() ? "logo first" : "boot screen first");
+        }
     }
     if (f) fclose(f);
     if (override_scale) for (int i = 0; i < 5; i++) if (!strcmp(override_scale, scales[i])) scale_mode = i;

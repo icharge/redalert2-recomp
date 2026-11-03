@@ -7,6 +7,14 @@ versions follow [SemVer](https://semver.org/).
 
 ### Added
 
+- **Startup order**: boot screen first is Red Alert 2's stock order and is the
+  default for both editions; Yuri's Revenge's stock logo-first order remains
+  available. The setting is `[present] startup` in
+  `.host/ra2md.ini`/`.host/ra2.ini`; `--startup-order boot-first|logo-first`
+  does the same for the native hosts. It is deliberately not shown in the
+  launcher UI. (`run_lift.py`'s
+  `yr_startup_order_patches`/`ra2_startup_order_patches`,
+  `src/runtime/startup_order.c`, `src/web/settings.c`)
 - **Launcher display options**: the resolution list detects the desktop's own
   pixel size (`screen` × `devicePixelRatio`), uses it by default, and marks it
   "(Native)", adding it when the catalog lacks it. A Full screen setting enters
@@ -196,6 +204,10 @@ a2.ini`.
 
 ### Fixed
 
+- Native builds link again after the World Domination patches: the lifted
+  callbacks `ra2_wdt_pick` and `ra2_wdt_take_mode_switch` have no-op
+  definitions in the native hosts, because the WDT page bridge is web-only
+  (`src/runtime/host.c`, `src/linux/main.c`).
 - World Domination (Red Alert 2 and Yuri's Revenge) was unplayable: the
   Allied/Soviet logos did not highlight or accept a click, and the entry
   demanded a 640x480 display mode. The faction screen now runs its hit test
