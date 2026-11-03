@@ -229,7 +229,10 @@ static int (*g_menus_cursor)(void);
  * game." (the loading screen included) and "Release_Mouse()" (or a shell screen opening). The frame
  * count is not used: after a match it keeps moving while the score and setup screens are up. */
 static volatile int g_scenario;
-void web_presenter_scenario_start(int starting) { g_scenario = starting != 0; }
+void web_presenter_scenario_start(int starting) {
+    g_scenario = starting != 0;
+    g_sh.match_state = g_scenario;   /* the page's "Game match only" fullscreen follows this */
+}
 
 /* The shell's screens, by dialog resource: their music is the menu's. A match may end without the
  * game printing Release_Mouse (a load that failed, a quit from the score), so opening one clears the

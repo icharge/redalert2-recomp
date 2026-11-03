@@ -75,29 +75,30 @@ export function launcherVideoOptions(
   return options;
 }
 
-/** The launcher's size for a game: the saved choice, the desktop's own size when
- * nothing was saved (the default), or null when "Use game setting" was chosen.
- * `fallback` is the native size, overridable for tests and pages without a screen. */
+/** The launcher's size when the player has not chosen one. */
+export const DEFAULT_VIDEO_SIZE: VideoPreference = { w: 1920, h: 1080 };
+
+/** The launcher's size for a game: the saved choice, the default 1920×1080 when
+ * nothing was saved, or null when "Use game setting" was chosen. The desktop's
+ * own size stays in the list as "(Native)" for the player to choose. */
 export function readVideoPreference(
   game: string,
   storage: Pick<Storage, "getItem"> | null = safeLocalStorage(),
-  fallback: VideoPreference | null = nativeVideoSize(),
 ): VideoPreference | null {
-  const native = fallback && fallback.w > 0 && fallback.h > 0 ? fallback : null;
   try {
     const raw = storage?.getItem(`${PREFERENCE_PREFIX}${game}`);
-    if (raw === null || raw === undefined) return native;
+    if (raw === null || raw === undefined) return { ...DEFAULT_VIDEO_SIZE };
     const value: unknown = JSON.parse(raw);
     if (value === GAME_SETTING) return null;
-    if (typeof value !== "object" || value === null) return native;
+    if (typeof value !== "object" || value === null) return { ...DEFAULT_VIDEO_SIZE };
     const size = value as Partial<VideoPreference>;
-    if (!Number.isInteger(size.w) || !Number.isInteger(size.h)) return native;
+    if (!Number.isInteger(size.w) || !Number.isInteger(size.h)) return { ...DEFAULT_VIDEO_SIZE };
     const { w, h } = size as VideoPreference;
     // The launcher adds the desktop's own size, which need not be in the catalog.
-    if (w < 320 || h < 200 || w > 16384 || h > 16384) return native;
+    if (w < 320 || h < 200 || w > 16384 || h > 16384) return { ...DEFAULT_VIDEO_SIZE };
     return { w, h };
   } catch {
-    return native;
+    return { ...DEFAULT_VIDEO_SIZE };
   }
 }
 

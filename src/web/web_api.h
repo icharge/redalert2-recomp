@@ -7,7 +7,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
-#define RA2_WEB_PROTOCOL 10
+#define RA2_WEB_PROTOCOL 11
 
 #define RA2_CURSOR_PX 32
 /* The largest cursor frame the page accepts. MOUSE.SHA's header gives 55x43 as
@@ -33,7 +33,7 @@ typedef struct ra2_shared {
     volatile int32_t  cursor_hot_x, cursor_hot_y;
     uint32_t view_w, view_h;         /* ra2_resize: the canvas's CSS size */
     float    view_dpr;
-    uint32_t reserved;
+    volatile uint32_t match_state;   /* protocol 11: 1 while a match loads, plays or shows its score screen */
     uint8_t  cursor_rgba[RA2_CURSOR_PX * RA2_CURSOR_PX * 4];
     uint32_t game_w, game_h;         /* input coordinates; frame may be 2x for HD vehicles */
     uint32_t warp_seq;
@@ -84,6 +84,7 @@ enum { RA2_PRESENT_RGBA = 0,         /* the default: RGBA in frame_ptr, as proto
        RA2_PRESENT_RAW = 1 };        /* the game's own format, unconverted */
 
 _Static_assert(__builtin_offsetof(ra2_shared_t, cursor_rgba) == 52, "web/src/game/protocol.ts reads cursor_rgba at byte 52");
+_Static_assert(__builtin_offsetof(ra2_shared_t, match_state) == 12 * 4, "web/src/game/protocol.ts reads matchState at word 12");
 _Static_assert(__builtin_offsetof(ra2_shared_t, pointer_x) == 4168, "web/src/game/protocol.ts reads pointer_x at word 1042");
 _Static_assert(__builtin_offsetof(ra2_shared_t, pointer_y) == 4172, "web/src/game/protocol.ts reads pointer_y at word 1043");
 _Static_assert(__builtin_offsetof(ra2_shared_t, format) == 1044 * 4, "web/src/game/protocol.ts reads format at word 1044");

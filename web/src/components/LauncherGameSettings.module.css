@@ -27,6 +27,11 @@
   gap: var(--space-4);
 }
 
+/* a setting that belongs to the one above it */
+.subOption {
+  padding-left: var(--space-5);
+}
+
 .gameplayGrid > .section {
   padding: var(--space-3);
   border: 1px solid var(--gray-5);

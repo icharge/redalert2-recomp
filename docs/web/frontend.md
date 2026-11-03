@@ -127,10 +127,11 @@ Audio, Video and Keyboard tabs read and write the per-edition
 `RA2.INI`/`RA2MD.INI` and `KEYBOARD.INI`/`KEYBOARDMD.INI` in
 `save/<storage>/`. The host settings live in `.host/<edition>.ini`; a fresh
 profile starts at smooth scaling. The Video tab also holds the launcher's resolution override (it
-starts at the desktop's own size, which the list marks "(Native)") and the browser fullscreen
-preference: fullscreen on start, or only in game, where the launcher stays windowed, the game page
-enters fullscreen with the loading screen and gives the window back when the game ends. The
-Keyboard tab follows the game's own Customize Keyboard layout: pick a
+defaults to 1920×1080; the list also marks the desktop's own size as "(Native)") and the browser
+fullscreen preference: fullscreen on start, or game match only, where the launcher and the game's
+menus stay windowed, the game page enters fullscreen at the match's loading screen and gives the
+window back after the score screen. The Keyboard tab follows the game's own Customize Keyboard
+layout: pick a
 category, pick a command, read its description, then capture and assign a key
 (or reset every binding to the game's defaults). With no keyboard file in the
 import, it starts from the game's standard bindings and writes a complete file
@@ -148,7 +149,7 @@ what belongs to the browser:
 
 | Setting | Where it's kept |
 |---|---|
-| Fullscreen on start, and fullscreen only in game | localStorage, `ra2.fullscreen.<storage>`; the launcher's Video tab writes it, the game page reads it |
+| Fullscreen on start, and game match only | localStorage, `ra2.fullscreen.<storage>`; the launcher's Video tab writes it, the game page reads it |
 | Pointer lock in a window (edge scrolling) | IndexedDB |
 | Master volume | IndexedDB, sent to the game (`ra2_set_volume`) |
 | Mute when the window loses focus (off by default) | IndexedDB; a page-side gain, the game keeps mixing |

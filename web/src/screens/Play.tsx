@@ -19,7 +19,7 @@ import { SoundControl } from "../components/SoundControl";
 import { SettingsDialog } from "../components/SettingsDialog";
 import { LinkDialog } from "../components/LinkDialog";
 import { linkTarget } from "../game/link-targets";
-import { Setting } from "../game/protocol";
+import { Setting, Shared } from "../game/protocol";
 import {
   enterFullscreen,
   autoLockPointer,
@@ -253,7 +253,12 @@ export function Play({ files }: { files: FileSource }) {
   // click that launched the game usually still counts as the gesture browsers
   // require; if it does not, the first click or key inside the page asks again.
   useEffect(() => {
-    if (!fullscreenPreference.enabled || document.fullscreenElement) return;
+    if (
+      !fullscreenPreference.enabled ||
+      fullscreenPreference.onlyInGame ||
+      document.fullscreenElement
+    )
+      return;
     let live = true;
     let requesting = false;
     const ask = () => {
@@ -286,10 +291,64 @@ export function Play({ files }: { files: FileSource }) {
       live = false;
       stopAsking();
     };
-  }, [fullscreenPreference.enabled]);
+  }, [fullscreenPreference]);
 
-  // "Only in game" gives the window back as soon as the game is over: the
-  // launcher must not stay fullscreen after the gameplay ended.
+  // "Game match only": wait for the game itself to say a match is starting
+  // (its loading screen included) and give the window back after the score
+  // screen. The host publishes the same match state it uses for match music.
+  useEffect(() => {
+    if (!fullscreenPreference.enabled || !fullscreenPreference.onlyInGame) return;
+    const game = handle.current;
+    if (!game) return;
+    let live = true;
+    let inMatch = false;
+    const readMatch = () => {
+      try {
+        const { HEAP32 } = game.memory();
+        return Atomics.load(HEAP32, (game.shared >> 2) + Shared.matchState) !== 0;
+      } catch {
+        return false; // the module is shutting down
+      }
+    };
+    const gesture = () => {
+      if (!live || !inMatch || document.fullscreenElement) return;
+      void enterFullscreen(document.documentElement).catch(() => {});
+    };
+    const armGestures = () => {
+      window.addEventListener("pointerdown", gesture, true);
+      window.addEventListener("keydown", gesture, true);
+    };
+    const disarmGestures = () => {
+      window.removeEventListener("pointerdown", gesture, true);
+      window.removeEventListener("keydown", gesture, true);
+    };
+    const enter = () => {
+      if (document.fullscreenElement) return;
+      void enterFullscreen(document.documentElement).then(disarmGestures, armGestures);
+    };
+    const tick = () => {
+      if (!live) return;
+      const now = readMatch();
+      if (now === inMatch) return;
+      inMatch = now;
+      if (now) enter();
+      else {
+        disarmGestures();
+        if (document.fullscreenElement) void leaveFullscreen().catch(() => {});
+      }
+    };
+    inMatch = !readMatch(); // the first tick applies the state the match is in now
+    tick();
+    const timer = window.setInterval(tick, 250);
+    return () => {
+      live = false;
+      window.clearInterval(timer);
+      disarmGestures();
+    };
+  }, [presenter, phase, fullscreenPreference]);
+
+  // "Game match only" gives the window back after the score screen: the
+  // launcher must not stay fullscreen once the match has ended.
   useEffect(() => {
     if (!fullscreenPreference.onlyInGame) return;
     if (phase !== "exited" && phase !== "crashed") return;

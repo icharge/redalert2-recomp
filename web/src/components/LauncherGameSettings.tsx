@@ -47,6 +47,7 @@ import {
 } from "../storage/thai-fonts";
 import type { GameRecord } from "../storage/manifest";
 import {
+  DEFAULT_VIDEO_SIZE,
   launcherVideoOptions,
   nativeVideoSize,
   readVideoPreference,
@@ -60,7 +61,6 @@ import {
   writeFullscreenPreference,
   type FullscreenPreference,
 } from "../storage/fullscreen-preferences";
-import { enterFullscreen, leaveFullscreen } from "../game/browser-controls";
 import {
   readCampaignSpeedControlPreference,
   writeCampaignSpeedControlPreference,
@@ -214,17 +214,19 @@ function ToggleRow({
   label,
   hint,
   checked,
+  disabled,
   onChange,
 }: {
   id: string;
   label: string;
   hint?: string;
   checked: boolean;
+  disabled?: boolean;
   onChange(on: boolean): void;
 }) {
   return (
     <Row id={id} label={label} hint={hint}>
-      <Switch id={id} checked={checked} onCheckedChange={onChange} />
+      <Switch id={id} checked={checked} disabled={disabled} onCheckedChange={onChange} />
     </Row>
   );
 }
@@ -579,15 +581,11 @@ export function LauncherGameSettings({
     setPreference(next);
     writeThaiFontPreference(game.storage, next);
   };
-  /** Fullscreen is a browser privilege, so a change here asks for it while the
-   * click still counts as the gesture the browser requires. */
+  /** Only remembered here: the game page applies it when the game starts, so
+   * opening this dialog never changes the launcher's own fullscreen state. */
   const saveFullscreen = (next: FullscreenPreference) => {
     setFullscreenPreference(next);
     writeFullscreenPreference(game.storage, next);
-    const ask = next.enabled && !next.onlyInGame;
-    void (ask ? enterFullscreen(document.documentElement) : leaveFullscreen()).catch(
-      (cause: unknown) => setError(`The browser did not change fullscreen: ${message(cause)}`),
-    );
   };
 
   const settingId = (section: string, key: string) =>
@@ -1238,7 +1236,7 @@ export function LauncherGameSettings({
             <Flex direction="column" gap="4" pt="4">
               <Section
                 title="Display"
-                hint="The launcher resolution overrides the game's saved size for the next launch. It starts at the desktop's own size."
+                hint={`The launcher resolution overrides the game's saved size for the next launch. It defaults to ${DEFAULT_VIDEO_SIZE.w} × ${DEFAULT_VIDEO_SIZE.h}.`}
               >
                 <Row id={`launcher-resolution-${game.slot}-${game.id}`} label="Resolution">
                   <Select.Root
@@ -1273,7 +1271,7 @@ export function LauncherGameSettings({
                 <ToggleRow
                   id={`launcher-fullscreen-${game.slot}-${game.id}`}
                   label="Full screen"
-                  hint="Enter fullscreen when a game starts. Turning this on fullscreens the launcher now."
+                  hint="Enter fullscreen when a game starts."
                   checked={fullscreenPreference.enabled}
                   onChange={(enabled) =>
                     saveFullscreen({
@@ -1283,17 +1281,18 @@ export function LauncherGameSettings({
                     })
                   }
                 />
-                {fullscreenPreference.enabled ? (
+                <div className={styles.subOption}>
                   <ToggleRow
                     id={`launcher-fullscreen-ingame-${game.slot}-${game.id}`}
-                    label="Full screen only in game"
-                    hint="Keep the launcher windowed: the game page enters fullscreen at the loading screen and returns to a window when the game ends."
+                    label="Game match only"
+                    hint="Stay windowed in the game's menus: enter fullscreen at the match's loading screen and return to a window after the score screen."
                     checked={fullscreenPreference.onlyInGame}
+                    disabled={!fullscreenPreference.enabled}
                     onChange={(onlyInGame) =>
                       saveFullscreen({ ...fullscreenPreference, onlyInGame })
                     }
                   />
-                ) : null}
+                </div>
                 {!loaded ? (
                   <Text color="gray">Reading the game's settings…</Text>
                 ) : (
