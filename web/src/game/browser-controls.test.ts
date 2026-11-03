@@ -53,6 +53,27 @@ it("captures once on gameplay entry, releases for settings/menus, and recaptures
   control.dispose();
 });
 
+it("asks for raw (unadjusted) mouse movement under Pointer Lock", async () => {
+  const { request, control } = setup();
+  control.update(true);
+  await settle();
+  expect(request).toHaveBeenCalledWith({ unadjustedMovement: true });
+  control.dispose();
+});
+
+it("still locks when the browser refuses raw mouse movement", async () => {
+  const { canvas, request, control } = setup();
+  request.mockRejectedValueOnce(
+    new DOMException("raw input is not supported", "NotSupportedError"),
+  );
+  control.update(true);
+  await settle();
+  expect(request).toHaveBeenCalledTimes(2);
+  expect(request).toHaveBeenLastCalledWith();
+  expect(document.pointerLockElement).toBe(canvas);
+  control.dispose();
+});
+
 it("retries an activation-denied request on the next game click", async () => {
   const { canvas, request, control } = setup();
   request.mockRejectedValueOnce(new DOMException("User activation required", "NotAllowedError"));
