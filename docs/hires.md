@@ -11,7 +11,11 @@ ScreenHeight=1080
 
 Both games use an 800x600 shell. Red Alert 2's mode toggle is forced on by
 `run_lift.py`'s `ra2_shell_patches`, so its menus return to 800x600 after a
-game. A skirmish or mission opens at the saved INI size. The native host and
+game. A skirmish or mission opens at the saved INI size. Leaving a match from
+the reconnection screen's "Leave Game" also returns to the shell:
+`run_lift.py`'s `reconnect_patches` sets 800x600 when that path returns, since
+it skips the score screen that normally switches back (both editions). The
+native host and
 browser HLE list 16-bit modes from 640x480 through 5120x1440; the native host
 also adds the monitor's current mode and the size in `RA2.INI`. `AllowHiResModes`
 is forced on and the game-side dimension cap is 8192. On the virtual display,

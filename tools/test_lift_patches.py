@@ -34,6 +34,8 @@ from run_lift import (
     ra2_startup_order_patches,
     INTRO_SITES,
     intro_patches,
+    RECONNECT_LEAVE,
+    reconnect_patches,
     ra2_shell_patches,
     thai_font_call_replacements,
     THEME_PLAYSONG_ARG,
@@ -361,6 +363,45 @@ class YROnlinePatchTests(unittest.TestCase):
                 self.assertEqual(yr_online_patches(self.image(corrupt=va), 0), {})
         self.assertEqual(yr_online_patches(self.image(jle_target=0x00789B00), 0), {})
         self.assertEqual(yr_online_patches(self.image(off_target=0x00789B90), 0), {})
+
+
+class ReconnectPatchTests(unittest.TestCase):
+    """Leaving a match from the reconnection screen (run_lift.py reconnect_patches)."""
+
+    SIZE = 0x00800000
+
+    @staticmethod
+    def image(target, corrupt=None):
+        t = RECONNECT_LEAVE[target]
+        code = bytearray(ReconnectPatchTests.SIZE)
+        state_va, state_raw = t['state']
+        raw = bytes.fromhex(state_raw)
+        code[state_va:state_va + len(raw)] = raw
+        for va, fn in t['returns']:
+            code[va:va + 5] = b'\xe8' + (fn - (va + 5)).to_bytes(4, 'little', signed=True)
+        if corrupt is not None:
+            code[corrupt] ^= 0xFF
+        return bytes(code)
+
+    def test_both_leave_returns_put_the_800x600_shell_back(self):
+        for target in ('game', 'gamemd'):
+            with self.subTest(target=target):
+                t = RECONNECT_LEAVE[target]
+                patches = reconnect_patches(self.image(target), 0, target)
+                self.assertEqual(set(patches), {va for va, _fn in t['returns']})
+                for body in patches.values():
+                    self.assertIn('ecx = 0x320u; edx = 0x258u;', body)
+                    self.assertIn('MEM32(0x%08Xu) != 0x320u' % t['width'], body)
+                    self.assertIn('MEM32(0x%08Xu) != 0x258u' % t['height'], body)
+                    self.assertIn('RECOMP_CALL(sub_%08X)' % t['mode_set'], body)
+
+    def test_a_different_build_gets_no_reconnect_patch(self):
+        for target in ('game', 'gamemd'):
+            t = RECONNECT_LEAVE[target]
+            for name in ('state', 'return'):
+                va = t['state'][0] if name == 'state' else t['returns'][0][0]
+                with self.subTest(target=target, name=name):
+                    self.assertEqual(reconnect_patches(self.image(target, corrupt=va), 0, target), {})
 
 
 class RA2ConfirmPatchTests(unittest.TestCase):

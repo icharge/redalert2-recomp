@@ -975,6 +975,56 @@ def yr_online_patches(code, cs):
     return out
 
 
+# Leaving a match from the reconnection screen's "Leave Game" button skips the
+# score screen, the path that switches the display back to the 800x600 shell.
+# The WOL lobby and the menus that follow then stay at the match size. The
+# reconnection dialog's state is 2 when the player leaves (cmp [state], 2);
+# Wait_For_Players returns 8 or 9 from that path, and the display size is put
+# back just before either return. The mode setter is the same one the score
+# screen's "Toggle display mode back to shell res" uses.
+RECONNECT_LEAVE = {
+    'game': dict(
+        state=(0x006251FB, '833dd05eab0002'),            # cmp dword [0xAB5ED0], 2
+        returns=((0x00625E03, 0x0062E840), (0x00625E1A, 0x0062E840)),   # return 8, return 9
+        width=0x008523E0, height=0x008523E4,             # the current display size
+        mode_set=0x005434E0),                            # "About to set video mode"
+    'gamemd': dict(
+        state=(0x00648CFB, '833d6844b00002'),            # cmp dword [0xB04468], 2
+        returns=((0x00649903, 0x006523A0), (0x0064991A, 0x006523A0)),
+        width=0x008A00A4, height=0x008A00A8,
+        mode_set=0x00560BF0),
+}
+
+
+def reconnect_patches(code, cs, target):
+    """Return to the 800x600 shell when a match is left from the reconnection
+    screen (RECONNECT_LEAVE). Every site is checked by its bytes first: a
+    different build gets no patches."""
+    t = RECONNECT_LEAVE[target]
+
+    def at(va, raw):
+        return code[va - cs:va - cs + len(raw)] == raw
+
+    def call_bytes(va, fn):
+        return b'\xe8' + (fn - (va + 5)).to_bytes(4, 'little', signed=True)
+
+    state_va, state_raw = t['state']
+    if not at(state_va, bytes.fromhex(state_raw)):
+        print('[*] reconnect_patches: the leave state does not match this build; no patch')
+        return {}
+    for va, fn in t['returns']:
+        if not at(va, call_bytes(va, fn)):
+            print('[*] reconnect_patches: a leave return does not match this build; no patch')
+            return {}
+    tag = ('/* remaster: leaving a match from the reconnection screen returns to '
+           'the 800x600 shell, run_lift.py reconnect_patches */')
+    body = ('if (MEM32(0x%08Xu) != 0x%Xu || MEM32(0x%08Xu) != 0x%Xu) { ecx = 0x%Xu; edx = 0x%Xu; '
+            'RECOMP_CALL(sub_%08X); } %s')
+    return {va: body % (t['width'], RA2_SHELL_W, t['height'], RA2_SHELL_H,
+                        RA2_SHELL_W, RA2_SHELL_H, t['mode_set'], tag)
+            for va, _fn in t['returns']}
+
+
 def ra2_online_patches(code, cs):
     """Red Alert 2's online resolution range (see RA2_ONLINE_SITES).
 
@@ -1309,6 +1359,7 @@ def targets():
                                                  **page_cursor_palette_patches(code, cs, 'gamemd'),
                                                  **yr_online_patches(code, cs), **yr_startup_order_patches(code, cs),
                                                  **intro_patches(code, cs, 'gamemd'),
+                                                 **reconnect_patches(code, cs, 'gamemd'),
                                                  **web_exit_confirmation_patches(code, cs, 'gamemd'),
                                                  **web_url_patches(code, cs, 'gamemd')}),
         'game': dict(exe=os.path.join(_HERE, 'game', 'game.exe'),
@@ -1335,7 +1386,8 @@ def targets():
                                                **ra2_confirm_patches(code, cs),
                                                **ra2_cache_patches(code, cs), **ra2_mode_cap_patches(code, cs),
                                                **ra2_load_patches(code, cs), **ra2_profile_patches(code, cs),
-                                               **ra2_tab_patches(code, cs)}),
+                                               **reconnect_patches(code, cs, 'game'),
+                                               **web_url_patches(code, cs, 'game')}),
     }
 
 

@@ -213,6 +213,12 @@ a2.ini`.
 
 ### Fixed
 
+- Leaving a match from the reconnection screen's "Leave Game" button returns
+  to the 800x600 shell. That path skips the score screen, whose switch back
+  was the only place the display mode was restored, so the WOL lobby and the
+  menus after it stayed at the match size (1920x1080 and so on). The lift
+  now puts the shell size back when the reconnection handler returns 8 or 9
+  (`run_lift.py`'s `reconnect_patches`, both editions).
 - The page's cursor no longer jumps when the mouse is flicked quickly into a
   screen edge under Pointer Lock. The lock asks Chrome for raw
   (`unadjustedMovement`) input, so the hidden OS cursor cannot be recentred at
