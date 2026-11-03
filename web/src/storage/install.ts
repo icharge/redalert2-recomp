@@ -34,7 +34,7 @@ export interface BuildInfo {
   >;
 }
 
-export type FileKind = "archive" | "movie" | "sound" | "data" | "settings" | "save";
+export type FileKind = "archive" | "movie" | "logo" | "sound" | "data" | "settings" | "save";
 
 /** The files the game writes for its own options and hotkeys; a fresh import leaves them out. */
 const SETTINGS_FILES = new Set(["ra2.ini", "ra2md.ini", "keyboard.ini", "keyboardmd.ini"]);
@@ -81,6 +81,9 @@ export function classify(path: string): Classified | null {
   // the game writes `SAVE0001.sav` beside its exe (SAVE%04lX.%3s), not in a folder
   if (name.endsWith(".sav")) return { kind: "save", needs: BOTH };
   if (isRuntimeInput(name)) return null;
+  /* Loose start-up logos override the copies in LANGUAGE.MIX / LANGMD.MIX. */
+  if (name === "westlogo.bik") return { kind: "logo", needs: ["ra2"] };
+  if (name === "ea_wwlogo.bik") return { kind: "logo", needs: ["ra2md"] };
   const md: GameId[] = name.includes("md") ? ["ra2md"] : BOTH;
   if (/^(movies|movmd)[^/]*\.mix$/.test(name)) return { kind: "movie", needs: md };
   if (name.endsWith(".mix")) return { kind: "archive", needs: md };
@@ -175,6 +178,7 @@ export function planImport(
       !!classified &&
       classified.kind !== "save" &&
       classified.kind !== "movie" &&
+      classified.kind !== "logo" &&
       classified.kind !== "settings" &&
       classified.needs.includes("ra2")
     );
@@ -185,6 +189,7 @@ export function planImport(
       !!classified &&
       classified.kind !== "save" &&
       classified.kind !== "movie" &&
+      classified.kind !== "logo" &&
       classified.kind !== "settings" &&
       classified.needs.length === 1 &&
       classified.needs[0] === "ra2md"
@@ -231,6 +236,14 @@ export function planImport(
     if (what.kind === "movie") plan.movieBytes += file.size;
     if (!what.needs.some((id) => games.includes(id))) {
       plan.skipped.push({ path: file.path, reason: "for a game this folder does not have" });
+    } else if (what.kind === "logo") {
+      // Store the name the game asks for, whatever case the source uses.
+      plan.copy.push({
+        ...file,
+        ...what,
+        path: what.needs[0] === "ra2" ? "WESTLOGO.BIK" : "EA_WWLOGO.BIK",
+      });
+      plan.bytes += file.size;
     } else if (what.kind === "movie" && !options.movies) {
       plan.copy.push({ ...file, ...what, size: EMPTY_ARCHIVE.length, stub: true });
       plan.bytes += EMPTY_ARCHIVE.length;

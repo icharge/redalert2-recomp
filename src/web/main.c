@@ -514,7 +514,7 @@ static int g_memfs;
 #define MEMFS_LINK_FROM (1024 * 1024)   /* READ_IN_PLACE_BYTES in web/src/storage/opfs.ts */
 
 static int memfs_keeps(const char *name) {
-    static const char *const ext[] = { ".mix", ".bag", ".idx", ".ini", ".csf", ".fnt", ".mmx", ".map", ".mpr", ".yrm", ".exe", ".dll" };
+    static const char *const ext[] = { ".mix", ".bag", ".idx", ".ini", ".csf", ".fnt", ".mmx", ".map", ".mpr", ".yrm", ".exe", ".dll", ".bik" };
     size_t n = strlen(name);
     for (size_t i = 0; i < sizeof ext / sizeof *ext; i++) {
         size_t e = strlen(ext[i]);

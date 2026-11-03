@@ -242,6 +242,32 @@ function stageWolDataKey(fs: EmscriptenFs, game: GameId): void {
   replaceFile(fs, path, withBrowserWolPort(ini));
 }
 
+/* The launcher's own start-up logos. They override the copies in the game's
+ * LANGUAGE.MIX / LANGMD.MIX; if the asset is absent the game falls back to the
+ * loose file in the import, then to its MIX. */
+const BUNDLED_LOGOS: Partial<Record<GameId, string>> = {
+  ra2: "WESTLOGO.BIK",
+  ra2md: "EA_WWLOGO.BIK",
+};
+
+export async function stageBundledLogo(
+  fs: EmscriptenFs,
+  game: GameId,
+  existing: Set<string>,
+  fetcher: typeof fetch = fetch,
+): Promise<void> {
+  const name = BUNDLED_LOGOS[game];
+  if (!name || existing.has(name.toLowerCase())) return;
+  try {
+    const response = await fetcher(appPath(`logos/${name}`));
+    if (!response.ok) return;
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (bytes.length) fs.writeFile(`/game/${name}`, bytes);
+  } catch {
+    /* no bundled logo: the game reads its MIX */
+  }
+}
+
 /** A battle's picture size. The game takes it from RA2MD.INI when a game starts. */
 export interface VideoSize {
   w: number;
@@ -439,6 +465,7 @@ async function loadDevFiles(
     doneBytes += bytes.length;
     doneFiles++;
   }
+  await stageBundledLogo(fs, game, new Set(files.map((file) => file.name.toLowerCase())), fetcher);
   stageWolDataKey(fs, game);
   await stageThaiFont(fs, thaiFontFix);
   store.loading("the game");
@@ -511,6 +538,7 @@ async function loadOpfsFiles(
   for (const name of REQUIRED_MOVIE_ARCHIVES[record.id]) {
     if (!importedNames.has(name)) fs.writeFile(`/game/${name}`, EMPTY_ARCHIVE);
   }
+  await stageBundledLogo(fs, record.id, importedNames);
   const mods = await loadMods(fs, record.storage, {
     excludeGameFont: thaiFontFix.enabled,
     inPlace: true,
