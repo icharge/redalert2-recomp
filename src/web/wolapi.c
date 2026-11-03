@@ -226,6 +226,10 @@ static wol_object g_chat = { .primary_iid = IID_WOL_CHAT, .event_iid = IID_WOL_C
 static wol_object g_channel = { .primary_iid = IID_WOL_CHANNEL, .event_iid = IID_WOL_CHANNEL_EVENTS };
 static wol_object g_profile = { .primary_iid = IID_WOL_PROFILE, .event_iid = IID_WOL_PROFILE_EVENTS };
 static uint32_t g_chat_vt, g_channel_vt, g_profile_vt, g_container_vt, g_point_vt;
+/* Create the WolChannel interface the game keeps at 0xA72D00 for its
+ * game-result submission (RequestGameresSend at vtable +0xC). */
+static uint32_t create_channel(const uint8_t *iid, uint32_t *out);
+static void ensure_gameres_object(void);
 /* Requests survive lobby return, but not a new match/login or sink replacement. */
 static struct { uint32_t id, sink, generation; } g_reports[8];
 static uint32_t g_report_id, g_report_generation;
@@ -870,6 +874,7 @@ static void handle_line(const char *line) {
                 MEM8(0xB2ABD9), MEM32(0xA3D2A4), MEM32(0xA3D298), g_chat.sink, g_starting_game);
             MEM8(0xB2ABD9) = 0;
             MEM32(0xA3D2A4) = 2;
+            ensure_gameres_object();
             /* Do not deliver the chat sink's ordinal 16 here: that is
              * IChatEvent::OnNetStatus, so synthesising it feeds the game a
              * bogus connection status. The match window is closed through its
@@ -1376,11 +1381,27 @@ static uint32_t read_be32(const uint8_t *p) {
     return (uint32_t)p[0] << 24 | (uint32_t)p[1] << 16 | (uint32_t)p[2] << 8 | p[3];
 }
 static void m_net_gameres_send(void) {
-    const uint8_t *data = APTR(3);
-    uint32_t length = A32(4), ptr = A32(3), number = 0;
+    const uint8_t *data = NULL;
+    uint32_t length = 0, number = 0;
     size_t heap_size = emscripten_get_heap_size();
-    if (!ptr || ptr > heap_size || length < 4 || length > 32768 || length > heap_size - ptr) RET(E_POINTER, 5);
-    if (((uint32_t)data[0] << 8 | data[1]) != length || data[2] || data[3]) RET(E_FAIL, 5);
+    fprintf(stderr, "[wol] gameres send %08X %08X %08X %08X %08X\n",
+        A32(1), A32(2), A32(3), A32(4), A32(5));
+    /* The record is passed both as a pointer and as an explicit buffer/length;
+     * the argument order differs between the lobby and the game-start send, so
+     * accept the first pair whose header matches (big-endian length, zero
+     * kind). */
+    static const int pairs[4][2] = { { 3, 4 }, { 4, 5 }, { 2, 3 }, { 5, 4 } };
+    for (int i = 0; i < 4 && !data; i++) {
+        uint32_t ptr = A32(pairs[i][0]), len = A32(pairs[i][1]);
+        if (!ptr || ptr > heap_size || len < 8 || len > 32768 || len > heap_size - ptr) continue;
+        const uint8_t *candidate = (const uint8_t *)(uintptr_t)ptr;
+        if ((((uint32_t)candidate[0] << 8) | candidate[1]) == len &&
+            candidate[2] == 0 && candidate[3] == 0) {
+            data = candidate;
+            length = len;
+        }
+    }
+    if (!data) { fprintf(stderr, "[wol] gameres: no packet in args\n"); RET(E_FAIL, 5); }
     for (uint32_t at = 4; at < length;) {
         if (length - at < 8) RET(E_FAIL, 5);
         uint32_t size = (uint32_t)data[at + 6] << 8 | data[at + 7];
@@ -1752,7 +1773,27 @@ static uint32_t create_channel(const uint8_t *iid, uint32_t *out) {
         { "WolChannel::RequestHighscore", m_stub_5 }, { 0, 0 }
     };
     if (!g_channel_vt) g_channel_vt = hle_com_vtable(methods);
-    return create_object(&g_channel, g_channel_vt, iid, out);
+    uint32_t status = create_object(&g_channel, g_channel_vt, iid, out);
+    /* The native client keeps the WolChannel interface here and submits game
+     * results through `[[0xA72D00]+0xC]` (RequestGameresSend, 0x69A0E1). The
+     * browser build never created that object, so the submit was skipped and
+     * the built GameRes packet discarded. */
+    if (status == S_OK && out) MEM32(0xA72D00) = *out;
+    return status;
+}
+
+/* The game submits its GameRes packet through `[[0xA72D00]+0xC]`; the browser
+ * build never created that interface, so the submit at 0x69A0E1 was skipped
+ * and the finished match never reported. Create it before the match ends. */
+static void ensure_gameres_object(void) {
+    if (MEM32(0xA72D00)) return;
+    static const uint8_t any_iid[16] = { 0 };
+    uint32_t object = 0;
+    uint32_t status = create_channel(any_iid, &object);
+    if (status == S_OK && object) {
+        MEM32(0xA72D00) = object;
+        fprintf(stderr, "[wol] game-result interface %08X\n", object);
+    }
 }
 
 static uint32_t create_profile(const uint8_t *iid, uint32_t *out) {

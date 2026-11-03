@@ -158,7 +158,7 @@ export class WolClient {
     private readonly server: string | WolServer,
     private readonly username: string,
     private readonly password: string,
-    private readonly fetcher: typeof fetch = fetch,
+    private readonly fetcher: typeof fetch = (input, init) => fetch(input, init),
     private readonly createSocket: (url: string) => WolSocket = (url) => new WebSocket(url),
     timeoutMs = DEFAULT_TIMEOUT_MS,
   ) {
