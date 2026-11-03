@@ -487,18 +487,45 @@ static void parse_room_line(const char *line) {
 
 static uint32_t virtual_ip(const char *name);
 
+/* Is `nick` one of the entries in a 353 name list ("@a,0,50,0 b,0,50,0")? */
+static int roster_has_nick(const char *names, const char *nick) {
+    size_t nick_length = strlen(nick);
+    while (*names) {
+        while (*names == ' ') names++;
+        while (*names == '@' || *names == '+' || *names == '%') names++;
+        const char *end = names;
+        while (*end && *end != ',' && *end != ' ' && *end != '\r' && *end != '\n') end++;
+        if ((size_t)(end - names) == nick_length && !strncmp(names, nick, nick_length)) return 1;
+        names = end;
+        while (*names && *names != ' ') names++;
+    }
+    return 0;
+}
+
 static void parse_roster(const char *line) {
     char channel[48];
-    if (sscanf(line, ":%*s 353 %*s %*s %47s", channel) != 1 || strcmp(channel, g_current_channel)) return;
+    if (sscanf(line, ":%*s 353 %*s %*s %47s", channel) != 1) return;
+    const char *names = strrchr(line, ':');
+    if (!names) return;
+    names++;
+    if (strcmp(channel, g_current_channel) != 0) {
+        /* The match bot adds both players to its game room and sends that
+         * room's roster without a JOIN. Adopt the channel silently: the WDT
+         * match window treats an OnChannelJoin at this point as a failed
+         * matching-server lookup (dialog 0xD0), while STARTG only needs the
+         * channel and the user list. Lobby rosters never take over. */
+        if (channel[0] != '#' || strncmp(channel + 1, "Lob_", 4) == 0) return;
+        if (!roster_has_nick(names, g_nick)) return;
+        copy_text(g_current_channel, sizeof g_current_channel, channel);
+        fprintf(stderr, "[wol] adopted game channel %s\n", channel);
+    }
     /* The native guest validates NET_GO against the WOL host's identity. The
      * host can already have left the chat room while that UDP packet is in flight. */
     if (g_session.game_id[0] && !strcmp(g_session.channel, g_current_channel)) return;
     if (g_channel_count == 0) (void)current_channel();
     g_user_count = 0;
-    const char *names = strrchr(line, ':');
-    if (!names) return;
     char copy[WOL_LINE_CAP];
-    copy_text(copy, sizeof copy, names + 1);
+    copy_text(copy, sizeof copy, names);
     for (char *name = strtok(copy, " \r\n"); name && g_user_count < sizeof g_users / sizeof g_users[0]; name = strtok(NULL, " \r\n")) {
         uint32_t flags = *name == '@' ? 1u : 0u;
         while (*name == '@' || *name == '+' || *name == '%') name++;
