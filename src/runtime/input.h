@@ -36,3 +36,4 @@ void  input_post_mouse(HWND h, UINT m, WPARAM w, LPARAM l);
 int   input_posted_mouse(HWND h, UINT m, LPARAM l);
 int   input_posted_mouse_peek(HWND h, UINT m, LPARAM l);   /* the same, keeping the note */                    /* FALSE: no scripted position yet */
 SHORT input_key_state(int vk, SHORT real);
+int   input_menu_seen(void);                     /* the main menu (0xE2) has opened once */

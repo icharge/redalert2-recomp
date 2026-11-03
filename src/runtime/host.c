@@ -1171,6 +1171,15 @@ static void shim_timeKillEvent(void) {
     { "timeSetEvent", shim_timeSetEvent }, \
     { "timeKillEvent", shim_timeKillEvent }
 
+/* The start-up logo skip (startup_order.c): Escape or a left click while the
+ * main menu has not opened. The game's own movie loop does the seeking, so no
+ * Bink object is touched from the host. */
+int ra2_startup_skip_pressed(void) {
+    return (input_key_state(VK_ESCAPE, GetAsyncKeyState(VK_ESCAPE)) & 0x8000) != 0 ||
+           (input_key_state(VK_LBUTTON, GetAsyncKeyState(VK_LBUTTON)) & 0x8000) != 0;
+}
+int ra2_menu_seen(void) { return input_menu_seen(); }
+
 #define GUEST_SHIMS \
     { "FindResourceA", shim_FindResourceA }, \
     { "LoadResource", shim_LoadResource }, \

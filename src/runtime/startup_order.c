@@ -3,6 +3,18 @@
 static int g_logo_first;
 static int g_boot_done;
 static int g_intro_mode = RA2_INTRO_SKIP_MOVIES;
+static int g_skip_was;
+
+/* Escape or a left click skips the start-up logo. The host supplies the raw
+ * key/mouse state; only the press edge counts, so a button already held when
+ * the logo starts (the launcher's click) does not skip it. */
+int ra2_startup_logo_skip(void) {
+    if (ra2_menu_seen()) return 0;
+    int pressed = ra2_startup_skip_pressed();
+    int edge = pressed && !g_skip_was;
+    g_skip_was = pressed;
+    return edge;
+}
 
 int ra2_startup_logo_first(void) { return g_logo_first; }
 
