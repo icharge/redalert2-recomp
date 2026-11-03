@@ -23,18 +23,24 @@ async function waitDialog(id, after = 0, ms = 60000) {
     await run.page.waitForTimeout(200);
   }
 }
-async function login(y0, y1) {
+async function login() {
+  const state = await run.page.evaluate(() => window.ra2Store?.getSnapshot() ?? null);
+  // The WOL login dialog is laid out per edition and screen size. RA2's
+  // fields sit higher than YR's on the same 800x600 shell.
+  const yuri = (state?.title ?? "").toLowerCase().includes("yuri");
+  const [x, y0, y1] = yuri ? [401, 254, 297] : [398, 167, 205];
+  const [submitX, submitY] = yuri ? [706, 220] : [720, 220];
   for (const [y, text] of [
     [y0, process.env.WOL_TEST_USER ?? "woltst9"],
     [y1, process.env.WOL_TEST_PASSWORD ?? "wolpass1"],
   ]) {
-    await run.clickGame(388, y);
+    await run.clickGame(x, y);
     await run.page.keyboard.press("End");
     for (let i = 0; i < 16; i++) await run.page.keyboard.press("Backspace");
     await run.page.keyboard.type(text, { delay: 60 });
     await run.page.waitForTimeout(200);
   }
-  await run.clickGame(720, 220);
+  await run.clickGame(submitX, submitY);
 }
 try {
   if (!opts.testGame) {
@@ -61,7 +67,20 @@ try {
   await run.clickGame(720, 263); // Login
   await waitDialog("0x10F");
   await run.page.waitForTimeout(1000);
-  await login(167, 205);
+  await run.shot("login-dialog");
+  console.log(
+    "login geometry",
+    await run.page.evaluate(() => {
+      const c = document.querySelector("canvas");
+      const r = c.getBoundingClientRect();
+      return {
+        size: window.ra2Store?.getSnapshot().size,
+        rect: { left: r.left, top: r.top, width: r.width, height: r.height },
+        canvas: { width: c.width, height: c.height },
+      };
+    }),
+  );
+  await login();
   await waitDialog("0x113");
   await run.page.waitForTimeout(2500);
   await run.clickGame(707, 557); // Back to WOL welcome
@@ -71,7 +90,7 @@ try {
   await run.page.waitForTimeout(2000);
   // It may ask for login again.
   if (run.all.some((l) => l.includes("[dialog] open 0x10F"))) {
-    await login(167, 205);
+    await login();
     await run.page.waitForTimeout(4000);
   }
   if (run.all.some((l) => l.includes("[dialog] open 0xFB"))) {
@@ -155,6 +174,13 @@ try {
       await run.page.waitForTimeout(5000);
       await run.shot(`hold-${elapsed + 5}`);
     }
+  }
+
+  if (process.env.WDT_OK) {
+    const [x, y] = process.env.WDT_OK.split(",").map(Number);
+    await run.clickGame(x, y);
+    await run.page.waitForTimeout(5000);
+    await run.shot("after-ok");
   }
 
   const serverCurrent = run.all.some((line) => line.includes("[wdt] server state current"));

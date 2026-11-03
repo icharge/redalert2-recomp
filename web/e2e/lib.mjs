@@ -163,6 +163,11 @@ export async function startPage(opts) {
     await page.mouse.move(point.x, point.y);
     await page.mouse.click(point.x, point.y, { button, delay: Number(process.env.HOLD_MS ?? 80) }); // a person holds the button for a moment
   };
+  const dblclickGame = async (x, y) => {
+    const point = await windowPoint(x, y);
+    await page.mouse.move(point.x, point.y);
+    await page.mouse.dblclick(point.x, point.y);
+  };
 
   // `dev`: straight to Play with the dev server's game folder, not the Import and Library screens
   const url = new URL(opts.url);
@@ -204,6 +209,7 @@ export async function startPage(opts) {
     shot,
     fail,
     clickGame,
+    dblclickGame,
     moveGame,
     rdrag,
     waitFor,

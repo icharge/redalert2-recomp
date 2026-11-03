@@ -212,6 +212,11 @@ a2.ini`.
 
 ### Fixed
 
+- World Domination's WOL matchmaker: the bridge handles the matching agent's
+  `Start <game>` message, marks the agent as the channel operator, keeps an
+  unsolicited game list from replacing the lobby list, and answers the WDT
+  mangler with the reply shape the game validates.
+  (`src/web/wolapi.c`, `web/e2e/wdt-capture.mjs`, `web/e2e/lib.mjs`)
 - The intro is on by default for both editions, and the launcher's Skip intro
   switch now skips only the intro: the logo still plays. The game's intro
   branch follows the host (`--intro`/`--no-intro`) instead of `[Intro] Play` in

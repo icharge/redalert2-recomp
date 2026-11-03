@@ -69,6 +69,13 @@ _Static_assert(sizeof(ra2_wolapi_session) == 504, "browser WOL session layout");
 
 #define WOL_LINE_CAP 4096u
 #define WOL_LINE_COUNT 128u
+/* The matchmaker's `Start <game>` handler (wonline.cpp). The retail sink
+ * passes it with the matching-server flag (dl=1); see receive_chat. */
+#ifdef RA2_TARGET_GAME
+#define WOL_START_HANDLER 0x0075B910u
+#else
+#define WOL_START_HANDLER 0x007A16B0u
+#endif
 static char g_lines[WOL_LINE_COUNT][WOL_LINE_CAP];
 static volatile uint32_t g_line_write, g_line_read;
 static wol_server g_server;
@@ -473,6 +480,9 @@ static void parse_room_line(const char *line) {
     copy_text(channel->name, sizeof channel->name, fields[3] + 1);
     topic = strstr(fields[10], "::");
     read_channel_metadata(channel, topic ? topic + 2 : "");
+    /* An unsolicited type-33 LIST reply is the game list the matchmaker's
+     * Start handler resolves names against, not the lobby list. */
+    if (channel->type != 0) g_channel_list_lobby = 0;
 }
 
 static uint32_t virtual_ip(const char *name);
@@ -511,6 +521,10 @@ static void parse_roster(const char *line) {
         memset(bot, 0, sizeof *bot);
         copy_text(bot->name, sizeof bot->name, "matchbot");
         bot->ipaddr = virtual_ip("matchbot");
+        /* The matching agent is the lobby's channel operator: the match
+         * worker skips channel operators when it builds its ping list and
+         * sends the match request to the operator instead. */
+        bot->flags = 1u;
     }
     emit_user_list();
 }
@@ -608,6 +622,19 @@ static void receive_chat(const char *line) {
     if (strcmp(target, public ? g_current_channel : g_nick)) return;
     const char *text = strstr(line, " :");
     if (!text) return;
+    const char *body = text + 2;
+    /* World Domination's matchmaker announces the room with `Start <game>`,
+     * not `Matched`. The retail chat sink routes it through a slot that also
+     * sets dl=1; a normal private message arrives here instead, so call the
+     * handler directly (ecx = text, dl = 1) and let its join worker list and
+     * join the room. */
+    if (!public && !strcmp(sender, "matchbot") && !strncmp(body, "Start ", 6)) {
+        fprintf(stderr, "[wol] matchmaker %s\n", body);
+        g_ecx = (uint32_t)(uintptr_t)body;
+        g_edx = 1;
+        hle_call_guest(WOL_START_HANDLER, 0, NULL);
+        return;
+    }
     wol_user user = { 0 };
     copy_text(user.name, sizeof user.name, sender);
     for (uint32_t i = 0; i < g_user_count; i++)
@@ -685,6 +712,13 @@ static void handle_line(const char *line) {
     }
     if (strstr(line, " 322 ")) { parse_room_line(line); return; }
     if (strstr(line, " 323 ")) { emit_channel_list(); return; }
+    if (strstr(line, " 321 ")) {
+        /* A new LIST reply: drop the previous batch so an unsolicited type-33
+         * game list does not carry the lobbies over. */
+        g_channel_count = 0;
+        g_channel_list_lobby = 0;
+        return;
+    }
     if (strstr(line, " 353 ")) { parse_roster(line); return; }
     if (strstr(line, " TOPIC ")) {
         const char *topic = strstr(line, " :");
@@ -1194,10 +1228,17 @@ static void service_mangler(void) {
         if (size <= 0) return;
         uint16_t destination = (uint16_t)((frame[6] << 8) | frame[7]);
         if (destination != WDT_MANGLER_PORT) continue;
+        if (size < 8 + 0x32) continue;
         uint16_t source = (uint16_t)((frame[4] << 8) | frame[5]);
-        /* Reply: the mangler is the sender, the game's spare port is the target. */
+        /* Reply: the mangler is the sender, the game's spare port is the target.
+         * The receive validator (0x5BA194) wants the magic 0xAA03 at payload
+         * offset 0 and a 0x2C word at payload offset 0x2e, not the query
+         * frame's layout. */
         uint8_t reply[1600];
         memcpy(reply, frame, (size_t)size);
+        memset(reply + 8, 0, (size_t)(size - 8));
+        reply[8] = 0x03; reply[9] = 0xAA;
+        reply[8 + 0x2e] = 0x2C;
         reply[0] = 172; reply[1] = 29; reply[2] = 99; reply[3] = 1;
         reply[4] = (uint8_t)(WDT_MANGLER_PORT >> 8); reply[5] = (uint8_t)WDT_MANGLER_PORT;
         reply[6] = (uint8_t)(source >> 8); reply[7] = (uint8_t)source;
