@@ -367,16 +367,19 @@ describe("ensureDefaultMainSettings", () => {
     expect(writes[0]?.text).toContain("ScreenWidth=1920");
   });
 
-  it("does not overwrite a settings file that came with the import", async () => {
-    const writes: string[] = [];
+  it("keeps the import's settings but forces the intro flag off", async () => {
+    const writes: { name: string; text: string }[] = [];
     await ensureDefaultMainSettings(record("ra2md", { "RA2MD.INI": "[Options]" }), {
       readSave: async () => null,
-      readImported: async () => bytes("[Options]\nGameSpeed=1\n"),
-      writeSave: async (_storage, name) => {
-        writes.push(name);
+      readImported: async () => bytes("[Options]\nGameSpeed=1\n[Intro]\nPlay=yes\n"),
+      writeSave: async (_storage, name, data) => {
+        writes.push({ name, text: text(data) });
       },
     });
-    expect(writes).toEqual([]);
+    expect(writes).toHaveLength(1);
+    expect(writes[0]?.name).toBe("ra2md.ini");
+    expect(writes[0]?.text).toContain("GameSpeed=1");
+    expect(writes[0]?.text).toMatch(/\[Intro\]\r?\nPlay=no/);
   });
 });
 

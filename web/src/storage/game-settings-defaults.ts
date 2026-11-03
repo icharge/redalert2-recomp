@@ -5,7 +5,7 @@
 
 import type { GameId } from "./install";
 
-export type SettingsSection = "Options" | "Audio" | "Video" | "MultiPlayer";
+export type SettingsSection = "Options" | "Audio" | "Video" | "MultiPlayer" | "Intro";
 
 export type SettingsDefaults = Record<SettingsSection, Record<string, string>>;
 
@@ -36,6 +36,9 @@ const COMMON: SettingsDefaults = {
     ScreenHeight: "1080",
     StretchMovies: "yes",
   },
+  Intro: {
+    Play: "no",
+  },
   MultiPlayer: {},
 };
 
@@ -47,12 +50,14 @@ export function gameSettingsDefaults(game: GameId): SettingsDefaults {
       Options: copy("Options"),
       Audio: copy("Audio"),
       Video: copy("Video"),
+      Intro: copy("Intro"),
       MultiPlayer: copy("MultiPlayer"),
     };
   return {
     Options: { ...copy("Options"), CampDifficulty: "2" },
     Audio: copy("Audio"),
     Video: copy("Video"),
+    Intro: copy("Intro"),
     MultiPlayer: copy("MultiPlayer"),
   };
 }

@@ -149,6 +149,11 @@ static void ra2_MessageBoxA(void) {
     RET(answer, 4);
 }
 
+/* The start-up logo skip (startup_order.c): Escape or a left click before the
+ * main menu opens. The game's own movie loop seeks to the last frame. */
+int ra2_startup_skip_pressed(void) { return web_skip_pressed(); }
+int ra2_menu_seen(void) { return web_menu_seen; }
+
 /* The start-up movies (the logo, the intro) play at the speed they were made for: about eight
  * seconds of a 640x480 Bink before the main menu opens. In the headless/test mode (0) a movie
  * opened before the menu is two frames at 15 fps, as bink.c does for a host with no decoder (a
@@ -156,11 +161,15 @@ static void ra2_MessageBoxA(void) {
  * BinkWait says it is not yet time), and every movie after that (a campaign's) plays whole.
  * `--intro` plays the start-up movies and the intro; `--no-intro` plays the logo but the game
  * skips the intro (the launcher's Skip intro switch). */
+static recomp_func_t bink_func(const char *name) {
+    for (const win32hle_shim *s = win32hle_bink; s->name; s++)
+        if (!strcmp(s->name, name)) return s->fn;
+    return NULL;
+}
+
 static void ra2_BinkOpen(void) {
     static recomp_func_t real;
-    if (!real)
-        for (const win32hle_shim *s = win32hle_bink; s->name; s++)
-            if (!strcmp(s->name, "_BinkOpen@8")) real = s->fn;
+    if (!real) real = bink_func("_BinkOpen@8");
     real();
     uint32_t handle = g_eax;
     if (handle && ra2_startup_movies_skipped() && !web_menu_seen) {

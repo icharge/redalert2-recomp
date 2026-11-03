@@ -801,6 +801,9 @@ export async function loadGameSettings(
  * A fresh import has no settings file. Write the launcher's defaults into the save store before the
  * game starts, so the first launch already uses them instead of the engine's untouched defaults.
  * Only the file's presence is checked, so a large imported INI is not read a second time.
+ *
+ * `[Intro] Play` is kept at `no` in the game INI: the start-up intro is the host's
+ * `--intro` / `--no-intro`, and the stock INI flag would otherwise play it a second time.
  */
 export async function ensureDefaultMainSettings(
   game: GameRecord,
@@ -808,8 +811,31 @@ export async function ensureDefaultMainSettings(
 ): Promise<void> {
   const names = settingsFileNames(game.id);
   const saved = await (deps.readSave ?? defaultReadSave)(game.storage, names.main);
-  if (saved || importedEntry(game, names.main)) return;
-  await writeGameSettings(game, names.main, serializeIni(defaultMainIni(game.id)), deps);
+  if (saved) {
+    const patched = withIntroPlayOff(saved.data);
+    if (patched) await writeGameSettings(game, names.main, serializeIni(patched), deps);
+    return;
+  }
+  const imported = importedEntry(game, names.main);
+  if (imported) {
+    const data = await (deps.readImported ?? readGameFile)(imported[1].home, imported[0]);
+    const patched = withIntroPlayOff(data) ?? parseIni(data);
+    await writeGameSettings(game, names.main, serializeIni(patched), deps);
+    return;
+  }
+  await writeGameSettings(
+    game,
+    names.main,
+    serializeIni(setIniValue(defaultMainIni(game.id), "Intro", "Play", "no")),
+    deps,
+  );
+}
+
+/** The game INI with `[Intro] Play=no`, or null when it already says that. */
+function withIntroPlayOff(data: Uint8Array): Ini | null {
+  const ini = parseIni(data);
+  if (getIniValue(ini, "Intro", "Play") === "no") return null;
+  return setIniValue(ini, "Intro", "Play", "no");
 }
 
 /** A fresh profile has no host file either; write its defaults before the host reads them. */

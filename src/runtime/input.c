@@ -251,6 +251,7 @@ int input_posted_mouse(HWND h, UINT m, LPARAM l) {
 }
 
 static volatile LONG g_mods, g_lb_reads;
+int input_menu_seen(void) { return g_menu_open; }
 SHORT input_key_state(int vk, SHORT real) {
     if (!g_nev && g_live) {
         int mk = vk == VK_LBUTTON ? MK_LBUTTON : vk == VK_RBUTTON ? MK_RBUTTON : vk == VK_MBUTTON ? MK_MBUTTON : 0;

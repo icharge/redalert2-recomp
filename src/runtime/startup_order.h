@@ -20,3 +20,9 @@ enum { RA2_INTRO_SKIP_MOVIES = 0, RA2_INTRO_ON = 1, RA2_INTRO_LOGO_ONLY = 2 };
 void ra2_set_intro_mode(int mode);
 int ra2_intro_enabled(void);
 int ra2_startup_movies_skipped(void);
+
+/* The start-up logo skip: true while the logo is playing and Escape or a left
+ * click was pressed. The host implements the two queries. */
+int ra2_startup_logo_skip(void);
+int ra2_startup_skip_pressed(void);
+int ra2_menu_seen(void);
