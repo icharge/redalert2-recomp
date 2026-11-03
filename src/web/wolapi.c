@@ -874,6 +874,13 @@ static void handle_line(const char *line) {
                 MEM8(0xB2ABD9), MEM32(0xA3D2A4), MEM32(0xA3D298), g_chat.sink, g_starting_game);
             MEM8(0xB2ABD9) = 0;
             MEM32(0xA3D2A4) = 2;
+            /* The stock client fills the multiplayer session option bytes in
+             * its prematch dialog. A World Domination start skips that dialog,
+             * so they keep their bulk-data defaults - and 0xA3D2C2 (the
+             * "value only" defeat rule) then made both fresh houses count as
+             * defeated on frame 0, ending the match before it began. Clear it
+             * to the value a normal custom match has. */
+            MEM8(0xA3D2C2) = 0;
             ensure_gameres_object();
             /* Do not deliver the chat sink's ordinal 16 here: that is
              * IChatEvent::OnNetStatus, so synthesising it feeds the game a
