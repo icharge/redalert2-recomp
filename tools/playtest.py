@@ -398,7 +398,7 @@ def run(name, args, seconds, expect, every, original=False, web=None, web_headed
     os.makedirs(d, exist_ok=True)
     game = farm(os.path.join(d, 'game'), expect.get('ini'))
     mp4, log = os.path.join(d, 'run.mp4'), os.path.join(d, 'run.log')
-    cmd = WINE + [HOST, '--headless', '--run', '--mute', '--debuglog', '--watchdog', str(seconds)]
+    cmd = WINE + [HOST, '--headless', '--run', '--mute', '--debuglog', '--no-intro', '--watchdog', str(seconds)]
     if not expect.get('no_record'):
         cmd += ['--record', host_path(mp4)]
     cmd += ['--exe', host_path(os.path.join(game, GAME_EXE)),

@@ -125,6 +125,7 @@ void ra2_hook_debuglog(void) {
  * presenter shows its 2x picture. */
 #include "hdvox.h"
 #include "mods.h"
+#include "startup_order.h"
 static int compose_hd(const uint8_t *px16, int pitch, int w, int h, uint32_t *out) {
     if (!ra2_vox_hd_on) return 0;
     hdvox_compose(px16, pitch, w, h, out);
@@ -142,11 +143,12 @@ static void ra2_MessageBoxA(void) {
 }
 
 /* The start-up movies (the logo, the intro) play at the speed they were made for: about eight
- * seconds of a 640x480 Bink before the main menu opens. Until the menu has opened once a movie is
- * opened as two frames at 15 fps, as bink.c does for a host with no decoder (a tenth of a second;
- * a faster rate leaves the game's movie loop spinning, which only ends when BinkWait says it is not
- * yet time), and every movie after that (a campaign's) plays whole. `--intro` plays them. */
-static int g_play_intro;
+ * seconds of a 640x480 Bink before the main menu opens. In the headless/test mode (0) a movie
+ * opened before the menu is two frames at 15 fps, as bink.c does for a host with no decoder (a
+ * tenth of a second; a faster rate leaves the game's movie loop spinning, which only ends when
+ * BinkWait says it is not yet time), and every movie after that (a campaign's) plays whole.
+ * `--intro` plays the start-up movies and the intro; `--no-intro` plays the logo but the game
+ * skips the intro (the launcher's Skip intro switch). */
 static void ra2_BinkOpen(void) {
     static recomp_func_t real;
     if (!real)
@@ -154,7 +156,7 @@ static void ra2_BinkOpen(void) {
             if (!strcmp(s->name, "_BinkOpen@8")) real = s->fn;
     real();
     uint32_t handle = g_eax;
-    if (handle && !g_play_intro && !web_menu_seen) {
+    if (handle && ra2_startup_movies_skipped() && !web_menu_seen) {
         uint32_t *bink = (uint32_t *)(uintptr_t)handle;      /* Width, Height, Frames, FrameNum, LastFrameNum, FrameRate, FrameRateDiv */
         uint32_t was = bink[2];
         bink[2] = 2, bink[5] = 15, bink[6] = 1;
@@ -222,7 +224,7 @@ static void ra2_QueryPerformanceCounter(void) {
     if (g_clockstats) __atomic_fetch_add(&g_clock.qpc, 1, __ATOMIC_RELAXED);
     clock_gettime(CLOCK_MONOTONIC, &ts);
     uint64_t us = (uint64_t)ts.tv_sec * 1000000u + (uint64_t)ts.tv_nsec / 1000u;
-    if (!g_play_intro && !web_menu_seen) {
+    if (!ra2_intro_enabled() && !web_menu_seen) {
         static uint64_t window_start;
         static unsigned polls;
         if (us - window_start > SPIN_WINDOW_US) window_start = us, polls = 0;
@@ -678,7 +680,8 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--mod") && i + 1 < argc) g_mod = argv[++i];
         else if (!strcmp(argv[i], "--trace")) win32hle_trace = 1;
         else if (!strcmp(argv[i], "--memfs")) g_memfs = 1;
-        else if (!strcmp(argv[i], "--intro")) g_play_intro = 1;
+        else if (!strcmp(argv[i], "--intro")) ra2_set_intro_mode(RA2_INTRO_ON);
+        else if (!strcmp(argv[i], "--no-intro")) ra2_set_intro_mode(RA2_INTRO_LOGO_ONLY);
         else if (!strcmp(argv[i], "--windows")) g_dump_windows = 1;
         else if (!strcmp(argv[i], "--clockstats")) g_clockstats = 1;
         else if (!strcmp(argv[i], "--msgtrace") && i + 1 < argc) setenv("HLE_MSGTRACE", argv[++i], 1);
@@ -701,7 +704,7 @@ int main(int argc, char **argv) {
             g_dump_dir = dir;                /* the run chdirs into the game folder */
         }
         else {
-            printf("usage: ra2 [--run] [--headless | --fullscreen] [--scale sharp|smooth|crt|nearest|integer] [--game DIR] [--mod NAME|none] [--thai-font-fix --thai-font-id ID] [--debuglog] [--mute] [--trace] [--heartbeat S] [--memfs] [--intro] [--trap N] [--dump-frames DIR] [--hd-voxels] [--hd-voxels-dump DIR] [--clockstats] [--speedcontrol]\n"
+            printf("usage: ra2 [--run] [--headless | --fullscreen] [--scale sharp|smooth|crt|nearest|integer] [--game DIR] [--mod NAME|none] [--thai-font-fix --thai-font-id ID] [--debuglog] [--mute] [--trace] [--heartbeat S] [--memfs] [--intro | --no-intro] [--trap N] [--dump-frames DIR] [--hd-voxels] [--hd-voxels-dump DIR] [--clockstats] [--speedcontrol]\n"
                    "           [--press DLG:CTRL@s] [--select DLG:CTRL=N@s] [--waitlog TEXT@s] [--move|--click x,y@s]\n"
                    "           [--key [c][s][a]+vk@s] [--wait VA@s] [--drag x1,y1,x2,y2@s]\n");
             return !strcmp(argv[i], "--help") || !strcmp(argv[i], "-h") ? 0 : 1;

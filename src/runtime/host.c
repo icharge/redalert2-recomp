@@ -1419,6 +1419,7 @@ int main(int argc, char** argv) {
      * ExitProcess, which flushes nothing with the C runtime linked in (/MT):
      * a run that exited cleanly lost its last 4 KB, menus and all. */
     setvbuf(stderr, NULL, _IONBF, 0);
+    ra2_set_intro_mode(RA2_INTRO_ON);   /* the intro is on unless --no-intro */
     /* --args FILE: more arguments, whitespace-separated, # to the end of a
      * line is a comment. A script that is a list of presses, for a caller
      * that can pass only one word (a launcher's setting, a scheduled task). */
@@ -1471,6 +1472,8 @@ int main(int argc, char** argv) {
         else if (!strcmp(argv[i], "--frames") && i + 1 < argc) g_record_frames = strtol(argv[++i], NULL, 0);
         else if (!strcmp(argv[i], "--exe") && i + 1 < argc) exe = argv[++i];
         else if (!strcmp(argv[i], "--game") && i + 1 < argc) game = argv[++i];
+        else if (!strcmp(argv[i], "--intro")) ra2_set_intro_mode(RA2_INTRO_ON);
+        else if (!strcmp(argv[i], "--no-intro")) ra2_set_intro_mode(RA2_INTRO_LOGO_ONLY);
         else if (!strcmp(argv[i], "--startup-order") && i + 1 < argc) {
             ra2_startup_set_logo_first(!strcmp(argv[++i], "logo-first"));
             fprintf(stderr, "[present] startup order: %s\n", ra2_startup_logo_first() ? "logo first" : "boot screen first");
@@ -1483,7 +1486,7 @@ int main(int argc, char** argv) {
             printf("usage: ra2 [--run] [--headless | --classic | [--fullscreen] [--scale sharp|smooth|crt|nearest|integer]] [--record out.mp4] [--frames N] [--exe game\\" RA2_EXE_NAME "] [--game game] [--mod NAME|none]\n"
                    "           [--press DLG:CTRL@s] [--select DLG:CTRL=N@s] [--waitlog TEXT@s] [--move|--click x,y@s] [--key [c][s][a]+vk@s] [--wait VA@s]\n"
                    "           [--watchdog S] [--probe VA] [--debuglog] [--original] [--native-trace] [--callbacks]\n"
-                   "           [--startup-order boot-first|logo-first]\n"
+                   "           [--startup-order boot-first|logo-first] [--intro | --no-intro]\n"
                    "           [--hd-voxels] [--hd-voxels-dump DIR] [--mute] [--args FILE]\n");
             recomp_trace_help();
             return argv[i][1] == 'h' || argv[i][2] == 'h' ? 0 : 1;

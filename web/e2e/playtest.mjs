@@ -98,6 +98,8 @@ try {
     url.searchParams.set("test", "1");
     url.searchParams.set("target", config.target ?? "gamemd");
   }
+  // Keep the scripted cases fast: skip the intro (the logo still plays).
+  if (!args.some((arg) => arg.toLowerCase() === "--intro")) url.searchParams.set("intro", "0");
   for (const arg of ["--mute", "--debuglog", ...args]) url.searchParams.append("arg", arg);
   await page.goto(url.toString());
   const started = Date.now();

@@ -394,6 +394,7 @@ int main(int argc, char **argv) {
     const char *game = "game";
     int run = 0;
     setvbuf(stderr, NULL, _IONBF, 0);
+    ra2_set_intro_mode(RA2_INTRO_ON);   /* the intro is on unless --no-intro */
     /* --args FILE: more arguments, whitespace-separated, # to the end of a
      * line a comment (tools/lan's scripts), as the Windows host reads them. */
     for (int i = 1; i + 1 < argc; i++) {
@@ -429,6 +430,8 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--mute")) hle_dsound_set_master(0.0f);
         else if (!strcmp(argv[i], "--game") && i + 1 < argc) game = argv[++i];
         else if (!strcmp(argv[i], "--mod") && i + 1 < argc) g_mod = argv[++i];
+        else if (!strcmp(argv[i], "--intro")) ra2_set_intro_mode(RA2_INTRO_ON);
+        else if (!strcmp(argv[i], "--no-intro")) ra2_set_intro_mode(RA2_INTRO_LOGO_ONLY);
         else if (!strcmp(argv[i], "--startup-order") && i + 1 < argc) {
             ra2_startup_set_logo_first(!strcmp(argv[++i], "logo-first"));
             fprintf(stderr, "[present] startup order: %s\n", ra2_startup_logo_first() ? "logo first" : "boot screen first");
@@ -461,7 +464,7 @@ int main(int argc, char **argv) {
             printf("usage: ra2 [--run] [--headless | --fullscreen] [--scale sharp|smooth|crt|nearest|integer] [--game DIR] [--mod NAME|none] [--debuglog] [--mute] [--watchdog S] [--trace] [--dump-frames DIR] [--record out.mp4] [--frames N] [--hd-voxels] [--hd-voxels-dump DIR]\n"
                    "           [--press DLG:CTRL@s] [--select DLG:CTRL=N@s] [--waitlog TEXT@s] [--move|--click x,y@s]\n"
                    "           [--key [c][s][a]+vk@s] [--wait VA@s] [--drag x1,y1,x2,y2@s]\n"
-                   "           [--startup-order boot-first|logo-first]\n");
+                   "           [--startup-order boot-first|logo-first] [--intro | --no-intro]\n");
             return !strcmp(argv[i], "--help") || !strcmp(argv[i], "-h") ? 0 : 1;
         }
     }

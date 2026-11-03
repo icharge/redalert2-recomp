@@ -203,6 +203,13 @@ a2.ini`.
   script, to tell lift bugs from host bugs.
 
 ### Fixed
+
+- The intro is on by default for both editions, and the launcher's Skip intro
+  switch now skips only the intro: the logo still plays. The game's intro
+  branch follows the host (`--intro`/`--no-intro`) instead of `[Intro] Play` in
+  the INI, so Red Alert 2 and Yuri's Revenge behave the same. (`run_lift.py`'s
+  `intro_patches`, `src/runtime/startup_order.c`, `src/web/main.c`,
+  `web/src/storage/intro-preferences.ts`)
 - Built with Visual Studio 2026 (MSVC 19.50 and later), every skirmish and
   campaign crashed as the map loaded (issue #2). That compiler's optimiser
   drops the sign test of a 16-bit value moved to the top of a register, so a
