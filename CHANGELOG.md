@@ -218,6 +218,13 @@ a2.ini`.
   the INI, so Red Alert 2 and Yuri's Revenge behave the same. (`run_lift.py`'s
   `intro_patches`, `src/runtime/startup_order.c`, `src/web/main.c`,
   `web/src/storage/intro-preferences.ts`)
+- "No menu music" now survives a match and starts when a game starts loading:
+  the music gate follows the game's own state (`About to load a %d player game.`
+  through `Release_Mouse()`/a shell dialog) instead of the frame count, which
+  keeps moving on the score and setup screens. The launcher's Audio → Music tab
+  now offers the same switch as the in-game speaker popover
+  (`src/web/presenter.c`, `src/web/main.c`,
+  `web/src/components/LauncherGameSettings.tsx`).
 - Built with Visual Studio 2026 (MSVC 19.50 and later), every skirmish and
   campaign crashed as the map loaded (issue #2). That compiler's optimiser
   drops the sign test of a 16-bit value moved to the top of a register, so a

@@ -70,6 +70,11 @@ import {
   writeCursorPreference,
   type CursorChoice,
 } from "../storage/cursor-preferences";
+import {
+  DEFAULT_SOUND_PREFERENCES,
+  loadSoundPreferences,
+  saveSoundPreference,
+} from "../game/sound-preferences";
 
 const thaiFonts = [...BUILT_IN_THAI_FONTS].sort((a, b) => a.name.localeCompare(b.name));
 
@@ -528,6 +533,7 @@ export function LauncherGameSettings({
   const [campaignSpeedControl, setCampaignSpeedControl] = useState(() =>
     readCampaignSpeedControlPreference(game.storage),
   );
+  const [menuMusic, setMenuMusic] = useState(DEFAULT_SOUND_PREFERENCES.menuMusic);
   const [tab, setTab] = useState("launcher");
   const [loaded, setLoaded] = useState<LoadedGameSettings | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -553,6 +559,18 @@ export function LauncherGameSettings({
       cancelled = true;
     };
   }, [game]);
+
+  // The page's sound preferences are shared with the in-game speaker popover, so both places show
+  // and write the same menu-music choice.
+  useEffect(() => {
+    let cancelled = false;
+    void loadSoundPreferences().then((saved) => {
+      if (!cancelled) setMenuMusic(saved.menuMusic);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const selectedFont = thaiFonts.find((font) => font.id === preference.fontId) ?? thaiFonts[0]!;
   const fontPreview = (asset: string) =>
@@ -715,6 +733,13 @@ export function LauncherGameSettings({
     writeCampaignSpeedControlPreference(game.storage, false);
     if (modernControls) await saveHostControls(false);
     await resetSections(["Options"]);
+  }
+
+  /** Reset the Audio tab: its INI section, and the page's menu-music choice with the other audio. */
+  async function resetAudioDefaults() {
+    setMenuMusic(true);
+    void saveSoundPreference("menuMusic", true);
+    await resetSections(["Audio"]);
   }
 
   async function saveHotkey(name: string, value: number) {
@@ -1157,6 +1182,16 @@ export function LauncherGameSettings({
                   </Section>
                   <Section title="Music">
                     <ToggleRow
+                      id={`launcher-menu-music-${game.slot}-${game.id}`}
+                      label="Menu music"
+                      hint="Play the game's music in the menus and lobbies. Off, the music is heard from the loading screen through a match."
+                      checked={menuMusic}
+                      onChange={(on) => {
+                        setMenuMusic(on);
+                        void saveSoundPreference("menuMusic", on);
+                      }}
+                    />
+                    <ToggleRow
                       id={settingId("Audio", "IsScoreRepeat")}
                       label="Repeat music"
                       checked={mainToggle("Audio", "IsScoreRepeat", false)}
@@ -1190,7 +1225,7 @@ export function LauncherGameSettings({
                     />
                   </Section>
                   <Flex justify="end">
-                    <Button variant="soft" onClick={() => void resetSections(["Audio"])}>
+                    <Button variant="soft" onClick={() => void resetAudioDefaults()}>
                       Reset audio defaults
                     </Button>
                   </Flex>

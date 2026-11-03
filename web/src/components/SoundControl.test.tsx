@@ -80,7 +80,7 @@ describe("SoundControl", () => {
     const props = show(fakeAudio("running"), 1, { muteOnBlur: true, menuMusic: false });
     await userEvent.click(screen.getByRole("button", { name: "Volume" }));
     const mute = screen.getByRole("switch", { name: "Mute when the window loses focus" });
-    const music = screen.getByRole("switch", { name: "Play music in menus" });
+    const music = screen.getByRole("switch", { name: "Menu music" });
     expect(mute).toBeChecked();
     expect(music).not.toBeChecked();
     await userEvent.click(music);

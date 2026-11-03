@@ -32,6 +32,19 @@ class WebMountTests(unittest.TestCase):
         presenter = (ROOT / "src/web/presenter.c").read_text(encoding="utf-8")
         self.assertIn("web_menu_seen = 1", presenter)
 
+    def test_menu_music_gate_follows_the_game_not_the_frame_count(self):
+        main = (ROOT / "src/web/main.c").read_text(encoding="utf-8")
+        presenter = (ROOT / "src/web/presenter.c").read_text(encoding="utf-8")
+        for print_ in ('"About to load', '"Release_Mouse', '"Capture_Mouse'):
+            self.assertIn(print_, main)
+        self.assertIn("web_presenter_scenario_start", main)
+        self.assertIn("g_scenario || pause_dialog_visible()", presenter)
+        self.assertNotIn(
+            "return (g_frame_at && emscripten_get_now() - g_frame_at < 1000.0) || pause_dialog_visible();",
+            presenter,
+            "the music gate must not reopen from the frame count after a match",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

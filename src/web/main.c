@@ -105,6 +105,13 @@ void ra2_hook_debuglog(void) {
      * (dsound.c), so the page can keep it for matches. The debug print is called whether or not --debuglog shows it. */
     const char *theme = (const char *)(uintptr_t)MEM32(g_esp + 4);
     if (theme && !strncmp(theme, "Theme::PlaySong", 15)) hle_dsound_mark_music();
+    /* A match's start and end, for the music gate (presenter.c): its loading screen counts as the game,
+     * and returning to a shell screen is the menus again. The mouse capture is the same boundary when
+     * a load path prints neither. */
+    if (theme && (!strncmp(theme, "About to load", 13) || !strncmp(theme, "Return from WOL to play", 23) ||
+                  !strncmp(theme, "Capture_Mouse", 13)))
+        web_presenter_scenario_start(1);
+    else if (theme && !strncmp(theme, "Release_Mouse", 13)) web_presenter_scenario_start(0);
     if (g_debuglog || script_active()) {
         char buf[1024];
         const char *fmt = (const char *)(uintptr_t)MEM32(g_esp + 4);

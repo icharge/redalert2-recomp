@@ -221,9 +221,42 @@ static void publish(const uint8_t *px, int w, int h, int pitch, int bpp, const u
     }
 }
 
+/* The cursor: menus_use_windows_cursor() says whether the game's mouse is captured, i.e. whether a
+ * match (not a Win32 dialog) is drawing its own cursor. */
+static int (*g_menus_cursor)(void);
+
+/* A game is starting, running or paused: the game itself says so, between "About to load a %d player
+ * game." (the loading screen included) and "Release_Mouse()" (or a shell screen opening). The frame
+ * count is not used: after a match it keeps moving while the score and setup screens are up. */
+static volatile int g_scenario;
+void web_presenter_scenario_start(int starting) { g_scenario = starting != 0; }
+
+/* The shell's screens, by dialog resource: their music is the menu's. A match may end without the
+ * game printing Release_Mouse (a load that failed, a quit from the score), so opening one clears the
+ * scenario flag as well. The in-game pause menu and its own dialogs are not here. */
+static int menu_screen(uint32_t resource_id) {
+    switch (resource_id) {
+    case 0x94:   /* campaign */
+    case 0x100:  /* single player */
+    case 0x101:  /* movies and credits */
+    case 0x102:  /* skirmish */
+    case 0x105:  /* map editor */
+    case 0x10E:  /* online */
+    case 0x10F:  /* online login */
+    case 0x113:  /* online lobby */
+    case 0x114: case 0x115: case 0x116: case 0x117:   /* player info, buddies, quick match */
+    case 0x11B: case 0x11C: case 0x11D:               /* online pages */
+    case 0x125:  /* World Domination */
+    case 0xE2:   /* main menu */
+        return 1;
+    }
+    return 0;
+}
+
 /* Resource 0xB5 is the in-game pause menu. */
 void web_presenter_dialog_created(uint32_t hwnd, uint32_t resource_id) {
     if (resource_id == 0xB5u) g_pause_dialog = hwnd;
+    else if (menu_screen(resource_id)) web_presenter_scenario_start(0);
 }
 
 static int pause_dialog_visible(void) {
@@ -231,17 +264,15 @@ static int pause_dialog_visible(void) {
            (hle_window_style(g_pause_dialog) & 0x10000000u);
 }
 
+static int in_match(void) {
+    return g_scenario || pause_dialog_visible() || (g_menus_cursor && !g_menus_cursor());
+}
+
 /* A match is being played: the game's frame count moved in the last second (it stands still in menus,
  * lobbies and movies), the game draws its own cursor and its pause menu is not already up. */
 static int match_running(void) {
     return g_frame_at && emscripten_get_now() - g_frame_at < 1000.0 &&
            g_sh.cursor_kind == RA2_CURSOR_NONE && !pause_dialog_visible();
-}
-
-/* A match is on, for the music: the game's frames are moving, or its pause menu holds them still. Unlike
- * match_running, it does not care for the cursor, and the pause menu counts: the music goes on behind it. */
-static int in_match(void) {
-    return (g_frame_at && emscripten_get_now() - g_frame_at < 1000.0) || pause_dialog_visible();
 }
 
 /* Open the game's menu, as Escape does, if a match is running: the page lost the player's attention
@@ -302,8 +333,6 @@ static void on_frame(const uint8_t *px, int w, int h, int pitch, int bpp) {
 }
 
 /* ---- the cursor ------------------------------------------------------------ */
-
-static int (*g_menus_cursor)(void);
 
 /* The game's Windows cursor, from its resources: 32x32, AND and XOR masks,
  * rows top-down, the leftmost pixel the top bit. AND 0 is opaque (XOR picks
