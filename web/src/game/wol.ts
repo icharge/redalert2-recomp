@@ -10,13 +10,13 @@ export function wolLineBytes(line: string): Uint8Array {
   return Uint8Array.from(`${line}\0`, (character) => character.charCodeAt(0));
 }
 
-/** Keep the native firewall probe out of the browser's WebSocket connection.
- * PortNumberOverride makes RA2/YR use a fixed virtual port instead of contacting
- * the retired Westwood UDP mangler. Preserve the INI's original byte encoding.
- * `keepMangler` leaves a zero override alone so the WDT matchmaker's native
- * mangler probe still runs (the bridge answers it). */
-export function withBrowserWolPort(bytes: Uint8Array, keepMangler = false): Uint8Array {
-  if (keepMangler) return bytes;
+/** Keep the native firewall probe available in the browser WOL connection.
+ * PortNumberOverride=0 lets RA2/YR probe the WDT mangler, which the bridge
+ * answers; the old fixed virtual port skipped that probe and left the WDT
+ * matchmaker with "Matching Server Not Found". Preserve the INI's original
+ * byte encoding. `fixedPort` restores the old 1234 rewrite. */
+export function withBrowserWolPort(bytes: Uint8Array, fixedPort = false): Uint8Array {
+  if (!fixedPort) return bytes;
   const text = Array.from(bytes, (byte) => String.fromCharCode(byte)).join("");
   const eol = text.includes("\r\n") ? "\r\n" : "\n";
   const lines = text.split(/\r?\n/);

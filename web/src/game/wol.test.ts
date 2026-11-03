@@ -5,28 +5,28 @@ describe("browser WOL settings", () => {
   const bytes = (value: string) => Uint8Array.from(value, (character) => character.charCodeAt(0));
   const text = (value: Uint8Array) =>
     Array.from(value, (byte) => String.fromCharCode(byte)).join("");
-  it("sets the game's virtual fixed port so it skips the retired UDP firewall probe", () => {
+  it("keeps PortNumberOverride=0 so the native mangler probe runs by default", () => {
+    const input = bytes("[MultiPlayer]\r\nPortNumberOverride=0\r\n");
+    expect(withBrowserWolPort(input)).toEqual(input);
+  });
+  it("can set the old fixed virtual port when asked", () => {
     const input = bytes(
       "[Video]\r\nScreenWidth=800\r\n[MultiPlayer]\r\nPortNumberOverride=0\r\nHandle=\xCA\xC7\r\n",
     );
-    expect(text(withBrowserWolPort(input))).toBe(
+    expect(text(withBrowserWolPort(input, true))).toBe(
       "[Video]\r\nScreenWidth=800\r\n[MultiPlayer]\r\nPortNumberOverride=1234\r\nHandle=\xCA\xC7\r\n",
     );
     expect(text(input)).toContain("PortNumberOverride=0");
   });
-  it("leaves a zero override alone when the native mangler probe is requested", () => {
-    const input = bytes("[MultiPlayer]\r\nPortNumberOverride=0\r\n");
-    expect(withBrowserWolPort(input, true)).toEqual(input);
-  });
-  it("adds a missing setting or section, and preserves an existing fixed port", () => {
-    expect(text(withBrowserWolPort(bytes("[multiplayer]\nColor=2\n")))).toContain(
+  it("adds a missing setting or section, and preserves an existing fixed port in fixed-port mode", () => {
+    expect(text(withBrowserWolPort(bytes("[multiplayer]\nColor=2\n"), true))).toContain(
       "PortNumberOverride=1234",
     );
-    expect(text(withBrowserWolPort(bytes("[Video]\nWidth=800\n")))).toContain(
+    expect(text(withBrowserWolPort(bytes("[Video]\nWidth=800\n"), true))).toContain(
       "[MultiPlayer]\nPortNumberOverride=1234",
     );
     const fixed = bytes("[MultiPlayer]\nPortNumberOverride=2345\n");
-    expect(withBrowserWolPort(fixed)).toEqual(fixed);
+    expect(withBrowserWolPort(fixed, true)).toEqual(fixed);
   });
 });
 
