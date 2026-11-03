@@ -52,34 +52,30 @@ describe("launcherVideoOptions", () => {
   });
 });
 
-const NATIVE = { w: 1920, h: 1080 };
+const DEFAULT = { w: 1920, h: 1080 };
 
 describe("video preferences", () => {
   it("remembers a size the launcher offered, including a native size outside the catalog", () => {
     const storage = memoryStorage();
     writeVideoPreference("slot-1-ra2md", { w: 2880, h: 1800 }, storage);
-    expect(readVideoPreference("slot-1-ra2md", storage, NATIVE)).toEqual({ w: 2880, h: 1800 });
+    expect(readVideoPreference("slot-1-ra2md", storage)).toEqual({ w: 2880, h: 1800 });
   });
 
-  it("defaults to the desktop's own size when nothing is saved", () => {
-    expect(readVideoPreference("slot-1-ra2md", memoryStorage(), NATIVE)).toEqual(NATIVE);
+  it("defaults to 1920×1080 when nothing is saved", () => {
+    expect(readVideoPreference("slot-1-ra2md", memoryStorage())).toEqual(DEFAULT);
   });
 
   it("keeps the game's own setting when that was chosen", () => {
     const storage = memoryStorage();
     writeVideoPreference("slot-1-ra2md", null, storage);
-    expect(readVideoPreference("slot-1-ra2md", storage, NATIVE)).toBeNull();
+    expect(readVideoPreference("slot-1-ra2md", storage)).toBeNull();
   });
 
-  it("falls back to the desktop's own size for sizes the game could not use", () => {
+  it("falls back to 1920×1080 for sizes the game could not use", () => {
     const storage = memoryStorage();
     storage.setItem("ra2.video.slot-1-ra2md", JSON.stringify({ w: 10, h: 10 }));
-    expect(readVideoPreference("slot-1-ra2md", storage, NATIVE)).toEqual(NATIVE);
+    expect(readVideoPreference("slot-1-ra2md", storage)).toEqual(DEFAULT);
     storage.setItem("ra2.video.slot-1-ra2md", "not json");
-    expect(readVideoPreference("slot-1-ra2md", storage, NATIVE)).toEqual(NATIVE);
-  });
-
-  it("uses the game's setting when the desktop cannot be read", () => {
-    expect(readVideoPreference("slot-1-ra2md", memoryStorage(), null)).toBeNull();
+    expect(readVideoPreference("slot-1-ra2md", storage)).toEqual(DEFAULT);
   });
 });

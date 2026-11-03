@@ -2,7 +2,7 @@
 export interface FullscreenPreference {
   /** Enter fullscreen when the game page starts. */
   enabled: boolean;
-  /** Keep the launcher windowed: fullscreen only from the loading screen until the game ends. */
+  /** Keep the launcher windowed: fullscreen from the loading screen through the score screen. */
   onlyInGame: boolean;
 }
 

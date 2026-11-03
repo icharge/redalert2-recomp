@@ -183,8 +183,10 @@ function Main() {
       onPlay={(game) => {
         // Asking here keeps the Play click as the gesture the browser wants,
         // before the file check can outlast it; the game page also asks for
-        // fullscreen when it mounts, for a direct visit.
-        if (readFullscreenPreference(game.storage).enabled && !document.fullscreenElement)
+        // fullscreen when it mounts, for a direct visit. "Game match only"
+        // waits for the match itself instead.
+        const fullscreen = readFullscreenPreference(game.storage);
+        if (fullscreen.enabled && !fullscreen.onlyInGame && !document.fullscreenElement)
           void enterFullscreen(document.documentElement).catch(() => {});
         // Debugging switches given to the launcher follow the game they open.
         const path = gamePath(game.slot, game.id);

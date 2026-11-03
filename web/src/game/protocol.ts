@@ -1,7 +1,7 @@
 // What the page and the game say to each other (docs/web/protocol.md). The C side is
 // src/web/web_api.h: change the two together, and RA2_WEB_PROTOCOL with them.
 
-export const RA2_WEB_PROTOCOL = 10;
+export const RA2_WEB_PROTOCOL = 11;
 
 export const SCALES = ["sharp", "smooth", "crt", "nearest", "integer"] as const;
 export type Scale = (typeof SCALES)[number];
@@ -174,6 +174,8 @@ export const Shared = {
   viewW: 9,
   viewH: 10,
   viewDpr: 11,
+  /** protocol 11: 1 while a match is loading, playing or showing its score screen; 0 in the menus */
+  matchState: 12,
   gameW: 1037,
   gameH: 1038,
   warpSeq: 1039,

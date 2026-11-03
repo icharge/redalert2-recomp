@@ -23,12 +23,13 @@ versions follow [SemVer](https://semver.org/).
   launcher UI. (`run_lift.py`'s
   `yr_startup_order_patches`/`ra2_startup_order_patches`,
   `src/runtime/startup_order.c`, `src/web/settings.c`)
-- **Launcher display options**: the resolution list detects the desktop's own
-  pixel size (`screen` × `devicePixelRatio`), uses it by default, and marks it
-  "(Native)", adding it when the catalog lacks it. A Full screen setting enters
-  fullscreen when a game starts, with a "Full screen only in game" sub-option
-  that keeps the launcher windowed, enters fullscreen at the loading screen and
-  restores the window when the gameplay ends. A fullscreen button sits beside
+- **Launcher display options**: the launcher's resolution defaults to
+  1920×1080. The list also detects the desktop's own pixel size (`screen` ×
+  `devicePixelRatio`), marks it "(Native)" and adds it when the catalog lacks
+  it, so the player can choose it. A Full screen setting enters fullscreen when
+  a game starts, with a "Game match only" sub-option that keeps the launcher and
+  game menus windowed, enters fullscreen at the match's loading screen and
+  restores the window after the score screen. A fullscreen button sits beside
   the in-game volume control.
   (`web/src/storage/video-preferences.ts`,
   `web/src/storage/fullscreen-preferences.ts`,
