@@ -145,7 +145,7 @@ def distinct_frames(out):
 
 def boot(seconds):
     try:
-        p = subprocess.run(WINE + [HOST, '--headless', '--run', '--mute', '--debuglog', '--watchdog', str(seconds),
+        p = subprocess.run(WINE + [HOST, '--headless', '--run', '--mute', '--debuglog', '--no-intro', '--watchdog', str(seconds),
                                    '--record', host_path(os.path.join(ROOT, 'work', 'conformance.mp4'))],
                            cwd=ROOT, capture_output=True, text=True, errors='replace',
                            timeout=seconds + 60)

@@ -32,6 +32,8 @@ from run_lift import (
     RA2_STARTUP_ORDER,
     yr_startup_order_patches,
     ra2_startup_order_patches,
+    INTRO_SITES,
+    intro_patches,
     WDT_SITES,
     wdt_patches,
     ra2_shell_patches,
@@ -753,6 +755,40 @@ class StartupOrderPatchTests(unittest.TestCase):
         bad = bytearray(code)
         bad[RA2_STARTUP_ORDER['logo'][0][0] - cs + 1] ^= 0xFF
         self.assertEqual(ra2_startup_order_patches(bytes(bad), cs), {})
+
+
+class IntroPatchTests(unittest.TestCase):
+    """The intro branch follows the host's Skip intro switch, not [Intro] Play."""
+
+    @staticmethod
+    def image(target):
+        site, raw, label = INTRO_SITES[target]
+        cs = site - 8
+        code = bytearray(16)
+        code[site - cs:site - cs + 2] = bytes.fromhex(raw)
+        return bytes(code), cs, site, label
+
+    def test_each_edition_asks_the_host(self):
+        for target in ('gamemd', 'game'):
+            with self.subTest(target=target):
+                code, cs, site, label = self.image(target)
+                patches = intro_patches(code, cs, target)
+                self.assertEqual(set(patches), {site})
+                self.assertIn('ra2_intro_enabled()', patches[site])
+                self.assertIn('L_%08X' % label, patches[site])
+                body = '    if (CMP_NE(a, b)) goto L_%08X; /* 0x%08X: branch */\n' % (label, site)
+                result = apply_patches(body, patches)
+                self.assertIn('ra2_intro_enabled()', result)
+                self.assertIn('goto L_%08X' % label, result)
+
+    def test_a_changed_branch_is_untouched(self):
+        for target in ('gamemd', 'game'):
+            with self.subTest(target=target):
+                code, cs, _, _ = self.image(target)
+                patched = bytearray(code)
+                site = INTRO_SITES[target][0]
+                patched[site - cs] ^= 0xFF
+                self.assertEqual(intro_patches(bytes(patched), cs, target), {})
 
 
 if __name__ == '__main__':

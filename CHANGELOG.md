@@ -204,6 +204,12 @@ a2.ini`.
 
 ### Fixed
 
+- The intro is on by default for both editions, and the launcher's Skip intro
+  switch now skips only the intro: the logo still plays. The game's intro
+  branch follows the host (`--intro`/`--no-intro`) instead of `[Intro] Play` in
+  the INI, so Red Alert 2 and Yuri's Revenge behave the same. (`run_lift.py`'s
+  `intro_patches`, `src/runtime/startup_order.c`, `src/web/main.c`,
+  `web/src/storage/intro-preferences.ts`)
 - Native builds link again after the World Domination patches: the lifted
   callbacks `ra2_wdt_pick` and `ra2_wdt_take_mode_switch` have no-op
   definitions in the native hosts, because the WDT page bridge is web-only

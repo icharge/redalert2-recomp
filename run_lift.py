@@ -834,6 +834,26 @@ def ra2_startup_order_patches(code, cs):
     return patches
 
 
+# The intro is on by default and the launcher's Skip intro turns it off, for
+# both editions, whatever [Intro] Play says in the INI. The two games test that
+# INI flag with one conditional at the start of the intro path; the conditional
+# becomes a host query. The logo is outside it and still plays.
+INTRO_SITES = {
+    'gamemd': (0x0052CB57, '7415', 0x0052CB6E),   # je 0x52cb6e (test [0xA8E960], 4)
+    'game':   (0x00512674, '755d', 0x005126D3),   # jne 0x5126d3 (test [0xA40920], 4)
+}
+
+
+def intro_patches(code, cs, target):
+    site, raw, label = INTRO_SITES[target]
+    if code[site - cs:site - cs + 2] != bytes.fromhex(raw):
+        print('[*] intro_patches: the intro branch at 0x%08X does not match this build; no intro patch' % site)
+        return {}
+    return {site: ('@replace:{ extern int ra2_intro_enabled(void); '
+                   'if (!ra2_intro_enabled()) goto L_%08X; } '
+                   '/* remaster: configurable intro, run_lift.py intro_patches */' % label)}
+
+
 def yr_online_patches(code, cs):
     """Yuri's Revenge has no online resolution limit.
 
@@ -1320,6 +1340,7 @@ def targets():
                                                  **page_cursor_patches(code, cs, 'gamemd'),
                                                  **page_cursor_palette_patches(code, cs, 'gamemd'),
                                                  **yr_online_patches(code, cs), **yr_startup_order_patches(code, cs),
+                                                 **intro_patches(code, cs, 'gamemd'),
                                                  **wdt_patches(code, cs, 'gamemd'),
                                                  **web_exit_confirmation_patches(code, cs, 'gamemd'),
                                                  **web_url_patches(code, cs, 'gamemd')}),
@@ -1343,6 +1364,7 @@ def targets():
                                                **web_exit_confirmation_patches(code, cs, 'game'),
                                                **ra2_shell_patches(code, cs), **ra2_hires_patches(code, cs),
                                                **ra2_online_patches(code, cs), **ra2_startup_order_patches(code, cs),
+                                               **intro_patches(code, cs, 'game'),
                                                **ra2_confirm_patches(code, cs),
                                                **ra2_cache_patches(code, cs), **ra2_mode_cap_patches(code, cs),
                                                **ra2_load_patches(code, cs), **ra2_profile_patches(code, cs),

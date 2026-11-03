@@ -1,5 +1,5 @@
-/** Whether the launcher skips the start-up movies (the Westwood logo and the game's intro).
- * The host plays them only with `--intro`, so this decides whether that argument is passed. */
+/** Whether the launcher skips the game's intro. The logo still plays; the host's
+ * `--no-intro` asks the game to skip only the intro. The intro is on by default. */
 const PREFERENCE_PREFIX = "ra2.skip-intro.";
 
 function safeLocalStorage(): Storage | null {
@@ -34,8 +34,8 @@ export function writeSkipIntroPreference(
   }
 }
 
-/** The start-up arguments for the intro. Off by default, so the movies play.
- * `?intro=0` (or `?intro=off`) skips them for one launch. */
+/** The start-up arguments for the intro. On by default; `--no-intro` skips only
+ * the intro and keeps the logo. `?intro=0` (or `?intro=off`) skips it for one launch. */
 export function introArguments(
   search: string,
   game: string,
@@ -46,5 +46,5 @@ export function introArguments(
     requested === null
       ? readSkipIntroPreference(game, storage)
       : /^(?:0|no|off|skip)$/i.test(requested);
-  return skip ? [] : ["--intro"];
+  return skip ? ["--no-intro"] : ["--intro"];
 }

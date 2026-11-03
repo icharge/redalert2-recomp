@@ -27,7 +27,7 @@ describe("skip intro preference", () => {
     writeSkipIntroPreference("slot-1-ra2", true, storage);
     expect(readSkipIntroPreference("slot-1-ra2", storage)).toBe(true);
     expect(readSkipIntroPreference("slot-1-ra2md", storage)).toBe(false);
-    expect(introArguments("", "slot-1-ra2", storage)).toEqual([]);
+    expect(introArguments("", "slot-1-ra2", storage)).toEqual(["--no-intro"]);
     expect(introArguments("", "slot-1-ra2md", storage)).toEqual(["--intro"]);
   });
 
@@ -42,7 +42,7 @@ describe("skip intro preference", () => {
   it("lets the URL skip the intro for one launch", () => {
     const storage = memoryStorage();
     for (const value of ["0", "no", "off", "skip", "SKIP"])
-      expect(introArguments(`?intro=${value}`, "slot-1-ra2", storage)).toEqual([]);
+      expect(introArguments(`?intro=${value}`, "slot-1-ra2", storage)).toEqual(["--no-intro"]);
     for (const value of ["1", "yes", "on"])
       expect(introArguments(`?intro=${value}`, "slot-1-ra2", storage)).toEqual(["--intro"]);
   });
