@@ -864,8 +864,12 @@ static void handle_line(const char *line) {
         if (strstr(session.channel, "WDT")) {
             g_wdt_mode_pending = 1;
             /* The match window's sink only accepts the match-found event in
-             * WDT state 1/2; a passive guest is still in state 3. This is a
-             * WDT start, so put it in the matching state before delivering. */
+             * WDT state 1/2 and with the "match handled" latch clear. A passive
+             * guest can sit in state 3 with the latch set, so normalise both
+             * before delivering: this is a WDT start either way. */
+            fprintf(stderr, "[wol] wdt start gate: latch=%u state=%u screen=%u sink=%08X\n",
+                MEM8(0xB2ABD9), MEM32(0xA3D2A4), MEM32(0xA3D298), g_chat.sink);
+            MEM8(0xB2ABD9) = 0;
             MEM32(0xA3D2A4) = 2;
             /* Close the WOL match window before OnGameStart; the guest's window
              * otherwise stays open and its game never leaves matchmaking. */
