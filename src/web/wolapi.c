@@ -101,6 +101,8 @@ static uint32_t g_creating_channel;
 static uint32_t g_joining_channel;
 static uint32_t g_starting_game, g_connected, g_connection_pending;
 static int g_wdt_mode_pending;
+/* This client is the passive peer of a WDT match that is starting. */
+static int g_wdt_passive_start;
 /* The WDT select screen is up (it asked for the cycle state). The match
  * worker then looks for a "matching server" lobby, which the browser lobby
  * does not have; see emit_channel_list. */
@@ -644,6 +646,7 @@ static void disconnected(void) {
     if (!g_connected) return;
     g_connected = g_connection_pending = g_creating_channel = g_joining_channel = g_starting_game = 0;
     g_wdt_screen = 0;
+    g_wdt_passive_start = 0;
     memset(&g_session, 0, sizeof g_session);
     g_current_channel[0] = '\0';
     g_user_count = g_channel_count = g_lobby_users = g_channel_list_lobby = 0;
@@ -880,6 +883,7 @@ static void handle_line(const char *line) {
              * cancelling it would abort the start. */
             wol_user *self = user_for_name(g_nick);
             if (!self || !(self->flags & 1u)) {
+                g_wdt_passive_start = 1;
                 uint32_t match_hwnd = ra2_match_window_hwnd();
                 if (!match_hwnd) match_hwnd = hle_first_hwnd();
                 if (match_hwnd) {
@@ -1256,6 +1260,11 @@ void ra2_wdt_pick(int territory) {
 /* Starting a WDT match switches the display from the 640 select screen back to
  * the configured size. The lobby's STARTG handler sets this flag only for the
  * WDT room, so ordinary WOL matches are untouched. */
+/* True while this client is the passive (non-operator) peer of a WDT match
+ * that is starting; the lifted WDT start loop uses it to take the same exit
+ * the room host takes once the game is under way. */
+int ra2_wdt_passive_peer(void) { return g_wdt_passive_start; }
+
 int ra2_wdt_take_mode_switch(void) {
     int pending = g_wdt_mode_pending;
     g_wdt_mode_pending = 0;

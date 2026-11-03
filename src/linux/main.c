@@ -98,6 +98,8 @@ void ra2_open_wol_page(uint32_t key_va) {
  * client, so the lifted patches' two page callbacks are no-ops here. */
 void ra2_wdt_pick(int territory) { (void)territory; }
 int ra2_wdt_take_mode_switch(void) { return 0; }
+/* World Domination's passive-peer start handoff is web-only. */
+int ra2_wdt_passive_peer(void) { return 0; }
 static int compose_hd(const uint8_t *px16, int pitch, int w, int h, uint32_t *out) {
     if (!ra2_vox_hd_on) return 0;
     hdvox_compose(px16, pitch, w, h, out);
