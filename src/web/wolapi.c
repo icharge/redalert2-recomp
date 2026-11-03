@@ -1402,6 +1402,7 @@ static void m_net_gameres_send(void) {
         }
     }
     if (!data) { fprintf(stderr, "[wol] gameres: no packet in args\n"); RET(E_FAIL, 5); }
+    fprintf(stderr, "[wol] gameres packet len=%u\n", length);
     for (uint32_t at = 4; at < length;) {
         if (length - at < 8) RET(E_FAIL, 5);
         uint32_t size = (uint32_t)data[at + 6] << 8 | data[at + 7];
