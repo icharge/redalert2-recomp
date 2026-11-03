@@ -129,6 +129,7 @@ void web_settings_event(void);
 int web_settings_open(void);
 void web_presenter_pause(void);
 void ra2_set_menu_music(int allowed);   /* the page's setting; the --no-menu-music option of a headless run */
+void web_presenter_scenario_start(int starting);   /* a match is starting (its load included) or has ended */
 const char *web_settings_mod(void);
 void web_settings_save_mod(void);
 void web_modern_key(int down, uint32_t vk);

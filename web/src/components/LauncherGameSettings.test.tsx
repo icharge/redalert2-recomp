@@ -1,8 +1,10 @@
 import { Theme } from "@radix-ui/themes";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { IDBFactory } from "fake-indexeddb";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { GameRecord } from "../storage/manifest";
+import { Manifest } from "../storage/manifest";
 import { encodeLatin1 } from "../storage/game-settings";
 import { LauncherGameSettings } from "./LauncherGameSettings";
 
@@ -63,6 +65,7 @@ async function gameplay() {
 
 describe("LauncherGameSettings", () => {
   beforeEach(() => {
+    vi.unstubAllGlobals();
     localStorage.clear();
     vi.stubGlobal(
       "ResizeObserver",
@@ -282,6 +285,19 @@ describe("LauncherGameSettings", () => {
     expect(written.at(-1)?.text).toContain("SoundVolume=0.700000");
     expect(written.at(-1)?.text).toContain("ScoreVolume=0.400000");
     expect(written.at(-1)?.text).toContain("SoundLatency=9");
+  });
+
+  it("stores the menu-music choice the in-game speaker popover shares", async () => {
+    vi.stubGlobal("indexedDB", new IDBFactory());
+    setup();
+    await userEvent.click(screen.getByRole("tab", { name: /Audio/ }));
+    const music = screen.getByRole("switch", { name: "Menu music" });
+    expect(music).toHaveAttribute("aria-checked", "true");
+    await userEvent.click(music);
+    expect(music).toHaveAttribute("aria-checked", "false");
+    const manifest = await Manifest.open();
+    await waitFor(() => expect(manifest.getSetting("menuMusic")).resolves.toBe(false));
+    manifest.close();
   });
 
   it("assigns a captured hotkey from the keyboard editor", async () => {

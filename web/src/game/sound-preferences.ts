@@ -4,7 +4,8 @@ import { Manifest } from "../storage/manifest";
 export interface SoundPreferences {
   /** all sound goes quiet while the page is hidden or the window has lost focus */
   muteOnBlur: boolean;
-  /** the game's music plays outside a match (menus, lobbies, briefings); off, it is heard in matches only */
+  /** the game's music plays outside a match (menus, lobbies, briefings); off, it is heard from the
+   * loading screen through a match only */
   menuMusic: boolean;
 }
 

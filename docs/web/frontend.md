@@ -61,7 +61,7 @@ web/
       audio.ts              the AudioContext and the worklet over the sound ring; resumes on the first gesture; a gain after the worklet goes quiet when asked (`setQuiet`)
       lan.ts                WebRTC peer signaling and the page-to-IPX datagram bridge
       volume.ts             the volume, kept in the manifest's settings
-      sound-preferences.ts  "mute when the window loses focus" and "play music in menus", kept the same way
+      sound-preferences.ts  "mute when the window loses focus" and "menu music", kept the same way
       attention.ts          `useAttention`: the tab shows and the window has the focus
     storage/
       opfs.ts               copying into OPFS, reading back, removing
@@ -152,7 +152,7 @@ what belongs to the browser:
 | Pointer lock in a window (edge scrolling) | IndexedDB |
 | Master volume | IndexedDB, sent to the game (`ra2_set_volume`) |
 | Mute when the window loses focus (off by default) | IndexedDB; a page-side gain, the game keeps mixing |
-| Play music in menus (on by default) | IndexedDB, sent to the game (`ra2_set_menu_music`) |
+| Menu music (on by default) | IndexedDB, sent to the game (`ra2_set_menu_music`); the launcher's Audio → Music tab has the same switch |
 | Storage: used, quota, "persist storage" request, remove a game | OPFS, `navigator.storage` |
 | Show the frame-time overlay | IndexedDB |
 

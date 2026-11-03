@@ -222,6 +222,13 @@ a2.ini`.
   callbacks `ra2_wdt_pick` and `ra2_wdt_take_mode_switch` have no-op
   definitions in the native hosts, because the WDT page bridge is web-only
   (`src/runtime/host.c`, `src/linux/main.c`).
+- "No menu music" now survives a match and starts when a game starts loading:
+  the music gate follows the game's own state (`About to load a %d player game.`
+  through `Release_Mouse()`/a shell dialog) instead of the frame count, which
+  keeps moving on the score and setup screens. The launcher's Audio → Music tab
+  now offers the same switch as the in-game speaker popover
+  (`src/web/presenter.c`, `src/web/main.c`,
+  `web/src/components/LauncherGameSettings.tsx`).
 - World Domination (Red Alert 2 and Yuri's Revenge) was unplayable: the
   Allied/Soviet logos did not highlight or accept a click, and the entry
   demanded a 640x480 display mode. The faction screen now runs its hit test

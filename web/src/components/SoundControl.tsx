@@ -7,7 +7,7 @@ import styles from "./SoundControl.module.css";
 
 const CHOICES = [
   ["muteOnBlur", "Mute when the window loses focus"],
-  ["menuMusic", "Play music in menus"],
+  ["menuMusic", "Menu music"],
 ] as const satisfies readonly (readonly [keyof SoundPreferences, string])[];
 
 /**
