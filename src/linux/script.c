@@ -142,6 +142,10 @@ static uint32_t find_dialog(int id) {
     mach_leave();
     return h;
 }
+
+/* The tracked WOL match window handle (the web HLE shares one HWND for all
+ * dialogs, but the dialog proc still needs the handle it was created with). */
+uint32_t ra2_match_window_hwnd(void) { return find_dialog(0x117); }
 static void *dialog_poller(void *unused) {
     (void)unused;
     for (;;) {

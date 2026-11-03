@@ -40,6 +40,8 @@
 
 /* Signals the WOL match window's own 18-event array (slot 16 = match start). */
 static void wdt_signal_match_start(void);
+/* src/linux/script.c: the tracked WOL match window handle. */
+uint32_t ra2_match_window_hwnd(void);
 
 /* x86 layouts from the embedded WOLAPI type library (pointer fields are 4B). */
 typedef struct {
@@ -870,14 +872,30 @@ static void handle_line(const char *line) {
              * WDT state 1/2 and with the "match handled" latch clear. A passive
              * guest can sit in state 3 with the latch set, so normalise both
              * before delivering: this is a WDT start either way. */
-            fprintf(stderr, "[wol] wdt start gate: latch=%u state=%u screen=%u sink=%08X\n",
-                MEM8(0xB2ABD9), MEM32(0xA3D2A4), MEM32(0xA3D298), g_chat.sink);
+            fprintf(stderr, "[wol] wdt start gate: latch=%u state=%u screen=%u sink=%08X starting=%u\n",
+                MEM8(0xB2ABD9), MEM32(0xA3D2A4), MEM32(0xA3D298), g_chat.sink, g_starting_game);
             MEM8(0xB2ABD9) = 0;
             MEM32(0xA3D2A4) = 2;
             /* Close the WOL match window before OnGameStart; the guest's window
              * otherwise stays open and its game never leaves matchmaking. */
             wdt_emit_match_start(session.channel);
             wdt_signal_match_start();
+            /* The web HLE gives every dialog the same HWND, so a posted
+             * WM_COMMAND never reaches the match proc. Call its DLGPROC
+             * (0x75C830) directly with the Cancel command - before
+             * OnGameStart, so the loading dialog opens afterwards. Only the
+             * passive peer needs it; the room host closes its own window and
+             * cancelling it would abort the start. */
+            wol_user *self = user_for_name(g_nick);
+            if (!self || !(self->flags & 1u)) {
+                uint32_t match_hwnd = ra2_match_window_hwnd();
+                if (!match_hwnd) match_hwnd = hle_first_hwnd();
+                if (match_hwnd) {
+                    uint32_t dismiss[4] = { match_hwnd, 0x111u, 0x5C0u, 0 };
+                    hle_call_guest(0x0075C830u, 4, dismiss); /* match dialog proc */
+                    fprintf(stderr, "[wol] match dialog Cancel (pre-start) on %08X\n", match_hwnd);
+                }
+            }
         }
         g_starting_game = 0;
         wol_channel *channel = current_channel();
