@@ -14,6 +14,10 @@ describe("browser WOL settings", () => {
     );
     expect(text(input)).toContain("PortNumberOverride=0");
   });
+  it("leaves a zero override alone when the native mangler probe is requested", () => {
+    const input = bytes("[MultiPlayer]\r\nPortNumberOverride=0\r\n");
+    expect(withBrowserWolPort(input, true)).toEqual(input);
+  });
   it("adds a missing setting or section, and preserves an existing fixed port", () => {
     expect(text(withBrowserWolPort(bytes("[multiplayer]\nColor=2\n")))).toContain(
       "PortNumberOverride=1234",

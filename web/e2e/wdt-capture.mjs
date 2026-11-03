@@ -8,6 +8,7 @@ const opts = options(process.argv.slice(2));
 opts.noDev = true;
 opts.pageArgs.push("--debuglog", "--env", "HLE_NETTRACE=1");
 if (process.env.WDT_MSGTRACE) opts.pageArgs.push("--env", "HLE_MSGTRACE=1");
+if (process.env.WDT_MANGLER_ECHO) opts.pageArgs.push("--env", "WDT_MANGLER_ECHO=1");
 if (process.env.WDT_INJECT) opts.pageArgs.push("--env", `RA2_WDT_CLICK=${process.env.WDT_INJECT}`);
 if (opts.testGame) {
   // `?test=1` streams the game folder; the import allowlist omits the exe, so
@@ -16,7 +17,7 @@ if (opts.testGame) {
 }
 const run = await startPage(opts);
 
-async function waitDialog(id, after = 0, ms = 60000) {
+async function waitDialog(id, after = run.all.length, ms = 60000) {
   const deadline = Date.now() + ms;
   while (!run.all.slice(after).some((l) => l.includes(`[dialog] open ${id}`))) {
     if (Date.now() > deadline) throw new Error(`timeout waiting for dialog ${id}`);
@@ -60,34 +61,20 @@ try {
       typeof globalThis.Module?.ra2WolStart,
     ]),
   );
-  await run.page.waitForTimeout(1500);
-  await run.clickGame(720, 263); // Internet
+  await run.page.waitForTimeout(3000);
+  await run.clickGame(720, Number(process.env.WDT_MAIN_Y ?? 263)); // Internet
   await waitDialog("0x10E");
-  await run.page.waitForTimeout(800);
+  await run.page.waitForTimeout(1500);
   await run.clickGame(720, 263); // Login
   await waitDialog("0x10F");
-  await run.page.waitForTimeout(1000);
+  await run.page.waitForTimeout(2000);
   await run.shot("login-dialog");
-  console.log(
-    "login geometry",
-    await run.page.evaluate(() => {
-      const c = document.querySelector("canvas");
-      const r = c.getBoundingClientRect();
-      return {
-        size: window.ra2Store?.getSnapshot().size,
-        rect: { left: r.left, top: r.top, width: r.width, height: r.height },
-        canvas: { width: c.width, height: c.height },
-      };
-    }),
-  );
   await login();
   await waitDialog("0x113");
-  await run.page.waitForTimeout(2500);
-  await run.clickGame(707, 557); // Back to WOL welcome
-  await waitDialog("0x10E");
-  await run.page.waitForTimeout(1200);
-  await run.clickGame(720, 348); // World Domination
-  await run.page.waitForTimeout(2000);
+  await run.page.waitForTimeout(4000);
+  await run.shot("lobby-113");
+  await run.clickGame(720, 348); // World Domination on the WOL profile screen
+  await run.page.waitForTimeout(3000);
   // It may ask for login again.
   if (run.all.some((l) => l.includes("[dialog] open 0x10F"))) {
     await login();
@@ -133,6 +120,15 @@ try {
     await run.clickGame(719, 557);
     await run.page.waitForTimeout(3000);
     await run.shot("after-shell-menu");
+  }
+  if (process.env.WDT_FIGHT) {
+    const [x, y] = process.env.WDT_FIGHT.split(",").map(Number);
+    await run.clickGame(x, y);
+    await run.page.waitForTimeout(900);
+    await run.clickGame(x, y);
+    await run.page.waitForTimeout(4000);
+    await run.shot("territory-fight");
+    console.log("territory fight phase", (await run.state())?.phase);
   }
   if (process.env.WDT_DBLCLICK) {
     const [x, y] = process.env.WDT_DBLCLICK.split(",").map(Number);

@@ -13,8 +13,10 @@ export function wolLineBytes(line: string): Uint8Array {
 /** Keep the native firewall probe out of the browser's WebSocket connection.
  * PortNumberOverride makes RA2/YR use a fixed virtual port instead of contacting
  * the retired Westwood UDP mangler. Preserve the INI's original byte encoding.
- */
-export function withBrowserWolPort(bytes: Uint8Array): Uint8Array {
+ * `keepMangler` leaves a zero override alone so the WDT matchmaker's native
+ * mangler probe still runs (the bridge answers it). */
+export function withBrowserWolPort(bytes: Uint8Array, keepMangler = false): Uint8Array {
+  if (keepMangler) return bytes;
   const text = Array.from(bytes, (byte) => String.fromCharCode(byte)).join("");
   const eol = text.includes("\r\n") ? "\r\n" : "\n";
   const lines = text.split(/\r?\n/);

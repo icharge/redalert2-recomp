@@ -1219,6 +1219,18 @@ static void m_idle_pump(void) { RET(S_OK, 1); }
 extern int hle_ws_udp_pop(uint8_t *packet, uint32_t capacity);
 extern int hle_ws_udp_push(const uint8_t *packet, uint32_t length);
 #define WDT_MANGLER_PORT 29094
+/* The game packet's checksum: rotl(h, 1) + each little-endian dword. The
+ * 4-byte value is stored ahead of the 72-byte packet data. */
+static uint32_t wdt_packet_crc(const uint8_t *data, int length) {
+    uint32_t hash = 0;
+    for (int i = 0; i + 3 < length; i += 4) {
+        uint32_t word = (uint32_t)data[i] | (uint32_t)data[i + 1] << 8 |
+                        (uint32_t)data[i + 2] << 16 | (uint32_t)data[i + 3] << 24;
+        hash = (hash << 1) | (hash >> 31);
+        hash += word;
+    }
+    return hash;
+}
 static void service_mangler(void) {
     /* Only before STARTG: during a match the relay owns the outbound queue. */
     if (g_session.game_id[0]) return;
@@ -1230,15 +1242,35 @@ static void service_mangler(void) {
         if (destination != WDT_MANGLER_PORT) continue;
         if (size < 8 + 0x32) continue;
         uint16_t source = (uint16_t)((frame[4] << 8) | frame[5]);
+        /* Only the firewall-probe frame: a 72-byte game packet whose data has
+         * magic 0xAA03 at offset 0x0e and a 0x2b length at offset 0x10. Other
+         * 76-byte netcode traffic to the mangler port is not a query. */
+        const uint8_t *data = frame + 8;
+        if (size < 8 + 4 + 0x14) continue;
+        if (data[4 + 0x0e] != 0x03 || data[4 + 0x0f] != 0xAA || data[4 + 0x10] != 0x2B) continue;
         /* Reply: the mangler is the sender, the game's spare port is the target.
-         * The receive validator (0x5BA194) wants the magic 0xAA03 at payload
-         * offset 0 and a 0x2C word at payload offset 0x2e, not the query
-         * frame's layout. */
+         * The validator (0x5BA194) accepts the request's own game packet once
+         * its length at 0x10 is raised from 0x2b to 0x2c and the packet CRC is
+         * recomputed. */
         uint8_t reply[1600];
         memcpy(reply, frame, (size_t)size);
-        memset(reply + 8, 0, (size_t)(size - 8));
-        reply[8] = 0x03; reply[9] = 0xAA;
-        reply[8 + 0x2e] = 0x2C;
+        const char *echo = getenv("WDT_MANGLER_ECHO");
+        if (!echo || !*echo) {
+            uint8_t *payload = reply + 8;
+            int payload_len = size - 8;
+            /* The request's game packet has magic 0xAA03 at data offset
+             * 0x0e and a 0x2b length at data offset 0x10. The reply the
+             * validator accepts is the same packet with a 0x2c (44) length.
+             * Recompute the packet CRC (first four payload bytes). */
+            if (payload_len < 4 + 0x14) continue;
+            payload[4 + 0x10] = 0x2C;
+            payload[4 + 0x11] = 0;
+            payload[4 + 0x12] = 0;
+            payload[4 + 0x13] = 0;
+            uint32_t crc = wdt_packet_crc(payload + 4, payload_len - 4);
+            payload[0] = (uint8_t)crc; payload[1] = (uint8_t)(crc >> 8);
+            payload[2] = (uint8_t)(crc >> 16); payload[3] = (uint8_t)(crc >> 24);
+        }
         reply[0] = 172; reply[1] = 29; reply[2] = 99; reply[3] = 1;
         reply[4] = (uint8_t)(WDT_MANGLER_PORT >> 8); reply[5] = (uint8_t)WDT_MANGLER_PORT;
         reply[6] = (uint8_t)(source >> 8); reply[7] = (uint8_t)source;

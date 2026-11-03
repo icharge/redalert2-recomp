@@ -239,7 +239,14 @@ function stageWolDataKey(fs: EmscriptenFs, game: GameId): void {
   } catch {
     /* use the native defaults */
   }
-  replaceFile(fs, path, withBrowserWolPort(ini));
+  replaceFile(
+    fs,
+    path,
+    withBrowserWolPort(
+      ini,
+      typeof window !== "undefined" && new URLSearchParams(window.location.search).has("mangler"),
+    ),
+  );
 }
 
 /* The launcher's own start-up logos. They override the copies in the game's
