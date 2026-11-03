@@ -752,6 +752,8 @@ static void handle_line(const char *line) {
         if (name && user && (user->flags & 0x8000u)) {
             copy_text(g_current_channel, sizeof g_current_channel, name + 1);
             g_joining_channel = 0;
+            if (strncmp(name + 1, "#Lob_", 5) != 0)
+                fprintf(stderr, "[wol] own join of game channel %s\n", name + 1);
         }
         wol_channel *channel = current_channel();
         if (g_creating_channel && user && (user->flags & 0x8000u)) {
@@ -786,6 +788,11 @@ static void handle_line(const char *line) {
         wol_channel *channel = current_channel();
         wol_user *user = sender_user(line);
         const char *target = strstr(line, " GAMEOPT ") + 9;
+        /* A server-side match bot is not in the channel roster, so its GAMEOPT
+         * has no native user object. Attribute it to the local player: the
+         * event still needs a user, and the options themselves are what the
+         * game caches for the match. */
+        if (!user) user = user_for_name(g_nick);
         if (*target != '#') {
             uint32_t values[] = { S_OK, (uint32_t)(uintptr_t)user,
                 (uint32_t)(uintptr_t)(options ? options + 2 : "") };
