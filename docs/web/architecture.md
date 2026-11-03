@@ -108,8 +108,13 @@ browser-only:
   and F11 are `preventDefault`ed on the canvas, and Ctrl+W is left alone.
 - **Edge scrolling.** The game scrolls when the cursor is at the edge. In a
   window, the cursor leaves the canvas instead. The Play screen offers
-  Pointer Lock. When it's locked, the page draws no cursor and the game
-  draws its own, as it does fullscreen on Windows.
+  Pointer Lock, which asks for raw (`unadjustedMovement`) input: without it the
+  OS cursor still exists under the lock and, at a desktop edge, is recentred -
+  a fast flick there arrives as one large delta and the cursor jumps. Browsers
+  that refuse raw input fall back to the plain lock. While it's locked the real
+  pointer is hidden: in a match the page layer draws the game's cursor above
+  the picture (`docs/web/cursor-layer.md`), and with `?cursor=game` the game
+  draws its own into the picture, as it does fullscreen on Windows.
 
 ## Sound
 

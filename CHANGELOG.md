@@ -213,6 +213,13 @@ a2.ini`.
 
 ### Fixed
 
+- The page's cursor no longer jumps when the mouse is flicked quickly into a
+  screen edge under Pointer Lock. The lock asks Chrome for raw
+  (`unadjustedMovement`) input, so the hidden OS cursor cannot be recentred at
+  a desktop edge and arrive as one large delta; browsers that refuse it keep the
+  plain lock. A new cursor frame is also drawn with the hot spot published with
+  it, never the previous frame's. (`web/src/game/browser-controls.ts`,
+  `web/src/game/cursor-layer.ts`)
 - World Domination's WOL matchmaker: the bridge handles the matching agent's
   `Start <game>` message, marks the agent as the channel operator, keeps an
   unsolicited game list from replacing the lobby list, and answers the WDT
