@@ -113,6 +113,9 @@ export class PageCursor {
   private fy = 0;
   private frameWidth = 0;
   private frameHeight = 0;
+  /** the hot spot that came with the frame: never read apart from it */
+  private hotX = 0;
+  private hotY = 0;
   /** the Win32 cursor: the last sequence read, and whether it is painted */
   private windowsSeq = -1;
   private windowsPixels: Uint8Array | null = null;
@@ -170,6 +173,7 @@ export class PageCursor {
     this.windowsPixels = null;
     this.pointer = null;
     this.frame = this.palette = this.image = null;
+    this.hotX = this.hotY = 0;
   }
 
   /** Called when the tab goes away: the game must draw its own cursor again. */
@@ -225,8 +229,8 @@ export class PageCursor {
       box: this.box(),
       x: Atomics.load(words, at + Shared.pointerX),
       y: Atomics.load(words, at + Shared.pointerY),
-      hotX: Atomics.load(words, at + Shared.pageCursorHotX),
-      hotY: Atomics.load(words, at + Shared.pageCursorHotY),
+      hotX: this.hotX,
+      hotY: this.hotY,
       spriteWidth: this.width,
       spriteHeight: this.height,
     });
@@ -344,6 +348,8 @@ export class PageCursor {
     const sheetHeight = Atomics.load(words, at + Shared.pageCursorSheetH);
     const fx = Atomics.load(words, at + Shared.pageCursorX);
     const fy = Atomics.load(words, at + Shared.pageCursorY);
+    const hotX = Atomics.load(words, at + Shared.pageCursorHotX);
+    const hotY = Atomics.load(words, at + Shared.pageCursorHotY);
     if (
       kind !== PageCursorKind.Image ||
       width <= 0 ||
@@ -357,6 +363,7 @@ export class PageCursor {
       this.frame = null;
       this.image = null;
       this.width = this.height = 0;
+      this.hotX = this.hotY = 0;
       this.seq = seq;
       return;
     }
@@ -372,6 +379,8 @@ export class PageCursor {
     this.fy = fy;
     this.frameWidth = width;
     this.frameHeight = height;
+    this.hotX = hotX;
+    this.hotY = hotY;
     this.width = sheetWidth;
     this.height = sheetHeight;
     this.seq = seq;

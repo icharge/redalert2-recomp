@@ -32,11 +32,19 @@ export async function leaveFullscreen(): Promise<void> {
   if (document.fullscreenElement) await document.exitFullscreen();
 }
 
+/** `unadjustedMovement` asks for raw mouse input: no OS acceleration, and no
+ * hidden OS cursor to recentre when it reaches a desktop edge. Without it, a
+ * fast flick into an edge can arrive as one large delta - the cursor jumps. */
+type PointerLockRequest = (options?: { unadjustedMovement?: boolean }) => Promise<void> | void;
+
 export function lockPointer(canvas: HTMLCanvasElement): Promise<void> {
   canvas.focus();
   if (document.pointerLockElement === canvas) return Promise.resolve();
   return new Promise((resolve, reject) => {
+    let settled = false;
     const done = (error?: unknown) => {
+      if (settled) return;
+      settled = true;
       document.removeEventListener("pointerlockchange", changed);
       document.removeEventListener("pointerlockerror", failed);
       if (error) reject(error);
@@ -46,14 +54,27 @@ export function lockPointer(canvas: HTMLCanvasElement): Promise<void> {
       if (document.pointerLockElement === canvas) done();
     };
     const failed = () => done(new Error("Click inside the game to capture the cursor."));
+    const request = canvas.requestPointerLock as PointerLockRequest;
+    // A browser that rejects the options object (or has no raw input) still
+    // locks the old way; activation failures are left to the click retry.
+    const rawDenied = (error: unknown) => {
+      if (settled || document.pointerLockElement === canvas) return done();
+      if (error instanceof DOMException && error.name === "NotAllowedError") return done(error);
+      try {
+        const fallback = request.call(canvas);
+        fallback?.then?.(() => done(), done);
+      } catch (cause) {
+        done(cause);
+      }
+    };
     document.addEventListener("pointerlockchange", changed);
     document.addEventListener("pointerlockerror", failed);
     try {
+      const result = request.call(canvas, { unadjustedMovement: true });
       // Older browsers return void and report the result through events.
-      const result = canvas.requestPointerLock();
-      result?.then(() => done(), done);
+      result?.then?.(() => done(), rawDenied);
     } catch (error) {
-      done(error);
+      rawDenied(error);
     }
   });
 }

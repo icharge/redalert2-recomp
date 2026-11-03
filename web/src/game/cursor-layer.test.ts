@@ -215,6 +215,26 @@ describe("PageCursor", () => {
     expect(canvas.style.visibility).toBe("visible");
   });
 
+  it("draws a frame with the hot spot that came with it", () => {
+    const cursor = layer();
+    publishFrame(memory, 55, 43, 22, 17); // hot 2, 3
+    cursor.frameStep();
+    expect(canvas.style.transform).toBe("translate(98px, 197px)"); // (100-2, 200-3) at 1:1
+    const placed = canvas.style.transform;
+    // The game has started the next frame: the hot spot is already written but
+    // the sequence is odd, so the published frame is still the old one.
+    const seq = Atomics.load(memory.HEAP32, memory.at + Shared.pageCursorSeq);
+    Atomics.store(memory.HEAP32, memory.at + Shared.pageCursorSeq, seq + 1);
+    Atomics.store(memory.HEAP32, memory.at + Shared.pageCursorHotX, 20);
+    Atomics.store(memory.HEAP32, memory.at + Shared.pageCursorHotY, 30);
+    cursor.frameStep();
+    expect(canvas.style.transform).toBe(placed);
+    // The whole new frame lands: its hot spot moves the sprite with it.
+    Atomics.store(memory.HEAP32, memory.at + Shared.pageCursorSeq, seq + 2);
+    cursor.frameStep();
+    expect(canvas.style.transform).toBe("translate(80px, 170px)"); // (100-20, 200-30)
+  });
+
   it("ignores a game build from before the page cursor", () => {
     memory = fakeMemory(9);
     const cursor = layer();
