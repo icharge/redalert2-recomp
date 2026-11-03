@@ -38,6 +38,9 @@
 #define E_NOTIMPL 0x80004001u
 #define E_FAIL 0x80004005u
 
+/* Signals the WOL match window's own 18-event array (slot 16 = match start). */
+static void wdt_signal_match_start(void);
+
 /* x86 layouts from the embedded WOLAPI type library (pointer fields are 4B). */
 typedef struct {
     int32_t gametype, chattype, timezone;
@@ -874,6 +877,7 @@ static void handle_line(const char *line) {
             /* Close the WOL match window before OnGameStart; the guest's window
              * otherwise stays open and its game never leaves matchmaking. */
             wdt_emit_match_start(session.channel);
+            wdt_signal_match_start();
         }
         g_starting_game = 0;
         wol_channel *channel = current_channel();
@@ -1196,6 +1200,15 @@ static void wdt_events_ready(void) {
     }
     uint32_t args[1] = { g_wdt_events[WDT_EVENT_READY] };
     hle_call_guest(hle_resolve("SetEvent"), 1, args);
+}
+/* The stock match window pumps its own 18-event array (0xB264F8) and runs the
+ * match worker from slot 16. A passive peer that never receives the
+ * matchmaker message otherwise stays in that window forever. */
+static void wdt_signal_match_start(void) {
+    if (!g_wdt_events[0]) wdt_events_ready();
+    uint32_t args[1] = { g_wdt_events[16] };
+    hle_call_guest(hle_resolve("SetEvent"), 1, args);
+    fprintf(stderr, "[wol] signalled WDT match-start event 16\n");
 }
 static void m_wdt_request_state(void) {
     fprintf(stderr, "[wdt] RequestWDTState args %08X %08X %08X %08X sink %08X chat %08X\n",
