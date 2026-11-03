@@ -713,10 +713,9 @@ static void handle_line(const char *line) {
     if (strstr(line, " 322 ")) { parse_room_line(line); return; }
     if (strstr(line, " 323 ")) { emit_channel_list(); return; }
     if (strstr(line, " 321 ")) {
-        /* A new LIST reply: drop the previous batch so an unsolicited type-33
-         * game list does not carry the lobbies over. */
+        /* A new LIST reply: drop the previous batch but keep the request kind,
+         * so a type-0 list can still add the synthetic WDT matching lobbies. */
         g_channel_count = 0;
-        g_channel_list_lobby = 0;
         return;
     }
     if (strstr(line, " 353 ")) { parse_roster(line); return; }
