@@ -253,6 +253,19 @@ static uint32_t event_call(uint32_t ordinal, uint32_t count, const uint32_t *val
     return hle_call_guest(method, (int)count + 1, args);
 }
 
+/* The stock WOL match window (dialog 0x117) closes on chat sink ordinal 16 with
+ * the matchmaker's "match found" arguments: arg2 points at a flag byte whose
+ * low bit is set, arg3 is the match text ("<sku>:<server>"). The Start handler
+ * then runs and the game leaves matchmaking. No server line reaches that sink
+ * in the browser, so deliver it when the WDT STARTG arrives. */
+static uint8_t g_wdt_start_flag = 1;
+static void wdt_emit_match_start(const char *game) {
+    uint32_t values[] = { 0, 0, (uint32_t)(uintptr_t)&g_wdt_start_flag,
+        (uint32_t)(uintptr_t)game, 0 };
+    event_call(16, 5, values);
+    fprintf(stderr, "[wol] match-start event 16 delivered for '%s'\n", game);
+}
+
 static void copy_text(char *to, size_t capacity, const char *from) {
     if (!capacity) return;
     if (!from) from = "";
@@ -848,7 +861,16 @@ static void handle_line(const char *line) {
         session.timestamp = (uint32_t)time;
         invalidate_reports();
         g_session = session;
-        if (strstr(session.channel, "WDT")) g_wdt_mode_pending = 1;
+        if (strstr(session.channel, "WDT")) {
+            g_wdt_mode_pending = 1;
+            /* The match window's sink only accepts the match-found event in
+             * WDT state 1/2; a passive guest is still in state 3. This is a
+             * WDT start, so put it in the matching state before delivering. */
+            MEM32(0xA3D2A4) = 2;
+            /* Close the WOL match window before OnGameStart; the guest's window
+             * otherwise stays open and its game never leaves matchmaking. */
+            wdt_emit_match_start(session.channel);
+        }
         g_starting_game = 0;
         wol_channel *channel = current_channel();
         uint32_t values[] = { S_OK, (uint32_t)(uintptr_t)channel,
