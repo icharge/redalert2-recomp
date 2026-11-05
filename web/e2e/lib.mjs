@@ -46,6 +46,12 @@ export function options(argv) {
   };
 }
 
+// E2E_SHARED_TABS=1 makes every client a tab of one browser, the way a person
+// plays two windows on one PC: one profile's storage and one visible tab.
+const sharedTabs = process.env.E2E_SHARED_TABS === "1";
+let sharedBrowser = null;
+let sharedContext = null;
+
 export async function startPage(opts) {
   mkdirSync(opts.shots, { recursive: true });
   const launch = { executablePath: opts.chrome, headless: !opts.headed, args: ["--no-sandbox"] };
@@ -58,15 +64,26 @@ export async function startPage(opts) {
         serviceWorkers: "block",
       })
     : null;
-  const browser = persistent
-    ? {
-        close: () => persistent.close(),
-        on: (event, fn) => {
-          if (event === "disconnected") persistent.on("close", fn);
-        },
-      }
-    : await chromium.launch(launch);
-  const context = persistent ?? (await browser.newContext({ viewport, serviceWorkers: "block" }));
+  let browser;
+  let context;
+  if (persistent) {
+    browser = {
+      close: () => persistent.close(),
+      on: (event, fn) => {
+        if (event === "disconnected") persistent.on("close", fn);
+      },
+    };
+    context = persistent;
+  } else if (sharedTabs) {
+    sharedBrowser ??= await chromium.launch(launch);
+    sharedContext ??= await sharedBrowser.newContext({ viewport, serviceWorkers: "block" });
+    // A tab's failure must not close its sibling's browser.
+    browser = { close: async () => {}, on: () => {} };
+    context = sharedContext;
+  } else {
+    browser = await chromium.launch(launch);
+    context = await browser.newContext({ viewport, serviceWorkers: "block" });
+  }
   // Pin a test's module without overwriting another developer's published build.
   if (opts.gameBuild) {
     // Stream the large debug WASM over HTTP; CDP fulfill bodies exceed Chrome's
