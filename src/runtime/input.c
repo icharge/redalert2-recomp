@@ -4,7 +4,8 @@
  *   --press DLG:CTRL@s   press control CTRL of menu dialog DLG, once DLG is open
  *   --select DLG:CTRL=N@s  pick item N of a list or combo box in DLG
  *   --waitlog TEXT@s     hold until the game's debug log prints a line with TEXT
- *   --move x,y@s  --click [c][s][a]+x,y@s  --key [c][s][a]+vk@s  --wait VA@s
+ *   --move x,y@s  --click [c][s][a]+x,y@s  --rclick [c][s][a]+x,y@s
+ *   --key [c][s][a]+vk@s  --wait VA@s
  *   (c, s, a: held down with it: Ctrl, Shift, Alt; Ctrl+click is force-fire)
  *   --drag x1,y1,x2,y2@s   a band selection, button down at one corner, up at the other
  *
@@ -39,7 +40,7 @@ int input_arg(int argc, char** argv, int i) {
     if (i + 1 >= argc || g_nev >= MAX_EV) return 0;
     ev_t e = { 0 };
     const char* a = argv[i + 1];
-    if (!strcmp(argv[i], "--move") || !strcmp(argv[i], "--click")) {
+    if (!strcmp(argv[i], "--move") || !strcmp(argv[i], "--click") || !strcmp(argv[i], "--rclick")) {
         const char* plus = strchr(a, '+');
         if (plus) {
             for (const char* m = a; m < plus; m++)
@@ -47,7 +48,7 @@ int input_arg(int argc, char** argv, int i) {
             a = plus + 1;
         }
         if (sscanf(a, "%d,%d@%lf", &e.x, &e.y, &e.t) != 3) return 0;
-        e.kind = argv[i][2];                    /* 'm' or 'c' */
+        e.kind = argv[i][2];                    /* 'm', 'c' or 'r' */
     } else if (!strcmp(argv[i], "--drag")) {
         int x2, y2;
         if (sscanf(a, "%d,%d,%d,%d@%lf", &e.x, &e.y, &x2, &y2, &e.t) != 5) return 0;
@@ -273,7 +274,7 @@ SHORT input_key_state(int vk, SHORT real) {
     int bit = vk == VK_CONTROL || vk == VK_LCONTROL || vk == VK_RCONTROL ? 1
             : vk == VK_SHIFT || vk == VK_LSHIFT || vk == VK_RSHIFT ? 2
             : vk == VK_MENU || vk == VK_LMENU || vk == VK_RMENU ? 4
-            : vk == VK_LBUTTON ? 8 : 0;
+            : vk == VK_LBUTTON ? 8 : vk == VK_RBUTTON ? 16 : 0;
     /* A scripted run answers every key from the script: the console's (or the
      * RDP phone's) real keyboard never leaks into a test. */
     return (bit && (g_mods & bit)) ? (SHORT)0x8000 : 0;
@@ -464,6 +465,26 @@ static DWORD WINAPI script(LPVOID unused) {
             InterlockedExchange(&g_mods, 0);
             for (int m = 0; m < 3; m++)
                 if (e->y & 1 << m) PostMessageA(h, WM_KEYUP, mvk[m], 0xC0000001);
+            continue;
+        }
+        if (e->kind == 'r') {
+            LPARAM lp = MAKELPARAM(e->x, e->y);
+            fprintf(stderr, "[input] %.1fs rclick %s%d,%d\n", e->t,
+                    e->mods & 1 ? "Ctrl-" : e->mods & 2 ? "Shift-" : e->mods & 4 ? "Alt-" : "", e->x, e->y);
+            static const int mvk[] = { VK_CONTROL, VK_SHIFT, VK_MENU };
+            for (int m = 0; m < 3; m++)
+                if (e->mods & 1 << m) PostMessageA(h, WM_KEYDOWN, mvk[m], 1);
+            InterlockedExchange(&g_cx, e->x);
+            InterlockedExchange(&g_cy, e->y);
+            input_post_mouse(h, WM_MOUSEMOVE, 0, lp);
+            Sleep(100);
+            InterlockedOr(&g_mods, 16);            /* VK_RBUTTON is down (input_key_state) */
+            input_post_mouse(h, WM_RBUTTONDOWN, MK_RBUTTON, lp);
+            Sleep(250);
+            input_post_mouse(h, WM_RBUTTONUP, 0, lp);
+            InterlockedAnd(&g_mods, ~16);
+            for (int m = 0; m < 3; m++)
+                if (e->mods & 1 << m) PostMessageA(h, WM_KEYUP, mvk[m], 0xC0000001);
             continue;
         }
         if (e->kind == 'd') {
