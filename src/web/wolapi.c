@@ -320,6 +320,21 @@ static void emit_channel_list(void) {
 
 static wol_channel *current_channel(void);
 
+/* The virtual addresses the WOL layer hands the game. A peer whose entry is
+ * missing (or whose address is 0) makes the game send to the LAN broadcast
+ * instead and the match sits on "connecting" until it times out, so the table
+ * is worth having in the log. */
+static void log_users(const char *tag) {
+    fprintf(stderr, "[wol] users(%s) n=%u", tag, g_user_count);
+    for (uint32_t i = 0; i < g_user_count; i++) {
+        uint32_t a = g_users[i].ipaddr;
+        fprintf(stderr, " %s=%u.%u.%u.%u%s", g_users[i].name,
+                a & 0xFF, (a >> 8) & 0xFF, (a >> 16) & 0xFF, (a >> 24) & 0xFF,
+                strcmp(g_users[i].name, g_nick) == 0 ? "*" : "");
+    }
+    fprintf(stderr, "\n");
+}
+
 static void emit_user_list(void) {
     for (uint32_t i = 0; i < g_user_count; i++)
         g_users[i].next = i + 1 < g_user_count ? (uint32_t)(uintptr_t)&g_users[i + 1] : 0;
@@ -334,6 +349,7 @@ static void emit_user_list(void) {
     uint32_t values[] = { S_OK, (uint32_t)(uintptr_t)channel,
         g_user_count ? (uint32_t)(uintptr_t)&g_users[0] : 0 };
     event_call(12, 3, values); /* IChatEvent::OnUserList */
+    log_users("list");
 }
 
 static wol_channel *current_channel(void) {
@@ -739,6 +755,7 @@ static void handle_line(const char *line) {
         session.timestamp = (uint32_t)time;
         invalidate_reports();
         g_session = session;
+        log_users("startg");
         g_starting_game = 0;
         wol_channel *channel = current_channel();
         uint32_t values[] = { S_OK, (uint32_t)(uintptr_t)channel,
