@@ -7,6 +7,15 @@ versions follow [SemVer](https://semver.org/).
 
 ### Added
 
+- **In-game game resolution**: the F10 menu now has a Resolution choice next
+  to Scaling. It writes the host's resolution setting into the game's
+  INI/options, so the match that is running keeps its size and the next one
+  opens at the new size. "Match browser size" uses the page's own pixel size
+  (the window in CSS pixels times the device pixel ratio) and follows a
+  resized window until the next match; the launcher's Video tab offers the
+  same choice. (`web/src/components/SettingsDialog.tsx`,
+  `web/src/screens/Play.tsx`, `web/src/storage/video-preferences.ts`,
+  `src/web/video_modes.h`)
 - **Skip the logo**: Escape or a left click ends the start-up logo early, in
   both editions. The press edge is taken in `startup_order.c`; the movie loop
   seeks the Bink handle to its last frame, so only the logo is affected and

@@ -47,11 +47,13 @@ import {
 } from "../storage/thai-fonts";
 import type { GameRecord } from "../storage/manifest";
 import {
+  BROWSER_VIDEO_SIZE,
   DEFAULT_VIDEO_SIZE,
   launcherVideoOptions,
   nativeVideoSize,
-  readVideoPreference,
+  readVideoChoice,
   writeVideoPreference,
+  type VideoChoice,
 } from "../storage/video-preferences";
 import styles from "./LauncherGameSettings.module.css";
 import { readStatsPreference, writeStatsPreference } from "../storage/stats-preferences";
@@ -522,7 +524,9 @@ export function LauncherGameSettings({
   gameSettingsDeps?: Partial<GameSettingsDeps>;
 }) {
   const [preference, setPreference] = useState(() => readThaiFontPreference(game.storage));
-  const [videoPreference, setVideoPreference] = useState(() => readVideoPreference(game.storage));
+  const [videoPreference, setVideoPreference] = useState<VideoChoice>(() =>
+    readVideoChoice(game.storage),
+  );
   const [fullscreenPreference, setFullscreenPreference] = useState<FullscreenPreference>(() =>
     readFullscreenPreference(game.storage),
   );
@@ -1236,19 +1240,27 @@ export function LauncherGameSettings({
             <Flex direction="column" gap="4" pt="4">
               <Section
                 title="Display"
-                hint={`The launcher resolution overrides the game's saved size for the next launch. It defaults to ${DEFAULT_VIDEO_SIZE.w} × ${DEFAULT_VIDEO_SIZE.h}.`}
+                hint={`The launcher resolution overrides the game's saved size for the next launch. It defaults to ${DEFAULT_VIDEO_SIZE.w} × ${DEFAULT_VIDEO_SIZE.h}; "Match browser size" uses this window's pixel size for the match.`}
               >
                 <Row id={`launcher-resolution-${game.slot}-${game.id}`} label="Resolution">
                   <Select.Root
-                    value={videoPreference ? `${videoPreference.w}x${videoPreference.h}` : "game"}
+                    value={
+                      videoPreference === BROWSER_VIDEO_SIZE
+                        ? BROWSER_VIDEO_SIZE
+                        : videoPreference
+                          ? `${videoPreference.w}x${videoPreference.h}`
+                          : "game"
+                    }
                     onValueChange={(value) => {
-                      const next =
+                      const next: VideoChoice =
                         value === "game"
                           ? null
-                          : (() => {
-                              const [w, h] = value.split("x").map(Number);
-                              return { w: w ?? 0, h: h ?? 0 };
-                            })();
+                          : value === BROWSER_VIDEO_SIZE
+                            ? BROWSER_VIDEO_SIZE
+                            : (() => {
+                                const [w, h] = value.split("x").map(Number);
+                                return { w: w ?? 0, h: h ?? 0 };
+                              })();
                       setVideoPreference(next);
                       writeVideoPreference(game.storage, next);
                     }}
@@ -1259,6 +1271,7 @@ export function LauncherGameSettings({
                     />
                     <Select.Content>
                       <Select.Item value="game">Use game setting</Select.Item>
+                      <Select.Item value={BROWSER_VIDEO_SIZE}>Match browser size</Select.Item>
                       {launcherVideoOptions(nativeSize).map(({ w, h, native }) => (
                         <Select.Item key={`${w}x${h}`} value={`${w}x${h}`}>
                           {w} × {h}

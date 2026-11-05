@@ -1,5 +1,10 @@
 import { Button, Dialog, Flex, Select, Switch, Text } from "@radix-ui/themes";
 import { SCALES, Setting, type HostSettings } from "../game/protocol";
+import {
+  BROWSER_VIDEO_SIZE,
+  launcherVideoOptions,
+  type VideoChoice,
+} from "../storage/video-preferences";
 
 /** The host's F10 settings: commands go through its ring, acknowledgements
  * come back as settings events. No second copy of game settings in the page. */
@@ -14,6 +19,8 @@ export function SettingsDialog({
   onPointerLock,
   statsOn,
   onStatsChange,
+  videoChoice,
+  onVideoChange,
 }: {
   settings: HostSettings | null;
   command(key: number, value: number, extra?: number): void;
@@ -25,8 +32,19 @@ export function SettingsDialog({
   onPointerLock?(): void;
   statsOn: boolean;
   onStatsChange(on: boolean): void;
+  videoChoice: VideoChoice;
+  onVideoChange(choice: VideoChoice): void;
 }) {
   if (!settings) return null;
+  const videoSizes = launcherVideoOptions();
+  if (
+    settings.width > 0 &&
+    settings.height > 0 &&
+    !videoSizes.some((size) => size.w === settings.width && size.h === settings.height)
+  ) {
+    videoSizes.push({ w: settings.width, h: settings.height, native: false });
+    videoSizes.sort((a, b) => a.w - b.w || a.h - b.h);
+  }
   return (
     <Dialog.Root
       open={settings.open}
@@ -73,6 +91,41 @@ export function SettingsDialog({
               </Select.Content>
             </Select.Root>
           </Flex>
+          <Flex justify="between" align="center" gap="3">
+            <Text as="label" htmlFor="game-resolution">
+              Resolution
+            </Text>
+            <Select.Root
+              value={
+                videoChoice === BROWSER_VIDEO_SIZE
+                  ? BROWSER_VIDEO_SIZE
+                  : `${settings.width}x${settings.height}`
+              }
+              onValueChange={(value) => {
+                if (value === BROWSER_VIDEO_SIZE) {
+                  onVideoChange(BROWSER_VIDEO_SIZE);
+                  return;
+                }
+                const [w, h] = value.split("x").map(Number);
+                if (Number.isInteger(w) && Number.isInteger(h) && w && h) onVideoChange({ w, h });
+              }}
+            >
+              <Select.Trigger id="game-resolution" aria-label="Resolution" />
+              <Select.Content>
+                <Select.Item value={BROWSER_VIDEO_SIZE}>Match browser size</Select.Item>
+                {videoSizes.map(({ w, h, native }) => (
+                  <Select.Item key={`${w}x${h}`} value={`${w}x${h}`}>
+                    {w} × {h}
+                    {native ? " (Native)" : ""}
+                  </Select.Item>
+                ))}
+              </Select.Content>
+            </Select.Root>
+          </Flex>
+          <Text size="1" color="gray">
+            Resolution applies to the next match. "Match browser size" uses this window's pixel
+            size.
+          </Text>
           {(
             [
               ["Blur menu bars", settings.bars, Setting.Bars],

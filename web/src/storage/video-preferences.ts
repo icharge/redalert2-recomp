@@ -35,10 +35,19 @@ const PREFERENCE_PREFIX = "ra2.video.";
 /** What "Use game setting" stores: no launcher override, the game's own size. */
 const GAME_SETTING = "game";
 
+/** What "Match browser size" stores: the match renders at the page's own pixel
+ * size (the window in CSS pixels times the device pixel ratio), so the picture
+ * is 1:1 with the browser. */
+export const BROWSER_VIDEO_SIZE = "browser";
+
 export interface VideoPreference {
   w: number;
   h: number;
 }
+
+/** A saved choice: a fixed size, null for "Use game setting", or the
+ * "Match browser size" marker (resolved to a size when it is used). */
+export type VideoChoice = VideoPreference | typeof BROWSER_VIDEO_SIZE | null;
 
 /** The desktop's own pixel size: the screen in CSS pixels times the device pixel
  * ratio, so a 1920×1080 display at 150% scaling reports 1920×1080 rather than
@@ -54,6 +63,23 @@ export function nativeVideoSize(
     w: Math.max(0, Math.round((screenSize?.width ?? 0) * scale)),
     h: Math.max(0, Math.round((screenSize?.height ?? 0) * scale)),
   };
+}
+
+/** The browser page's own pixel size: its CSS viewport times the device pixel
+ * ratio, the same size the canvas is drawn at, so a match set to "Match browser
+ * size" is 1:1 with the page. Rounded up to even numbers (display modes are) and
+ * kept inside the size the game can allocate. A page without a window gives 0×0. */
+export function browserVideoSize(
+  view: { width: number; height: number } | null = typeof window === "undefined"
+    ? null
+    : { width: window.innerWidth, height: window.innerHeight },
+  ratio: number = typeof window === "undefined" ? 1 : window.devicePixelRatio,
+): VideoPreference {
+  if (!view) return { w: 0, h: 0 };
+  const scale = Number.isFinite(ratio) && ratio > 0 ? ratio : 1;
+  const even = (value: number, low: number) =>
+    Math.min(8192, Math.max(low, Math.round((value * scale) / 2) * 2));
+  return { w: even(view.width, 320), h: even(view.height, 200) };
 }
 
 /** The launcher's resolution list, with the desktop's own size marked as the
@@ -78,18 +104,19 @@ export function launcherVideoOptions(
 /** The launcher's size when the player has not chosen one. */
 export const DEFAULT_VIDEO_SIZE: VideoPreference = { w: 1920, h: 1080 };
 
-/** The launcher's size for a game: the saved choice, the default 1920×1080 when
- * nothing was saved, or null when "Use game setting" was chosen. The desktop's
- * own size stays in the list as "(Native)" for the player to choose. */
-export function readVideoPreference(
+/** The launcher's saved choice for a game, without resolving it: a fixed size,
+ * "browser" for "Match browser size", or null for "Use game setting" (and an
+ * unreadable value falls back to the default size). */
+export function readVideoChoice(
   game: string,
   storage: Pick<Storage, "getItem"> | null = safeLocalStorage(),
-): VideoPreference | null {
+): VideoChoice {
   try {
     const raw = storage?.getItem(`${PREFERENCE_PREFIX}${game}`);
     if (raw === null || raw === undefined) return { ...DEFAULT_VIDEO_SIZE };
     const value: unknown = JSON.parse(raw);
     if (value === GAME_SETTING) return null;
+    if (value === BROWSER_VIDEO_SIZE) return BROWSER_VIDEO_SIZE;
     if (typeof value !== "object" || value === null) return { ...DEFAULT_VIDEO_SIZE };
     const size = value as Partial<VideoPreference>;
     if (!Number.isInteger(size.w) || !Number.isInteger(size.h)) return { ...DEFAULT_VIDEO_SIZE };
@@ -102,9 +129,22 @@ export function readVideoPreference(
   }
 }
 
+/** The launcher's size for a game: the fixed choice, the browser's size for
+ * "Match browser size", the default 1920×1080 when nothing was saved, or null
+ * when "Use game setting" was chosen. The desktop's own size stays in the list
+ * as "(Native)" for the player to choose. */
+export function readVideoPreference(
+  game: string,
+  storage: Pick<Storage, "getItem"> | null = safeLocalStorage(),
+  browser: VideoPreference = browserVideoSize(),
+): VideoPreference | null {
+  const choice = readVideoChoice(game, storage);
+  return choice === BROWSER_VIDEO_SIZE ? { ...browser } : choice;
+}
+
 export function writeVideoPreference(
   game: string,
-  preference: VideoPreference | null,
+  preference: VideoChoice,
   storage: Pick<Storage, "setItem"> | null = safeLocalStorage(),
 ): void {
   try {
