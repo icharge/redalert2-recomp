@@ -233,6 +233,13 @@ a2.ini`.
 
 ### Fixed
 
+- Escape in fullscreen now opens the game's pause menu instead of leaving
+  fullscreen with no menu. The keyboard lock asked for the function keys but
+  not Escape, so Chromium treated the press as its fullscreen exit before the
+  page could pass it to the game. Escape is in the lock list now (a short
+  press reaches the game; Chromium's two-second hold still leaves fullscreen),
+  and the pointer lock is released for the menu as before.
+  (`web/src/game/browser-controls.ts`)
 - Leaving a match from the reconnection screen's "Leave Game" button returns
   to the 800x600 shell. That path skips the score screen, whose switch back
   was the only place the display mode was restored, so the WOL lobby and the

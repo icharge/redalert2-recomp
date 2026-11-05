@@ -106,6 +106,9 @@ browser-only:
   fullscreen) don't reach a page by default. In fullscreen, the page calls
   `navigator.keyboard.lock()` (Chromium) so they do. Outside fullscreen, F5
   and F11 are `preventDefault`ed on the canvas, and Ctrl+W is left alone.
+  Escape is in the lock list too, so a short press reaches the game and opens
+  its pause menu instead of leaving fullscreen; Chromium keeps a two-second
+  Escape hold as the way out of keyboard lock and fullscreen.
 - **Edge scrolling.** The game scrolls when the cursor is at the edge. In a
   window, the cursor leaves the canvas instead. The Play screen offers
   Pointer Lock, which asks for raw (`unadjustedMovement`) input: without it the

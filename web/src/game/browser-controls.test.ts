@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { autoLockPointer } from "./browser-controls";
+import { autoLockPointer, enterFullscreen } from "./browser-controls";
 
 function setup() {
   const canvas = document.createElement("canvas");
@@ -26,6 +26,46 @@ function setup() {
 const settle = async () => {
   for (let i = 0; i < 6; i++) await Promise.resolve();
 };
+
+it("captures Escape in fullscreen so a short press opens the game's pause menu", async () => {
+  const lock = vi.fn((keys?: string[]) => {
+    void keys;
+    return Promise.resolve();
+  });
+  const unlock = vi.fn();
+  Object.defineProperty(navigator, "keyboard", { configurable: true, value: { lock, unlock } });
+  const requestFullscreen = vi.fn(() => Promise.resolve());
+  Object.defineProperty(document.documentElement, "requestFullscreen", {
+    configurable: true,
+    value: requestFullscreen,
+  });
+  try {
+    await enterFullscreen(document.documentElement);
+    expect(requestFullscreen).toHaveBeenCalledOnce();
+    expect(lock).toHaveBeenCalledOnce();
+    expect(lock.mock.calls[0]?.[0]).toContain("Escape");
+  } finally {
+    Reflect.deleteProperty(navigator, "keyboard");
+    Reflect.deleteProperty(document.documentElement, "requestFullscreen");
+  }
+});
+
+it("still enters fullscreen when the browser cannot lock the keyboard", async () => {
+  Object.defineProperty(navigator, "keyboard", {
+    configurable: true,
+    value: { lock: vi.fn(() => Promise.reject(new Error("denied"))), unlock: vi.fn() },
+  });
+  Object.defineProperty(document.documentElement, "requestFullscreen", {
+    configurable: true,
+    value: vi.fn(() => Promise.resolve()),
+  });
+  try {
+    await expect(enterFullscreen(document.documentElement)).resolves.toBeUndefined();
+  } finally {
+    Reflect.deleteProperty(navigator, "keyboard");
+    Reflect.deleteProperty(document.documentElement, "requestFullscreen");
+  }
+});
 
 afterEach(() => {
   document.body.replaceChildren();

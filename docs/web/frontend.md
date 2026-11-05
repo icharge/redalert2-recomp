@@ -131,7 +131,10 @@ defaults to 1920×1080; the list also marks the desktop's own size as "(Native)"
 browser size") and the browser
 fullscreen preference: fullscreen on start, or game match only, where the launcher and the game's
 menus stay windowed, the game page enters fullscreen at the match's loading screen and gives the
-window back after the score screen. The in-game F10 menu has the same Resolution choice (fixed sizes
+window back after the score screen. Escape in fullscreen opens the game's pause
+menu (the page locks the key with `navigator.keyboard.lock`); leaving fullscreen
+is F11, the button beside the volume control, or a two-second Escape hold in
+Chromium. The in-game F10 menu has the same Resolution choice (fixed sizes
 or "Match browser size"); changing it writes the game's INI/options, so it applies to the next
 match, and "Match browser size" keeps following a resized window until then. The Keyboard tab
 follows the game's own Customize Keyboard
