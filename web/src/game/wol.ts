@@ -204,7 +204,7 @@ export class WolClient {
 
       if (options.joinLobby !== false) await this.joinLobby();
       // The game can issue a command while the HTTP login is still in flight
-      // (the World Domination screen asks for its state as soon as it opens).
+      // (a native screen can ask for its state as soon as it opens).
       // Send those only after SESSION was accepted, not before.
       this.flushOutbox();
     } catch (error) {
@@ -230,7 +230,7 @@ export class WolClient {
   sendRaw(line: string): void {
     // A native screen can send before the page has finished logging in. Queue
     // it; throwing here would be relayed as an `@wolapi error` and fail the
-    // pending login (the WDT screen does exactly this on a slow connection).
+    // pending login (a native screen does exactly this on a slow connection).
     if (!this.connected && (this.connecting || this.socket)) {
       this.outbox.push(line);
       return;

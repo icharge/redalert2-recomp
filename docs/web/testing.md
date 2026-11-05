@@ -105,8 +105,8 @@ The server-only lobby controls need the local RA2Web (`../ra2web/server`,
 `VITE_WOL_HTTP_URL=http://127.0.0.1:9090` and
 `VITE_WOL_SOCKET_URL=ws://127.0.0.1:9090/wol`. Start the server for this page
 origin too: its `.env` lists only the production page under
-`CORS_ALLOWED_ORIGINS`, so the browser otherwise rejects `/login` and
-`/wdt/state` before the game can ask for a URL:
+`CORS_ALLOWED_ORIGINS`, so the browser otherwise rejects `/login` before the
+game can ask for a URL:
 
 ```powershell
 cd ../ra2web/server

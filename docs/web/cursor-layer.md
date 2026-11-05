@@ -300,10 +300,8 @@ modes 800x600 -> 1280x720`, with `[cursor] palette: 00 00 16 | 3F 34 00` and
   `build-web.cmd` links both modules (`ra2md.js`/`ra2.js`; the RA2 module was
   blocked by the same stale lift and now builds). RA2's earlier
   failure was a **stale lift**: `src/recomp/gen_game` still called
-  `ra2_wdt_debug_msg` / `ra2_wdt_set_screen` from World Domination
   instrumentation that neither `run_lift.py` nor the sources define any more;
-  regenerating `--target game` removes them (`wdt symbols in the new lift: 0`)
-  and the host links.
+  regenerating `--target game` removes it and the host links.
 - **The playtest case passes with the feature on**: `RA2_PAGE_CURSOR=1
 RA2_PAGE_CURSOR_DEBUG=1 python tools/playtest.py skirmish-start` →
   `pass skirmish-start exit 4 dialogs E2 100 102; in game, 18 distinct frames;

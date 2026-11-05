@@ -30,10 +30,6 @@
 #include "page_cursor.h"
 #include "startup_order.h"
 
-/* World Domination's page bridge is in src/web/wolapi.c; the native host has no
- * WDT client, so the lifted patches' two page callbacks are no-ops here. */
-void ra2_wdt_pick(int territory) { (void)territory; }
-int ra2_wdt_take_mode_switch(void) { return 0; }
 #include "recomp_target.h"   /* the binary this build runs: run_lift.py --target */
 
 extern const uint32_t ra2_entry_va;    /* recomp_dispatch.c */
