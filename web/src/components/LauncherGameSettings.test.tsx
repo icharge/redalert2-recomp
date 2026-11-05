@@ -338,6 +338,16 @@ describe("LauncherGameSettings", () => {
     expect(written.at(-1)?.text).toContain("TeamSelect_1=49");
   });
 
+  it("stores Match browser size as the launcher's resolution choice", async () => {
+    setup();
+    await userEvent.click(screen.getByRole("tab", { name: /Video/ }));
+    const resolution = screen.getByRole("combobox", { name: "Yuri's Revenge resolution" });
+    expect(resolution).toHaveTextContent("1920 × 1080");
+    await userEvent.click(resolution);
+    await userEvent.click(await screen.findByRole("option", { name: "Match browser size" }));
+    expect(localStorage.getItem("ra2.video.slot-1-ra2md")).toBe('"browser"');
+  });
+
   it("shows a write error and keeps the rest of the dialog usable", async () => {
     const { deps } = setup();
     deps.writeSave.mockRejectedValueOnce(new Error("disk full"));

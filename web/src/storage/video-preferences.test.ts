@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  BROWSER_VIDEO_SIZE,
   LAUNCHER_VIDEO_SIZES,
+  browserVideoSize,
   launcherVideoOptions,
   nativeVideoSize,
+  readVideoChoice,
   readVideoPreference,
   writeVideoPreference,
 } from "./video-preferences";
@@ -52,6 +55,23 @@ describe("launcherVideoOptions", () => {
   });
 });
 
+describe("browserVideoSize", () => {
+  it("scales the window's CSS pixels by the device pixel ratio, rounded to even", () => {
+    expect(browserVideoSize({ width: 1279, height: 719 }, 1.5)).toEqual({ w: 1918, h: 1078 });
+    expect(browserVideoSize({ width: 1280, height: 720 }, 2)).toEqual({ w: 2560, h: 1440 });
+  });
+
+  it("treats a missing ratio as 1, clamps the mode range, and has no size without a window", () => {
+    expect(browserVideoSize({ width: 1280, height: 720 }, Number.NaN)).toEqual({
+      w: 1280,
+      h: 720,
+    });
+    expect(browserVideoSize({ width: 100, height: 100 }, 1)).toEqual({ w: 320, h: 200 });
+    expect(browserVideoSize({ width: 9000, height: 9000 }, 1)).toEqual({ w: 8192, h: 8192 });
+    expect(browserVideoSize(null, 2)).toEqual({ w: 0, h: 0 });
+  });
+});
+
 const DEFAULT = { w: 1920, h: 1080 };
 
 describe("video preferences", () => {
@@ -77,5 +97,23 @@ describe("video preferences", () => {
     expect(readVideoPreference("slot-1-ra2md", storage)).toEqual(DEFAULT);
     storage.setItem("ra2.video.slot-1-ra2md", "not json");
     expect(readVideoPreference("slot-1-ra2md", storage)).toEqual(DEFAULT);
+  });
+
+  it("remembers Match browser size and resolves it to the window", () => {
+    const storage = memoryStorage();
+    writeVideoPreference("slot-1-ra2md", BROWSER_VIDEO_SIZE, storage);
+    expect(readVideoChoice("slot-1-ra2md", storage)).toBe(BROWSER_VIDEO_SIZE);
+    expect(readVideoPreference("slot-1-ra2md", storage, { w: 1280, h: 720 })).toEqual({
+      w: 1280,
+      h: 720,
+    });
+  });
+
+  it("keeps fixed sizes and Use game setting as distinct choices", () => {
+    const storage = memoryStorage();
+    writeVideoPreference("slot-1-ra2md", { w: 2880, h: 1800 }, storage);
+    expect(readVideoChoice("slot-1-ra2md", storage)).toEqual({ w: 2880, h: 1800 });
+    writeVideoPreference("slot-1-ra2md", null, storage);
+    expect(readVideoChoice("slot-1-ra2md", storage)).toBeNull();
   });
 });

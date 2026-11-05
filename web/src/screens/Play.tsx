@@ -45,6 +45,13 @@ import {
   readFullscreenPreference,
   type FullscreenPreference,
 } from "../storage/fullscreen-preferences";
+import {
+  BROWSER_VIDEO_SIZE,
+  browserVideoSize,
+  readVideoChoice,
+  writeVideoPreference,
+  type VideoChoice,
+} from "../storage/video-preferences";
 import { Presenter2d, type GamePresenter } from "../game/presenter";
 import { GlPresenter } from "../game/gl-presenter";
 import { presenterKind } from "../game/choose-presenter";
@@ -118,6 +125,7 @@ export function Play({ files }: { files: FileSource }) {
   const [fullscreenPreference] = useState<FullscreenPreference>(() =>
     readFullscreenPreference(gameId),
   );
+  const [videoChoice, setVideoChoice] = useState<VideoChoice>(() => readVideoChoice(gameId));
   const handle = useRef<GameHandle | null>(null);
   const cursorMarker = useRef<HTMLDivElement | null>(null);
   const pageCursorCanvas = useRef<HTMLCanvasElement | null>(null);
@@ -354,6 +362,47 @@ export function Play({ files }: { files: FileSource }) {
     if (phase !== "exited" && phase !== "crashed") return;
     void leaveFullscreen().catch(() => {});
   }, [phase, fullscreenPreference.onlyInGame]);
+
+  // The in-game Video setting: the game keeps rendering the match it is in,
+  // and the host writes the size into the game's INI/options so the next match
+  // starts at it (the same path the game's own Options screen uses).
+  const changeVideo = useCallback(
+    (choice: VideoChoice) => {
+      setVideoChoice(choice);
+      writeVideoPreference(gameId, choice);
+      const size = choice === BROWSER_VIDEO_SIZE ? browserVideoSize() : choice;
+      if (size) handle.current?.exports.ra2_setting(Setting.Resolution, size.w, size.h);
+    },
+    [gameId],
+  );
+
+  // "Match browser size" follows the window: a resize updates the size the
+  // next match will use (the running match keeps the size it started with).
+  useEffect(() => {
+    if (videoChoice !== BROWSER_VIDEO_SIZE) return;
+    let timer = 0;
+    const send = () => {
+      const size = browserVideoSize();
+      handle.current?.exports.ra2_setting(Setting.Resolution, size.w, size.h);
+    };
+    const onResize = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(send, 400);
+    };
+    window.addEventListener("resize", onResize);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("resize", onResize);
+    };
+  }, [videoChoice]);
+
+  // A direct visit (no launcher) has no launch-time size to apply, so keep the
+  // "Match browser size" choice in the game's options once its handle is up.
+  useEffect(() => {
+    if (!presenter || readVideoChoice(gameId) !== BROWSER_VIDEO_SIZE) return;
+    const size = browserVideoSize();
+    handle.current?.exports.ra2_setting(Setting.Resolution, size.w, size.h);
+  }, [presenter, gameId]);
 
   useEffect(() => {
     const element = canvas.current;
@@ -719,6 +768,8 @@ export function Play({ files }: { files: FileSource }) {
         settings={settings}
         statsOn={statsOn}
         onStatsChange={updateStats}
+        videoChoice={videoChoice}
+        onVideoChange={changeVideo}
         fullscreen={fullscreen}
         pointerLocked={pointerLocked}
         onFullscreen={toggleFullscreen}

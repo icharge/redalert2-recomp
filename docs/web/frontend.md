@@ -127,10 +127,14 @@ Audio, Video and Keyboard tabs read and write the per-edition
 `RA2.INI`/`RA2MD.INI` and `KEYBOARD.INI`/`KEYBOARDMD.INI` in
 `save/<storage>/`. The host settings live in `.host/<edition>.ini`; a fresh
 profile starts at smooth scaling. The Video tab also holds the launcher's resolution override (it
-defaults to 1920×1080; the list also marks the desktop's own size as "(Native)") and the browser
+defaults to 1920×1080; the list also marks the desktop's own size as "(Native)" and offers "Match
+browser size") and the browser
 fullscreen preference: fullscreen on start, or game match only, where the launcher and the game's
 menus stay windowed, the game page enters fullscreen at the match's loading screen and gives the
-window back after the score screen. The Keyboard tab follows the game's own Customize Keyboard
+window back after the score screen. The in-game F10 menu has the same Resolution choice (fixed sizes
+or "Match browser size"); changing it writes the game's INI/options, so it applies to the next
+match, and "Match browser size" keeps following a resized window until then. The Keyboard tab
+follows the game's own Customize Keyboard
 layout: pick a
 category, pick a command, read its description, then capture and assign a key
 (or reset every binding to the game's defaults). With no keyboard file in the
@@ -150,6 +154,7 @@ what belongs to the browser:
 | Setting | Where it's kept |
 |---|---|
 | Fullscreen on start, and game match only | localStorage, `ra2.fullscreen.<storage>`; the launcher's Video tab writes it, the game page reads it |
+| Game resolution (the next match) | the game's `RA2.INI`/`RA2MD.INI` `[Video]`, via the host's F10 setting (`RA2_SETTING_RESOLUTION`); the choice is also kept in localStorage, `ra2.video.<storage>` ("Match browser size" is the marker `"browser"`, resolved to the page's pixel size) |
 | Pointer lock in a window (edge scrolling) | IndexedDB |
 | Master volume | IndexedDB, sent to the game (`ra2_set_volume`) |
 | Mute when the window loses focus (off by default) | IndexedDB; a page-side gain, the game keeps mixing |

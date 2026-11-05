@@ -17,7 +17,10 @@ the reconnection screen's "Leave Game" also returns to the shell:
 it skips the score screen that normally switches back (both editions). The
 native host and
 browser HLE list 16-bit modes from 640x480 through 5120x1440; the native host
-also adds the monitor's current mode and the size in `RA2.INI`. `AllowHiResModes`
+also adds the monitor's current mode and the size in `RA2.INI`. The browser
+host's own resolution setting accepts any plausible size (320 to 8192) rather
+than only the catalog, for the in-game "Match browser size" choice, which uses
+the page's pixel size. `AllowHiResModes`
 is forced on and the game-side dimension cap is 8192. On the virtual display,
 `SetDisplayMode` is remembered, not applied. The presenter keeps the game's
 aspect ratio, letterboxing 4:3 menus in a widescreen window.
