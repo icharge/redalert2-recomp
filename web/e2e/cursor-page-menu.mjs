@@ -5,10 +5,11 @@
 // asks for the game's own software cursor instead. Run the dev server first.
 //
 //   node e2e/cursor-page-menu.mjs --game ../game \
-//        --url "http://127.0.0.1:5173/" --profile ../../work/tests/cursor-profile
+//        --url "http://127.0.0.1:5173/" --profile ../../work/perf/wdt-profile
 import { chromium } from "playwright-core";
 import { mkdirSync, existsSync } from "node:fs";
 import path from "node:path";
+import { sharedProfile } from "./lib.mjs";
 
 const argv = process.argv.slice(2);
 const option = (name, fallback) => {
@@ -17,9 +18,8 @@ const option = (name, fallback) => {
 };
 const url = option("--url", "http://127.0.0.1:5173/");
 const game = option("--game", path.resolve("..", "game"));
-const profile = path.resolve(
-  option("--profile", path.resolve("..", "work", "tests", "cursor-profile")),
-);
+// One shared persistent profile for every game-imported check (see lib.mjs).
+const profile = path.resolve(option("--profile", sharedProfile));
 const shots = path.resolve(option("--shots", path.resolve("..", "work", "tests", "cursor-shots")));
 const cursorParam = option("--cursor", "");
 /** --software: choose the game's own cursor in the launcher (its stored setting). */

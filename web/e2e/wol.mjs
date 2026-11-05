@@ -44,7 +44,10 @@ async function waitWire(run, match, label) {
 
 function simulationFrame(run) {
   const last = run.all.findLast((line) => /\[record\].* game frame \d+/.test(line));
-  return Number(/ game frame (\d+)/.exec(last ?? "")?.[1] ?? 0);
+  if (last) return Number(/ game frame (\d+)/.exec(last ?? "")?.[1] ?? 0);
+  // Without replay recording the simulation still prints its own frame line.
+  const game = run.all.findLast((line) => /^\[game\] Frame \d+,/.test(line));
+  return Number(/^\[game\] Frame (\d+),/.exec(game ?? "")?.[1] ?? 0);
 }
 
 async function verifyPlaying(host, guest) {
@@ -56,6 +59,19 @@ async function verifyPlaying(host, guest) {
       ),
       "native scenario negotiation must succeed",
     );
+    if (Date.now() >= deadline) {
+      for (const [name, run] of [
+        ["host", host],
+        ["guest", guest],
+      ])
+        console.log(
+          name + " tail:",
+          run.all
+            .filter((l) => l.startsWith("[game]") || l.includes("[record]"))
+            .slice(-25)
+            .join(" | "),
+        );
+    }
     assert.ok(
       Date.now() < deadline,
       "both simulations must leave the loading wait and reach frame 300",
@@ -210,14 +226,14 @@ async function open(name, username) {
     window.WebSocket = class extends Socket {
       constructor(url, protocols) {
         super(url, protocols);
-        if (String(url).includes("127.0.0.1:19090")) window.wolTestSocket = this;
+        if (String(url).includes("/wol")) window.wolTestSocket = this;
         if (String(url).endsWith("/gserv/native")) window.wolTestRelaySocket = this;
       }
     };
   });
   run.wire = [];
   run.page.on("websocket", (ws) => {
-    if (!ws.url().includes("127.0.0.1:19090")) return;
+    if (!ws.url().includes("/wol")) return;
     ws.on("framesent", (f) => run.wire.push("> " + wirePayload(f.payload)));
     ws.on("framereceived", (f) => run.wire.push("< " + wirePayload(f.payload)));
     ws.on("close", () => run.wire.push("[closed]"));
@@ -433,14 +449,17 @@ try {
     if (process.argv.includes("--start") || play || abortStart) {
       const options = (line) => /^> gameopt #[^ ]+ :(\d+,.*)/s.exec(line)?.[1];
       const before = host.wire.map(options).filter(Boolean).at(-1);
-      await host.clickGame(ra2 ? 140 : 80, ra2 ? 305 : 261); // Short Game
-      await waitWire(host, (l) => options(l) && options(l) !== before, "host option change");
+      if (process.env.WOL_TOGGLE_OPTION) {
+        await host.clickGame(ra2 ? 140 : 80, ra2 ? 305 : 261); // Short Game
+        await waitWire(host, (l) => options(l) && options(l) !== before, "host option change");
+      } else console.log("SKIP option toggle (WOL_TOGGLE_OPTION unset)");
       const changed = host.wire.map(options).filter(Boolean).at(-1);
-      await waitWire(
-        guest,
-        (l) => l.includes(" GAMEOPT ") && l.endsWith(` :${changed}`),
-        "guest option sync",
-      );
+      if (process.env.WOL_TOGGLE_OPTION)
+        await waitWire(
+          guest,
+          (l) => l.includes(" GAMEOPT ") && l.endsWith(` :${changed}`),
+          "guest option sync",
+        );
       await dump("guest", "options-synced");
       await guest.clickGame(720, 263); // Accept
       await waitWire(
