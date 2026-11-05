@@ -6,7 +6,8 @@
  *   --press DLG:CTRL@s   press control CTRL of menu dialog DLG, once DLG is open
  *   --select DLG:CTRL=N@s  pick item N of a list or combo box (a slider's position)
  *   --waitlog TEXT@s     hold until the game's debug log prints a line with TEXT
- *   --move x,y@s  --click [c][s][a]+x,y@s  --key [c][s][a]+vk@s  --wait VA@s
+ *   --move x,y@s  --click [c][s][a]+x,y@s  --rclick [c][s][a]+x,y@s
+ *   --key [c][s][a]+vk@s  --wait VA@s
  *   --drag x1,y1,x2,y2@s
  *
  * s is seconds after the main menu's dialog (0xE2) opened; events run in time order on their
@@ -38,6 +39,9 @@ void web_presenter_dialog_created(uint32_t hwnd, uint32_t resource_id);
 #define WM_MOUSEMOVE   0x0200u
 #define WM_LBUTTONDOWN 0x0201u
 #define WM_LBUTTONUP   0x0202u
+#define WM_RBUTTONDOWN 0x0204u
+#define WM_RBUTTONUP   0x0205u
+#define MK_RBUTTON     2u
 #define MK_LBUTTON     1u
 
 typedef struct { char kind; int x, y, mods; double t; char text[64]; } ev_t;
@@ -56,7 +60,7 @@ int script_arg(int argc, char **argv, int i) {
     ev_t e;
     memset(&e, 0, sizeof e);
     const char *a = argv[i + 1];
-    if (!strcmp(argv[i], "--move") || !strcmp(argv[i], "--click")) {
+    if (!strcmp(argv[i], "--move") || !strcmp(argv[i], "--click") || !strcmp(argv[i], "--rclick")) {
         const char *plus = strchr(a, '+');
         if (plus) {
             for (const char *m = a; m < plus; m++) e.mods |= *m == 'c' ? 1 : *m == 's' ? 2 : *m == 'a' ? 4 : 0;
@@ -208,6 +212,16 @@ static void click(uint32_t h, uint32_t lp) {
     lb_seen();
 }
 
+/* a right click: the game reads VK_RBUTTON through GetKeyState as well as the
+ * message, so the button state is held across the press */
+static void rclick(uint32_t h, uint32_t lp) {
+    key_state(2, 1);
+    post(h, WM_RBUTTONDOWN, MK_RBUTTON, lp);
+    sleep_ms(250);
+    post(h, WM_RBUTTONUP, 0, lp);
+    key_state(2, 0);
+}
+
 /* press(): the button's own button-up taken off the queue, and its BN_CLICKED */
 static volatile uint32_t g_watch_btn;
 static volatile int g_watch_ctrl, g_watch_up, g_watch_cmd;
@@ -353,6 +367,19 @@ static void *script(void *unused) {
             sleep_ms(500);
             for (int m = 0; m < 3; m++)
                 if (e->y & 1 << m) { key_state(mvk[m], 0); post(h, WM_KEYUP, mvk[m], 0xC0000001u); }
+            continue;
+        }
+        if (e->kind == 'r') {
+            fprintf(stderr, "[input] %.1fs rclick %s%d,%d\n", e->t,
+                    e->mods & 1 ? "Ctrl-" : e->mods & 2 ? "Shift-" : e->mods & 4 ? "Alt-" : "", e->x, e->y);
+            for (int m = 0; m < 3; m++)
+                if (e->mods & 1 << m) { key_state(mvk[m], 1); post(h, WM_KEYDOWN, mvk[m], 1); }
+            cursor(e->x, e->y);
+            post(h, WM_MOUSEMOVE, 0, lp_of(e->x, e->y));
+            sleep_ms(100);
+            rclick(h, lp_of(e->x, e->y));
+            for (int m = 0; m < 3; m++)
+                if (e->mods & 1 << m) { key_state(mvk[m], 0); post(h, WM_KEYUP, mvk[m], 0xC0000001u); }
             continue;
         }
         if (e->kind == 'd') {

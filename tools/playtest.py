@@ -146,6 +146,13 @@ class Script:
         self.t += 1
         return self
 
+    def rclick(self, x, y, after=0, mods=''):
+        """A right click at game pixel x, y (orders the selected objects)."""
+        self.t += after
+        self.args += ['--rclick', '%s%d,%d@%g' % (mods + '+' if mods else '', x, y, self.t)]
+        self.t += 1
+        return self
+
     def drag(self, x1, y1, x2, y2, after=0):
         """A band selection from x1, y1 to x2, y2 (game pixels)."""
         self.t += after
@@ -278,6 +285,15 @@ case('skirmish-build', place(place(
     # The sidebar's coordinates are 640x480's, whatever the player's INI says
     # (a CnCNet install had 3440x1440, and every click missed the sidebar).
     ini={'Video': {'ScreenWidth': 640, 'ScreenHeight': 480}})
+
+# Orders by right click: the browser's start position is fixed, so the MCV is
+# selected with a click and then told to move. A regression test for the right
+# button path, which had no coverage (and no scripted-input verb) before.
+case('skirmish-move', SP().press(SINGLE, 'Skirmish', SKIRMISH).press(SKIRMISH, 'StartGame')
+     .waitlog(INGAME).move(236, 240, after=2).key('0x48', after=10)
+     .click(236, 213, after=2).rclick(360, 300, after=1), 90, ingame=True,
+    # the coordinates are 640x480's, as the sidebar's are (see skirmish-build)
+     ini={'Video': {'ScreenWidth': 640, 'ScreenHeight': 480}})
 
 case('skirmish-loop', SP().press(SINGLE, 'Skirmish', SKIRMISH).press(SKIRMISH, 'StartGame')
      .waitlog(INGAME).move(236, 240, after=2).key('0x48', after=10)
