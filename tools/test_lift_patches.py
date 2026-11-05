@@ -834,7 +834,6 @@ class IntroPatchTests(unittest.TestCase):
                 self.assertEqual(intro_patches(bytes(patched), cs, target), {})
 
 
-
 class MovieSkipPatchTests(unittest.TestCase):
     """Escape/click ending the start-up logo (run_lift.py movie_skip_patches)."""
 
@@ -868,5 +867,4 @@ class MovieSkipPatchTests(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main()
     unittest.main()

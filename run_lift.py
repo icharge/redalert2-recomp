@@ -923,6 +923,7 @@ WDT_SITES = {
         # it; report both so a late click can retarget the started match.
         'pick_update': (0x0072E389, '898660040000'),
         'pick': (0x0072E51F, '898660040000'),
+        'wol_to_game': (0x007690DD, '83fe060f84'),
         # Starting the game switches back to the configured size (the INI width
         # and height the WDT entry deliberately leaves alone). OnGameStart
         # (slot 23) is the deterministic point: it runs for every STARTG.
@@ -1025,6 +1026,12 @@ def wdt_patches(code, cs, target):
         out[pick_update[0]] = ('@replace:{ extern void ra2_wdt_pick(int); '
                                'MEM32(esi + 0x460) = eax; ra2_wdt_pick((int)eax); } '
                                '/* remaster: report the hovered WDT territory, run_lift.py wdt_patches */')
+    wol_to_game = sites.get('wol_to_game')
+    if wol_to_game and at(*wol_to_game):
+        out[wol_to_game[0]] = ('@replace:{ extern int ra2_wdt_passive_peer(void); '
+                               'if (ra2_wdt_passive_peer()) esi = 6; } '
+                               '/* remaster: passive WDT peer takes the WDT start exit, '
+                               'run_lift.py wdt_patches */')
     game_start = sites.get('game_start')
     if game_start and at(*game_start):
         width_va = sites['mode_width']
@@ -1134,6 +1141,23 @@ def ra2_online_patches(code, cs):
     The function stays so run_lift.py and the tests name the decision in one
     place."""
     return {}
+
+
+def ra2_wol_match_size(code, cs):
+    """Run World Wide Web online matches at the 800x600 shell size.
+
+    The shell -> match-size switch after the 800x600 menu leaves the tactical
+    map black at 1280x720/1920x1080, so WOL games start at the shell size. The
+    session type at 0xA3D298 is 4 for the online lobby; other games (campaign,
+    skirmish, saved games) keep the configured size. Checked by bytes first."""
+    va, shape = 0x0065BF98, 'a1380ba400'  # mov eax, [0xa40b38]
+    if code[va - cs:va - cs + len(bytes.fromhex(shape))] != bytes.fromhex(shape):
+        print('[*] ra2_wol_match_size: the match-start size load does not match this build; no patch')
+        return {}
+    return {va: ('@replace:eax = MEM32(0x00A40B38); '
+                 'if (MEM32(0x00A3D298) == 4u) { eax = 0x320u; '
+                 'MEM32(0x00A40B38) = 0x320u; MEM32(0x00A40B3C) = 0x258u; } '
+                 '/* remaster: WOL matches at the 800x600 shell, run_lift.py ra2_wol_match_size */')}
 
 
 # The "The display mode will be changed..." confirm (dialog 0xD9, Ok/Cancel) that
@@ -1436,7 +1460,8 @@ def targets():
                                                **page_cursor_palette_patches(code, cs, 'game'),
                                                **web_exit_confirmation_patches(code, cs, 'game'),
                                                **ra2_shell_patches(code, cs), **ra2_hires_patches(code, cs),
-                                               **ra2_online_patches(code, cs), **ra2_startup_order_patches(code, cs),
+                                               **ra2_online_patches(code, cs), **ra2_wol_match_size(code, cs),
+                                               **ra2_startup_order_patches(code, cs),
                                                **intro_patches(code, cs, 'game'),
                                                **movie_skip_patches(code, cs, 'game'),
                                                **ra2_confirm_patches(code, cs),
