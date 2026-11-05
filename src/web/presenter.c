@@ -30,6 +30,7 @@
 #include "mods.h"
 #include "page_cursor.h"
 #include "wol_pages.h"
+#include "wolapi.h"
 
 #define WM_CHAR         0x0102u
 #define WM_ACTIVATEAPP  0x001Cu
@@ -290,6 +291,10 @@ static int match_running(void) {
 void web_presenter_pause(void) {
     static double asked;
     double now = emscripten_get_now();
+    /* An online match keeps simulating when the page loses focus: two clients on one PC (or a
+     * second window) always leave one page blurred, and opening its menu would stall the others
+     * until the game reports a reconnection error. Single-player still pauses. */
+    if (ra2_wolapi_match_active()) return;
     if (now - asked < 1500.0 || !match_running()) return;
     asked = now;
     hle_input_key(1, 0x1b, 1);
