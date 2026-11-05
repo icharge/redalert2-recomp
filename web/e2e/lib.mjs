@@ -4,7 +4,24 @@ import { chromium } from "playwright-core";
 import { createReadStream, existsSync, mkdirSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { serveGame } from "./files-server.mjs";
+
+/**
+ * The one persistent Chrome profile the game-imported checks share, so the
+ * install is imported into OPFS once instead of once per test. Chrome locks a
+ * profile, so runs that use it must not overlap. Override with RA2_E2E_PROFILE.
+ */
+export const sharedProfile =
+  process.env.RA2_E2E_PROFILE ??
+  path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "..",
+    "..",
+    "work",
+    "perf",
+    "wdt-profile",
+  );
 
 let lastReason = null;
 /** Why the last `fail` ended the process (for a caller's exit handler), or null. */
