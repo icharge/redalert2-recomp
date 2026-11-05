@@ -775,3 +775,41 @@ Do WDT-0 first; it is small and decides the rest. If the faction screen and a si
 served, proceed with WDT-1 and WDT-2, then the browser transport, then matches. If the client
 requires a credential or cipher we cannot reproduce, stop at the captured evidence and record the
 blocker rather than building a server that cannot be reached.
+
+## Implementation status (2026-11-05)
+
+Both flows now run end to end in the browser: a World Domination conflict and a normal Custom
+Match each connect, load `MP32S8.MAP`, and play in lockstep (16k+ frames observed, no defeat).
+
+Fixed along the way:
+
+- A WDT start skips the prematch dialog, so the multiplayer option bytes that dialog normally
+  fills kept their bulk-data defaults; `0xA3D2C2` made both fresh houses count as defeated on
+  frame 0. The bridge clears it at STARTG (`8fa7cbe`).
+- The matchmaker's native player records now carry a concrete colour per slot: an unresolved
+  "random" colour leaves the house with an invalid remap index and every unit draws as a black
+  silhouette (`ra2web f1ac6dc`).
+- The bridge logs the virtual addresses it hands the game (`[wol] users(...)`) at each roster
+  change and at STARTG. A peer missing from that table makes the game send to the LAN broadcast
+  address and the match sits on "connecting" until it times out (`3f96cb2`).
+
+Open items:
+
+- **Country is still random.** The player record sends `-2` for country, so the start screen and
+  the flag are "Random" instead of the player's country. Fix by sending a concrete country index
+  per slot (the field next to the colour) or by resolving it at STARTG the way the colour was.
+- **Right-click orders never reach the game.** Scripted and real right clicks arrive (
+  `GetAsyncKeyState(VK_RBUTTON)` reads `0x8000`) but the display takes them as the in-game OPTIONS
+  action instead of an order, so units cannot be moved. The `skirmish-move` playtest case
+  reproduces it (`1f1c172`).
+- **Result settlement.** A genuine `completionStatus 256` is stored and applied. A territory
+  owned (and defended) by a neutral house is correctly not flipped, so verify a flip by attacking
+  a territory the other side owns.
+
+Testing notes:
+
+- `web/e2e/wol.mjs` (Custom Match) now matches the `/wol` socket path rather than a hard-coded
+  port, and `simulationFrame` also reads the game's own `[game] Frame N` line; replay-recording
+  lines are not emitted in every mode.
+- The two-browser WDT harness needs a click inside the battlefield before `H`/`N` reach the game.
+  Without it the camera stays in shroud, so screenshots are black even though frames advance.
