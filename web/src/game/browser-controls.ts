@@ -5,9 +5,14 @@ const keyboard = () => (navigator as Navigator & { keyboard?: KeyboardLock }).ke
 
 export async function enterFullscreen(element: HTMLElement): Promise<void> {
   await element.requestFullscreen();
-  // Escape remains the browser's way out; lock the function keys the game uses.
+  // In fullscreen, capture the keys the browser would otherwise keep. Escape
+  // included: a short press must reach the game (its pause menu), or the
+  // browser leaves fullscreen and the game never sees the key. Chromium keeps
+  // a two-second Escape hold as the way out (the Keyboard Lock spec requires
+  // an escape hatch); F11 and the on-screen button toggle it too.
   await keyboard()
     ?.lock([
+      "Escape",
       "F1",
       "F2",
       "F3",
