@@ -110,7 +110,6 @@ _Static_assert(__builtin_offsetof(ra2_shared_t, page_cursor_indices) == 1068 * 4
 void web_event_boot(const char *title, const char *exe, uint32_t stamp);
 void web_event_menu(void);
 extern volatile int web_menu_seen;   /* set when it was sent: movies before it are the start-up ones */
-int web_skip_pressed(void);          /* Escape or a left click, for the start-up logo */
 void web_event_error(const char *message);
 void web_event_exit(int code);
 void web_event_json(const char *json);

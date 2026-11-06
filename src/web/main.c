@@ -175,11 +175,6 @@ static void ra2_MessageBoxA(void) {
     RET(answer, 4);
 }
 
-/* The start-up logo skip (startup_order.c): Escape or a left click before the
- * main menu opens. The game's own movie loop seeks to the last frame. */
-int ra2_startup_skip_pressed(void) { return web_skip_pressed(); }
-int ra2_menu_seen(void) { return web_menu_seen; }
-
 /* The start-up movies (the logo, the intro) play at the speed they were made for: about eight
  * seconds of a 640x480 Bink before the main menu opens. In the headless/test mode (0) a movie
  * opened before the menu is two frames at 15 fps, as bink.c does for a host with no decoder (a

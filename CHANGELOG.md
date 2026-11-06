@@ -16,16 +16,12 @@ versions follow [SemVer](https://semver.org/).
   same choice. (`web/src/components/SettingsDialog.tsx`,
   `web/src/screens/Play.tsx`, `web/src/storage/video-preferences.ts`,
   `src/web/video_modes.h`)
-- **Skip the logo**: Escape or a left click ends the start-up logo early, in
-  both editions. The press edge is taken in `startup_order.c`; the movie loop
-  seeks the Bink handle to its last frame, so only the logo is affected and
-  campaign movies still play whole. (`run_lift.py`'s `movie_skip_patches`,
-  `src/runtime/startup_order.c`, `src/runtime/host.c`, `src/web/main.c`,
-  `src/web/presenter.c`)
 - **The game INI says `[Intro] Play=no`**: a fresh profile, an imported
   `RA2.INI`/`RA2MD.INI` and an existing saved file are all written with the
   flag off. The launcher's Skip intro switch remains the host's
-  `--intro`/`--no-intro`. (`web/src/storage/game-settings-defaults.ts`,
+  `--intro`/`--no-intro`. On the stock startup-movie path the game's own screen
+  ends the logo on Escape or a left click, exactly as the retail engine does.
+  (`web/src/storage/game-settings-defaults.ts`,
   `web/src/storage/game-settings.ts`)
 - **Start-up logo override**: the launcher ships the original
   `WESTLOGO.BIK` / `EA_WWLOGO.BIK` assets and stages them into the browser's

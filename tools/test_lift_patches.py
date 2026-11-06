@@ -34,8 +34,6 @@ from run_lift import (
     ra2_startup_order_patches,
     INTRO_SITES,
     intro_patches,
-    MOVIE_SKIP_SITES,
-    movie_skip_patches,
     RECONNECT_LEAVE,
     reconnect_patches,
     ra2_shell_patches,
@@ -855,39 +853,6 @@ class IntroPatchTests(unittest.TestCase):
                 patched[site - cs] ^= 0xFF
                 self.assertEqual(intro_patches(bytes(patched), cs, target), {})
 
-
-
-class MovieSkipPatchTests(unittest.TestCase):
-    """Escape/click ending the start-up logo (run_lift.py movie_skip_patches)."""
-
-    SIZE = 0x00800000
-
-    @staticmethod
-    def image(target, corrupt=None):
-        code = bytearray(MovieSkipPatchTests.SIZE)
-        site = MOVIE_SKIP_SITES[target]
-        code[site:site + 3] = b'\x8a\x46\x2d'      # mov al, [esi+0x2d]
-        if corrupt is not None:
-            code[corrupt] ^= 0xFF
-        return bytes(code)
-
-    def test_the_start_up_loop_gets_the_skip_check(self):
-        for target in ('gamemd', 'game'):
-            with self.subTest(target=target):
-                site = MOVIE_SKIP_SITES[target]
-                patches = movie_skip_patches(self.image(target), 0, target)
-                self.assertEqual(list(patches), [site])
-                self.assertIn('ra2_startup_logo_skip()', patches[site])
-                self.assertIn('MEM32(h + 0x8) = 2', patches[site])
-                self.assertIn('MEM32(h + 0x18) = 1', patches[site])
-
-    def test_a_different_loop_is_untouched(self):
-        for target in ('gamemd', 'game'):
-            with self.subTest(target=target):
-                self.assertEqual(
-                    movie_skip_patches(self.image(target, corrupt=MOVIE_SKIP_SITES[target]), 0, target),
-                    {},
-                )
 
 
 if __name__ == '__main__':

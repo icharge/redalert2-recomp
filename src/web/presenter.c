@@ -69,12 +69,6 @@ void web_event_boot(const char *title, const char *exe, uint32_t stamp) {
 }
 volatile int web_menu_seen;      /* the main menu has opened once (web_api.h) */
 void web_event_menu(void) { web_menu_seen = 1; web_event_json("{\"e\":\"menu\"}"); }
-
-/* The start-up logo ends early on Escape or a left click (web_api.h). The
- * browser's key/mouse ring updates these; the Bink skip reads them. */
-static volatile int web_skip_esc, web_skip_mouse;
-int web_skip_pressed(void) { return web_skip_esc || web_skip_mouse; }
-
 void web_event_error(const char *message) {
     char m[512], line[640];
     web_json_escape(m, sizeof m, message);
@@ -468,10 +462,7 @@ EMSCRIPTEN_KEEPALIVE void ra2_input_pointer(int kind, int x, int y, int button) 
     else push(kind == 1 ? IN_DOWN : IN_UP, (uint32_t)x, (uint32_t)y, (uint32_t)button);
 }
 /* vk is a Windows virtual key and scan the set-1 scan code, as the page's key table gives them */
-EMSCRIPTEN_KEEPALIVE void ra2_input_key(int down, int vk, int scan) {
-    if (vk == 0x1B) web_skip_esc = down != 0;
-    push(down ? IN_KEYDOWN : IN_KEYUP, (uint32_t)vk, (uint32_t)scan, 0);
-}
+EMSCRIPTEN_KEEPALIVE void ra2_input_key(int down, int vk, int scan) { push(down ? IN_KEYDOWN : IN_KEYUP, (uint32_t)vk, (uint32_t)scan, 0); }
 /* Browser text input arrives as UTF-8; the game's ANSI edit controls and Thai
  * FNT use Windows-874 bytes. Unsupported characters become '?' rather than
  * being misdecoded as UTF-8 bytes. */
@@ -532,7 +523,6 @@ static void drain_input(void) {
             hle_input_mouse(WM_MOUSEMOVE, (int)e.a, (int)e.b); break;
         case IN_DOWN: case IN_UP: {
             int down = e.kind == IN_DOWN;
-            if (e.c == 0) web_skip_mouse = down;
             uint32_t m = e.c == 2 ? (down ? WM_RBUTTONDOWN : WM_RBUTTONUP)
                        : e.c == 1 ? (down ? WM_MBUTTONDOWN : WM_MBUTTONUP)
                        : (down ? WM_LBUTTONDOWN : WM_LBUTTONUP);

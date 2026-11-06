@@ -902,29 +902,6 @@ INTRO_SITES = {
 }
 
 
-# The start-up logo ends early on Escape or a left click. The movie loop calls
-# the host's `ra2_startup_logo_skip` before it asks Bink for the next frame;
-# on the press edge the film is cut to the same two-frame, 15 fps ending the
-# headless start-up skip uses (Frames, FrameNum, FrameRate, FrameRateDiv), so
-# the game's loop finishes at once. The host gates it on the main menu not
-# having opened, so campaign movies are not affected. Both editions' loop
-# starts with `mov al, [esi+0x2d]`.
-MOVIE_SKIP_SITES = {'gamemd': 0x00432F36, 'game': 0x004306F6}
-
-
-def movie_skip_patches(code, cs, target):
-    site = MOVIE_SKIP_SITES[target]
-    if code[site - cs:site - cs + 3] != bytes.fromhex('8a462d'):
-        print('[*] movie_skip_patches: the movie loop at 0x%08X does not match this build; no logo skip' % site)
-        return {}
-    return {site: ('@replace:{ extern int ra2_startup_logo_skip(void); '
-                   'if (ra2_startup_logo_skip()) { uint32_t h = MEM32(esi + 4); '
-                   'if (h) { MEM32(h + 0x8) = 2; MEM32(h + 0xC) = 2; '
-                   'MEM32(h + 0x14) = 15; MEM32(h + 0x18) = 1; } } '
-                   'SET_LO8(eax, MEM8(esi + 0x2D)); '
-                   '/* remaster: Escape/click skips the logo, run_lift.py movie_skip_patches */')}
-
-
 def intro_patches(code, cs, target):
     site, raw, label = INTRO_SITES[target]
     if code[site - cs:site - cs + 2] != bytes.fromhex(raw):
@@ -1382,7 +1359,6 @@ def targets():
                                                  **page_cursor_palette_patches(code, cs, 'gamemd'),
                                                  **yr_online_patches(code, cs), **yr_startup_order_patches(code, cs),
                                                  **intro_patches(code, cs, 'gamemd'),
-                                                 **movie_skip_patches(code, cs, 'gamemd'),
                                                  **reconnect_patches(code, cs, 'gamemd'),
                                                  **web_exit_confirmation_patches(code, cs, 'gamemd'),
                                                  **web_url_patches(code, cs, 'gamemd')}),
@@ -1407,7 +1383,6 @@ def targets():
                                                **ra2_shell_patches(code, cs), **ra2_hires_patches(code, cs),
                                                **ra2_online_patches(code, cs), **ra2_startup_order_patches(code, cs),
                                                **intro_patches(code, cs, 'game'),
-                                               **movie_skip_patches(code, cs, 'game'),
                                                **ra2_confirm_patches(code, cs),
                                                **ra2_cache_patches(code, cs), **ra2_mode_cap_patches(code, cs),
                                                **ra2_load_patches(code, cs), **ra2_profile_patches(code, cs),

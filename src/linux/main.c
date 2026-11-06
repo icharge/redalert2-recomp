@@ -386,11 +386,6 @@ static uint32_t exe_stamp(const char *path) {
     return nt && nt < sizeof head - 12 ? *(const uint32_t *)(head + nt + 8) : 0;
 }
 
-/* The start-up logo skip (startup_order.h): this host has no key/mouse poller
- * for it yet; the Windows and browser hosts implement both queries. */
-int ra2_startup_skip_pressed(void) { return 0; }
-int ra2_menu_seen(void) { return 0; }
-
 int main(int argc, char **argv) {
     const char *game = "game";
     int run = 0;
