@@ -51,7 +51,7 @@ Not in this plan (each gets its own plan; their tabs stay hidden until then):
 | 8 | Mods screen | Done |
 | 9 | Game screen | Done |
 | 10 | Install screen | Done |
-| 11 | Settings screen | Not started |
+| 11 | Settings screen | Done |
 | 12 | Routes and App wiring | Not started |
 | 13 | In-game overlay and sound | Not started |
 | 14 | In-game F10 panel | Not started |

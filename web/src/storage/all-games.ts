@@ -21,7 +21,8 @@ export function forEachEdition(editions: GameRecord[], write: (game: GameRecord)
   for (const game of editions) write(game);
 }
 
-function baseIni(file: SettingsFile, game: GameRecord, loaded: LoadedGameSettings): Ini {
+/** The file an edit starts from: the loaded one, or for keys a complete set of the built-in bindings. */
+export function baseIni(file: SettingsFile, game: GameRecord, loaded: LoadedGameSettings): Ini {
   if (file === "main") return loaded.main.ini ?? emptyIni();
   if (file === "host") return loaded.host.ini ?? emptyIni();
   // A game with no keyboard file starts from the built-in bindings, so the file written is complete.
