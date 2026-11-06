@@ -32,7 +32,7 @@ function fakeDeps(saved: Record<string, string> = {}) {
       const key = Object.keys(saved).find(
         (k) => k.toLowerCase() === `${storage}/${name}`.toLowerCase(),
       );
-      return key ? { name: key.slice(storage.length + 1), data: encodeLatin1(saved[key]) } : null;
+      return key ? { name: key.slice(storage.length + 1), data: encodeLatin1(saved[key]!) } : null;
     },
     writeSave: async (storage, name, data) => {
       writes.push({ storage, name, text: decodeLatin1(data) });
@@ -63,7 +63,7 @@ describe("setMainValueForAll", () => {
     const { deps, writes } = fakeDeps();
     await setMainValueForAll([yr], "Options", "GameSpeed", "4", deps);
     expect(writes).toHaveLength(1);
-    expect(writes[0].storage).toBe("ra2md-1");
+    expect(writes[0]!.storage).toBe("ra2md-1");
   });
 
   it("the first failure rejects", async () => {
@@ -81,8 +81,8 @@ describe("setHotkeyForAll", () => {
     const { deps, writes } = fakeDeps();
     await expect(setHotkeyForAll([ra2, yr], "VeterancyNav", 65, deps)).resolves.toEqual(["ra2md"]);
     expect(writes).toHaveLength(1);
-    expect(writes[0].name.toLowerCase()).toBe("keyboardmd.ini");
-    expect(writes[0].text).toContain("VeterancyNav=65");
+    expect(writes[0]!.name.toLowerCase()).toBe("keyboardmd.ini");
+    expect(writes[0]!.text).toContain("VeterancyNav=65");
   });
 
   it("a shared command writes both keyboard files", async () => {
