@@ -902,6 +902,8 @@ INTRO_SITES = {
 }
 
 
+# The game INI's [Intro] Play is authoritative (the launcher writes it), so this
+# patch is no longer applied; it stays for the lift tests.
 def intro_patches(code, cs, target):
     site, raw, label = INTRO_SITES[target]
     if code[site - cs:site - cs + 2] != bytes.fromhex(raw):
@@ -1358,7 +1360,6 @@ def targets():
                                                  **page_cursor_patches(code, cs, 'gamemd'),
                                                  **page_cursor_palette_patches(code, cs, 'gamemd'),
                                                  **yr_online_patches(code, cs), **yr_startup_order_patches(code, cs),
-                                                 **intro_patches(code, cs, 'gamemd'),
                                                  **reconnect_patches(code, cs, 'gamemd'),
                                                  **web_exit_confirmation_patches(code, cs, 'gamemd'),
                                                  **web_url_patches(code, cs, 'gamemd')}),
@@ -1382,7 +1383,6 @@ def targets():
                                                **web_exit_confirmation_patches(code, cs, 'game'),
                                                **ra2_shell_patches(code, cs), **ra2_hires_patches(code, cs),
                                                **ra2_online_patches(code, cs), **ra2_startup_order_patches(code, cs),
-                                               **intro_patches(code, cs, 'game'),
                                                **ra2_confirm_patches(code, cs),
                                                **ra2_cache_patches(code, cs), **ra2_mode_cap_patches(code, cs),
                                                **ra2_load_patches(code, cs), **ra2_profile_patches(code, cs),

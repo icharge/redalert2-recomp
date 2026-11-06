@@ -16,13 +16,13 @@ versions follow [SemVer](https://semver.org/).
   same choice. (`web/src/components/SettingsDialog.tsx`,
   `web/src/screens/Play.tsx`, `web/src/storage/video-preferences.ts`,
   `src/web/video_modes.h`)
-- **The game INI says `[Intro] Play=no`**: a fresh profile, an imported
-  `RA2.INI`/`RA2MD.INI` and an existing saved file are all written with the
-  flag off. The launcher's Skip intro switch remains the host's
-  `--intro`/`--no-intro`. On the stock startup-movie path the game's own screen
-  ends the logo on Escape or a left click, exactly as the retail engine does.
-  (`web/src/storage/game-settings-defaults.ts`,
-  `web/src/storage/game-settings.ts`)
+- **The game INI decides the intro**: a fresh profile, an imported
+  `RA2.INI`/`RA2MD.INI` and an existing saved file are all written with
+  `[Intro] Play=no`. The lift no longer overrides that flag with the host's
+  `--intro`/`--no-intro`, so the game takes its startup-movie path; there the
+  stock screen ends the logo on Escape or a left click, as the retail engine
+  does. (`web/src/storage/game-settings-defaults.ts`,
+  `web/src/storage/game-settings.ts`, `run_lift.py`)
 - **Start-up logo override**: the launcher ships the original
   `WESTLOGO.BIK` / `EA_WWLOGO.BIK` assets and stages them into the browser's
   game folder when the import has no loose logo. The game then uses the loose
