@@ -72,7 +72,7 @@ try {
   report.topic = expected.title;
 
   // An embeddable target (VITE_RA2WEB_SITE_URL set) renders the sandboxed
-  // iframe; without it, the confirmation has no outbound link for a dead host.
+  // iframe; either way the dialog asks permission and offers Open/Cancel.
   const frame = run.page.locator("iframe");
   report.framed = (await frame.count()) > 0;
   if (report.framed) {
@@ -84,19 +84,19 @@ try {
     assert.equal(await frame.getAttribute("referrerpolicy"), "no-referrer");
   }
 
-  const outbound = run.page.getByRole("link", { name: "Open in browser" });
+  const outbound = run.page.getByRole("link", { name: "Open" });
   report.outbound = (await outbound.count()) > 0 ? await outbound.getAttribute("href") : null;
-  if (report.outbound) {
-    assert.equal(await outbound.getAttribute("target"), "_blank");
-    assert.equal(await outbound.getAttribute("rel"), "noopener noreferrer");
-    assert.ok(!/westwood\.com/i.test(report.outbound), "no dead Westwood link may be offered");
-  }
+  assert.ok(report.outbound, "the dialog must offer Open");
+  assert.equal(await outbound.getAttribute("target"), "_blank");
+  assert.equal(await outbound.getAttribute("rel"), "noopener noreferrer");
+  // Open is our page when framed, otherwise the URL the game asked for.
+  assert.equal(report.outbound, report.framed ? report.frameSrc : link.url);
 
   await run.page.waitForTimeout(500); // let the dialog's fade-in finish for the screenshot
   await run.shot("link-dialog");
 
   // Closing only dismisses the dialog; the game keeps running.
-  await run.page.getByRole("button", { name: /^(Cancel|Close)$/ }).click();
+  await run.page.getByRole("button", { name: "Cancel" }).click();
   await run.page.waitForFunction(() => window.ra2Store?.getSnapshot().openLink === null);
   assert.equal((await run.state())?.phase, "running");
   report.dismissed = true;

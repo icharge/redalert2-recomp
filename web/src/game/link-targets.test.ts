@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { linkCopy, linkTarget, sitePageUrl } from "./link-targets";
+import {
+  EXTERNAL_LINK_PROMPT,
+  linkCopy,
+  linkTarget,
+  outboundUrl,
+  sitePageUrl,
+} from "./link-targets";
 
 const SITE = "https://ra2web.example";
 
@@ -179,7 +185,7 @@ describe("linkTarget", () => {
 });
 
 describe("linkCopy", () => {
-  it("has words for every topic", () => {
+  it("gives every link the same permission prompt", () => {
     for (const url of [
       "http://privacypolicy.westwood.com",
       "http://games2.westwood.com/cgi-bin/cgiclient?register",
@@ -196,12 +202,35 @@ describe("linkCopy", () => {
       expect(copy.title.length).toBeGreaterThan(0);
       expect(copy.body.length).toBeGreaterThan(0);
     }
+    expect(
+      linkCopy(linkTarget("http://games2.westwood.com/cgi-bin/cgiclient?register", SITE)),
+    ).toEqual({
+      title: "Manage account",
+      body: "The game needs access to an external link.",
+    });
+    expect(linkCopy(linkTarget("https://example.com/hello", SITE)).body).toBe(EXTERNAL_LINK_PROMPT);
   });
 
-  it("names the support kind the game asked about", () => {
-    const copy = linkCopy(
-      linkTarget("http://apiregister.westwood.com/support/serial_dup_en.html", SITE),
-    );
-    expect(copy.body).toContain("serial_dup");
+  it("still names the support kind it parsed, for the mapped page", () => {
+    const target = linkTarget("http://apiregister.westwood.com/support/serial_dup_en.html", SITE);
+    expect(target.detail).toBe("serial_dup");
+    expect(sitePageUrl(target, SITE)).toBe(`${SITE}/support/serial_dup`);
+  });
+});
+
+describe("outboundUrl", () => {
+  it("opens the game's own URL for a dead Westwood link", () => {
+    const target = linkTarget("http://games2.westwood.com/cgi-bin/cgiclient?register", "");
+    expect(outboundUrl(target, "")).toBe("http://games2.westwood.com/cgi-bin/cgiclient?register");
+  });
+
+  it("uses our page when the target is framed", () => {
+    const target = linkTarget("http://games2.westwood.com/cgi-bin/cgiclient?register", SITE);
+    expect(outboundUrl(target, SITE)).toBe(`${SITE}/account`);
+  });
+
+  it("never offers our sentinel hosts or a non-http(s) scheme", () => {
+    expect(outboundUrl(linkTarget("https://ra2web.invalid/community", ""), "")).toBeNull();
+    expect(outboundUrl(linkTarget("javascript:alert(1)", ""), "")).toBeNull();
   });
 });

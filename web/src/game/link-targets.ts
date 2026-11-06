@@ -192,65 +192,50 @@ export interface LinkCopy {
   body: string;
 }
 
-/** The dialog's words, per topic. The original URL is shown separately. */
+/** The one confirmation every WOL-era link gets: the game asked to open a URL. */
+export const EXTERNAL_LINK_PROMPT = "The game needs access to an external link.";
+
+/**
+ * The dialog's words. Every link is a permission prompt — the player decides
+ * whether to Open it, and Cancel only dismisses the dialog. The original URL
+ * is shown separately, so the body does not have to repeat it.
+ */
 export function linkCopy(target: LinkTarget): LinkCopy {
-  switch (target.topic) {
-    case "privacy":
-      return {
-        title: "Privacy policy",
-        body: "The original Westwood privacy page is offline. This build does not send your details to it.",
-      };
-    case "account":
-      return {
-        title: "Manage account",
-        body: "Westwood's account pages are offline, and this build does not use a Westwood account or serial.",
-      };
-    case "consent":
-      return {
-        title: "Consent form",
-        body: "Westwood's consent form is offline, and this build does not collect that consent.",
-      };
-    case "support":
-      return {
-        title: "Support",
-        body: target.detail
-          ? `The game asked for help with “${target.detail}”. Westwood's support pages are offline.`
-          : "Westwood's support pages are offline.",
-      };
-    case "tournament":
-      return {
-        title: "Tournament",
-        body: "Westwood's tournament pages are offline. Play a custom match from the online menu instead.",
-      };
-    case "news":
-      return {
-        title: "News",
-        body: "Westwood's news page is offline.",
-      };
-    case "community":
-      return {
-        title: "Community",
-        body: "Westwood's community page is offline.",
-      };
-    case "status":
-      return {
-        title: "Network status",
-        body: "Westwood's network status page is offline. The online menu shows the server this build talks to.",
-      };
-    case "external":
-      return target.page
-        ? {
-            title: "Open external page",
-            body: "The game asked for a WOL page this build does not know.",
-          }
-        : {
-            title: "Open external link",
-            body: "The game asked to open an external link.",
-          };
-    case "blocked":
-      return {
-        title: "Link blocked",
-        body: "The game asked for a link this page cannot open.",
-      };
+  if (target.topic === "blocked")
+    return { title: "Link blocked", body: "The game asked for a link this page cannot open." };
+  const titles: Record<Exclude<LinkTopic, "blocked">, string> = {
+    privacy: "Privacy policy",
+    account: "Manage account",
+    consent: "Consent form",
+    support: "Support",
+    tournament: "Tournament",
+    news: "News",
+    community: "Community",
+    status: "Network status",
+    external: target.page ? "Open external page" : "Open external link",
+  };
+  return { title: titles[target.topic], body: EXTERNAL_LINK_PROMPT };
+}
+
+/**
+ * The href "Open" uses: our own page when one is framed, else the game's own
+ * URL unchanged. Our sentinel hosts (`ra2web.invalid`, `ra2web.local`, any
+ * `.invalid`) are build values, never real links, so they are not offered.
+ */
+export function outboundUrl(target: LinkTarget, site = ra2webSite()): string | null {
+  if (target.embed) {
+    const page = sitePageUrl(target, site);
+    if (page) return page;
   }
+  if (!target.url || target.seeded) return null;
+  let parsed: URL;
+  try {
+    parsed = new URL(target.url);
+  } catch {
+    return null;
+  }
+  if (!isHttp(parsed.protocol)) return null;
+  const host = parsed.hostname.toLowerCase();
+  if (host === "ra2web.local" || host.endsWith(".invalid")) return null;
+  return target.url;
 }

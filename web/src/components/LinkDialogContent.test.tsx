@@ -56,7 +56,7 @@ describe("LinkDialogContent", () => {
     const open = vi.spyOn(window, "open");
     show(community);
 
-    const link = screen.getByRole("link", { name: "Open in browser" });
+    const link = screen.getByRole("link", { name: "Open" });
     expect(link.tagName).toBe("A");
     expect(link).toHaveAttribute("href", `${SITE}/community`);
     expect(link).toHaveAttribute("target", "_blank");
@@ -67,7 +67,7 @@ describe("LinkDialogContent", () => {
     open.mockRestore();
   });
 
-  it("shows the WOL Help URL as the support dialog", () => {
+  it("asks permission for the WOL Help URL and opens the support page", () => {
     // src/web/wolapi.c's GetHelpURL hands the game this seeded URL.
     show({
       topic: "support",
@@ -78,10 +78,12 @@ describe("LinkDialogContent", () => {
     });
 
     expect(screen.getByRole("heading", { name: "Support" })).toBeInTheDocument();
-    expect(screen.getByText(/Westwood's support pages are offline/)).toBeInTheDocument();
+    expect(screen.getByText("The game needs access to an external link.")).toBeInTheDocument();
     expect(screen.getByText("https://ra2web.invalid/support/help.html")).toBeInTheDocument();
-    const link = screen.getByRole("link", { name: "Open in browser" });
-    expect(link).toHaveAttribute("href", `${SITE}/support/help`);
+    expect(screen.getByRole("link", { name: "Open" })).toHaveAttribute(
+      "href",
+      `${SITE}/support/help`,
+    );
   });
 
   it("labels the registry sentinel as this build's target, not the game's URL", () => {
@@ -104,36 +106,38 @@ describe("LinkDialogContent", () => {
     expect(screen.getByRole("heading", { name: "News" })).toBeInTheDocument();
     expect(screen.getByText("News page")).toBeInTheDocument();
     expect(screen.queryByText(/ra2web\.invalid/)).toBeNull();
-    expect(screen.getByRole("link", { name: "Open in browser" })).toHaveAttribute(
-      "href",
-      `${SITE}/news`,
-    );
+    expect(screen.getByRole("link", { name: "Open" })).toHaveAttribute("href", `${SITE}/news`);
   });
 
   it("asks before opening a live URL the page does not know", () => {
     show(external);
 
-    expect(screen.queryByTitle("Open external link")).toBeNull();
     expect(document.querySelector("iframe")).toBeNull();
-    expect(screen.getByText("The game asked to open an external link.")).toBeInTheDocument();
+    expect(screen.getByText("The game needs access to an external link.")).toBeInTheDocument();
     expect(screen.getByText("https://example.com/hello")).toBeInTheDocument();
-    const link = screen.getByRole("link", { name: "Open in browser" });
+    const link = screen.getByRole("link", { name: "Open" });
     expect(link).toHaveAttribute("href", "https://example.com/hello");
     expect(link).toHaveAttribute("target", "_blank");
     expect(link).toHaveAttribute("rel", "noopener noreferrer");
   });
 
-  it("never makes an outbound link for a dead Westwood host", () => {
+  it("offers a dead Westwood URL through Open only, and never frames it", () => {
     show({
-      topic: "privacy",
-      url: "http://privacypolicy.westwood.com",
+      topic: "account",
+      url: "http://games2.westwood.com/cgi-bin/cgiclient?register",
       external: false,
       embed: false,
     });
 
-    expect(screen.queryByRole("link")).toBeNull();
     expect(document.querySelector("iframe")).toBeNull();
-    expect(screen.getByText("http://privacypolicy.westwood.com")).toBeInTheDocument();
+    expect(screen.getByText("The game needs access to an external link.")).toBeInTheDocument();
+    expect(
+      screen.getByText("http://games2.westwood.com/cgi-bin/cgiclient?register"),
+    ).toBeInTheDocument();
+    const link = screen.getByRole("link", { name: "Open" });
+    expect(link).toHaveAttribute("href", "http://games2.westwood.com/cgi-bin/cgiclient?register");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
   });
 
   it("blocks a non-http(s) URL outright", () => {

@@ -21,9 +21,10 @@ everything that doesn't need the game:
   the YR registry sentinel, http(s)-only blocking and the static `embed`
   policy.
 - `components/LinkDialogContent.tsx`: the sandboxed iframe for an embeddable
-  target, the confirmation otherwise, the original URL shown as text, and
-  "Open in browser" as a `target="_blank"`/`rel="noopener noreferrer"` anchor
-  (no `window.open`, no `javascript:` href or frame).
+  target, the permission prompt otherwise ("The game needs access to an
+  external link."), the original URL shown as text, and **Open** as a
+  `target="_blank"`/`rel="noopener noreferrer"` anchor (no `window.open`, no
+  `javascript:` href or frame) beside **Cancel**.
 - Screens: Import with a mocked directory handle, Library with a manifest,
   and Settings round-tripping IndexedDB (`fake-indexeddb`).
 

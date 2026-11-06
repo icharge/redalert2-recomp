@@ -181,19 +181,22 @@ build keeps the system browser and the embedded browser.
 
 The page maps a URL to a `LinkTarget` (`web/src/game/link-targets.ts`):
 `topic`, the original `url`, a `detail` (a support kind, a locale), `external`
-(whether the original URL may be offered as an outbound link) and `embed`
-(whether a configured page may be framed). A known `page` key (`Community`,
-`Ladder`, `Manage`, `Battleclans`, `NetStatus`, `News`) resolves to the retail
-installer's original registry URL (`src/web/wol_pages.h`, from the Windows
-registry export at regfiles.net), so the event carries the real Westwood URL;
-an unknown key has no URL, and the dialog names the page instead. A URL whose
-host is the old `ra2web.invalid` fallback is labelled "This build's registry
-target", not "The game asked for". Dead Westwood hosts are never offered
-outbound. A target with
-`embed` renders in a sandboxed iframe; every other one shows "The game asked
-to open an external link" with the original URL. "Open in browser" is a plain
-`target="_blank"` / `rel="noopener noreferrer"` anchor, and only
-`http:`/`https:` URLs can become one.
+(whether the original URL is a live link rather than one of our registry
+values) and `embed` (whether a configured page may be framed). A known `page`
+key (`Community`, `Ladder`, `Manage`, `Battleclans`, `NetStatus`, `News`)
+resolves to the retail installer's original registry URL
+(`src/web/wol_pages.h`, from the Windows registry export at regfiles.net), so
+the event carries the real Westwood URL; an unknown key has no URL, and the
+dialog names the page instead. A URL whose host is the old `ra2web.invalid`
+fallback is labelled "This build's registry target", not "The game asked
+for".
+Every link opens the same permission dialog: "The game needs access to an
+external link.", the original URL, and **Open** / **Cancel**. A target with
+`embed` also renders in a sandboxed iframe, and Open goes to that page;
+otherwise Open goes to the URL the game asked for, unchanged. "Open" is a
+plain `target="_blank"` / `rel="noopener noreferrer"` anchor, and only
+`http:`/`https:` URLs can become one (`ra2web.invalid`/`.invalid` build values
+never are).
 
 ## Exit confirmation proof of concept
 

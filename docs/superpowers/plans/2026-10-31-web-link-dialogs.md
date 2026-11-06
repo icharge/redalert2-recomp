@@ -130,6 +130,10 @@ destination is never presented as the original.
 - **D3 — Map dead Westwood links to configured RA2Web pages, with a local notice as fallback.**
   Never auto-open a dead host. Unknown `http(s)` URLs are shown with an explicit "Open in browser"
   link; non-`http(s)` schemes are blocked.
+  *Superseded (6 November 2026):* every link now shows one permission prompt — "The game needs
+  access to an external link." — with **Open** and **Cancel**. Open is still an explicit
+  `target="_blank"` anchor to the game's own URL (or the framed RA2Web page), so nothing is
+  auto-opened; dead hosts are offered only when the player chooses Open.
 - **D4 — Windows native32 keeps the real browser for now.** Only web and Linux define
   `RA2_URL_HOST`/`__EMSCRIPTEN__` to take the patched path. Task 9 can extend it.
 - **D5 — A page key resolves to its retail URL.** YR's `DoWebPageDialog`
