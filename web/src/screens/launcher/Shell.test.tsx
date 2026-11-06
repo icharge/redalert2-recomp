@@ -106,3 +106,27 @@ describe("Shell settings link", () => {
     expect(screen.getByRole("link", { name: "Settings" })).toHaveAttribute("aria-current", "page");
   });
 });
+
+describe("Shell without a storage estimate", () => {
+  it("shows no storage figure and does not throw", () => {
+    const storage = Object.getOwnPropertyDescriptor(Navigator.prototype, "storage");
+    Object.defineProperty(Navigator.prototype, "storage", {
+      configurable: true,
+      get: () => undefined,
+    });
+    try {
+      render(
+        <MemoryRouter>
+          <Shell editions={[]} edition={null} onEdition={() => {}}>
+            <p>content</p>
+          </Shell>
+        </MemoryRouter>,
+      );
+      expect(screen.getByText("content")).toBeInTheDocument();
+      expect(screen.queryByText(/GB$/)).toBeNull();
+    } finally {
+      if (storage) Object.defineProperty(Navigator.prototype, "storage", storage);
+      else delete (Navigator.prototype as { storage?: unknown }).storage;
+    }
+  });
+});

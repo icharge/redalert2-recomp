@@ -1,0 +1,35 @@
+/* Under the launcher's 64px top bar. */
+.strip {
+  position: fixed;
+  z-index: 20;
+  top: 64px;
+  left: 0;
+  right: 0;
+  min-height: 36px;
+  box-sizing: border-box;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: var(--amber);
+  color: #1b1405;
+  font-family: var(--font-label);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.reload {
+  height: 26px;
+  padding: 0 12px;
+  border: 1px solid #1b1405;
+  background: transparent;
+  color: #1b1405;
+  font: inherit;
+  cursor: pointer;
+}
+.reload:hover {
+  background: rgba(0, 0, 0, 0.1);
+}

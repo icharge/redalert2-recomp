@@ -201,27 +201,6 @@
   background: rgba(255, 255, 255, 0.06);
 }
 
-.notice {
-  position: absolute;
-  z-index: 3;
-  top: var(--bar-h);
-  left: 0;
-  right: 0;
-  min-height: 36px;
-  box-sizing: border-box;
-  padding: 0 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  background: var(--amber);
-  color: #1b1405;
-  font-family: var(--font-label);
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-}
-
 .shell :focus-visible {
   outline: 2px solid var(--amber);
   outline-offset: 2px;

@@ -14,7 +14,8 @@ import page from "./Page.module.css";
 import styles from "./GameScreen.module.css";
 
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
-const browserEstimate: Estimate = () => navigator.storage.estimate();
+// some browsers (and insecure pages) have no storage estimate: then no figure is shown
+const browserEstimate: Estimate = async () => (await navigator.storage?.estimate?.()) ?? {};
 
 export interface GameActions {
   onResume(slot: number): void;

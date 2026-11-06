@@ -95,7 +95,7 @@ describe("App", () => {
     vi.stubGlobal("fetch", () => Promise.resolve(new Response(JSON.stringify({ games: {} }))));
     window.history.replaceState({}, "", "/import");
     render(<App />);
-    await screen.findByText("Bring your game");
+    await screen.findByRole("heading", { name: "INSTALL THE GAME" });
     const m = await Manifest.open();
     const installation = await m.createInstallation("Interrupted import");
     await m.beginImport(
@@ -105,9 +105,9 @@ describe("App", () => {
       [{ name: "ra2.mix", size: 1, lastModified: 1, needs: ["ra2md"] }],
       installation.slot,
     );
-    await userEvent.setup().click(screen.getByRole("link", { name: "Back to launcher" }));
-    expect(await screen.findByRole("heading", { name: "Yuri's Revenge" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Resume import" })).toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("button", { name: "BACK" }));
+    expect(await screen.findByRole("button", { name: "RESUME INSTALL" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("YURI’S REVENGE");
     m.close();
   });
   it("clears a stale Resume prompt when OPFS has every recorded file", async () => {
@@ -131,11 +131,11 @@ describe("App", () => {
     );
     window.history.replaceState({}, "", "/");
     render(<App />);
-    expect(await screen.findByRole("heading", { name: "Yuri's Revenge" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Resume import" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "RESUME INSTALL" })).toBeInTheDocument();
     await waitFor(() =>
-      expect(screen.queryByRole("button", { name: "Resume import" })).not.toBeInTheDocument(),
+      expect(screen.queryByRole("button", { name: "RESUME INSTALL" })).not.toBeInTheDocument(),
     );
+    expect(screen.getByRole("button", { name: "PLAY" })).toBeInTheDocument();
     expect((await m.getGame("ra2md", installation.slot))?.complete).toBe(true);
     m.close();
   });
@@ -170,7 +170,7 @@ describe("App", () => {
       "href",
       "/import?resume=1",
     );
-    // the record now says the import did not finish, so the Library offers Resume
+    // the record now says the import did not finish, so the launcher offers Resume
     expect((await m.getGame("ra2md", installation.slot))?.complete).toBe(false);
     m.close();
   });
@@ -216,5 +216,115 @@ describe("App", () => {
     expect(await screen.findByText(/installation.*not.*found/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Back to launcher" })).toHaveAttribute("href", "/");
     expect(window.ra2Session).toBeUndefined();
+  });
+});
+
+describe("Launcher routes", () => {
+  const files = Object.fromEntries(
+    ["ra2.mix", "ra2md.mix", "maps01.mix", "multi.mix"].map((name) => [
+      name,
+      { size: 4, lastModified: 1, needs: ["ra2" as const, "ra2md" as const] },
+    ]),
+  );
+  const runtime = (edition: "ra2" | "ra2md") => ({
+    title: edition,
+    exe: "x.exe",
+    ini: "x.ini",
+    stamp: 1,
+    build: "b",
+    runtime: { edition, build: "b", exeSha256: "a", blowfishSha256: "b" },
+  });
+
+  async function installed(editions: ("ra2" | "ra2md")[] = ["ra2", "ra2md"]) {
+    vi.stubGlobal("crossOriginIsolated", true);
+    vi.stubGlobal("indexedDB", new IDBFactory());
+    vi.stubGlobal("fetch", (url: string) =>
+      Promise.resolve(
+        url.endsWith("build.json")
+          ? new Response(
+              JSON.stringify({ games: { ra2: runtime("ra2"), ra2md: runtime("ra2md") } }),
+            )
+          : new Response("<html>", { headers: { "content-type": "text/html" } }),
+      ),
+    );
+    const m = await Manifest.open();
+    const installation = await m.createInstallation("Main", editions);
+    for (const id of editions) {
+      await m.beginImport(
+        id,
+        id,
+        1,
+        Object.entries(files).map(([name, entry]) => ({ name, ...entry })),
+        installation.slot,
+      );
+      for (const name of Object.keys(files)) await m.markFileDone(id, name, installation.slot);
+    }
+    return m;
+  }
+
+  afterEach(() => localStorage.clear());
+
+  it("/ shows PLAY in the bar", async () => {
+    const m = await installed();
+    render(<App />);
+    expect(await screen.findByRole("link", { name: "PLAY" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(await screen.findByRole("button", { name: "PLAY" })).toBeEnabled();
+    m.close();
+  });
+
+  it("/manage shows GAME as current", async () => {
+    const m = await installed();
+    window.history.replaceState({}, "", "/manage");
+    render(<App />);
+    expect(await screen.findByRole("link", { name: "GAME" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(await screen.findByRole("region", { name: "INSTALLED" })).toBeInTheDocument();
+    m.close();
+  });
+
+  it("/settings/nope redirects to /settings/launcher", async () => {
+    const m = await installed();
+    window.history.replaceState({}, "", "/settings/nope");
+    render(<App />);
+    expect(await screen.findByRole("link", { name: "LAUNCHER" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(window.location.pathname).toBe("/settings/launcher");
+    m.close();
+  });
+
+  it("picking an edition in the rail is remembered", async () => {
+    const m = await installed();
+    render(<App />);
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Red Alert 2" }));
+    expect(localStorage.getItem("ra2-edition:1")).toBe("ra2");
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("RED ALERT 2");
+    m.close();
+  });
+
+  it("Play navigates to /game/<slot>?edition=<id>", async () => {
+    const m = await installed();
+    render(<App />);
+    const play = await screen.findByRole("button", { name: "PLAY" });
+    await waitFor(() => expect(play).toBeEnabled());
+    await userEvent.setup().click(play);
+    await waitFor(() => expect(window.location.pathname).toBe("/game/1"));
+    expect(window.location.search).toBe("?edition=ra2md");
+    m.close();
+  });
+
+  it("nothing installed offers INSTALL THE GAME", async () => {
+    vi.stubGlobal("crossOriginIsolated", true);
+    vi.stubGlobal("indexedDB", new IDBFactory());
+    vi.stubGlobal("fetch", () => Promise.resolve(new Response(JSON.stringify({ games: {} }))));
+    render(<App />);
+    await userEvent.setup().click(await screen.findByRole("button", { name: "INSTALL THE GAME" }));
+    expect(window.location.pathname).toBe("/import");
   });
 });

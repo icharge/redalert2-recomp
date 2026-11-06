@@ -14,7 +14,8 @@ const TABS = [
   { label: "GAME", to: "/manage", end: false },
 ];
 
-const browserEstimate: Estimate = () => navigator.storage.estimate();
+// some browsers (and insecure pages) have no storage estimate: then no figure is shown
+const browserEstimate: Estimate = async () => (await navigator.storage?.estimate?.()) ?? {};
 
 /** 4.3 / 60 GB: one decimal under 10, whole numbers above. */
 function gigabytes(bytes: number): string {
@@ -76,15 +77,12 @@ export function Shell({
   onEdition,
   children,
   estimate = browserEstimate,
-  notice,
 }: {
   editions: GameRecord[];
   edition: GameRecord | null;
   onEdition(game: GameRecord): void;
   children: ReactNode;
   estimate?: Estimate;
-  /** a strip under the bar (the update prompt) */
-  notice?: ReactNode;
 }) {
   const inSettings = useLocation().pathname.startsWith("/settings");
   return (
@@ -148,7 +146,6 @@ export function Shell({
         </nav>
         <StorageFigure estimate={estimate} />
       </header>
-      {notice ? <div className={styles.notice}>{notice}</div> : null}
     </div>
   );
 }

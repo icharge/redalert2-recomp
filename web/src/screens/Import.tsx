@@ -87,7 +87,8 @@ export function Import({
   slot,
 }: {
   deps: ImportDeps;
-  onDone: () => void;
+  /** the copy finished, in this slot */
+  onDone: (slot?: number) => void;
   /** back to the launcher; no BACK button without it */
   onBack?: () => void;
   slot?: number;
@@ -123,7 +124,7 @@ export function Import({
     try {
       const persistent = await deps.persist();
       setStage({ name: "copying", progress: null, persistent });
-      await runImport({
+      const done = await runImport({
         prepared,
         build: deps.build,
         manifest: deps.manifest,
@@ -132,7 +133,7 @@ export function Import({
         ...(slot === undefined ? {} : { slot }),
         onProgress: (progress) => setStage({ name: "copying", progress, persistent }),
       });
-      onDone();
+      onDone(done);
     } catch (error) {
       if (error instanceof CopyCancelled)
         setStage({
