@@ -269,6 +269,16 @@ The logo, the edition icons and the two backgrounds are EA artwork, so they are 
 to the word YURINET, an icon to an RA2 / YR tile, a background to a gradient
 (`BrandImage`, `KeyArt`).
 
+Motion is CSS only (no animation library) and lives next to each screen's styles. The background
+drifts slowly on the page's own clock and a faint radar sweep crosses it (`KeyArt`); the first
+picture of the page fades in and later ones don't, so a tab change doesn't dip to black. On a tab
+change the red underline draws in and the screen's parts rise one after another; the Play title
+slides in, PLAY glints and glows, and the status dot pings. Settings switches slide and the loading
+bar's newest segment pulses. The bar and the rail are one layout route in `App.tsx`, so they keep
+their place (and their animation state) when the tab changes. The in-game page has no new motion:
+a match shouldn't be distracted. One rule in `tokens.css` ends every animation and transition at
+once under `prefers-reduced-motion`, so a new effect needs nothing extra to respect it.
+
 Accessibility: every control is reachable by keyboard and labelled; the current tab, rail tile and
 settings section carry `aria-current`; the pip bars are sliders for the keyboard (arrow keys move
 one pip); progress and errors are announced (`aria-live`).

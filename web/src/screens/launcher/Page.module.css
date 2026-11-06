@@ -13,6 +13,19 @@
   flex-direction: column;
   gap: 24px;
 }
+/* the screen's parts rise into place one after another */
+.page > * {
+  animation: rise 0.6s var(--ease) backwards;
+}
+.page > :nth-child(2) {
+  animation-delay: 0.07s;
+}
+.page > :nth-child(3) {
+  animation-delay: 0.14s;
+}
+.page > :nth-child(n + 4) {
+  animation-delay: 0.21s;
+}
 
 .header {
   display: flex;
@@ -58,8 +71,36 @@
   text-decoration: none;
   white-space: nowrap;
 }
+.primary {
+  position: relative;
+  overflow: hidden;
+  transition:
+    background 0.2s,
+    transform 0.2s var(--ease);
+}
 .primary:hover:not(:disabled) {
   background: #e5302f;
+  transform: translateY(-1px);
+}
+.primary:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.primary:not(:disabled)::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    110deg,
+    transparent 35%,
+    rgba(255, 255, 255, 0.28) 50%,
+    transparent 65%
+  );
+  transform: translateX(-120%);
+  pointer-events: none;
+}
+.primary:hover:not(:disabled)::after {
+  transform: translateX(120%);
+  transition: transform 0.7s var(--ease);
 }
 .primary:disabled {
   background: #4a4b52;
@@ -85,8 +126,15 @@
   text-decoration: none;
   white-space: nowrap;
 }
+.outline {
+  transition:
+    background 0.2s,
+    border-color 0.2s,
+    transform 0.2s var(--ease);
+}
 .outline:hover:not(:disabled) {
   background: rgba(211, 38, 43, 0.14);
+  transform: translateY(-1px);
 }
 .outline:disabled {
   border-color: #3a3b40;
@@ -126,6 +174,16 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
+  animation: rise 0.6s var(--ease) backwards;
+}
+.panel:nth-child(2) {
+  animation-delay: 0.09s;
+}
+.panel:nth-child(3) {
+  animation-delay: 0.18s;
+}
+.panel:nth-child(n + 4) {
+  animation-delay: 0.27s;
 }
 
 .chips {
@@ -217,5 +275,12 @@
   }
   .title {
     font-size: 32px;
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
   }
 }

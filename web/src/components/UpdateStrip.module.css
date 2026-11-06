@@ -19,6 +19,7 @@
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
+  animation: stripIn 0.45s var(--ease) backwards;
 }
 
 .reload {
@@ -32,4 +33,10 @@
 }
 .reload:hover {
   background: rgba(0, 0, 0, 0.1);
+}
+
+@keyframes stripIn {
+  from {
+    transform: translateY(-100%);
+  }
 }

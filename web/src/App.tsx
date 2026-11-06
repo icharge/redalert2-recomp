@@ -1,6 +1,6 @@
 import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
 import { Button, Callout, Code, Flex, Text, Theme } from "@radix-ui/themes";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BrowserCheck } from "./components/BrowserCheck";
 import { checkBrowser, missingRequired } from "./components/features";
 import { UpdateStrip } from "./components/UpdateStrip";
@@ -45,6 +45,7 @@ import {
   BrowserRouter,
   Link,
   Navigate,
+  Outlet,
   Route,
   Routes,
   useLocation,
@@ -278,111 +279,125 @@ function Main() {
   };
   const resumeImport = (at: number) => navigate(`/import?resume=${at}`);
 
-  const shell = (children: ReactNode) => (
+  // One shell for every launcher screen, so the bar and the rail keep their place (and their
+  // animation state) when the tab changes.
+  const launcherShell = (
     <Shell editions={editions} edition={edition} onEdition={chooseEdition}>
-      {children}
+      <Outlet />
     </Shell>
   );
 
-  const settingsRoute = <SettingsRoute editions={editions} edition={edition} shell={shell} />;
-
   return (
     <Routes>
-      <Route
-        path="/"
-        element={shell(
-          <PlayScreen
-            install={active}
-            edition={edition}
-            build={build}
-            mods={edition ? (modState.mods[edition.storage] ?? []) : []}
-            activeMod={edition ? (modState.active[edition.storage] ?? "") : ""}
-            onActiveMod={async (name) => {
-              if (!edition) return;
-              await writeActiveMod(edition, name);
-              setModsVersion((n) => n + 1);
-            }}
-            onPlay={play}
-            onInstall={() => navigate("/import")}
-            onResume={resumeImport}
-          />,
-        )}
-      />
-      <Route
-        path="/mods"
-        element={shell(
-          <ModsScreen
-            editions={editions}
-            edition={edition}
-            manifest={manifest}
-            target={target}
-            activeMods={modState.active}
-            onChanged={() => setModsVersion((n) => n + 1)}
-            onEdition={chooseEdition}
-          />,
-        )}
-      />
-      <Route
-        path="/manage"
-        element={shell(
-          <GameScreen
-            install={active}
-            edition={edition}
-            others={others}
-            build={build}
-            onUse={switchInstall}
-            onImport={() => navigate("/import")}
-            onResume={resumeImport}
-            onRenameInstallation={async (installation, displayName) => {
-              await manifest.renameInstallation(installation.slot, displayName);
-              await reload();
-            }}
-            browseSource={(installation, slotGames) =>
-              managedInstallationSource(
-                installation.displayName ?? installation.name,
-                installation.slot,
-                slotGames,
-                { manifest, target, saves: opfsSaveStore(), build, onChange: () => void reload() },
-              )
-            }
-            onDownloadSaves={async (game) => {
-              // saves that came with the import are in the game's folder, not in what the game has written since
-              const imported = Object.entries(game.files)
-                .filter(([name, file]) => file.done && isSavePath(name))
-                .map(([name, file]) => ({ path: name, read: () => readGameFile(file.home, name) }));
-              const zip = await exportSaves(opfsSaveStore(), game.storage, imported);
-              if (!zip) return "There are no saved games yet.";
-              const url = URL.createObjectURL(
-                new Blob([zip as BlobPart], { type: "application/zip" }),
-              );
-              const link = document.createElement("a");
-              link.href = url;
-              link.download = `slot-${game.slot}-${game.id}-saves.zip`;
-              link.click();
-              setTimeout(() => URL.revokeObjectURL(url), 10_000);
-              return "The saved games are downloading.";
-            }}
-            onImportSaves={async (game, file) => {
-              const count = await importSaves(
-                new Uint8Array(await file.arrayBuffer()),
-                target,
-                game.storage,
-              );
-              return count === 0
-                ? "That zip has no saved games in it."
-                : `${count} saved game${count === 1 ? "" : "s"} brought in.`;
-            }}
-            onRemove={async (installation) => {
-              await manifestWork(async () =>
-                removeFiles(target, await manifest.removeInstallation(installation.slot)),
-              );
-              await reload();
-            }}
-          />,
-        )}
-      />
+      <Route element={launcherShell}>
+        <Route
+          path="/"
+          element={
+            <PlayScreen
+              install={active}
+              edition={edition}
+              build={build}
+              mods={edition ? (modState.mods[edition.storage] ?? []) : []}
+              activeMod={edition ? (modState.active[edition.storage] ?? "") : ""}
+              onActiveMod={async (name) => {
+                if (!edition) return;
+                await writeActiveMod(edition, name);
+                setModsVersion((n) => n + 1);
+              }}
+              onPlay={play}
+              onInstall={() => navigate("/import")}
+              onResume={resumeImport}
+            />
+          }
+        />
+        <Route
+          path="/mods"
+          element={
+            <ModsScreen
+              editions={editions}
+              edition={edition}
+              manifest={manifest}
+              target={target}
+              activeMods={modState.active}
+              onChanged={() => setModsVersion((n) => n + 1)}
+              onEdition={chooseEdition}
+            />
+          }
+        />
+        <Route
+          path="/manage"
+          element={
+            <GameScreen
+              install={active}
+              edition={edition}
+              others={others}
+              build={build}
+              onUse={switchInstall}
+              onImport={() => navigate("/import")}
+              onResume={resumeImport}
+              onRenameInstallation={async (installation, displayName) => {
+                await manifest.renameInstallation(installation.slot, displayName);
+                await reload();
+              }}
+              browseSource={(installation, slotGames) =>
+                managedInstallationSource(
+                  installation.displayName ?? installation.name,
+                  installation.slot,
+                  slotGames,
+                  {
+                    manifest,
+                    target,
+                    saves: opfsSaveStore(),
+                    build,
+                    onChange: () => void reload(),
+                  },
+                )
+              }
+              onDownloadSaves={async (game) => {
+                // saves that came with the import are in the game's folder, not in what the game has written since
+                const imported = Object.entries(game.files)
+                  .filter(([name, file]) => file.done && isSavePath(name))
+                  .map(([name, file]) => ({
+                    path: name,
+                    read: () => readGameFile(file.home, name),
+                  }));
+                const zip = await exportSaves(opfsSaveStore(), game.storage, imported);
+                if (!zip) return "There are no saved games yet.";
+                const url = URL.createObjectURL(
+                  new Blob([zip as BlobPart], { type: "application/zip" }),
+                );
+                const link = document.createElement("a");
+                link.href = url;
+                link.download = `slot-${game.slot}-${game.id}-saves.zip`;
+                link.click();
+                setTimeout(() => URL.revokeObjectURL(url), 10_000);
+                return "The saved games are downloading.";
+              }}
+              onImportSaves={async (game, file) => {
+                const count = await importSaves(
+                  new Uint8Array(await file.arrayBuffer()),
+                  target,
+                  game.storage,
+                );
+                return count === 0
+                  ? "That zip has no saved games in it."
+                  : `${count} saved game${count === 1 ? "" : "s"} brought in.`;
+              }}
+              onRemove={async (installation) => {
+                await manifestWork(async () =>
+                  removeFiles(target, await manifest.removeInstallation(installation.slot)),
+                );
+                await reload();
+              }}
+            />
+          }
+        />
+        <Route
+          path="/settings/:tab"
+          element={<SettingsRoute editions={editions} edition={edition} />}
+        />
+      </Route>
       <Route path="/settings" element={<Navigate to="/settings/launcher" replace />} />
-      <Route path="/settings/:tab" element={settingsRoute} />
       <Route
         path="/import"
         element={
@@ -423,20 +438,16 @@ function Main() {
 function SettingsRoute({
   editions,
   edition,
-  shell,
 }: {
   editions: GameRecord[];
   edition: GameRecord | null;
-  shell(children: ReactNode): ReactNode;
 }) {
   const { tab } = useParams();
   if (!isSettingsTab(tab)) return <Navigate to="/settings/launcher" replace />;
-  return shell(
-    edition ? (
-      <SettingsScreen editions={editions} edition={edition} tab={tab} />
-    ) : (
-      <SettingsEmpty />
-    ),
+  return edition ? (
+    <SettingsScreen editions={editions} edition={edition} tab={tab} />
+  ) : (
+    <SettingsEmpty />
   );
 }
 

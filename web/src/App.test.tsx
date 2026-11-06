@@ -299,6 +299,20 @@ describe("Launcher routes", () => {
     m.close();
   });
 
+  it("the bar and the rail stay in place when the tab changes", async () => {
+    const m = await installed();
+    render(<App />);
+    const user = userEvent.setup();
+    const rail = await screen.findByRole("navigation", { name: "Games" });
+    await user.click(screen.getByRole("link", { name: "MODS" }));
+    await screen.findByRole("heading", { name: "MODS" });
+    expect(screen.getByRole("navigation", { name: "Games" })).toBe(rail);
+    await user.click(screen.getByRole("link", { name: "Settings" }));
+    await screen.findByRole("heading", { name: "SETTINGS" });
+    expect(screen.getByRole("navigation", { name: "Games" })).toBe(rail);
+    m.close();
+  });
+
   it("picking an edition in the rail is remembered", async () => {
     const m = await installed();
     render(<App />);

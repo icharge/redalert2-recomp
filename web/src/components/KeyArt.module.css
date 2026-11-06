@@ -1,4 +1,5 @@
 .art {
+  --sweep: 255, 70, 60;
   position: absolute;
   inset: 0;
   overflow: hidden;
@@ -19,6 +20,15 @@
 .image {
   object-fit: cover;
   object-position: 60% 50%;
+  /* it drifts slowly so the screen is never still */
+  animation: drift 48s ease-in-out var(--phase, 0s) infinite alternate;
+  will-change: transform;
+}
+/* the first picture of the page also fades in */
+.arrive {
+  animation:
+    arrive 0.9s ease backwards,
+    drift 48s ease-in-out var(--phase, 0s) infinite alternate;
 }
 .image[data-edition="ra2md"] {
   object-position: 55% 50%;
@@ -47,4 +57,48 @@
     transparent 55%,
     rgba(0, 0, 0, 0.7) 100%
   );
+}
+
+.art[data-edition="ra2md"] {
+  --sweep: 150, 110, 255;
+}
+
+/* a faint radar sweep crosses the picture every few seconds */
+.art::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -30%;
+  height: 30%;
+  background: linear-gradient(
+    180deg,
+    transparent,
+    rgba(var(--sweep), 0.07) 70%,
+    rgba(var(--sweep), 0.16)
+  );
+  border-bottom: 1px solid rgba(var(--sweep), 0.22);
+  animation: sweep 12s linear var(--phase, 0s) infinite;
+}
+
+@keyframes arrive {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes drift {
+  from {
+    transform: scale(1.06) translate3d(0, 0, 0);
+  }
+  to {
+    transform: scale(1.14) translate3d(-1.5%, -1%, 0);
+  }
+}
+@keyframes sweep {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(433%);
+  }
 }

@@ -1,5 +1,5 @@
 import { fireEvent, render } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { KeyArt } from "./KeyArt";
 
 const img = (c: HTMLElement) => c.querySelector("img");
@@ -36,5 +36,23 @@ describe("KeyArt", () => {
   it("is hidden from screen readers", () => {
     const { container } = render(<KeyArt edition="ra2" />);
     expect(container.firstElementChild).toHaveAttribute("aria-hidden", "true");
+  });
+});
+
+describe("KeyArt motion", () => {
+  it("fades in the first time only, so changing tab does not dip the background", async () => {
+    vi.resetModules();
+    const { KeyArt: Art } = await import("./KeyArt");
+    const first = render(<Art edition="ra2" />);
+    expect(img(first.container)).toHaveAttribute("data-arrive");
+    first.unmount();
+    const later = render(<Art edition="ra2md" />);
+    expect(img(later.container)).not.toHaveAttribute("data-arrive");
+  });
+
+  it("drifts on one shared clock, so a new screen continues where the last one was", () => {
+    const { container } = render(<KeyArt edition="ra2" />);
+    const phase = (container.firstElementChild as HTMLElement).style.getPropertyValue("--phase");
+    expect(phase).toMatch(/^-\d+(\.\d+)?s$/);
   });
 });

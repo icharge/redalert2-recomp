@@ -15,6 +15,7 @@
 }
 
 .row {
+  transition: background 0.2s;
   min-height: 56px;
   box-sizing: border-box;
   padding: 8px 0;
@@ -53,6 +54,9 @@
 }
 
 .switch {
+  transition:
+    background 0.2s,
+    border-color 0.2s;
   width: 48px;
   height: 26px;
   flex: none;
@@ -65,7 +69,6 @@
   cursor: pointer;
 }
 .switch[aria-checked="true"] {
-  justify-content: flex-end;
   border-color: var(--red);
   background: var(--red);
 }
@@ -76,9 +79,14 @@
   width: 18px;
   height: 18px;
   background: #8a8c92;
+  transition:
+    transform 0.25s var(--ease),
+    background 0.2s;
 }
 .switch[aria-checked="true"] .knob {
   background: #fff;
+  /* the switch is 48px wide: 3px padding and 1px border either side leave 40px for an 18px knob */
+  transform: translateX(22px);
 }
 
 .segmented {
@@ -87,6 +95,9 @@
   border: 1px solid #3a3b40;
 }
 .segment {
+  transition:
+    background 0.2s,
+    color 0.2s;
   min-width: 64px;
   height: 36px;
   padding: 0 14px;
@@ -126,6 +137,12 @@
   width: 18px;
   height: 22px;
   background: var(--line);
+  transition:
+    background 0.18s,
+    transform 0.18s var(--ease);
+}
+.pips:hover .pip[data-on] {
+  transform: scaleY(1.12);
 }
 .pip[data-on] {
   background: var(--red);

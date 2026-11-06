@@ -1,4 +1,5 @@
 .screen {
+  animation: fadeIn 0.4s ease backwards;
   position: absolute;
   inset: 0;
   z-index: 5;
@@ -22,6 +23,7 @@
   gap: 32px 64px;
   background: rgba(8, 9, 11, 0.95);
   border-top: 2px solid var(--red-dark);
+  animation: bandIn 0.7s var(--ease) 0.1s backwards;
 }
 
 .title {
@@ -79,6 +81,10 @@
 }
 .segments > span[data-on] {
   background: var(--red);
+}
+/* the newest lit segment pulses, so the bar looks alive even between updates */
+.segments > span[data-on]:not(:has(+ span[data-on])) {
+  animation: head 0.9s ease-in-out infinite;
 }
 /* no figure yet: a lit run sweeps along the bar */
 .segments[data-waiting] > span {
@@ -147,5 +153,23 @@
   }
   .heading {
     font-size: 36px;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes bandIn {
+  from {
+    opacity: 0;
+    transform: translateY(40px);
+  }
+}
+@keyframes head {
+  50% {
+    background: #ff7468;
+    box-shadow: 0 0 12px rgba(255, 90, 80, 0.8);
   }
 }

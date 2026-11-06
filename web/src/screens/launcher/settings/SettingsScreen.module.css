@@ -20,6 +20,11 @@
   padding-top: 76px;
 }
 .navLink {
+  transition:
+    color 0.2s,
+    background 0.25s,
+    border-color 0.25s,
+    padding-left 0.25s var(--ease);
   height: 44px;
   padding: 0 16px;
   border-left: 3px solid transparent;
@@ -34,6 +39,7 @@
 }
 .navLink:hover {
   color: var(--text);
+  padding-left: 22px;
 }
 .navLink[aria-current="page"] {
   border-left-color: var(--red);
@@ -41,6 +47,9 @@
   color: var(--text);
 }
 
+.content > :not(.head) {
+  animation: rise 0.45s var(--ease) backwards;
+}
 .content {
   flex: 1;
   min-width: 0;
@@ -253,5 +262,12 @@
   }
   .navLink[aria-current="page"] {
     background: var(--red);
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
   }
 }

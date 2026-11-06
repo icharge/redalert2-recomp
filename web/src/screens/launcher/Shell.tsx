@@ -101,6 +101,7 @@ export function Shell({
               type="button"
               className={styles.edition}
               aria-label={brand.title}
+              data-edition={game.id}
               aria-current={current ? "true" : undefined}
               onClick={() => {
                 onEdition(game);

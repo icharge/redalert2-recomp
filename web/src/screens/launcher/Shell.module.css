@@ -66,20 +66,46 @@
 }
 
 .tab {
+  position: relative;
   display: flex;
   align-items: center;
   border-bottom: 3px solid transparent;
   color: var(--muted);
   text-decoration: none;
   white-space: nowrap;
+  transition: color 0.2s;
 }
 .tab:hover,
 .tab:focus-visible {
   color: #fff;
 }
+/* the red underline draws in from the left; on hover a short stub shows where it will go */
+.tab::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -3px;
+  height: 3px;
+  background: var(--red);
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition:
+    transform 0.35s var(--ease),
+    opacity 0.2s;
+}
+.tab:hover::after,
+.tab:focus-visible::after {
+  transform: scaleX(0.4);
+  opacity: 0.7;
+}
 .tab[aria-current="page"] {
   color: var(--text);
-  border-bottom-color: var(--red);
+}
+.tab[aria-current="page"]::after {
+  transform: scaleX(1);
+  opacity: 1;
+  animation: draw 0.45s var(--ease) backwards;
 }
 
 .storage {
@@ -98,6 +124,8 @@
 .meter > div {
   height: 4px;
   background: var(--red);
+  transform-origin: left center;
+  animation: grow 1.1s var(--ease) 0.2s backwards;
 }
 
 .rail {
@@ -144,6 +172,27 @@
   border-left-color: var(--red);
   background: rgba(255, 255, 255, 0.06);
   color: var(--text);
+  animation: select 0.6s var(--ease) backwards;
+}
+.edition .icon,
+.edition .tile {
+  transition:
+    transform 0.25s var(--ease),
+    filter 0.25s;
+}
+.edition:hover .icon,
+.edition:hover .tile {
+  transform: translateY(-2px) scale(1.06);
+}
+/* the chosen game glows in its own colour */
+.edition[aria-current="true"] .icon {
+  filter: drop-shadow(0 0 10px rgba(211, 38, 43, 0.7));
+}
+.edition[data-edition="ra2md"][aria-current="true"] {
+  border-left-color: var(--yuri-mid);
+}
+.edition[data-edition="ra2md"][aria-current="true"] .icon {
+  filter: drop-shadow(0 0 10px rgba(123, 74, 224, 0.8));
 }
 .editionName {
   max-width: 80px;
@@ -194,8 +243,14 @@
   letter-spacing: 0.08em;
   text-decoration: none;
 }
+.settings svg {
+  transition: transform 0.6s var(--ease);
+}
 .settings:hover {
   color: var(--text);
+}
+.settings:hover svg {
+  transform: rotate(90deg);
 }
 .settings[aria-current="page"] {
   color: var(--text);
@@ -274,5 +329,21 @@
   .editionName {
     max-width: 72px;
     text-align: left;
+  }
+}
+
+@keyframes draw {
+  from {
+    transform: scaleX(0);
+  }
+}
+@keyframes grow {
+  from {
+    transform: scaleX(0);
+  }
+}
+@keyframes select {
+  from {
+    background: rgba(211, 38, 43, 0.4);
   }
 }
