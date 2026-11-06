@@ -362,7 +362,7 @@ describe("ensureDefaultMainSettings", () => {
       },
     });
     expect(writes).toHaveLength(1);
-    expect(writes[0]?.name).toBe("ra2md.ini");
+    expect(writes[0]?.name).toBe("RA2MD.INI");
     expect(writes[0]?.text).toContain("GameSpeed=5");
     expect(writes[0]?.text).toContain("ScreenWidth=1920");
   });
@@ -377,7 +377,7 @@ describe("ensureDefaultMainSettings", () => {
       },
     });
     expect(writes).toHaveLength(1);
-    expect(writes[0]?.name).toBe("ra2md.ini");
+    expect(writes[0]?.name).toBe("RA2MD.INI");
     expect(writes[0]?.text).toContain("GameSpeed=1");
     expect(writes[0]?.text).toMatch(/\[Intro\]\r?\nPlay=no/);
   });

@@ -12,6 +12,11 @@ export function settingsFileNames(game: GameId): SettingsFileNames {
     : { main: "ra2md.ini", keyboard: "keyboardmd.ini" };
 }
 
+/** The main INI's spelling as the game writes it; writes must use this name. */
+export function gameIniName(game: GameId): string {
+  return game === "ra2" ? "RA2.INI" : "RA2MD.INI";
+}
+
 /** A top-level profile INI, the file the game appends whole copies to. */
 export function isProfileIniPath(path: string): boolean {
   return /^(?:ra2|ra2md)\.ini$/i.test(path);

@@ -10,9 +10,9 @@ import type { GameId } from "./install";
 import { defaultMainValue, gameSettingsDefaults } from "./game-settings-defaults";
 import type { GameRecord } from "./manifest";
 import { readGameFile, readSaveFile, opfsTarget, type SavedSettingsFile } from "./opfs";
-import { settingsFileNames, type SettingsFileNames } from "./settings-files";
+import { settingsFileNames, gameIniName, type SettingsFileNames } from "./settings-files";
 
-export { settingsFileNames, type SettingsFileNames };
+export { settingsFileNames, gameIniName, type SettingsFileNames };
 
 /** The sections the game saves a match's speed in. Its session reader takes the last occurrence. */
 export const MATCH_SPEED_SECTIONS = ["Skirmish", "LAN", "WonlinePref"] as const;
@@ -813,19 +813,19 @@ export async function ensureDefaultMainSettings(
   const saved = await (deps.readSave ?? defaultReadSave)(game.storage, names.main);
   if (saved) {
     const patched = withIntroPlayOff(saved.data);
-    if (patched) await writeGameSettings(game, names.main, serializeIni(patched), deps);
+    if (patched) await writeGameSettings(game, saved.name, serializeIni(patched), deps);
     return;
   }
   const imported = importedEntry(game, names.main);
   if (imported) {
     const data = await (deps.readImported ?? readGameFile)(imported[1].home, imported[0]);
     const patched = withIntroPlayOff(data) ?? parseIni(data);
-    await writeGameSettings(game, names.main, serializeIni(patched), deps);
+    await writeGameSettings(game, imported[0], serializeIni(patched), deps);
     return;
   }
   await writeGameSettings(
     game,
-    names.main,
+    gameIniName(game.id),
     serializeIni(setIniValue(defaultMainIni(game.id), "Intro", "Play", "no")),
     deps,
   );
