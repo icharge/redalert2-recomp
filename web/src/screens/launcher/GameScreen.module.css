@@ -1,0 +1,150 @@
+.screen {
+  position: absolute;
+  inset: 0;
+}
+
+.titleRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.titleRow h1 {
+  text-transform: uppercase;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nameForm {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.nameField {
+  height: 48px;
+  min-width: 0;
+  width: 360px;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 0 14px;
+  border: 1px solid var(--red-dark);
+  background: #121317;
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: 22px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.wide {
+  grid-column: span 2;
+}
+.side {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.panelHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+}
+
+.editions {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.edition {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+.editionName {
+  flex: 1;
+  min-width: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+.state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  text-align: right;
+}
+.dotReady,
+.dotWait {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--green);
+}
+.dotWait {
+  background: var(--amber);
+}
+
+.line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 15px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-top: 8px;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bar {
+  height: 8px;
+  background: var(--line);
+}
+.bar > div {
+  height: 8px;
+  background: var(--red);
+}
+
+.remove {
+  height: 44px;
+  border: 1px solid var(--red-deep);
+  background: transparent;
+  color: #ff8a80;
+  font-family: var(--font-label);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+}
+.remove:hover {
+  background: rgba(211, 38, 43, 0.12);
+}
+
+@media (max-width: 960px) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .wide {
+    grid-column: auto;
+  }
+}

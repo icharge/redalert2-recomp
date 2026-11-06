@@ -49,7 +49,7 @@ Not in this plan (each gets its own plan; their tabs stay hidden until then):
 | 6 | Launcher shell | Done |
 | 7 | Play screen | Done |
 | 8 | Mods screen | Done |
-| 9 | Game screen | Not started |
+| 9 | Game screen | Done |
 | 10 | Install screen | Not started |
 | 11 | Settings screen | Not started |
 | 12 | Routes and App wiring | Not started |
