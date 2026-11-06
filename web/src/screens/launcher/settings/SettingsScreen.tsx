@@ -1,5 +1,4 @@
 import { Link } from "react-router";
-import { EDITION_BRAND } from "../../../components/brand";
 import { KeyArt } from "../../../components/KeyArt";
 import type { GameSettingsDeps } from "../../../storage/game-settings";
 import type { GameRecord } from "../../../storage/manifest";
@@ -59,9 +58,6 @@ export function SettingsScreen({
         <div className={styles.content}>
           <div className={styles.head}>
             <h1 className={page.title}>SETTINGS</h1>
-            <span className={styles.scope}>
-              {editions.length > 1 ? "ALL GAMES" : EDITION_BRAND[edition.id].title.toUpperCase()}
-            </span>
           </div>
           {settings.error && (
             <p className={page.failure} role="alert">

@@ -110,9 +110,9 @@ describe("SettingsScreen", () => {
     expect(screen.getByRole("link", { name: "LAUNCHER" })).not.toHaveAttribute("aria-current");
   });
 
-  it("shows ALL GAMES", () => {
+  it("has no scope badge beside the title", () => {
     setup({ editions: [ra2, yr] });
-    expect(screen.getByText("ALL GAMES")).toBeInTheDocument();
+    expect(screen.queryByText("ALL GAMES")).toBeNull();
   });
 
   it("writes a switch to the game's own INI", async () => {
