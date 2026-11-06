@@ -109,21 +109,81 @@ async function setup(source: FolderSource | null, quota = 1e12) {
 describe("Import", () => {
   it("starts by asking for the folder, and says nothing is uploaded", async () => {
     await setup(folder());
-    expect(screen.getByText("Bring your game")).toBeInTheDocument();
-    expect(screen.getByText(/Red Alert 2 or Yuri's Revenge/)).toBeInTheDocument();
-    expect(screen.getByText(/nothing is uploaded/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Choose folder…" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "INSTALL THE GAME" })).toBeInTheDocument();
+    expect(
+      screen.getByText("Pick your Red Alert 2 folder. Nothing is uploaded."),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "CHOOSE FOLDER" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Use file picker" })).toBeInTheDocument();
+    expect(screen.getByText("Drop the folder here")).toBeInTheDocument();
+  });
+
+  it("marks the current step", async () => {
+    const { user } = await setup(folder());
+    const steps = screen.getByRole("list", { name: "Steps" });
+    expect(steps).toHaveTextContent("1 FOLDER2 CHECK3 COPY");
+    expect(screen.getByText("1 FOLDER").closest("li")).toHaveAttribute("aria-current", "step");
+    await user.click(screen.getByRole("button", { name: "CHOOSE FOLDER" }));
+    await screen.findByRole("heading", { name: "READY TO INSTALL" });
+    expect(screen.getByText("2 CHECK").closest("li")).toHaveAttribute("aria-current", "step");
+    expect(screen.getByText("1 FOLDER").closest("li")).not.toHaveAttribute("aria-current");
+  });
+
+  it("without a folder picker, CHOOSE FOLDER uses the file picker", async () => {
+    const manifest = await Manifest.open(new IDBFactory());
+    render(
+      <Theme>
+        <Import
+          deps={{
+            build,
+            manifest,
+            target: memoryTarget(),
+            estimate: async () => ({}),
+            persist: async () => true,
+            pickDirectory: null,
+          }}
+          onDone={() => {}}
+        />
+      </Theme>,
+    );
+    expect(screen.getByRole("button", { name: "CHOOSE FOLDER" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Use file picker" })).toBeNull();
+  });
+
+  it("goes back when asked", async () => {
+    const manifest = await Manifest.open(new IDBFactory());
+    const onBack = vi.fn();
+    render(
+      <Theme>
+        <Import
+          deps={{
+            build,
+            manifest,
+            target: memoryTarget(),
+            estimate: async () => ({}),
+            persist: async () => true,
+            pickDirectory: null,
+          }}
+          onDone={() => {}}
+          onBack={onBack}
+        />
+      </Theme>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "BACK" }));
+    expect(onBack).toHaveBeenCalled();
   });
 
   it("reviews a good folder, then copies it and says when it is done", async () => {
     const { user, target, manifest, onDone } = await setup(folder());
-    await user.click(screen.getByRole("button", { name: "Choose folder…" }));
-    expect(await screen.findByText(/Found Yuri's Revenge in RA2/)).toBeInTheDocument();
-    expect(
-      screen.getByRole("checkbox", { name: /Include the movies.*video cutscenes show as black/ }),
-    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "CHOOSE FOLDER" }));
+    expect(await screen.findByRole("heading", { name: "READY TO INSTALL" })).toBeInTheDocument();
+    expect(screen.getByRole("listitem", { name: "Yuri’s Revenge" })).toHaveTextContent("Found");
+    expect(screen.getByRole("checkbox", { name: /^Movies/ })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Saved games" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Settings and hotkeys" })).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "OTHER FOLDER" })).toBeInTheDocument();
     // the movies are off by default, so only their empty stand-in is copied
-    await user.click(screen.getByRole("button", { name: /^Import / }));
+    await user.click(screen.getByRole("button", { name: /^INSTALL / }));
     await waitFor(() => expect(onDone).toHaveBeenCalled());
     expect(target.files.get("game/slot-1/movies01.mix")).toBe(12);
     expect(target.files.get("game/slot-1/movmd03.mix")).toBe(12);
@@ -136,10 +196,11 @@ describe("Import", () => {
 
   it("brings the real movie archive when asked", async () => {
     const { user, target, onDone } = await setup(folder());
-    await user.click(screen.getByRole("button", { name: "Choose folder…" }));
-    await screen.findByText(/Found Yuri's Revenge/);
-    await user.click(screen.getByRole("checkbox", { name: /Include the movies/ }));
-    await user.click(await screen.findByRole("button", { name: /^Import / }));
+    await user.click(screen.getByRole("button", { name: "CHOOSE FOLDER" }));
+    await screen.findByRole("heading", { name: "READY TO INSTALL" });
+    await user.click(screen.getByRole("checkbox", { name: /^Movies/ }));
+    await waitFor(() => expect(screen.getByRole("checkbox", { name: /^Movies/ })).toBeChecked());
+    await user.click(await screen.findByRole("button", { name: /^INSTALL / }));
     await waitFor(() => expect(onDone).toHaveBeenCalled());
     expect(target.files.get("game/slot-1/movmd03.mix")).toBe(5000);
   });
@@ -150,9 +211,9 @@ describe("Import", () => {
       list: async () => [...(await folder().list()), file("RA2MD.INI", 20)],
     };
     const { user, target, onDone } = await setup(source);
-    await user.click(screen.getByRole("button", { name: "Choose folder…" }));
-    await screen.findByText(/Found Yuri's Revenge/);
-    await user.click(screen.getByRole("button", { name: /^Import / }));
+    await user.click(screen.getByRole("button", { name: "CHOOSE FOLDER" }));
+    await screen.findByRole("heading", { name: "READY TO INSTALL" });
+    await user.click(screen.getByRole("button", { name: /^INSTALL / }));
     await waitFor(() => expect(onDone).toHaveBeenCalled());
     expect(target.files.has("game/slot-1/RA2MD.INI")).toBe(false);
   });
@@ -163,31 +224,72 @@ describe("Import", () => {
       list: async () => [...(await folder().list()), file("RA2MD.INI", 20)],
     };
     const { user, target, onDone } = await setup(source);
-    await user.click(screen.getByRole("button", { name: "Choose folder…" }));
-    await screen.findByText(/Found Yuri's Revenge/);
-    await user.click(screen.getByRole("checkbox", { name: /Bring my settings and hotkeys/ }));
-    await user.click(screen.getByRole("button", { name: /^Import / }));
+    await user.click(screen.getByRole("button", { name: "CHOOSE FOLDER" }));
+    await screen.findByRole("heading", { name: "READY TO INSTALL" });
+    await user.click(screen.getByRole("checkbox", { name: "Settings and hotkeys" }));
+    await waitFor(() =>
+      expect(screen.getByRole("checkbox", { name: "Settings and hotkeys" })).toBeChecked(),
+    );
+    await user.click(screen.getByRole("button", { name: /^INSTALL / }));
     await waitFor(() => expect(onDone).toHaveBeenCalled());
     expect(target.files.get("game/slot-1/RA2MD.INI")).toBe(20);
   });
 
   it("does not require a matching user executable when importing content", async () => {
     const { user } = await setup(folder(0x11111111));
-    await user.click(screen.getByRole("button", { name: "Choose folder…" }));
-    expect(await screen.findByText(/Found Yuri's Revenge in RA2/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^Import / })).toBeEnabled();
+    await user.click(screen.getByRole("button", { name: "CHOOSE FOLDER" }));
+    expect(await screen.findByRole("heading", { name: "READY TO INSTALL" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^INSTALL / })).toBeEnabled();
   });
 
   it("says when the browser has too little room", async () => {
     const { user } = await setup(folder(), 1000);
-    await user.click(screen.getByRole("button", { name: "Choose folder…" }));
+    await user.click(screen.getByRole("button", { name: "CHOOSE FOLDER" }));
     expect(await screen.findByText(/not enough room/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^Import / })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /^INSTALL / })).toBeDisabled();
+  });
+
+  it("shows the copy with a CANCEL button", async () => {
+    const manifest = await Manifest.open(new IDBFactory());
+    const target = memoryTarget();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const slow: CopyTarget = {
+      ...target,
+      write: async (path, stream) => {
+        await gate;
+        await target.write(path, stream);
+      },
+    };
+    render(
+      <Theme>
+        <Import
+          deps={{
+            build,
+            manifest,
+            target: slow,
+            estimate: async () => ({ quota: 1e12, usage: 0 }),
+            persist: async () => false,
+            pickDirectory: async () => folder(),
+          }}
+          onDone={() => {}}
+        />
+      </Theme>,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "CHOOSE FOLDER" }));
+    await user.click(await screen.findByRole("button", { name: /^INSTALL / }));
+    expect(await screen.findByRole("heading", { name: "INSTALLING" })).toBeInTheDocument();
+    expect(screen.getByRole("progressbar", { name: "Copying the game" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "CANCEL" })).toBeInTheDocument();
+    expect(await screen.findByText(/may clear this copy/)).toBeInTheDocument();
+    expect(screen.getByText("3 COPY").closest("li")).toHaveAttribute("aria-current", "step");
+    release();
   });
 
   it("goes back to the start when what was picked is not a folder", async () => {
     const { user } = await setup(null);
-    await user.click(screen.getByRole("button", { name: "Choose folder…" }));
+    await user.click(screen.getByRole("button", { name: "CHOOSE FOLDER" }));
     expect(await screen.findByText("That is not a folder.")).toBeInTheDocument();
   });
 });

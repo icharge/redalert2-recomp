@@ -1,22 +1,10 @@
-import {
-  CheckCircledIcon,
-  CrossCircledIcon,
-  ExclamationTriangleIcon,
-  UploadIcon,
-} from "@radix-ui/react-icons";
-import {
-  Button,
-  Callout,
-  Card,
-  Checkbox,
-  Flex,
-  Heading,
-  Link,
-  Progress,
-  Text,
-} from "@radix-ui/themes";
 import { useRef, useState, type DragEvent } from "react";
+import { BrandImage } from "../components/BrandImage";
+import { EDITION_BRAND, LOGO_SRC } from "../components/brand";
 import { formatBytes } from "../components/format";
+import { InfoTip } from "../components/InfoTip";
+import { KeyArt } from "../components/KeyArt";
+import { appPath } from "../paths";
 import {
   blocker,
   directorySource,
@@ -29,8 +17,8 @@ import {
 } from "../storage/importer";
 import {
   classify,
-  GAME_TITLE,
   type BuildInfo,
+  type EditionReadiness,
   type GameId,
   type ImportOptions,
 } from "../storage/install";
@@ -84,13 +72,24 @@ type Stage =
 
 const FIRST: ImportOptions = { movies: false, saves: true, settings: false };
 
+const STEPS = ["1 FOLDER", "2 CHECK", "3 COPY"];
+
+function stepOf(stage: Stage): number {
+  if (stage.name === "review") return 1;
+  if (stage.name === "copying") return 2;
+  return 0;
+}
+
 export function Import({
   deps,
   onDone,
+  onBack,
   slot,
 }: {
   deps: ImportDeps;
   onDone: () => void;
+  /** back to the launcher; no BACK button without it */
+  onBack?: () => void;
   slot?: number;
 }) {
   const [stage, setStage] = useState<Stage>({ name: "choose" });
@@ -138,8 +137,7 @@ export function Import({
       if (error instanceof CopyCancelled)
         setStage({
           name: "choose",
-          message:
-            "Cancelled. What was copied is kept. Use Resume import in the launcher to carry on.",
+          message: "Cancelled. What was copied is kept: RESUME INSTALL carries on.",
         });
       else setStage({ name: "failed", message: errorText(error) });
     }
@@ -151,16 +149,46 @@ export function Import({
     void choose(droppedSource(event.dataTransfer.items));
   }
 
+  const current = stepOf(stage);
   return (
-    <Flex className={styles.page} align="center" justify="center" p="4">
-      <Card size="4" className={styles.card}>
-        <Flex direction="column" gap="4">
-          <Heading size="6">Bring your game</Heading>
-          <Text color="gray">
-            Pick a folder with Red Alert 2 or Yuri&apos;s Revenge game data. This build supplies the
-            game runtime files; your MIX archives and other game data are copied into this browser
-            and stay there. Nothing is uploaded.
-          </Text>
+    <div className={styles.screen}>
+      <KeyArt edition="ra2" dim={0.45} />
+      {onBack && stage.name !== "copying" && (
+        <button type="button" className={styles.back} onClick={onBack}>
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            aria-hidden="true"
+          >
+            <path d="M10 3L5 8l5 5" />
+          </svg>
+          BACK
+        </button>
+      )}
+      <div className={styles.column}>
+        <BrandImage
+          src={appPath(LOGO_SRC)}
+          alt="YuriNet"
+          className={styles.logo}
+          fallback={<span className={styles.logoText}>YURINET</span>}
+        />
+        <section className={styles.panel} aria-label="Install the game">
+          <ol className={styles.steps} aria-label="Steps">
+            {STEPS.map((label, index) => (
+              <li
+                key={label}
+                aria-current={index === current ? "step" : undefined}
+                data-state={index < current ? "done" : index === current ? "current" : "next"}
+              >
+                <span aria-hidden="true" />
+                {label}
+              </li>
+            ))}
+          </ol>
 
           {stage.name === "choose" && (
             <Chooser
@@ -174,12 +202,18 @@ export function Import({
             />
           )}
 
-          {stage.name === "looking" && <Text>Looking at {stage.folder}…</Text>}
+          {stage.name === "looking" && (
+            <div className={styles.body}>
+              <h1 className={styles.title}>CHECKING</h1>
+              <p className={styles.muted} role="status">
+                Looking at {stage.folder}…
+              </p>
+            </div>
+          )}
 
           {stage.name === "review" && (
             <Review
               stage={stage}
-              titles={stage.prepared.plan.games.map((id) => deps.build.games[id]?.title ?? id)}
               onOptions={(options) => void look(stage.source, options)}
               onStart={() => void start(stage.prepared)}
               onBack={() => setStage({ name: "choose" })}
@@ -195,19 +229,25 @@ export function Import({
           )}
 
           {stage.name === "failed" && (
-            <>
-              <Callout.Root color="red" role="alert">
-                <Callout.Icon>
-                  <CrossCircledIcon />
-                </Callout.Icon>
-                <Callout.Text>{stage.message}</Callout.Text>
-              </Callout.Root>
-              <Button onClick={() => setStage({ name: "choose" })}>Try again</Button>
-            </>
+            <div className={styles.body}>
+              <h1 className={styles.title}>THAT DID NOT WORK</h1>
+              <p className={styles.failure} role="alert">
+                {stage.message}
+              </p>
+              <div className={styles.actions}>
+                <button
+                  type="button"
+                  className={styles.primary}
+                  onClick={() => setStage({ name: "choose" })}
+                >
+                  TRY AGAIN
+                </button>
+              </div>
+            </div>
           )}
-        </Flex>
-      </Card>
-    </Flex>
+        </section>
+      </div>
+    </div>
   );
 }
 
@@ -225,18 +265,21 @@ function Chooser(props: {
   onFiles(files: FileList): void;
 }) {
   const input = useRef<HTMLInputElement>(null);
+  const pickFiles = () => input.current?.click();
   return (
-    <>
+    <div className={styles.body}>
+      <div className={styles.intro}>
+        <h1 className={styles.title}>INSTALL THE GAME</h1>
+        <p className={styles.muted}>Pick your Red Alert 2 folder. Nothing is uploaded.</p>
+      </div>
       {props.message && (
-        <Callout.Root color="amber">
-          <Callout.Icon>
-            <ExclamationTriangleIcon />
-          </Callout.Icon>
-          <Callout.Text>{props.message}</Callout.Text>
-        </Callout.Root>
+        <p className={styles.warn} role="status">
+          {props.message}
+        </p>
       )}
       <div
-        className={`${styles.drop} ${props.over ? styles.over : ""}`}
+        className={styles.drop}
+        data-over={props.over || undefined}
         onDragOver={(event) => {
           event.preventDefault();
           props.setOver(true);
@@ -244,44 +287,61 @@ function Chooser(props: {
         onDragLeave={() => props.setOver(false)}
         onDrop={props.onDrop}
       >
-        <UploadIcon width="28" height="28" />
-        <Text>Drop the game folder here</Text>
-      </div>
-      <Flex gap="3" align="center" wrap="wrap">
-        {props.deps.pickDirectory && <Button onClick={props.onPick}>Choose folder…</Button>}
-        <Link
-          href="#"
-          onClick={(event) => {
-            event.preventDefault();
-            input.current?.click();
-          }}
+        <svg
+          width="28"
+          height="28"
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.2"
+          aria-hidden="true"
         >
-          {props.deps.pickDirectory ? "or use the file picker" : "Choose folder…"}
-        </Link>
+          <path d="M8 10.5V2.5M5 5.5l3-3 3 3M2.5 10v3.5h11V10" />
+        </svg>
+        <span>Drop the folder here</span>
+      </div>
+      <div className={styles.actions}>
+        <button
+          type="button"
+          className={styles.primary}
+          onClick={props.deps.pickDirectory ? props.onPick : pickFiles}
+        >
+          CHOOSE FOLDER
+        </button>
+        {props.deps.pickDirectory && (
+          <button type="button" className={styles.link} onClick={pickFiles}>
+            Use file picker
+          </button>
+        )}
         <input
           ref={input}
           type="file"
           className={styles.hidden}
+          tabIndex={-1}
           aria-label="Game folder"
           // @ts-expect-error webkitdirectory is not in React's types
           webkitdirectory=""
           multiple
           onChange={(event) => event.target.files && props.onFiles(event.target.files)}
         />
-      </Flex>
-    </>
+      </div>
+    </div>
   );
+}
+
+function readinessText(readiness: EditionReadiness): string {
+  if (readiness.status === "runtime-not-built") return "Runtime not built";
+  if (readiness.status === "missing-content") return `Missing ${readiness.missing.join(", ")}`;
+  return "Found";
 }
 
 function Review({
   stage,
-  titles,
   onOptions,
   onStart,
   onBack,
 }: {
   stage: Extract<Stage, { name: "review" }>;
-  titles: string[];
   onOptions(options: ImportOptions): void;
   onStart(): void;
   onBack(): void;
@@ -293,104 +353,107 @@ function Review({
   const settingCount = [...prepared.files.keys()].filter(
     (path) => classify(path)?.kind === "settings",
   ).length;
-  const titleById = Object.fromEntries(
-    Object.keys(plan.readiness).map((id) => [
-      id,
-      titles[plan.games.indexOf(id as GameId)] ?? GAME_TITLE[id as GameId] ?? id,
-    ]),
-  );
+  const ids = Object.keys(plan.readiness) as GameId[];
   return (
-    <>
-      {stopped ? (
-        <Callout.Root color="red" role="alert">
-          <Callout.Icon>
-            <CrossCircledIcon />
-          </Callout.Icon>
-          <Callout.Text>{stopped}</Callout.Text>
-        </Callout.Root>
-      ) : (
-        <Callout.Root color="green">
-          <Callout.Icon>
-            <CheckCircledIcon />
-          </Callout.Icon>
-          <Callout.Text>
-            Found {titles.join(" and ")} in {stage.source.name}: {plan.copy.length} files,{" "}
-            {formatBytes(plan.bytes)} to copy.
-          </Callout.Text>
-        </Callout.Root>
+    <div className={styles.body}>
+      <h1 className={styles.title}>READY TO INSTALL</h1>
+      {stopped && (
+        <p className={styles.failure} role="alert">
+          {stopped}
+        </p>
       )}
+      <ul className={styles.games}>
+        {ids.map((id) => {
+          const readiness = plan.readiness[id];
+          if (!readiness) return null;
+          const brand = EDITION_BRAND[id];
+          return (
+            <li key={id} aria-label={brand.title}>
+              <BrandImage
+                src={appPath(brand.icon)}
+                alt=""
+                className={styles.icon}
+                fallback={
+                  <span
+                    className={styles.tile}
+                    style={{ background: brand.tile, borderColor: brand.tileBorder }}
+                  >
+                    {brand.short}
+                  </span>
+                }
+              />
+              <span className={styles.gameName}>{brand.title}</span>
+              <span className={styles.state}>
+                <span
+                  className={readiness.status === "ready" ? styles.dotReady : styles.dotWait}
+                  aria-hidden="true"
+                />
+                {readinessText(readiness)}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
       {plan.warnings.map((warning) => (
-        <Text key={warning} size="2" color="amber">
+        <p key={warning} className={styles.warn}>
           {warning}
-        </Text>
+        </p>
       ))}
-      {Object.entries(plan.readiness).map(([id, readiness]) => {
-        if (!readiness) return null;
-        return (
-          <Callout.Root key={id} color={readiness.status === "ready" ? "green" : "amber"}>
-            <Callout.Text>
-              <strong>{titleById[id] ?? id}:</strong>{" "}
-              {readiness.status === "runtime-not-built"
-                ? "Runtime not built for this edition."
-                : readiness.status === "missing-content"
-                  ? `Missing required content: ${readiness.missing.join(", ")}.`
-                  : "Ready to run with the bundled runtime."}
-              {readiness.moviesMissing &&
-                " Optional movie archives are missing; cutscenes will be skipped."}
-            </Callout.Text>
-          </Callout.Root>
-        );
-      })}
-      <Flex direction="column" gap="2">
-        <Text as="label" size="2">
-          <Flex gap="2" align="center">
-            <Checkbox
+      <div className={styles.options}>
+        <div className={styles.option}>
+          <label>
+            <input
+              type="checkbox"
               checked={options.movies}
               disabled={plan.movieBytes === 0}
-              onCheckedChange={(checked) => onOptions({ ...options, movies: checked === true })}
+              onChange={(event) => onOptions({ ...options, movies: event.target.checked })}
             />
-            Include the movies ({formatBytes(plan.movieBytes)}). Without these archives, video
-            cutscenes show as black; static loading-screen images are separate game assets.
-          </Flex>
-        </Text>
-        <Text as="label" size="2">
-          <Flex gap="2" align="center">
-            <Checkbox
+            Movies <span className={styles.muted}>{formatBytes(plan.movieBytes)}</span>
+          </label>
+          <InfoTip text="Without them, cutscenes show as black." />
+        </div>
+        <div className={styles.option}>
+          <label>
+            <input
+              type="checkbox"
               checked={options.saves}
               disabled={saveCount === 0 && !options.saves}
-              onCheckedChange={(checked) => onOptions({ ...options, saves: checked === true })}
+              onChange={(event) => onOptions({ ...options, saves: event.target.checked })}
             />
-            Bring my saved games
-          </Flex>
-        </Text>
-        <Text as="label" size="2">
-          <Flex gap="2" align="center">
-            <Checkbox
+            Saved games
+          </label>
+        </div>
+        <div className={styles.option}>
+          <label>
+            <input
+              type="checkbox"
               checked={options.settings}
               disabled={settingCount === 0 && !options.settings}
-              onCheckedChange={(checked) => onOptions({ ...options, settings: checked === true })}
+              onChange={(event) => onOptions({ ...options, settings: event.target.checked })}
             />
-            Bring my settings and hotkeys
-          </Flex>
-        </Text>
-      </Flex>
-      <Text size="1" color="gray">
-        A fresh import starts from the game's own settings. Leave the box clear unless you want the
-        RA2.INI, RA2MD.INI, KEYBOARD.INI or KEYBOARDMD.INI already in the folder.
-      </Text>
-      <Text size="1" color="gray">
-        {plan.skipped.length} files in the folder are left out: tools, other games and mods, and
-        what the game does not read.
-      </Text>
-      <Flex gap="3">
-        <Button disabled={stopped !== null} onClick={onStart}>
-          Import {formatBytes(plan.bytes)}
-        </Button>
-        <Button variant="soft" color="gray" onClick={onBack}>
-          Choose another folder
-        </Button>
-      </Flex>
-    </>
+            Settings and hotkeys
+          </label>
+          <InfoTip text="Off: start from the game's own settings. On: bring the RA2.INI, RA2MD.INI and KEYBOARD files in the folder." />
+        </div>
+      </div>
+      <p className={styles.small}>
+        {plan.copy.length} files from {stage.source.name}. {plan.skipped.length} left out
+        <InfoTip text="Tools, other games, mods and files the game does not read are not copied." />
+      </p>
+      <div className={styles.actions}>
+        <button
+          type="button"
+          className={styles.primary}
+          disabled={stopped !== null}
+          onClick={onStart}
+        >
+          INSTALL {formatBytes(plan.bytes)}
+        </button>
+        <button type="button" className={styles.secondary} onClick={onBack}>
+          OTHER FOLDER
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -404,24 +467,38 @@ function Copying({
   onCancel(): void;
 }) {
   const percent =
-    progress && progress.totalBytes > 0 ? (progress.doneBytes / progress.totalBytes) * 100 : 0;
+    progress && progress.totalBytes > 0
+      ? Math.round((progress.doneBytes / progress.totalBytes) * 100)
+      : 0;
   return (
-    <>
-      <Progress value={percent} aria-label="Copying the game" />
-      <Text size="2" color="gray">
-        {progress
-          ? `${formatBytes(progress.doneBytes)} of ${formatBytes(progress.totalBytes)} · ${progress.file} (${progress.doneFiles + 1} of ${progress.totalFiles})`
-          : "Starting…"}
-      </Text>
+    <div className={styles.body}>
+      <h1 className={styles.title}>INSTALLING</h1>
+      <div
+        role="progressbar"
+        aria-label="Copying the game"
+        aria-valuenow={percent}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        className={styles.bar}
+      >
+        <div style={{ width: `${percent}%` }} />
+      </div>
+      <div className={styles.progressLine}>
+        <span>
+          {progress
+            ? `${formatBytes(progress.doneBytes)} of ${formatBytes(progress.totalBytes)}`
+            : "Starting…"}
+        </span>
+        {progress && <span className={styles.muted}>{progress.file}</span>}
+      </div>
       {persistent === false && (
-        <Text size="2" color="amber">
-          The browser did not promise to keep this copy: if it clears its storage you would import
-          again.
-        </Text>
+        <p className={styles.warn}>The browser may clear this copy if it runs low on space.</p>
       )}
-      <Button variant="soft" color="gray" onClick={onCancel}>
-        Cancel
-      </Button>
-    </>
+      <div className={styles.actions}>
+        <button type="button" className={styles.secondary} onClick={onCancel}>
+          CANCEL
+        </button>
+      </div>
+    </div>
   );
 }
