@@ -45,7 +45,7 @@ Not in this plan (each gets its own plan; their tabs stay hidden until then):
 | 2 | Key art background | Done |
 | 3 | Active installation and edition | Done |
 | 4 | "All games" writes | Done |
-| 5 | Active mod | Not started |
+| 5 | Active mod | Done |
 | 6 | Launcher shell | Not started |
 | 7 | Play screen | Not started |
 | 8 | Mods screen | Not started |
