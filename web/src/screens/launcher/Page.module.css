@@ -1,0 +1,221 @@
+/* Shared pieces of the launcher's content screens (Mods, Game, Settings, Install). */
+
+.page {
+  position: absolute;
+  top: var(--bar-h, 64px);
+  left: var(--rail-w, 88px);
+  right: 0;
+  bottom: 0;
+  box-sizing: border-box;
+  padding: 48px 64px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 24px;
+}
+
+.title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 44px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+}
+
+.label {
+  margin: 0;
+  font-family: var(--font-label);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: var(--muted);
+}
+
+.primary {
+  height: 48px;
+  padding: 0 24px;
+  border: 0;
+  background: var(--red);
+  color: #fff;
+  font-family: var(--font-label);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  clip-path: var(--cut);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.primary:hover:not(:disabled) {
+  background: #e5302f;
+}
+.primary:disabled {
+  background: #4a4b52;
+  color: #c9c6c0;
+  cursor: not-allowed;
+}
+
+.outline {
+  height: 44px;
+  padding: 0 20px;
+  border: 1px solid var(--red);
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-label);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.outline:hover:not(:disabled) {
+  background: rgba(211, 38, 43, 0.14);
+}
+.outline:disabled {
+  border-color: #3a3b40;
+  color: var(--muted);
+  cursor: not-allowed;
+}
+.quiet {
+  composes: outline;
+  border-color: #3a3b40;
+}
+.quiet:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.icon {
+  width: 44px;
+  height: 44px;
+  flex: none;
+  border: 1px solid #3a3b40;
+  background: transparent;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.icon:hover:not(:disabled),
+.icon[aria-expanded="true"] {
+  color: var(--text);
+  border-color: var(--muted);
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-family: var(--font-label);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+.chip {
+  height: 32px;
+  padding: 0 14px;
+  border: 1px solid #3a3b40;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+.chip[aria-checked="true"] {
+  border-color: var(--red);
+  background: rgba(211, 38, 43, 0.16);
+  color: var(--text);
+}
+
+.status {
+  margin: 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+.failure {
+  margin: 0;
+  font-size: 14px;
+  color: #ff8a80;
+}
+.ok {
+  color: var(--green);
+}
+.warn {
+  color: var(--amber);
+}
+
+.empty {
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 16px;
+}
+
+.dialog {
+  background: #121317 !important;
+  border: 1px solid #3a2023;
+  border-top: 3px solid var(--red);
+  border-radius: 0 !important;
+  color: var(--text);
+  font-family: var(--font-body);
+}
+.dialogTitle {
+  margin: 0 0 12px;
+  font-family: var(--font-label);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+.dialogActions {
+  margin-top: 20px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+}
+
+@media (max-width: 720px) {
+  .page {
+    padding: 24px 16px;
+  }
+  .title {
+    font-size: 32px;
+  }
+}

@@ -1,0 +1,131 @@
+.screen {
+  position: absolute;
+  inset: 0;
+}
+
+.heading {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.row {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--line);
+}
+.row[data-active] {
+  border-left-color: var(--red);
+}
+
+.rowMain {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 16px 20px;
+}
+
+.thumb {
+  width: 64px;
+  height: 64px;
+  flex: none;
+  background: repeating-linear-gradient(45deg, #2a2b30 0 8px, #1c1d21 8px 16px);
+}
+
+.info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.name {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.meta {
+  margin: 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+.yr {
+  color: var(--yuri-light);
+}
+.ra2 {
+  color: #ff8a80;
+}
+
+.inUse {
+  font-family: var(--font-label);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--green);
+}
+
+.files {
+  margin: 0;
+  padding: 0 20px 16px 104px;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 240px;
+  overflow-y: auto;
+  font-size: 13px;
+  color: var(--muted);
+}
+.files li {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.drop {
+  min-height: 96px;
+  border: 1px dashed #3a3b40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 15px;
+}
+.drop[data-dragging] {
+  border-color: var(--red);
+  color: var(--text);
+  background: rgba(211, 38, 43, 0.08);
+}
+
+.choices {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+@media (max-width: 720px) {
+  .rowMain {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .thumb {
+    width: 44px;
+    height: 44px;
+  }
+  .files {
+    padding-left: 20px;
+  }
+}
