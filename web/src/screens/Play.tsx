@@ -1,5 +1,4 @@
 import {
-  CrossCircledIcon,
   EnterFullScreenIcon,
   ExclamationTriangleIcon,
   ExitFullScreenIcon,
@@ -7,7 +6,7 @@ import {
   GearIcon,
   KeyboardIcon,
 } from "@radix-ui/react-icons";
-import { Button, Callout, Dialog, Flex, Heading, ScrollArea, Text } from "@radix-ui/themes";
+import { Button, Callout, Dialog, Flex, Heading, Text } from "@radix-ui/themes";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SoundControl } from "../components/SoundControl";
 import { SettingsDialog } from "../components/SettingsDialog";
@@ -27,10 +26,12 @@ import { PageCursor } from "../game/cursor-layer";
 import { LanPanel } from "../components/LanPanel";
 import { FileExplorer } from "../components/FileExplorer";
 import { GameTray, trayItem } from "./GameTray";
+import { CrashDialog } from "./CrashDialog";
 import {
   argsFromQuery,
   GameNotBuilt,
   startGame,
+  sourceGame,
   sourceStorage,
   type FileSource,
   type GameHandle,
@@ -828,7 +829,7 @@ export function Play({ files }: { files: FileSource }) {
         </Callout.Root>
       )}
       <FrameStats presenter={presenter} on={statsOn} onToggle={toggleStats} />
-      {waiting && <LoadingScreen state={{ phase, copy, title }} />}
+      {waiting && <LoadingScreen state={{ phase, copy, title, edition: sourceGame(files) }} />}
       {phase === "booting" && !startError && !crashed && (
         <LoadingScreen state={{ phase, copy, title }} variant="chip" />
       )}
@@ -843,40 +844,13 @@ export function Play({ files }: { files: FileSource }) {
         </Flex>
       )}
       {(crashed || (startError && !(startError instanceof GameNotBuilt))) && (
-        <CrashView
+        <CrashDialog
           message={exitError ?? error ?? startError?.message ?? "The game stopped."}
+          log={gameStore.getLog()}
+          onReload={() => window.location.reload()}
           onReturn={returnToLauncher}
         />
       )}
     </div>
-  );
-}
-
-/** The game's thread died: what it said, and the end of its log. */
-function CrashView({ message, onReturn }: { message: string; onReturn(): void }) {
-  const tail = gameStore.getLog().slice(-80).join("\n");
-  return (
-    <Flex
-      className={styles.overlay}
-      align="center"
-      justify="center"
-      direction="column"
-      gap="3"
-      p="6"
-    >
-      <Callout.Root color="red" role="alert" size="3">
-        <Callout.Icon>
-          <CrossCircledIcon />
-        </Callout.Icon>
-        <Callout.Text>{message}</Callout.Text>
-      </Callout.Root>
-      {tail && (
-        <ScrollArea className={styles.log} type="auto" scrollbars="vertical">
-          <pre>{tail}</pre>
-        </ScrollArea>
-      )}
-      <Button onClick={() => window.location.reload()}>Reload</Button>
-      <Button onClick={onReturn}>Back to launcher</Button>
-    </Flex>
   );
 }

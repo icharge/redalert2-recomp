@@ -80,19 +80,3 @@
   z-index: 5;
   background: color-mix(in srgb, var(--color-background) 88%, transparent);
 }
-
-.log {
-  max-width: min(900px, 100%);
-  max-height: 40vh;
-  width: 100%;
-  background: var(--gray-a3);
-  border-radius: var(--radius-3);
-}
-
-.log pre {
-  margin: 0;
-  padding: var(--space-3);
-  font-size: var(--font-size-1);
-  white-space: pre-wrap;
-  word-break: break-all;
-}
