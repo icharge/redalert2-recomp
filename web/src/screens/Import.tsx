@@ -85,8 +85,11 @@ export function Import({
   onDone,
   onBack,
   slot,
+  edition = "ra2",
 }: {
   deps: ImportDeps;
+  /** the game selected in the launcher; its art is the background */
+  edition?: GameId;
   /** the copy finished, in this slot */
   onDone: (slot?: number) => void;
   /** back to the launcher; no BACK button without it */
@@ -153,7 +156,7 @@ export function Import({
   const current = stepOf(stage);
   return (
     <div className={styles.screen}>
-      <KeyArt edition="ra2" dim={0.45} />
+      <KeyArt edition={edition} dim={0.45} />
       {onBack && stage.name !== "copying" && (
         <button type="button" className={styles.back} onClick={onBack}>
           <svg

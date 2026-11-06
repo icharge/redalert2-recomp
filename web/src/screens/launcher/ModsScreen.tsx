@@ -138,6 +138,7 @@ function ModRow({
 /** Every mod of the install, by edition; the active one (`[mods] active`) is marked IN USE. */
 export function ModsScreen({
   editions,
+  edition = null,
   manifest,
   target,
   activeMods,
@@ -146,6 +147,8 @@ export function ModsScreen({
   gameSettingsDeps,
 }: {
   editions: GameRecord[];
+  /** the game selected in the rail; its art is the background */
+  edition?: GameRecord | null;
   manifest: Manifest;
   target: CopyTarget;
   /** the active mod of each edition, keyed by `game.storage` ("" for Vanilla) */
@@ -292,7 +295,7 @@ export function ModsScreen({
 
   return (
     <div className={styles.screen}>
-      <KeyArt edition={editions.at(-1)?.id ?? null} dim={0.78} />
+      <KeyArt edition={(edition ?? editions.at(-1))?.id ?? null} dim={0.78} />
       <div className={page.page}>
         <div className={page.header}>
           <div className={styles.heading}>

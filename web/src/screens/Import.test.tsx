@@ -106,6 +106,17 @@ async function setup(source: FolderSource | null, quota = 1e12) {
   return { manifest, target, onDone, user: userEvent.setup() };
 }
 
+describe("Import background", () => {
+  it("shows the selected game's background", async () => {
+    const { container } = render(
+      <Theme>
+        <Import deps={{} as ImportDeps} onDone={vi.fn()} edition="ra2md" />
+      </Theme>,
+    );
+    expect(container.querySelector("[data-edition]")).toHaveAttribute("data-edition", "ra2md");
+  });
+});
+
 describe("Import", () => {
   it("starts by asking for the folder, and says nothing is uploaded", async () => {
     await setup(folder());

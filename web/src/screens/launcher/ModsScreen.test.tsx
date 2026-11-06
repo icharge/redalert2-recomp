@@ -106,6 +106,22 @@ beforeEach(() => {
   settings = settingsStore();
 });
 
+function renderModsWithContainer(props: Partial<Parameters<typeof ModsScreen>[0]> = {}) {
+  return render(
+    <MemoryRouter>
+      <ModsScreen
+        editions={[ra2, yr]}
+        manifest={manifestState.manifest}
+        target={targetState.target}
+        activeMods={{}}
+        onChanged={vi.fn()}
+        gameSettingsDeps={settings.deps}
+        {...props}
+      />
+    </MemoryRouter>,
+  );
+}
+
 function renderMods(props: Partial<Parameters<typeof ModsScreen>[0]> = {}) {
   const onChanged = vi.fn();
   const onEdition = vi.fn();
@@ -138,6 +154,11 @@ function renderMods(props: Partial<Parameters<typeof ModsScreen>[0]> = {}) {
 const row = (name: string) => screen.getByRole("heading", { name }).closest("li")!;
 
 describe("ModsScreen", () => {
+  it("shows the selected game's background", () => {
+    const { container } = renderModsWithContainer({ edition: ra2 });
+    expect(container.querySelector("[data-edition]")).toHaveAttribute("data-edition", "ra2");
+  });
+
   it("lists mods of every edition with its edition and size", async () => {
     renderMods();
     expect(await screen.findByRole("heading", { name: "Mental Omega" })).toBeInTheDocument();

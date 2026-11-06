@@ -313,6 +313,7 @@ function Main() {
         element={shell(
           <ModsScreen
             editions={editions}
+            edition={edition}
             manifest={manifest}
             target={target}
             activeMods={modState.active}
@@ -393,6 +394,7 @@ function Main() {
               key={resume ?? "new"}
               deps={browserDeps(build, manifest, target)}
               {...(resume ? { slot: resume } : {})}
+              {...(edition ? { edition: edition.id } : {})}
               onBack={() => navigate("/")}
               onDone={(done) => {
                 if (done !== undefined) switchInstall(done);
