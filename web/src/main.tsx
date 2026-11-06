@@ -1,4 +1,5 @@
 import "@radix-ui/themes/styles.css";
+import "./styles/tokens.css";
 import "./styles/global.css";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";

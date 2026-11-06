@@ -10,6 +10,8 @@ build-web/
 build-web-game/
 # Exported from the player's own game folder by tools/export_dialog_art.py
 web/public/dialog-art/
+# Logos, icons and backgrounds (EA artwork) on the owner's machine; the page falls back without them
+web/public/brand/
 # Private native-WOL verification modules, also generated from the retail game.
 build-web-udp/
 build-web-wol-yr/

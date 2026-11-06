@@ -36,7 +36,7 @@ export default defineConfig(({ mode }) => {
         registerType: "prompt",
         devOptions: { enabled: false },
         injectManifest: {
-          globPatterns: ["**/*.{js,css,html,svg,png,webmanifest,woff,fnt}"],
+          globPatterns: ["**/*.{js,css,html,svg,png,webp,webmanifest,woff,woff2,fnt}"],
           globIgnores: ["game/**"],
           maximumFileSizeToCacheInBytes: 3_000_000,
           rollupFormat: "iife",

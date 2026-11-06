@@ -1,0 +1,76 @@
+/* Launcher tokens and fonts (docs/web/frontend.md). The fonts are self-hosted so the page works offline. */
+
+@font-face {
+  font-family: "Russo One";
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/russo-one-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Barlow Condensed";
+  font-weight: 500;
+  font-display: swap;
+  src: url("/fonts/barlow-condensed-500.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Barlow Condensed";
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/barlow-condensed-600.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Barlow Condensed";
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/barlow-condensed-700.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Barlow";
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/barlow-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Barlow";
+  font-weight: 500;
+  font-display: swap;
+  src: url("/fonts/barlow-500.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Barlow";
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/barlow-600.woff2") format("woff2");
+}
+
+:root {
+  --bg: #07080b;
+  --text: #f1ede6;
+  --muted: #a7a29a;
+  --red: #d3262b;
+  --red-dark: #8b1a1a;
+  --red-deep: #5a1214;
+  --yuri: #3a1d66;
+  --yuri-mid: #7b4ae0;
+  --yuri-light: #c9b8ff;
+  --green: #57d68d;
+  --amber: #f2b134;
+  --panel: rgba(18, 19, 23, 0.92);
+  --line: #2a2b30;
+  --bar: rgba(8, 9, 11, 0.82);
+  --rail: rgba(8, 9, 11, 0.94);
+
+  --font-display: "Russo One", "Barlow Condensed", sans-serif;
+  --font-label: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --font-body: "Barlow", system-ui, sans-serif;
+
+  --cut: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+  --cut-big: polygon(
+    16px 0,
+    100% 0,
+    100% calc(100% - 16px),
+    calc(100% - 16px) 100%,
+    0 100%,
+    0 16px
+  );
+}
