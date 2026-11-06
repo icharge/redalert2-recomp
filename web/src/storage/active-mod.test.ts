@@ -51,6 +51,21 @@ describe("active mod", () => {
     await expect(readActiveMod(yr, [mod("Other")], deps)).resolves.toBe("");
   });
 
+  it("a non-Latin mod name is stored as UTF-8 bytes, as the host reads it", async () => {
+    const { deps, files } = store();
+    await writeActiveMod(yr, "ม็อดไทย", deps);
+    const bytes = encodeLatin1(files.get("ra2md-1/.host/ra2md.ini")!);
+    expect(new TextDecoder().decode(bytes)).toContain("active=ม็อดไทย");
+    await expect(readActiveMod(yr, [mod("ม็อดไทย")], deps)).resolves.toBe("ม็อดไทย");
+  });
+
+  it("reads a non-Latin name the game wrote in UTF-8", async () => {
+    const { deps } = store({
+      "ra2md-1/.host/ra2md.ini": decodeLatin1(new TextEncoder().encode("[mods]\nactive=ม็อดไทย\n")),
+    });
+    await expect(readActiveMod(yr, [mod("ม็อดไทย")], deps)).resolves.toBe("ม็อดไทย");
+  });
+
   it("write then read round-trips, keeping the other host values", async () => {
     const { deps, files } = store({ "ra2md-1/.host/ra2md.ini": "[present]\nscale=sharp\n" });
     await writeActiveMod(yr, "Mental Omega", deps);

@@ -110,7 +110,8 @@ export function GameplayTab({ editions, edition, settings }: TabProps) {
     setSpeedControl(on);
     forEachEdition(editions, (game) => writeCampaignSpeedControlPreference(game.storage, on));
   };
-  const hasYuri = editions.some((game) => game.id === "ra2md");
+  // Only Yuri's Revenge has a campaign difficulty, so it shows (and reads) from its own file.
+  const showsYuri = edition.id === "ra2md";
 
   return (
     <>
@@ -147,7 +148,7 @@ export function GameplayTab({ editions, edition, settings }: TabProps) {
           choices={DIFFICULTY}
           onChange={save("Options", "Difficulty")}
         />
-        {hasYuri && (
+        {showsYuri && (
           <Segmented
             label="Campaign difficulty"
             info="Yuri’s Revenge only."

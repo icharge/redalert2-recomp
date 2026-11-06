@@ -32,12 +32,14 @@ function setup({
   main = true,
   mainIni,
   editions = [yr],
+  shown,
   tab = "launcher",
 }: {
   keyboard?: boolean;
   main?: boolean;
   mainIni?: string;
   editions?: GameRecord[];
+  shown?: GameRecord;
   tab?: SettingsTab;
 } = {}) {
   const saved = new Map<string, string>();
@@ -67,7 +69,7 @@ function setup({
     return (
       <SettingsScreen
         editions={editions}
-        edition={editions.at(-1)!}
+        edition={shown ?? editions.at(-1)!}
         tab={(params.tab ?? "launcher") as SettingsTab}
         gameSettingsDeps={deps}
       />
@@ -159,6 +161,12 @@ describe("SettingsScreen", () => {
     await waitFor(() => expect(written.length).toBeGreaterThan(0));
     expect(written.map((w) => w.storage)).toEqual(["slot-1-ra2md"]);
     expect(written[0]?.text).toContain("CampDifficulty=0");
+  });
+
+  it("campaign difficulty is offered only while Yuri's Revenge is shown", async () => {
+    setup({ editions: [ra2, yr], shown: ra2 });
+    await gameplay();
+    expect(screen.queryByRole("radiogroup", { name: "Campaign difficulty" })).toBeNull();
   });
 
   it("offers the fastest scroll rate the game has", async () => {
