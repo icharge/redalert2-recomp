@@ -1,0 +1,256 @@
+.screen {
+  position: absolute;
+  inset: 0;
+}
+
+.empty {
+  position: absolute;
+  inset: var(--bar-h, 64px) 0 0 var(--rail-w, 88px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.title {
+  position: absolute;
+  left: calc(var(--rail-w, 88px) + 64px);
+  bottom: 176px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.kicker {
+  margin: 0;
+  font-family: var(--font-label);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.24em;
+  color: var(--yuri-light);
+}
+
+.heading {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 88px;
+  line-height: 0.95;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  text-shadow: 0 4px 24px rgba(0, 0, 0, 0.7);
+}
+.line {
+  display: block;
+  white-space: nowrap;
+}
+
+.footer {
+  position: absolute;
+  left: var(--rail-w, 88px);
+  right: 0;
+  bottom: 0;
+  height: 120px;
+  box-sizing: border-box;
+  padding: 0 32px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: center;
+  gap: 16px;
+  background: rgba(8, 9, 11, 0.95);
+  border-top: 2px solid var(--red-dark);
+}
+.left {
+  justify-self: start;
+}
+.center {
+  justify-self: center;
+}
+.right {
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.play {
+  min-width: 320px;
+  height: 76px;
+  padding: 0 32px;
+  border: 0;
+  background: var(--red);
+  color: #fff;
+  font-family: var(--font-display);
+  font-size: 36px;
+  letter-spacing: 0.16em;
+  clip-path: var(--cut-big);
+  box-shadow: inset 0 -4px 0 var(--red-dark);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.play:hover:not(:disabled) {
+  background: #e5302f;
+}
+.play:disabled {
+  background: #4a4b52;
+  box-shadow: inset 0 -4px 0 #2a2b30;
+  color: #c9c6c0;
+  cursor: not-allowed;
+}
+.empty .play,
+.center .play:not(:only-child) {
+  font-size: 28px;
+}
+
+.profile {
+  position: relative;
+}
+
+.profileButton {
+  width: 320px;
+  max-width: 100%;
+  height: 64px;
+  box-sizing: border-box;
+  border: 1px solid #3a2023;
+  background: #121317;
+  color: var(--text);
+  font: inherit;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 14px;
+  text-align: left;
+  cursor: pointer;
+}
+.profileButton:hover {
+  border-color: var(--red-dark);
+}
+.profileText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.label {
+  font-family: var(--font-label);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+}
+.profileName {
+  font-size: 17px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.swatch {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  box-sizing: border-box;
+  border: 1px solid transparent;
+}
+.option .swatch {
+  width: 28px;
+  height: 28px;
+}
+.modSwatch {
+  background: repeating-linear-gradient(45deg, #2a2b30 0 6px, #1c1d21 6px 12px);
+}
+
+.menu {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 12px);
+  width: 320px;
+  max-height: 60vh;
+  overflow-y: auto;
+  background: #121317;
+  border: 1px solid #3a2023;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+  padding: 6px 0;
+  z-index: 4;
+}
+.menu > [role="listbox"] {
+  display: flex;
+  flex-direction: column;
+}
+.option {
+  height: 48px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  text-align: left;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+}
+.option:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+.option[aria-selected="true"] {
+  background: rgba(211, 38, 43, 0.14);
+  font-weight: 600;
+}
+.manage {
+  height: 44px;
+  border-top: 1px solid var(--line);
+  margin-top: 6px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  font-family: var(--font-label);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: #ff6b5e;
+  text-decoration: none;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+  text-align: right;
+}
+.dotReady,
+.dotWait {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--green);
+}
+.dotWait {
+  background: var(--amber);
+}
+
+.textButton {
+  border: 0;
+  background: none;
+  padding: 8px 0;
+  color: var(--amber);
+  font-family: var(--font-label);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+}
+
+.failure {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 8px);
+  margin: 0;
+  font-size: 13px;
+  color: #ff8a80;
+}
