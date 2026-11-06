@@ -1,19 +1,21 @@
 import { SpeakerLoudIcon, SpeakerModerateIcon, SpeakerOffIcon } from "@radix-ui/react-icons";
-import { Button, Flex, IconButton, Popover, Slider, Switch, Text } from "@radix-ui/themes";
+import { Popover } from "@radix-ui/themes";
 import { useSyncExternalStore } from "react";
 import type { GameAudio } from "../game/audio";
 import type { SoundPreferences } from "../game/sound-preferences";
 import styles from "./SoundControl.module.css";
 
 const CHOICES = [
-  ["muteOnBlur", "Mute when the window loses focus"],
+  ["muteOnBlur", "Mute when in background"],
   ["menuMusic", "Menu music"],
 ] as const satisfies readonly (readonly [keyof SoundPreferences, string])[];
 
+const PIPS = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
+
 /**
  * The page's sound controls over the game: a bar asking for a click while the browser holds the sound,
- * and, once it plays, a speaker with the volume and when the game may be heard. Both leave the keyboard to the game (Esc is the
- * game's key), so they hand the focus back when they are used.
+ * and, once it plays, a volume button (in the page controls) with the volume and when the game may be
+ * heard. Both leave the keyboard to the game (Esc is the game's key), so they hand the focus back.
  */
 export function SoundControl({
   audio,
@@ -22,6 +24,7 @@ export function SoundControl({
   preferences,
   onPreference,
   giveBack,
+  className,
 }: {
   audio: GameAudio;
   volume: number;
@@ -29,55 +32,75 @@ export function SoundControl({
   preferences: SoundPreferences;
   onPreference: (key: keyof SoundPreferences, value: boolean) => void;
   giveBack: () => void;
+  /** the class of the volume button */
+  className?: string;
 }) {
   const state = useSyncExternalStore(audio.subscribe, () => audio.state);
   if (state === "starting" || state === "unavailable") return null;
   if (state === "suspended") {
     return (
-      <Flex className={styles.bar} role="status" align="center" justify="center" gap="3">
-        <SpeakerOffIcon />
+      <div className={styles.bar} role="status">
+        <SpeakerOffIcon aria-hidden="true" />
         <span>The browser is holding the sound.</span>
-        <Button size="1" variant="solid" onClick={() => void audio.resume().then(giveBack)}>
+        <button
+          type="button"
+          className={styles.start}
+          onClick={() => void audio.resume().then(giveBack)}
+        >
           Click to start sound
-        </Button>
-      </Flex>
+        </button>
+      </div>
     );
   }
+  const percent = Math.round(volume * 100);
+  const shown = Math.round(volume * 10) * 10;
   const Icon = volume === 0 ? SpeakerOffIcon : volume < 0.5 ? SpeakerModerateIcon : SpeakerLoudIcon;
   return (
     <Popover.Root onOpenChange={(open) => open || giveBack()}>
       <Popover.Trigger>
-        <IconButton className={styles.speaker} variant="soft" color="gray" aria-label="Volume">
-          <Icon />
-        </IconButton>
+        <button type="button" className={className} aria-label="Volume">
+          <Icon aria-hidden="true" />
+          {percent}%
+        </button>
       </Popover.Trigger>
-      <Popover.Content size="1" width="260px" onCloseAutoFocus={(event) => event.preventDefault()}>
-        <Flex direction="column" gap="3">
-          <Flex align="center" gap="3">
-            <Slider
-              aria-label="Volume"
-              min={0}
-              max={100}
-              step={1}
-              value={[Math.round(volume * 100)]}
-              onValueChange={([value]) => onVolume((value ?? 100) / 100)}
-            />
-            <span className={styles.percent}>{Math.round(volume * 100)}</span>
-          </Flex>
+      <Popover.Content
+        className={styles.panel}
+        width="300px"
+        onCloseAutoFocus={(event) => event.preventDefault()}
+      >
+        <section aria-label="Sound" className={styles.body}>
+          <div className={styles.volume}>
+            <div role="group" aria-label="Volume" className={styles.pips}>
+              {PIPS.map((pip) => (
+                <button
+                  key={pip}
+                  type="button"
+                  className={styles.pip}
+                  data-on={pip <= shown || undefined}
+                  aria-label={`Volume ${pip}%`}
+                  aria-pressed={pip === shown}
+                  onClick={() => onVolume(pip / 100)}
+                />
+              ))}
+            </div>
+            <span className={styles.percent}>{percent}%</span>
+          </div>
           {CHOICES.map(([key, label]) => (
-            <Flex key={key} justify="between" align="center" gap="3">
-              <Text as="label" size="2" htmlFor={`sound-${key}`}>
-                {label}
-              </Text>
-              <Switch
-                id={`sound-${key}`}
-                size="1"
-                checked={preferences[key]}
-                onCheckedChange={(on) => onPreference(key, on)}
-              />
-            </Flex>
+            <div key={key} className={styles.choice}>
+              <span>{label}</span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={preferences[key]}
+                aria-label={label}
+                className={styles.switch}
+                onClick={() => onPreference(key, !preferences[key])}
+              >
+                <span />
+              </button>
+            </div>
           ))}
-        </Flex>
+        </section>
       </Popover.Content>
     </Popover.Root>
   );

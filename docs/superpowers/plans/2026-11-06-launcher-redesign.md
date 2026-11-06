@@ -53,7 +53,7 @@ Not in this plan (each gets its own plan; their tabs stay hidden until then):
 | 10 | Install screen | Done |
 | 11 | Settings screen | Done |
 | 12 | Routes and App wiring | Done |
-| 13 | In-game overlay and sound | Not started |
+| 13 | In-game overlay and sound | Done |
 | 14 | In-game F10 panel | Not started |
 | 15 | Loading screen and crash dialog | Not started |
 | 16 | LAN, exit and sound-start dialogs | Not started |

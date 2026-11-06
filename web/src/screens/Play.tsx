@@ -3,17 +3,11 @@ import {
   EnterFullScreenIcon,
   ExclamationTriangleIcon,
   ExitFullScreenIcon,
+  FileTextIcon,
+  GearIcon,
+  KeyboardIcon,
 } from "@radix-ui/react-icons";
-import {
-  Button,
-  Callout,
-  Dialog,
-  Flex,
-  Heading,
-  IconButton,
-  ScrollArea,
-  Text,
-} from "@radix-ui/themes";
+import { Button, Callout, Dialog, Flex, Heading, ScrollArea, Text } from "@radix-ui/themes";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SoundControl } from "../components/SoundControl";
 import { SettingsDialog } from "../components/SettingsDialog";
@@ -32,6 +26,7 @@ import { attachInput } from "../game/input";
 import { PageCursor } from "../game/cursor-layer";
 import { LanPanel } from "../components/LanPanel";
 import { FileExplorer } from "../components/FileExplorer";
+import { GameTray, trayItem } from "./GameTray";
 import {
   argsFromQuery,
   GameNotBuilt,
@@ -694,17 +689,18 @@ export function Play({ files }: { files: FileSource }) {
         onBlur={() => setTextInputOpen(false)}
       />
       <img ref={cursor} className={styles.cursor} alt="" aria-hidden="true" />
-      <Flex className={styles.topMenu} gap="2">
-        <Button
-          size="1"
-          variant="soft"
+      <GameTray>
+        <button
+          type="button"
+          className={trayItem}
           onClick={() => handle.current?.exports.ra2_setting(Setting.Menu, 1, 0)}
         >
-          Settings (F10)
-        </Button>
-        <Button
-          size="1"
-          variant="soft"
+          <GearIcon aria-hidden="true" />
+          SETTINGS <kbd>F10</kbd>
+        </button>
+        <button
+          type="button"
+          className={trayItem}
           aria-pressed={textInputOpen}
           disabled={!presenter}
           onPointerDown={(event) => {
@@ -719,18 +715,52 @@ export function Play({ files }: { files: FileSource }) {
             }
           }}
         >
-          {textInputOpen ? "Hide keyboard" : "Text input"}
-        </Button>
+          <KeyboardIcon aria-hidden="true" />
+          TYPE
+        </button>
         {liveFiles && (
-          <Button size="1" variant="soft" onClick={() => setBrowseFiles(true)}>
-            Browse files
-          </Button>
+          <button type="button" className={trayItem} onClick={() => setBrowseFiles(true)}>
+            <FileTextIcon aria-hidden="true" />
+            FILES
+          </button>
         )}
-      </Flex>
+        {presenter && handle.current && <LanPanel game={handle.current} className={trayItem} />}
+        {audio && (
+          <SoundControl
+            audio={audio}
+            className={trayItem}
+            volume={volume}
+            onVolume={(next) => {
+              setVolume(next);
+              handle.current?.exports.ra2_set_volume(next);
+              void saveVolume(next);
+            }}
+            preferences={soundPreferences}
+            onPreference={(key, value) => {
+              setSoundPreferences((now) => ({ ...now, [key]: value }));
+              void saveSoundPreference(key, value);
+            }}
+            giveBack={() => canvas.current?.focus()}
+          />
+        )}
+        <button
+          type="button"
+          className={trayItem}
+          aria-label={fullscreen ? "Leave fullscreen" : "Fullscreen"}
+          aria-pressed={fullscreen}
+          onClick={toggleFullscreen}
+        >
+          {fullscreen ? (
+            <ExitFullScreenIcon aria-hidden="true" />
+          ) : (
+            <EnterFullScreenIcon aria-hidden="true" />
+          )}
+          F11
+        </button>
+      </GameTray>
       {browseFiles && liveFiles && (
         <FileExplorer source={liveFiles} onClose={() => setBrowseFiles(false)} />
       )}
-      {presenter && handle.current && <LanPanel game={handle.current} />}
       <Dialog.Root
         open={exitConfirmation !== null}
         onOpenChange={(open) => {
@@ -798,33 +828,6 @@ export function Play({ files }: { files: FileSource }) {
         </Callout.Root>
       )}
       <FrameStats presenter={presenter} on={statsOn} onToggle={toggleStats} />
-      <IconButton
-        className={styles.fullscreenButton}
-        variant="soft"
-        color="gray"
-        aria-label={fullscreen ? "Leave fullscreen" : "Fullscreen"}
-        aria-pressed={fullscreen}
-        onClick={toggleFullscreen}
-      >
-        {fullscreen ? <ExitFullScreenIcon /> : <EnterFullScreenIcon />}
-      </IconButton>
-      {audio && (
-        <SoundControl
-          audio={audio}
-          volume={volume}
-          onVolume={(next) => {
-            setVolume(next);
-            handle.current?.exports.ra2_set_volume(next);
-            void saveVolume(next);
-          }}
-          preferences={soundPreferences}
-          onPreference={(key, value) => {
-            setSoundPreferences((now) => ({ ...now, [key]: value }));
-            void saveSoundPreference(key, value);
-          }}
-          giveBack={() => canvas.current?.focus()}
-        />
-      )}
       {waiting && <LoadingScreen state={{ phase, copy, title }} />}
       {phase === "booting" && !startError && !crashed && (
         <LoadingScreen state={{ phase, copy, title }} variant="chip" />

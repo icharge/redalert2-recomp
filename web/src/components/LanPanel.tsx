@@ -15,7 +15,7 @@ const statusText: Record<LanStatus, string> = {
 };
 
 /** Manual offer/answer exchange keeps LAN pairing independent of a hosted signaling service. */
-export function LanPanel({ game }: { game: GameHandle }) {
+export function LanPanel({ game, className }: { game: GameHandle; className?: string }) {
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<LanStatus>("idle");
   const [mode, setMode] = useState<"none" | "offer" | "answer">("none");
@@ -135,9 +135,10 @@ export function LanPanel({ game }: { game: GameHandle }) {
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
       <Dialog.Trigger>
-        <Button className={styles.trigger} size="1" variant="soft">
+        <button type="button" className={className ?? styles.trigger}>
+          <span className={styles.dot} data-status={status} aria-hidden="true" />
           LAN
-        </Button>
+        </button>
       </Dialog.Trigger>
       <Dialog.Content maxWidth="680px">
         <Dialog.Title>LAN multiplayer</Dialog.Title>

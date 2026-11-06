@@ -11,6 +11,26 @@
   opacity: 1;
 }
 
+/* the connection at a glance: grey idle, amber on the way, green connected, red failed */
+.dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: #6d6e74;
+}
+.dot[data-status="preparing"],
+.dot[data-status="waiting"],
+.dot[data-status="connecting"] {
+  background: var(--amber);
+}
+.dot[data-status="connected"] {
+  background: var(--green);
+}
+.dot[data-status="failed"] {
+  background: var(--red);
+}
+
 .field {
   display: flex;
   flex-direction: column;

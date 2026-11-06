@@ -1,13 +1,19 @@
+/* bottom-left, clear of the page controls at the top-left */
 .stats {
   position: absolute;
-  top: var(--space-2);
-  left: var(--space-2);
+  left: 12px;
+  bottom: 12px;
   z-index: 2;
-  padding: var(--space-1) var(--space-2);
-  font: var(--font-size-1) / 1.4 var(--code-font-family);
-  color: #cfe;
-  background: rgb(0 0 0 / 0.65);
-  border-radius: var(--radius-2);
+  padding: 8px 12px;
+  background: rgba(5, 12, 8, 0.82);
+  border: 1px solid #1f4a30;
+  color: #6ff2a4;
+  font-family: var(--font-label);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  line-height: 1.4;
+  text-transform: uppercase;
   pointer-events: none;
   white-space: pre;
 }
