@@ -54,6 +54,7 @@ import { GlPresenter } from "../game/gl-presenter";
 import { presenterKind } from "../game/choose-presenter";
 import { gameStore, useGameState } from "../game/store";
 import { useAttention } from "../game/attention";
+import { matchQuiet, sidebarInset } from "../game/match-quiet";
 import {
   DEFAULT_SOUND_PREFERENCES,
   loadSoundPreferences,
@@ -117,6 +118,8 @@ export function Play({ files }: { files: FileSource }) {
   const [browseFiles, setBrowseFiles] = useState(false);
   const [textInputOpen, setTextInputOpen] = useState(false);
   const [browserError, setBrowserError] = useState<string | null>(null);
+  const [trayQuiet, setTrayQuiet] = useState(false);
+  const [trayRight, setTrayRight] = useState(0);
   const gameId = sourceStorage(files);
   const [thaiFontFix] = useState(() => readThaiFontPreference(gameId));
   const [fullscreenPreference] = useState<FullscreenPreference>(() =>
@@ -351,6 +354,37 @@ export function Play({ files }: { files: FileSource }) {
       disarmGestures();
     };
   }, [presenter, phase, fullscreenPreference]);
+
+  // The page's controls keep out of the way while a match plays, and sit just left of the
+  // game's sidebar wherever the picture's scale and letterbox put it.
+  useEffect(() => {
+    const game = handle.current;
+    if (!presenter || !game) return;
+    const tick = () => {
+      let picture: { width: number; height: number };
+      try {
+        const { HEAP32 } = game.memory();
+        const base = game.shared >> 2;
+        setTrayQuiet(matchQuiet(HEAP32, base));
+        // the picture on screen now: the game's size moves to the match's before its loading screen ends
+        picture = {
+          width: Atomics.load(HEAP32, base + Shared.frameW),
+          height: Atomics.load(HEAP32, base + Shared.frameH),
+        };
+      } catch {
+        return; // the module is shutting down
+      }
+      const target = canvas.current;
+      const page = stage.current;
+      if (!target || !page) return;
+      const box = target.getBoundingClientRect();
+      const inset = page.getBoundingClientRect().right - box.right + sidebarInset(box, picture);
+      setTrayRight(Math.round(inset));
+    };
+    tick();
+    const timer = window.setInterval(tick, 250);
+    return () => window.clearInterval(timer);
+  }, [presenter]);
 
   // "Game match only" gives the window back after the score screen: the
   // launcher must not stay fullscreen once the match has ended.
@@ -691,7 +725,7 @@ export function Play({ files }: { files: FileSource }) {
         onBlur={() => setTextInputOpen(false)}
       />
       <img ref={cursor} className={styles.cursor} alt="" aria-hidden="true" />
-      <GameTray>
+      <GameTray quiet={trayQuiet} right={trayRight}>
         <button
           type="button"
           className={trayItem}

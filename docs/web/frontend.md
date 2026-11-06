@@ -143,9 +143,17 @@ is never reused for another slot. Mod/font restarts reload the same game URL.
    [storage.md](storage.md) and three options (movies, saved games, settings and hotkeys); then
    the copy with CANCEL. It's resumable: a reload continues from the manifest.
 6. **Settings.** Launcher, Gameplay, Audio, Video and Keyboard (below).
-7. **In game.** The canvas fills the window. A red star at the top-left opens the page controls:
-   SETTINGS F10, TYPE, FILES, LAN, the volume and F11. The loading screen shows the edition's art
-   and a segmented bar; "Sound is off until you click" waits for the first gesture.
+7. **In game.** The canvas fills the window. A red star at the bottom right, just left of the game's
+   sidebar, opens the page controls: SETTINGS F10, TYPE, FILES, LAN, the volume and F11. The star
+   follows the sidebar's edge as the picture's scale and letterbox change (`sidebarInset` in
+   `game/match-quiet.ts`; the sidebar is 168 game pixels). While a match plays the bar slides into
+   the star and the star fades to a quarter, so the page doesn't draw the eye; pointing at it,
+   keyboard focus, an open pop-up or the game's pause menu brings the bar back. The page knows a
+   match is playing without a flag of its own: the match state is set and the game draws its own
+   cursor (the pause menu and score screen switch to the overlay or arrow cursor, `matchQuiet`).
+   Under Pointer Lock there is no hover, so Esc (the pause menu) is the way to the bar mid-match.
+   The loading screen shows the edition's art and a segmented bar; "Sound is off until you click"
+   waits for the first gesture.
 
 On a phone (under 720px) the rail becomes a row under the bar, the tabs scroll sideways in the
 bar, Play's footer stacks, and the Settings sections become a row.
@@ -224,8 +232,9 @@ link the game asked the system browser to open). `Play` mounts one Radix
 dialog for each and gates game input while one is open; closing them only
 clears the field, so the game keeps running. `openLink` is mapped by
 `link-targets.ts` into a topic, the original URL, and whether the page may be
-framed or offered as an outbound link ([protocol.md](protocol.md), "Web
-links"). YR's embedded browser supplies a page key; the host maps a known key
+framed; every link shows the same permission prompt and **Open** / **Cancel**
+([protocol.md](protocol.md), "Web links"). YR's embedded browser supplies a
+page key; the host maps a known key
 to the retail installer's registry URL (`src/web/wol_pages.h`), so the event
 carries the real Westwood URL. An unknown key has `url: ""` and the key in
 `page`, and the dialog names the page.
@@ -275,8 +284,9 @@ picture of the page fades in and later ones don't, so a tab change doesn't dip t
 change the red underline draws in and the screen's parts rise one after another; the Play title
 slides in, PLAY glints and glows, and the status dot pings. Settings switches slide and the loading
 bar's newest segment pulses. The bar and the rail are one layout route in `App.tsx`, so they keep
-their place (and their animation state) when the tab changes. The in-game page has no new motion:
-a match shouldn't be distracted. One rule in `tokens.css` ends every animation and transition at
+their place (and their animation state) when the tab changes. In game, the only motion is
+the page controls sliding away into the star while a match plays (above): a match shouldn't be
+distracted. One rule in `tokens.css` ends every animation and transition at
 once under `prefers-reduced-motion`, so a new effect needs nothing extra to respect it.
 
 Accessibility: every control is reachable by keyboard and labelled; the current tab, rail tile and

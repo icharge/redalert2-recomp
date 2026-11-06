@@ -1,11 +1,16 @@
+/* Bottom right, just left of the game's sidebar (--tray-right); the star is at the right end and
+   the bar runs leftward from it. Only the star and the bar take the pointer, not the strip. */
 .tray {
   position: absolute;
-  top: 0;
-  left: 0;
+  bottom: 0;
+  right: var(--tray-right, 0px);
   z-index: 3;
+  max-width: calc(100% - var(--tray-right, 0px));
   height: 44px;
   display: flex;
+  flex-direction: row-reverse;
   align-items: stretch;
+  pointer-events: none;
   font-family: var(--font-label);
 }
 
@@ -19,10 +24,12 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  clip-path: polygon(0 0, 100% 0, 100% 70%, 80% 100%, 0 100%);
+  /* the cut corner faces the screen's inside */
+  clip-path: polygon(20% 0, 100% 0, 100% 100%, 0 100%, 0 30%);
   cursor: pointer;
+  pointer-events: auto;
   opacity: 0.4;
-  transition: opacity 0.15s;
+  transition: opacity 0.4s ease;
 }
 .tray[data-open] .star,
 .star:hover,
@@ -30,14 +37,54 @@
   opacity: 1;
 }
 
+/* The bar slides inside this box, so it vanishes into the star rather than across the game. */
+.clip {
+  display: flex;
+  min-width: 0;
+  overflow: hidden;
+}
+
 .items {
   display: flex;
   align-items: stretch;
+  flex: none;
   background: rgba(8, 9, 11, 0.94);
-  border-bottom: 2px solid var(--red-dark);
+  border-top: 2px solid var(--red-dark);
   font-size: 15px;
   font-weight: 700;
   letter-spacing: 0.12em;
+  pointer-events: auto;
+  transition:
+    transform 0.45s var(--ease),
+    visibility 0s;
+}
+/* Collapsed: slid into the star and out of the tab order once it gets there. */
+.tray:not([data-open]) .items {
+  transform: translateX(100%);
+  visibility: hidden;
+  transition:
+    transform 0.45s var(--ease),
+    visibility 0s 0.45s;
+}
+
+/* A match is playing: the bar slides away and the star goes faint. Pointing at them, keyboard
+   focus or an open pop-up (the sound's) brings the bar back; so does the game's pause menu,
+   which ends the quiet. Under Pointer Lock there is no hover: Esc (the pause menu) shows it. */
+.tray[data-quiet]:not(
+    :hover,
+    :focus-within,
+    :has(.items [data-state="open"], .items [aria-expanded="true"])
+  )
+  .star {
+  opacity: 0.25;
+}
+.tray[data-quiet][data-open]:not(
+    :hover,
+    :focus-within,
+    :has(.items [data-state="open"], .items [aria-expanded="true"])
+  )
+  .items {
+  transform: translateX(100%);
 }
 
 .item {
@@ -81,7 +128,7 @@
 
 @media (max-width: 720px) {
   .items {
-    max-width: calc(100vw - 52px);
+    max-width: calc(100vw - var(--tray-right, 0px) - 52px);
     overflow-x: auto;
   }
   .item {

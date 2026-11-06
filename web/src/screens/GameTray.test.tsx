@@ -40,6 +40,36 @@ describe("GameTray", () => {
     expect(screen.getByRole("toolbar")).toBeInTheDocument();
   });
 
+  it("goes quiet in a match, keeping the bar open and reachable", () => {
+    localStorage.setItem("ra2-tray-open", "1");
+    const { rerender } = render(
+      <GameTray quiet={false}>
+        <button type="button">SETTINGS</button>
+      </GameTray>,
+    );
+    const tray = screen.getByRole("button", { name: "Page controls" }).parentElement!;
+    expect(tray).not.toHaveAttribute("data-quiet");
+    rerender(
+      <GameTray quiet>
+        <button type="button">SETTINGS</button>
+      </GameTray>,
+    );
+    expect(tray).toHaveAttribute("data-quiet");
+    expect(screen.getByRole("toolbar", { name: "Page controls" })).toContainElement(
+      screen.getByRole("button", { name: "SETTINGS" }),
+    );
+  });
+
+  it("sits left of the game's sidebar", () => {
+    render(
+      <GameTray right={168.4}>
+        <button type="button">SETTINGS</button>
+      </GameTray>,
+    );
+    const tray = screen.getByRole("button", { name: "Page controls" }).parentElement!;
+    expect(tray.style.getPropertyValue("--tray-right")).toBe("168px");
+  });
+
   it("keeps what is inside mounted while collapsed", () => {
     render(
       <GameTray>

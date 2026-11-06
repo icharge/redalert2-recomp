@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import styles from "./GameTray.module.css";
 
 const KEY = "ra2-tray-open";
@@ -12,11 +12,22 @@ function remembered(): boolean {
 }
 
 /**
- * The page's controls over the game: a red star at the top-left that opens a bar of them. Collapsed,
+ * The page's controls over the game: a red star at the bottom right, just left of the game's
+ * sidebar (`right`, in CSS pixels from the page's right edge), that opens a bar of them. Collapsed,
  * the bar stays mounted but hidden, so what it holds keeps running (the sound's start prompt shows
- * itself outside the bar).
+ * itself outside the bar). While a match plays (`quiet`) the bar slides away into the star and the
+ * star goes faint; pointing at them, keyboard focus, an open pop-up or the game's pause menu brings
+ * the bar back.
  */
-export function GameTray({ children }: { children: ReactNode }) {
+export function GameTray({
+  children,
+  quiet = false,
+  right = 0,
+}: {
+  children: ReactNode;
+  quiet?: boolean;
+  right?: number;
+}) {
   const [open, setOpen] = useState(remembered);
   const toggle = () => {
     setOpen((now) => {
@@ -29,7 +40,12 @@ export function GameTray({ children }: { children: ReactNode }) {
     });
   };
   return (
-    <div className={styles.tray} data-open={open || undefined}>
+    <div
+      className={styles.tray}
+      data-open={open || undefined}
+      data-quiet={quiet || undefined}
+      style={{ "--tray-right": `${Math.round(right)}px` } as CSSProperties}
+    >
       <button
         type="button"
         className={styles.star}
@@ -41,13 +57,14 @@ export function GameTray({ children }: { children: ReactNode }) {
           <path d="M12 2.5l2.6 6.6 7.1.4-5.5 4.5 1.8 6.9L12 17.1 5.9 20.9l1.8-6.9L2.3 9.5l7.1-.4z" />
         </svg>
       </button>
-      <div
-        className={styles.items}
-        role={open ? "toolbar" : undefined}
-        aria-label={open ? "Page controls" : undefined}
-        style={open ? undefined : { visibility: "hidden" }}
-      >
-        {children}
+      <div className={styles.clip}>
+        <div
+          className={styles.items}
+          role={open ? "toolbar" : undefined}
+          aria-label={open ? "Page controls" : undefined}
+        >
+          {children}
+        </div>
       </div>
     </div>
   );
