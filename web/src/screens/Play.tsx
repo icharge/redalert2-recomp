@@ -6,7 +6,7 @@ import {
   GearIcon,
   KeyboardIcon,
 } from "@radix-ui/react-icons";
-import { Button, Callout, Dialog, Flex, Heading, Text } from "@radix-ui/themes";
+import { Button, Callout, Flex, Heading, Text } from "@radix-ui/themes";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SoundControl } from "../components/SoundControl";
 import { SettingsDialog } from "../components/SettingsDialog";
@@ -27,6 +27,7 @@ import { LanPanel } from "../components/LanPanel";
 import { FileExplorer } from "../components/FileExplorer";
 import { GameTray, trayItem } from "./GameTray";
 import { CrashDialog } from "./CrashDialog";
+import { ExitConfirm } from "./ExitConfirm";
 import {
   argsFromQuery,
   GameNotBuilt,
@@ -762,34 +763,11 @@ export function Play({ files }: { files: FileSource }) {
       {browseFiles && liveFiles && (
         <FileExplorer source={liveFiles} onClose={() => setBrowseFiles(false)} />
       )}
-      <Dialog.Root
+      <ExitConfirm
         open={exitConfirmation !== null}
-        onOpenChange={(open) => {
-          if (!open && exitConfirmation) answerExitConfirmation(false);
-        }}
-      >
-        <Dialog.Content
-          maxWidth="420px"
-          onCloseAutoFocus={(event) => {
-            event.preventDefault();
-            canvas.current?.focus();
-          }}
-          onPointerDownOutside={(event) => event.preventDefault()}
-        >
-          <Dialog.Title>Exit game?</Dialog.Title>
-          <Dialog.Description size="2" mb="4">
-            Are you sure you want to leave the game?
-          </Dialog.Description>
-          <Flex justify="end" gap="2">
-            <Button variant="soft" onClick={() => answerExitConfirmation(false)}>
-              Stay in game
-            </Button>
-            <Button color="red" onClick={() => answerExitConfirmation(true)}>
-              Exit game
-            </Button>
-          </Flex>
-        </Dialog.Content>
-      </Dialog.Root>
+        onAnswer={answerExitConfirmation}
+        returnFocus={() => canvas.current?.focus()}
+      />
       <LinkDialog
         target={linkDialogTarget}
         onClose={() => gameStore.dismissOpenLink()}

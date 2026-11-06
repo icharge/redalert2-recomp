@@ -49,8 +49,9 @@ describe("LanPanel", () => {
     const user = userEvent.setup();
     render(<LanPanel game={gameHandle()} />);
     await user.click(screen.getByRole("button", { name: "LAN" }));
+    await user.click(screen.getByRole("radio", { name: "JOIN" }));
 
-    const join = screen.getByRole("button", { name: "Join with invitation" });
+    const join = screen.getByRole("button", { name: "JOIN" });
     expect(join).toBeDisabled();
     await user.type(screen.getByLabelText("LAN invitation to join"), "offer text");
     expect(join).toBeEnabled();
@@ -92,11 +93,37 @@ describe("LanPanel", () => {
     const user = userEvent.setup();
     render(<LanPanel game={gameHandle()} />);
     await user.click(screen.getByRole("button", { name: "LAN" }));
-    await user.click(screen.getByRole("button", { name: "Create invitation" }));
+    await user.click(screen.getByRole("button", { name: "CREATE" }));
 
     const invitation = await screen.findByLabelText("LAN invitation");
     await waitFor(() =>
       expect(invitation).toHaveValue(JSON.stringify({ type: "offer", sdp: "fake-offer-sdp" })),
+    );
+    // hosting before the answer: step 1 is done, step 2 is current, and the badge says why
+    expect(await screen.findByText("WAITING FOR ANSWER")).toBeInTheDocument();
+    const steps = screen.getAllByRole("listitem");
+    expect(steps[0]).toHaveTextContent("✓");
+    expect(steps[1]).toHaveAttribute("aria-current", "step");
+    expect(screen.getByRole("button", { name: "COPY" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "PASTE" })).toBeInTheDocument();
+  });
+
+  it("offers HOST and JOIN with three numbered steps", async () => {
+    const user = userEvent.setup();
+    render(<LanPanel game={gameHandle()} />);
+    await user.click(screen.getByRole("button", { name: "LAN" }));
+    expect(screen.getByRole("dialog", { name: "LAN GAME" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "HOST" })).toHaveAttribute("aria-checked", "true");
+    const steps = screen.getAllByRole("listitem");
+    expect(steps.map((step) => step.textContent?.slice(0, 1))).toEqual(["1", "2", "3"]);
+    expect(steps[0]).toHaveAttribute("aria-current", "step");
+    expect(
+      screen.getByText("Same network only. Nothing goes through a server."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("NOT CONNECTED")).toBeInTheDocument();
+    await user.click(screen.getByRole("radio", { name: "JOIN" }));
+    expect(screen.getAllByRole("listitem")[0]).toHaveTextContent(
+      "Paste the invitation from the host",
     );
   });
 });

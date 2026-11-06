@@ -1,0 +1,50 @@
+.card {
+  width: 420px !important;
+  max-width: calc(100vw - 32px) !important;
+  padding: 28px !important;
+  border-radius: 0 !important;
+  background: rgba(12, 13, 16, 0.97) !important;
+  border: 1px solid #3a2023;
+  border-top: 3px solid var(--red);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.7);
+  color: var(--text);
+}
+
+.title {
+  margin: 0 0 24px;
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+.primary,
+.secondary {
+  height: 48px;
+  padding: 0 22px;
+  font-family: var(--font-label);
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+}
+.primary {
+  border: 0;
+  background: var(--red);
+  color: #fff;
+  clip-path: var(--cut);
+}
+.secondary {
+  border: 1px solid #3a3b40;
+  background: transparent;
+  color: var(--text);
+}
+.card :focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+}

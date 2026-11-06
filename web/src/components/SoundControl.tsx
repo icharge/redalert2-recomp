@@ -41,13 +41,13 @@ export function SoundControl({
     return (
       <div className={styles.bar} role="status">
         <SpeakerOffIcon aria-hidden="true" />
-        <span>The browser is holding the sound.</span>
+        <span>Sound is off until you click.</span>
         <button
           type="button"
           className={styles.start}
           onClick={() => void audio.resume().then(giveBack)}
         >
-          Click to start sound
+          TURN ON
         </button>
       </div>
     );

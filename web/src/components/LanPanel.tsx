@@ -1,17 +1,17 @@
-import { Button, Callout, Dialog, Flex, Text, TextArea } from "@radix-ui/themes";
+import { Dialog } from "@radix-ui/themes";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { GameHandle } from "../game/loader";
 import { LanIpXBridge, LanPeer, type LanStatus } from "../game/lan";
 import styles from "./LanPanel.module.css";
 import { gameStore } from "../game/store";
 
-const statusText: Record<LanStatus, string> = {
-  idle: "Not connected",
-  preparing: "Gathering LAN candidates…",
-  waiting: "Invitation ready; waiting for the other player",
-  connecting: "Connecting…",
-  connected: "Connected. Open the game's Network lobby on both clients.",
-  failed: "The peer connection failed. Start a new invitation and try again on the same LAN.",
+const BADGE: Record<LanStatus, string> = {
+  idle: "NOT CONNECTED",
+  preparing: "PREPARING",
+  waiting: "WAITING",
+  connecting: "CONNECTING",
+  connected: "CONNECTED",
+  failed: "FAILED: START AGAIN",
 };
 
 /** Manual offer/answer exchange keeps LAN pairing independent of a hosted signaling service. */
@@ -19,6 +19,7 @@ export function LanPanel({ game, className }: { game: GameHandle; className?: st
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<LanStatus>("idle");
   const [mode, setMode] = useState<"none" | "offer" | "answer">("none");
+  const [role, setRole] = useState<"host" | "join">("host");
   const [incoming, setIncoming] = useState("");
   const [outgoing, setOutgoing] = useState("");
   const [busy, setBusy] = useState(false);
@@ -132,6 +133,76 @@ export function LanPanel({ game, className }: { game: GameHandle; className?: st
     setError("");
   };
 
+  const hosting = role === "host";
+  const connected = status === "connected";
+  // which of the three steps the player is on: 0, 1 or 2
+  const current = connected ? 2 : outgoing ? 1 : 0;
+  const badge =
+    status === "waiting" ? (hosting ? "WAITING FOR ANSWER" : "SENDING ANSWER") : BADGE[status];
+
+  const outgoingBox = (label: string) => (
+    <div className={styles.box}>
+      <textarea
+        className={styles.code}
+        aria-label={label}
+        readOnly
+        value={outgoing}
+        placeholder={hosting ? "Press CREATE" : "Your answer shows here"}
+        rows={3}
+      />
+      {hosting && !outgoing ? (
+        <button
+          type="button"
+          className={styles.boxButton}
+          disabled={busy}
+          onClick={() => void createInvitation()}
+        >
+          CREATE
+        </button>
+      ) : (
+        <button
+          type="button"
+          className={styles.boxButton}
+          disabled={!outgoing}
+          onClick={() => void copyOutgoing()}
+        >
+          COPY
+        </button>
+      )}
+    </div>
+  );
+  const incomingBox = (label: string) => (
+    <div className={styles.box}>
+      <textarea
+        className={styles.code}
+        aria-label={label}
+        value={incoming}
+        placeholder="Paste here"
+        onChange={(event) => setIncoming(event.target.value)}
+        rows={3}
+        spellCheck={false}
+      />
+      <button type="button" className={styles.boxButton} onClick={() => void pasteFromClipboard()}>
+        PASTE
+      </button>
+    </div>
+  );
+
+  const steps = hosting
+    ? [
+        {
+          text: "Copy the invitation and send it to your friend",
+          box: outgoingBox("LAN invitation"),
+        },
+        { text: "Paste the answer they send back", box: incomingBox("LAN answer to connect") },
+        { text: "Connect, then open Network in the game", box: null },
+      ]
+    : [
+        { text: "Paste the invitation from the host", box: incomingBox("LAN invitation to join") },
+        { text: "Copy your answer and send it back", box: outgoingBox("LAN answer") },
+        { text: "Wait for the host, then open Network in the game", box: null },
+      ];
+
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
       <Dialog.Trigger>
@@ -140,92 +211,83 @@ export function LanPanel({ game, className }: { game: GameHandle; className?: st
           LAN
         </button>
       </Dialog.Trigger>
-      <Dialog.Content maxWidth="680px">
-        <Dialog.Title>LAN multiplayer</Dialog.Title>
-        <Dialog.Description mb="3">
-          Pair two browser clients on the same local network. No relay or online service is used.
-        </Dialog.Description>
-        <Flex direction="column" gap="3">
-          <Callout.Root>
-            <Callout.Text>
-              Host: create and copy an invitation. Joiner: paste it, join, then copy and send the
-              answer back. Host: paste the answer and connect.
-            </Callout.Text>
-          </Callout.Root>
-          <Text size="2" role="status" aria-live="polite">
-            {statusText[status]}
-          </Text>
-          {error && (
-            <Callout.Root color="red" role="alert">
-              <Callout.Text>{error}</Callout.Text>
-            </Callout.Root>
+      <Dialog.Content className={styles.panel} aria-describedby={undefined}>
+        <div className={styles.head}>
+          <Dialog.Title className={styles.title}>LAN GAME</Dialog.Title>
+          <span className={styles.badge} data-status={status} role="status" aria-live="polite">
+            <span className={styles.dot} data-status={status} aria-hidden="true" />
+            {badge}
+          </span>
+        </div>
+        <div role="radiogroup" aria-label="Role" className={styles.roles}>
+          {(["host", "join"] as const).map((each) => (
+            <button
+              key={each}
+              type="button"
+              role="radio"
+              aria-checked={role === each}
+              className={styles.role}
+              disabled={mode !== "none" && role !== each}
+              onClick={() => setRole(each)}
+            >
+              {each.toUpperCase()}
+            </button>
+          ))}
+        </div>
+        {error && (
+          <p className={styles.error} role="alert">
+            {error}
+          </p>
+        )}
+        <ol className={styles.steps}>
+          {steps.map((step, index) => (
+            <li
+              key={step.text}
+              aria-current={index === current ? "step" : undefined}
+              data-state={index < current ? "done" : index === current ? "current" : "next"}
+            >
+              <span className={styles.number} aria-hidden={index < current || undefined}>
+                {index < current ? "✓" : index + 1}
+              </span>
+              <div className={styles.stepBody}>
+                <span>{step.text}</span>
+                {step.box}
+              </div>
+            </li>
+          ))}
+        </ol>
+        <div className={styles.actions}>
+          {hosting ? (
+            <button
+              type="button"
+              className={styles.primary}
+              disabled={busy || mode !== "offer" || !incoming.trim()}
+              onClick={() => void connectWithAnswer()}
+            >
+              CONNECT
+            </button>
+          ) : (
+            <button
+              type="button"
+              className={styles.primary}
+              disabled={busy || mode !== "none" || !incoming.trim()}
+              onClick={() => void joinInvitation()}
+            >
+              JOIN
+            </button>
           )}
-          {outgoing && (
-            <div className={styles.field}>
-              <Text as="label" htmlFor="lan-outgoing" size="2">
-                {mode === "offer" ? "Invitation to send" : "Answer to send"}
-              </Text>
-              <TextArea
-                id="lan-outgoing"
-                className={styles.textarea}
-                aria-label={mode === "offer" ? "LAN invitation" : "LAN answer"}
-                readOnly
-                value={outgoing}
-                rows={7}
-              />
-              <Button type="button" variant="soft" onClick={() => void copyOutgoing()}>
-                Copy {mode === "offer" ? "invitation" : "answer"}
-              </Button>
-            </div>
+          {status !== "idle" && (
+            <button type="button" className={styles.secondary} onClick={disconnect}>
+              DISCONNECT
+            </button>
           )}
-          {(mode === "none" || mode === "offer") && (
-            <div className={styles.field}>
-              <Text as="label" htmlFor="lan-incoming" size="2">
-                {mode === "offer" ? "Paste the other player's answer" : "Paste an invitation"}
-              </Text>
-              <TextArea
-                id="lan-incoming"
-                className={styles.textarea}
-                aria-label={mode === "offer" ? "LAN answer to connect" : "LAN invitation to join"}
-                value={incoming}
-                onChange={(event) => setIncoming(event.target.value)}
-                rows={6}
-                spellCheck={false}
-              />
-              <Button type="button" variant="soft" onClick={() => void pasteFromClipboard()}>
-                Paste from clipboard
-              </Button>
-            </div>
-          )}
-          <Flex justify="between" gap="2" wrap="wrap">
-            <Flex gap="2" wrap="wrap">
-              <Button disabled={busy} onClick={() => void createInvitation()}>
-                Create invitation
-              </Button>
-              {mode === "none" && (
-                <Button disabled={busy || !incoming.trim()} onClick={() => void joinInvitation()}>
-                  Join with invitation
-                </Button>
-              )}
-              {mode === "offer" && (
-                <Button
-                  disabled={busy || !incoming.trim()}
-                  onClick={() => void connectWithAnswer()}
-                >
-                  Connect with answer
-                </Button>
-              )}
-            </Flex>
-            <Flex gap="2">
-              <Button variant="soft" color="gray" onClick={disconnect}>
-                Disconnect
-              </Button>
-              <Dialog.Close>
-                <Button variant="soft">Done</Button>
-              </Dialog.Close>
-            </Flex>
-          </Flex>
-        </Flex>
+          <Dialog.Close>
+            <button type="button" className={styles.secondary}>
+              CLOSE
+            </button>
+          </Dialog.Close>
+        </div>
+        <p className={styles.note}>Same network only. Nothing goes through a server.</p>
       </Dialog.Content>
     </Dialog.Root>
   );

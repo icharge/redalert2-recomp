@@ -48,10 +48,11 @@ describe("SoundControl", () => {
   it("asks for a click while the browser holds the sound, and gives the focus back after it", async () => {
     const audio = fakeAudio("suspended");
     const props = show(audio);
-    await userEvent.click(screen.getByRole("button", { name: "Click to start sound" }));
+    expect(screen.getByRole("status")).toHaveTextContent("Sound is off until you click.");
+    await userEvent.click(screen.getByRole("button", { name: "TURN ON" }));
     expect(audio.resume).toHaveBeenCalled();
     expect(props.giveBack).toHaveBeenCalled();
-    expect(screen.queryByText("Click to start sound")).toBeNull();
+    expect(screen.queryByText("TURN ON")).toBeNull();
     expect(screen.getByRole("button", { name: "Volume" })).toBeInTheDocument();
   });
 
@@ -122,7 +123,7 @@ describe("SoundControl", () => {
     const audio = fakeAudio("running");
     show(audio);
     act(() => audio.change("suspended"));
-    expect(screen.getByRole("button", { name: "Click to start sound" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "TURN ON" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Volume" })).toBeNull();
   });
 });

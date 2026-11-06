@@ -31,14 +31,219 @@
   background: var(--red);
 }
 
-.field {
+.panel {
+  width: 560px !important;
+  max-width: calc(100vw - 32px) !important;
+  padding: 28px !important;
+  border-radius: 0 !important;
+  background: rgba(12, 13, 16, 0.97) !important;
+  border: 1px solid #3a2023;
+  border-top: 3px solid var(--red);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.7);
+  color: var(--text);
+  font-family: var(--font-body);
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: 18px;
 }
 
-.textarea {
-  font-family: var(--code-font-family);
-  font-size: var(--font-size-1);
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+}
+.badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border: 1px solid #3a3b40;
+  font-family: var(--font-label);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+}
+.badge[data-status="waiting"],
+.badge[data-status="preparing"],
+.badge[data-status="connecting"] {
+  color: var(--amber);
+}
+.badge[data-status="connected"] {
+  color: var(--green);
+}
+.badge[data-status="failed"] {
+  color: #ff8a80;
+}
+
+.roles {
+  display: flex;
+  border: 1px solid #3a3b40;
+  align-self: flex-start;
+}
+.role {
+  min-width: 96px;
+  height: 38px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font-label);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+}
+.role + .role {
+  border-left: 1px solid #3a3b40;
+}
+.role[aria-checked="true"] {
+  background: var(--red);
+  color: #fff;
+}
+.role:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.error {
+  margin: 0;
+  font-size: 14px;
+  color: #ff8a80;
+}
+
+.steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.steps li {
+  display: flex;
+  gap: 14px;
+  color: #6f7177;
+}
+.steps li[data-state="current"] {
+  color: var(--text);
+}
+.steps li[data-state="done"] {
+  color: var(--muted);
+}
+.number {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #1c1d21;
+  font-family: var(--font-label);
+  font-size: 15px;
+  font-weight: 700;
+}
+.steps li[data-state="current"] .number {
+  background: var(--red);
+  color: #fff;
+}
+.steps li[data-state="done"] .number {
+  background: #1f4a30;
+  color: #6ff2a4;
+}
+.stepBody {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 4px;
+  font-size: 15px;
+}
+
+.box {
+  display: flex;
+  gap: 8px;
+}
+.code {
+  flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid #3a3b40;
+  border-radius: 0;
+  background: #0b0c0f;
+  color: var(--text);
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  resize: vertical;
   overflow-wrap: anywhere;
+}
+.boxButton {
+  width: 84px;
+  flex: none;
+  border: 1px solid var(--red);
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-label);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+}
+.boxButton:disabled {
+  border-color: #3a3b40;
+  color: #6f7177;
+  cursor: not-allowed;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.primary,
+.secondary {
+  height: 46px;
+  padding: 0 22px;
+  font-family: var(--font-label);
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+}
+.primary {
+  border: 0;
+  background: var(--red);
+  color: #fff;
+  clip-path: var(--cut);
+}
+.primary:disabled {
+  background: #4a4b52;
+  color: #c9c6c0;
+  cursor: not-allowed;
+}
+.secondary {
+  border: 1px solid #3a3b40;
+  background: transparent;
+  color: var(--text);
+}
+
+.note {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.panel :focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
 }
