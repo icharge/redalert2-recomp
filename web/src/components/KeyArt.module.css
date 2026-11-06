@@ -1,0 +1,50 @@
+.art {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: var(--bg);
+  pointer-events: none;
+}
+
+.image,
+.fill,
+.shadeLeft,
+.shadeBottom {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.image {
+  object-fit: cover;
+  object-position: 60% 50%;
+}
+.image[data-edition="ra2md"] {
+  object-position: 62% 50%;
+}
+
+.fill[data-edition="ra2"] {
+  background: radial-gradient(at 70% 40%, #5e1012, #07080b 70%);
+}
+.fill[data-edition="ra2md"] {
+  background: radial-gradient(at 70% 40%, #3a1d66, #07080b 70%);
+}
+
+.shadeLeft {
+  background: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0.72) 0%,
+    rgba(0, 0, 0, 0.35) 32%,
+    transparent 55%
+  );
+}
+.shadeBottom {
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.35) 0%,
+    transparent 18%,
+    transparent 55%,
+    rgba(0, 0, 0, 0.7) 100%
+  );
+}

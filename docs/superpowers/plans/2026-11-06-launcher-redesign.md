@@ -42,7 +42,7 @@ Not in this plan (each gets its own plan; their tabs stay hidden until then):
 | ID | Task | Status |
 | --- | --- | --- |
 | 1 | Tokens, fonts, brand assets | Done |
-| 2 | Key art background | Not started |
+| 2 | Key art background | Done |
 | 3 | Active installation and edition | Not started |
 | 4 | "All games" writes | Not started |
 | 5 | Active mod | Not started |
