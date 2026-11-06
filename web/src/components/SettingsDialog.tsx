@@ -1,12 +1,22 @@
-import { Button, Dialog, Flex, Select, Switch, Text } from "@radix-ui/themes";
+import { Dialog } from "@radix-ui/themes";
 import { SCALES, Setting, type HostSettings } from "../game/protocol";
+import { Group, InfoTip, Row, Segmented, Toggle } from "../screens/launcher/settings/controls";
 import {
   BROWSER_VIDEO_SIZE,
   launcherVideoOptions,
   type VideoChoice,
 } from "../storage/video-preferences";
+import styles from "./SettingsDialog.module.css";
 
-/** The host's F10 settings: commands go through its ring, acknowledgements
+const SCALE_LABELS: Record<(typeof SCALES)[number], string> = {
+  sharp: "Sharp",
+  smooth: "Smooth",
+  crt: "CRT",
+  nearest: "Nearest",
+  integer: "Integer",
+};
+
+/** The host's F10 settings, as a panel at the right: commands go through its ring, acknowledgements
  * come back as settings events. No second copy of game settings in the page. */
 export function SettingsDialog({
   settings,
@@ -53,7 +63,8 @@ export function SettingsDialog({
       }}
     >
       <Dialog.Content
-        maxWidth="440px"
+        className={styles.panel}
+        aria-describedby={undefined}
         onCloseAutoFocus={(event) => event.preventDefault()}
         onKeyDown={(event) => {
           if (event.code === "F10") {
@@ -62,128 +73,111 @@ export function SettingsDialog({
           }
         }}
       >
-        <Dialog.Title>Game settings</Dialog.Title>
-        <Dialog.Description size="2" mb="4">
-          These settings apply while the game is running.
-        </Dialog.Description>
-        <Flex direction="column" gap="4">
-          <Flex justify="between" align="center">
-            <Text as="label" htmlFor="game-scaling">
-              Scaling
-            </Text>
-            <Select.Root
+        <header className={styles.header}>
+          <Dialog.Title className={styles.title}>Settings</Dialog.Title>
+          <kbd className={styles.key} title="Opens and closes this panel.">
+            F10
+          </kbd>
+        </header>
+
+        <div className={styles.body}>
+          <Group title="DISPLAY">
+            <Segmented
+              label="Scaling"
               value={settings.scale}
-              onValueChange={(v) =>
-                command(Setting.Scale, SCALES.indexOf(v as typeof settings.scale))
-              }
-            >
-              <Select.Trigger id="game-scaling" aria-label="Scaling" />
-              <Select.Content>
-                {SCALES.map((mode) => (
-                  <Select.Item key={mode} value={mode}>
-                    {mode === "sharp"
-                      ? "Sharp bilinear"
-                      : mode === "crt"
-                        ? "CRT"
-                        : mode[0]?.toUpperCase() + mode.slice(1)}
-                  </Select.Item>
-                ))}
-              </Select.Content>
-            </Select.Root>
-          </Flex>
-          <Flex justify="between" align="center" gap="3">
-            <Text as="label" htmlFor="game-resolution">
-              Resolution
-            </Text>
-            <Select.Root
-              value={
-                videoChoice === BROWSER_VIDEO_SIZE
-                  ? BROWSER_VIDEO_SIZE
-                  : `${settings.width}x${settings.height}`
-              }
-              onValueChange={(value) => {
-                if (value === BROWSER_VIDEO_SIZE) {
-                  onVideoChange(BROWSER_VIDEO_SIZE);
-                  return;
+              choices={SCALES.map((mode) => ({ value: mode, label: SCALE_LABELS[mode] }))}
+              onChange={(mode) => command(Setting.Scale, SCALES.indexOf(mode))}
+            />
+            <Row label="Resolution" info="Takes effect next match." htmlFor="game-resolution">
+              <select
+                id="game-resolution"
+                aria-label="Resolution"
+                className={styles.select}
+                value={
+                  videoChoice === BROWSER_VIDEO_SIZE
+                    ? BROWSER_VIDEO_SIZE
+                    : `${settings.width}x${settings.height}`
                 }
-                const [w, h] = value.split("x").map(Number);
-                if (Number.isInteger(w) && Number.isInteger(h) && w && h) onVideoChange({ w, h });
-              }}
-            >
-              <Select.Trigger id="game-resolution" aria-label="Resolution" />
-              <Select.Content>
-                <Select.Item value={BROWSER_VIDEO_SIZE}>Match browser size</Select.Item>
+                onChange={(event) => {
+                  const value = event.target.value;
+                  if (value === BROWSER_VIDEO_SIZE) {
+                    onVideoChange(BROWSER_VIDEO_SIZE);
+                    return;
+                  }
+                  const [w, h] = value.split("x").map(Number);
+                  if (Number.isInteger(w) && Number.isInteger(h) && w && h) onVideoChange({ w, h });
+                }}
+              >
+                <option value={BROWSER_VIDEO_SIZE}>Match browser size</option>
                 {videoSizes.map(({ w, h, native }) => (
-                  <Select.Item key={`${w}x${h}`} value={`${w}x${h}`}>
+                  <option key={`${w}x${h}`} value={`${w}x${h}`}>
                     {w} × {h}
                     {native ? " (Native)" : ""}
-                  </Select.Item>
+                  </option>
                 ))}
-              </Select.Content>
-            </Select.Root>
-          </Flex>
-          <Text size="1" color="gray">
-            Resolution applies to the next match. "Match browser size" uses this window's pixel
-            size.
-          </Text>
-          {(
-            [
-              ["Blur menu bars", settings.bars, Setting.Bars],
-              ["HD vehicles", settings.hd, Setting.Hd],
-              ["Modern controls and Queue Five", settings.modern, Setting.Modern],
-            ] as const
-          ).map(([label, checked, key]) => (
-            <Flex key={key} justify="between" align="center" gap="3">
-              <Text as="label" htmlFor={`setting-${key}`}>
-                {label}
-              </Text>
-              <Switch
-                id={`setting-${key}`}
-                checked={checked}
-                onCheckedChange={(on) => command(key, Number(on))}
-              />
-            </Flex>
-          ))}
-          <Text size="1" color="gray">
-            Modern controls: left-click to select, right-click to order. Shift-click a build icon to
-            queue five.
-          </Text>
-          <Flex justify="between" align="center" gap="3">
-            <Text as="label" htmlFor="setting-fps-overlay">
-              FPS overlay
-            </Text>
-            <Switch id="setting-fps-overlay" checked={statsOn} onCheckedChange={onStatsChange} />
-          </Flex>
-          <Text size="1" color="gray">
-            Press Alt+Shift+F to toggle the FPS overlay.
-          </Text>
-          <Text size="2">
-            Mod: {settings.mod || "Original game"}. Press F9 at the main menu to switch.
-          </Text>
-          <Flex gap="2" wrap="wrap">
-            <Button variant="soft" onClick={onFullscreen}>
-              {fullscreen ? "Leave fullscreen" : "Fullscreen (F11)"}
-            </Button>
-            <Button
-              variant="soft"
-              onClick={onPointerLock}
-              disabled={pointerLockDisabled}
-              title={
-                pointerLockDisabled ? "?show-cursor=1 keeps the system cursor visible" : undefined
+              </select>
+            </Row>
+            <Toggle
+              label="Blur menu bars"
+              checked={settings.bars}
+              onChange={(on) => command(Setting.Bars, Number(on))}
+            />
+            <Toggle
+              label="HD vehicles"
+              checked={settings.hd}
+              onChange={(on) => command(Setting.Hd, Number(on))}
+            />
+          </Group>
+
+          <Group title="CONTROLS">
+            <Toggle
+              label="MOBA style"
+              info="Left-click selects, right-click orders. Shift-click a build icon to queue five."
+              checked={settings.modern}
+              onChange={(on) => command(Setting.Modern, Number(on))}
+            />
+            <Toggle
+              label="Lock pointer"
+              info={
+                pointerLockDisabled
+                  ? "Off while ?show-cursor=1 keeps the browser's cursor visible."
+                  : "Keeps the pointer in the game for edge scrolling. Esc releases it."
               }
-            >
-              {pointerLocked ? "Release pointer" : "Lock pointer for edge scrolling"}
-            </Button>
-          </Flex>
-          <Text size="1" color="gray">
-            {pointerLockDisabled
-              ? "Cursor debug: Pointer Lock stays off so the browser's cursor is visible."
-              : "Press Esc to release the pointer or leave fullscreen."}
-          </Text>
-          <Flex justify="end">
-            <Button onClick={onClose}>Back to game</Button>
-          </Flex>
-        </Flex>
+              keyHint="Esc"
+              checked={!!pointerLocked}
+              disabled={!!pointerLockDisabled}
+              onChange={() => onPointerLock?.()}
+            />
+            <Toggle
+              label="FPS counter"
+              info="Shows game and page frame rates in a corner."
+              keyHint="Alt+Shift+F"
+              checked={statsOn}
+              onChange={onStatsChange}
+            />
+          </Group>
+
+          <Row label="Mod">
+            <span className={styles.mod}>{settings.mod || "Vanilla"}</span>
+            <kbd className={styles.key}>F9</kbd>
+            <InfoTip text="Press F9 at the main menu to switch." />
+          </Row>
+        </div>
+
+        <footer className={styles.footer}>
+          <button
+            type="button"
+            className={styles.secondary}
+            aria-label={fullscreen ? "Leave fullscreen" : "Fullscreen"}
+            aria-pressed={!!fullscreen}
+            onClick={onFullscreen}
+          >
+            F11
+          </button>
+          <button type="button" className={styles.primary} onClick={onClose}>
+            BACK TO GAME
+          </button>
+        </footer>
       </Dialog.Content>
     </Dialog.Root>
   );

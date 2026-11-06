@@ -42,6 +42,16 @@
   min-width: 0;
 }
 
+.keyHint {
+  padding: 3px 8px;
+  border: 1px solid #3a3b40;
+  font-family: var(--font-label);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
 .switch {
   width: 48px;
   height: 26px;

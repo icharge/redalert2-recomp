@@ -1,0 +1,112 @@
+/* A side panel at the right instead of Radix's centered card. */
+.panel {
+  position: fixed !important;
+  top: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  left: auto !important;
+  width: 460px !important;
+  max-width: 100vw !important;
+  max-height: none !important;
+  height: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  transform: none !important;
+  border-radius: 0 !important;
+  background: rgba(10, 11, 14, 0.97) !important;
+  border-left: 3px solid var(--red);
+  box-shadow: -24px 0 60px rgba(0, 0, 0, 0.6);
+  color: var(--text);
+  font-family: var(--font-body);
+  display: flex !important;
+  flex-direction: column;
+  animation: none !important;
+}
+
+.header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 24px 28px 12px;
+}
+.title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 30px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 28px 24px;
+}
+
+.key {
+  padding: 3px 8px;
+  border: 1px solid #3a3b40;
+  font-family: var(--font-label);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.select {
+  height: 36px;
+  min-width: 170px;
+  padding: 0 10px;
+  border: 1px solid #3a3b40;
+  border-radius: 0;
+  background: #121317;
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+}
+
+.mod {
+  font-weight: 600;
+}
+
+.footer {
+  flex: none;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 28px;
+  border-top: 1px solid var(--line);
+}
+.primary,
+.secondary {
+  height: 48px;
+  padding: 0 22px;
+  font-family: var(--font-label);
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+}
+.primary {
+  flex: 1;
+  border: 0;
+  background: var(--red);
+  color: #fff;
+  clip-path: var(--cut);
+}
+.secondary {
+  border: 1px solid #3a3b40;
+  background: transparent;
+  color: var(--text);
+}
+.secondary[aria-pressed="true"] {
+  border-color: var(--red);
+}
+
+.panel :focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+}

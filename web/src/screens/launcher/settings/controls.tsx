@@ -49,15 +49,19 @@ export function Toggle({
   onChange,
   disabled,
   info,
+  keyHint,
 }: {
   label: string;
   checked: boolean;
   onChange(on: boolean): void;
   disabled?: boolean;
   info?: string;
+  /** the key that does the same, shown beside the switch */
+  keyHint?: string;
 }) {
   return (
     <Row label={label} {...(info ? { info } : {})} {...(disabled ? { disabled } : {})}>
+      {keyHint && <kbd className={styles.keyHint}>{keyHint}</kbd>}
       <button
         type="button"
         role="switch"
