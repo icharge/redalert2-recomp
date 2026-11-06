@@ -60,16 +60,6 @@ describe("GameTray", () => {
     );
   });
 
-  it("sits left of the game's sidebar", () => {
-    render(
-      <GameTray right={168.4}>
-        <button type="button">SETTINGS</button>
-      </GameTray>,
-    );
-    const tray = screen.getByRole("button", { name: "Page controls" }).parentElement!;
-    expect(tray.style.getPropertyValue("--tray-right")).toBe("168px");
-  });
-
   it("keeps what is inside mounted while collapsed", () => {
     render(
       <GameTray>

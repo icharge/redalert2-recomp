@@ -1,4 +1,4 @@
-import { useState, type CSSProperties, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import styles from "./GameTray.module.css";
 
 const KEY = "ra2-tray-open";
@@ -12,22 +12,13 @@ function remembered(): boolean {
 }
 
 /**
- * The page's controls over the game: a red star at the bottom right, just left of the game's
- * sidebar (`right`, in CSS pixels from the page's right edge), that opens a bar of them. Collapsed,
- * the bar stays mounted but hidden, so what it holds keeps running (the sound's start prompt shows
- * itself outside the bar). While a match plays (`quiet`) the bar slides away into the star and the
+ * The page's controls over the game: a red star in the bottom-right corner that opens a bar of
+ * them. Collapsed, the bar stays mounted but hidden, so what it holds keeps running (the sound's
+ * start prompt shows itself outside the bar). While a match plays (`quiet`) the bar slides away into the star and the
  * star goes faint; pointing at them, keyboard focus, an open pop-up or the game's pause menu brings
  * the bar back.
  */
-export function GameTray({
-  children,
-  quiet = false,
-  right = 0,
-}: {
-  children: ReactNode;
-  quiet?: boolean;
-  right?: number;
-}) {
+export function GameTray({ children, quiet = false }: { children: ReactNode; quiet?: boolean }) {
   const [open, setOpen] = useState(remembered);
   const toggle = () => {
     setOpen((now) => {
@@ -40,12 +31,7 @@ export function GameTray({
     });
   };
   return (
-    <div
-      className={styles.tray}
-      data-open={open || undefined}
-      data-quiet={quiet || undefined}
-      style={{ "--tray-right": `${Math.round(right)}px` } as CSSProperties}
-    >
+    <div className={styles.tray} data-open={open || undefined} data-quiet={quiet || undefined}>
       <button
         type="button"
         className={styles.star}

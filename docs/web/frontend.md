@@ -143,10 +143,8 @@ is never reused for another slot. Mod/font restarts reload the same game URL.
    [storage.md](storage.md) and three options (movies, saved games, settings and hotkeys); then
    the copy with CANCEL. It's resumable: a reload continues from the manifest.
 6. **Settings.** Launcher, Gameplay, Audio, Video and Keyboard (below).
-7. **In game.** The canvas fills the window. A red star at the bottom right, just left of the game's
-   sidebar, opens the page controls: SETTINGS F10, TYPE, FILES, LAN, the volume and F11. The star
-   follows the sidebar's edge as the picture's scale and letterbox change (`sidebarInset` in
-   `game/match-quiet.ts`; the sidebar is 168 game pixels). While a match plays the bar slides into
+7. **In game.** The canvas fills the window. A red star in the bottom-right corner opens the page
+   controls: SETTINGS F10, TYPE, FILES, LAN, the volume and F11. While a match plays the bar slides into
    the star and the star fades to a quarter, so the page doesn't draw the eye; pointing at it,
    keyboard focus, an open pop-up or the game's pause menu brings the bar back. The page knows a
    match is playing without a flag of its own: the match state is set and the game draws its own
