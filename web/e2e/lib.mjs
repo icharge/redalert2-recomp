@@ -259,3 +259,84 @@ export function picture(page) {
     return { w, h, sampled: Math.floor(d.length / step), lit, checksum: sum };
   });
 }
+
+// ---- the launcher (docs/web/frontend.md): what the scripts click ---------------------------------
+
+const EDITION_TITLE = { ra2: "Red Alert 2", ra2md: "Yuri’s Revenge" };
+
+/** The launcher is up: its top bar, or the first-run Install screen. */
+export async function waitForLauncher(page, timeout = 60_000) {
+  await page
+    .getByRole("navigation", { name: "Launcher" })
+    .or(page.getByRole("heading", { name: "INSTALL THE GAME" }))
+    .first()
+    .waitFor({ timeout });
+}
+
+/** The big PLAY on the Play screen. */
+export const playButton = (page) => page.getByRole("button", { name: "PLAY", exact: true });
+
+/** Picks an edition in the game rail, when the install has more than one. */
+export async function chooseEdition(page, edition = "ra2md") {
+  const tile = page
+    .getByRole("navigation", { name: "Games" })
+    .getByRole("button", { name: EDITION_TITLE[edition] ?? edition, exact: true });
+  if ((await tile.count()) > 0) await tile.click();
+}
+
+/** Opens a launcher tab (PLAY, MODS, GAME) from the top bar. */
+export async function openTab(page, name) {
+  await page
+    .getByRole("navigation", { name: "Launcher" })
+    .getByRole("link", { name, exact: true })
+    .click();
+}
+
+/** Makes `slot` the active install (Game screen, OTHER INSTALLS, USE) unless it already is. */
+export async function useInstall(page, slot) {
+  const active = await page.evaluate(() => localStorage.getItem("ra2-active-slot"));
+  if (active === String(slot)) return;
+  await page.evaluate((value) => localStorage.setItem("ra2-active-slot", value), String(slot));
+  await page.reload();
+  await waitForLauncher(page);
+}
+
+/** The Install screen: INSTALL THE GAME on a first run, else Game → INSTALL ANOTHER COPY. */
+export async function openInstall(page) {
+  const first = page.getByRole("button", { name: "INSTALL THE GAME" });
+  if (await first.isVisible().catch(() => false)) await first.click();
+  else {
+    await openTab(page, "GAME");
+    await page.getByRole("button", { name: "INSTALL ANOTHER COPY" }).click();
+  }
+  await page.getByRole("heading", { name: "INSTALL THE GAME" }).waitFor({ timeout: 30_000 });
+}
+
+/** In game: opens the page controls (the red star) if they are collapsed. */
+export async function openTray(page) {
+  const star = page.getByRole("button", { name: "Page controls" });
+  if ((await star.getAttribute("aria-expanded")) !== "true") await star.click();
+}
+
+/** In game: answers the game's own Exit with EXIT GAME, or STAY. */
+export async function answerExit(page, leave = true) {
+  await page.getByRole("heading", { name: "LEAVE THE GAME?" }).waitFor({ timeout: 30_000 });
+  await page.getByRole("button", { name: leave ? "EXIT GAME" : "STAY", exact: true }).click();
+}
+
+/** Installs `gameDir` through the Install screen unless the launcher already has a game. */
+export async function installIfMissing(page, gameDir, timeout = 900_000) {
+  await waitForLauncher(page, 180_000);
+  if (await page.getByRole("navigation", { name: "Games" }).getByRole("button").count())
+    return false;
+  await openInstall(page);
+  await page.locator('input[type="file"]').setInputFiles(gameDir);
+  await page.getByRole("heading", { name: "READY TO INSTALL" }).waitFor({ timeout: 180_000 });
+  await page.getByRole("button", { name: /^INSTALL \d/ }).click();
+  await page
+    .getByRole("navigation", { name: "Games" })
+    .getByRole("button")
+    .first()
+    .waitFor({ timeout });
+  return true;
+}

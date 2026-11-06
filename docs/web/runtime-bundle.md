@@ -58,7 +58,7 @@ The local build now copies the matching edition executable and
 records their hashes, edition, PE timestamp, and Wasm build ID. At launch, the
 browser verifies those hashes and stages both files before starting the host.
 Imports no longer ask for either runtime file. MIX archives remain user
-content. Import review and Library report readiness per edition; Play is
+content. Install review, Play and Game report readiness per edition; PLAY is
 disabled when the selected edition lacks a built runtime or required core
 archives.
 

@@ -18,7 +18,7 @@ import {
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
-import { options } from "./lib.mjs";
+import { openInstall, options, playButton, waitForLauncher } from "./lib.mjs";
 
 const argv = process.argv.slice(2);
 const flag = (name, fallback) => {
@@ -87,17 +87,22 @@ async function running() {
 try {
   // ---- first visit: the page makes itself isolated -------------------------------------------------
   await page.goto(`${origin}/?e2e`);
-  await page.getByText("Bring your game").waitFor({ timeout: 30_000 });
+  await waitForLauncher(page, 30_000);
   check(
     await page.evaluate(() => window.crossOriginIsolated),
     "a host with no headers: the worker makes the page isolated (after one reload)",
   );
 
   // ---- import, play once so the game's files are in the worker's cache ------------------------------------
+  await openInstall(page);
   await page.locator('input[type="file"]').setInputFiles(gameDir);
-  await page.getByRole("button", { name: /^Import / }).click();
-  await page.getByText("Your games").waitFor({ timeout: 600_000 });
-  await page.getByRole("button", { name: "Play" }).click();
+  await page.getByRole("button", { name: /^INSTALL \d/ }).click();
+  await page
+    .getByRole("navigation", { name: "Games" })
+    .getByRole("button")
+    .first()
+    .waitFor({ timeout: 600_000 });
+  await playButton(page).click();
   await running();
   check(true, "the game starts, and its files are fetched through the worker");
   const cached = await page.evaluate(async () => {
@@ -122,9 +127,9 @@ try {
   await page.goto(`${origin}/?e2e`);
   await page.getByText("A new version is ready").waitFor({ timeout: 30_000 });
   check(true, "a new build on the server: the page offers the update");
-  await page.getByRole("button", { name: "Reload" }).click();
-  await page.getByText("Your games").waitFor({ timeout: 30_000 });
-  await page.getByRole("button", { name: "Play" }).click();
+  await page.getByRole("button", { name: "RELOAD" }).click();
+  await waitForLauncher(page, 30_000);
+  await playButton(page).click();
   await running();
   const after = await ids();
   check(
@@ -141,9 +146,9 @@ try {
   server.closeAllConnections();
   await new Promise((resolve) => server.close(resolve));
   await page.goto(`${origin}/?e2e`);
-  await page.getByText("Your games").waitFor({ timeout: 30_000 });
+  await waitForLauncher(page, 30_000);
   check(true, "with the server gone: the page loads (from the worker's cache)");
-  await page.getByRole("button", { name: "Play" }).click();
+  await playButton(page).click();
   await running();
   check(true, "with the server gone: the game starts too");
   check(

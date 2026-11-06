@@ -1,5 +1,5 @@
 // Stage 6, end to end in a real Chrome with a fresh profile: import the game folder through the page's
-// file input, see it in the Library, play from the copy in OPFS, and check that something the game
+// file input, see it in the launcher, play from the copy in OPFS, and check that something the game
 // writes is still there after a reload.
 //
 //   node e2e/import.mjs [--game ../game] [--keep]
@@ -11,7 +11,16 @@ import { createReadStream, mkdirSync, mkdtempSync, readFileSync, rmSync, statSyn
 import { createServer } from "node:http";
 import os from "node:os";
 import path from "node:path";
-import { options } from "./lib.mjs";
+import {
+  chooseEdition,
+  openInstall,
+  openTab,
+  openTray,
+  options,
+  playButton,
+  useInstall,
+  waitForLauncher,
+} from "./lib.mjs";
 
 const argv = process.argv.slice(2);
 const flag = (name, fallback) => {
@@ -110,37 +119,39 @@ const servedBuildFiles = await routeBuild(context);
 let page = context.pages()[0] ?? (await context.newPage());
 page.on("pageerror", (e) => console.error("pageerror:", e.message));
 await page.goto(address);
-await page.getByRole("heading", { name: "Your games" }).waitFor({ timeout: 30_000 });
-await page.getByRole("button", { name: "Import a folder…" }).click();
-await page.getByText("Bring your game").waitFor({ timeout: 30_000 });
-check(true, "a browser with nothing imported shows the Import screen");
+await waitForLauncher(page, 30_000);
+await openInstall(page);
+check(true, "a browser with nothing imported offers INSTALL THE GAME");
 
 await page.locator('input[type="file"]').setInputFiles(gameDir);
-await page.getByText(/^Found /).waitFor({ timeout: 120_000 });
-console.log("    " + (await page.getByText(/^Found /).innerText()));
+await page.getByRole("heading", { name: "READY TO INSTALL" }).waitFor({ timeout: 120_000 });
+console.log(
+  "    " +
+    (await page.getByRole("region", { name: "Install the game" }).innerText()).replace(
+      /\n/g,
+      " | ",
+    ),
+);
 check(true, "the folder is read, and each available exe passes the build check");
 
-if (argv.includes("--movies"))
-  await page.getByRole("checkbox", { name: /Include the movies/ }).click();
+if (argv.includes("--movies")) await page.getByRole("checkbox", { name: /^Movies/ }).click();
 // this check reads the imported RA2MD.INI, so bring the folder's settings once
-const settingsBox = page.getByRole("checkbox", { name: /Bring my settings and hotkeys/ });
+const settingsBox = page.getByRole("checkbox", { name: "Settings and hotkeys" });
 if (await settingsBox.isEnabled()) await settingsBox.click();
 await page.waitForTimeout(500);
 const started = Date.now();
-await page.getByRole("button", { name: /^Import / }).click();
-await page.getByText("Your games").waitFor({ timeout: 900_000 });
+await page.getByRole("button", { name: /^INSTALL \d/ }).click();
+await page.getByRole("navigation", { name: "Launcher" }).waitFor({ timeout: 900_000 });
 console.log(`    imported in ${((Date.now() - started) / 1000).toFixed(0)} s`);
-check(true, "the import finishes and the Library shows");
+check(true, "the import finishes and the launcher shows");
+const games = page.getByRole("navigation", { name: "Games" });
 check(
-  await page.locator('[data-slot-id="1"] [data-game-id="ra2md"]').isVisible(),
-  "the Library lists Yuri's Revenge",
+  await games.getByRole("button", { name: "Yuri’s Revenge", exact: true }).isVisible(),
+  "the game rail lists Yuri's Revenge",
 );
-// two games in one installation: a picker chooses which one the card shows and starts
-const editionPicker = page
-  .locator('[data-slot-id="1"]')
-  .getByRole("radio", { name: "Red Alert 2" });
-const hasRa2 = (await editionPicker.count()) > 0;
-if (argv.includes("--both")) check(hasRa2, "the Library offers both games from one import");
+// two games in one install: the rail chooses which one PLAY starts
+const hasRa2 = (await games.getByRole("button", { name: "Red Alert 2", exact: true }).count()) > 0;
+if (argv.includes("--both")) check(hasRa2, "the rail offers both games from one import");
 const opfsGameFiles = async () =>
   page.evaluate(async () => {
     const root = await navigator.storage.getDirectory();
@@ -160,14 +171,16 @@ if (hasRa2) {
   check(shared.length === 1, "the shared RA2 archive is stored once");
 }
 
-await page.getByRole("button", { name: "Import a folder…" }).click();
+await openInstall(page);
 await page.locator('input[type="file"]').setInputFiles(gameDir);
-await page.getByText(/^Found /).waitFor({ timeout: 120_000 });
-await page.getByRole("button", { name: /^Import / }).click();
-await page.locator('[data-slot-id="2"]').waitFor({ timeout: 900_000 });
+await page.getByRole("heading", { name: "READY TO INSTALL" }).waitFor({ timeout: 120_000 });
+await page.getByRole("button", { name: /^INSTALL \d/ }).click();
+await page.getByRole("navigation", { name: "Launcher" }).waitFor({ timeout: 900_000 });
+await openTab(page, "GAME");
+const others = page.getByRole("region", { name: "OTHER INSTALLS" });
 check(
-  (await page.locator("[data-slot-id]").count()) === 2,
-  "the same folder imports as a second installation",
+  (await others.getByRole("button", { name: "USE", exact: true }).count()) === 1,
+  "the same folder imports as a second install, and the first is listed beside it",
 );
 await page.screenshot({ path: path.join(base.shots, "installations.png") });
 check(
@@ -175,8 +188,8 @@ check(
   "each installation has its own copy of shared game data",
 );
 
-async function browseText(card, name, what, managed = false) {
-  await card.getByRole("button", { name: /Browse files/ }).click();
+async function browseText(open, name, what, managed = false) {
+  await open();
   await page.getByTestId("read-only-file-explorer").waitFor();
   try {
     await page.getByText(name, { exact: true }).waitFor();
@@ -200,8 +213,10 @@ async function browseText(card, name, what, managed = false) {
   await page.getByRole("button", { name: "Close" }).click();
 }
 
+await useInstall(page, 1);
+await openTab(page, "GAME");
 await browseText(
-  page.locator('[data-slot-id="1"] [data-game-id="ra2md"]'),
+  () => page.getByRole("button", { name: "BROWSE FILES" }).click(),
   "RA2MD.INI",
   "imported OPFS",
   true,
@@ -209,10 +224,9 @@ await browseText(
 
 // ---- play from OPFS -----------------------------------------------------------------------------
 const bootStarted = Date.now();
-await page
-  .locator('[data-slot-id="1"] [data-game-id="ra2md"]')
-  .getByRole("button", { name: "Play" })
-  .click();
+await openTab(page, "PLAY");
+await chooseEdition(page, "ra2md");
+await playButton(page).click();
 await running(page);
 console.log(
   `    game reached the main menu in ${((Date.now() - bootStarted) / 1000).toFixed(1)} s`,
@@ -241,7 +255,14 @@ if (argv.includes("--boot-probe-only")) {
   process.exit(0);
 }
 check(true, "the game starts from the copy in OPFS and reaches its main menu");
-await browseText(page.locator("body"), "RA2MD.INI", "live /game VFS");
+await browseText(
+  async () => {
+    await openTray(page);
+    await page.getByRole("button", { name: "FILES", exact: true }).click();
+  },
+  "RA2MD.INI",
+  "live /game VFS",
+);
 
 // something the game writes: a saved game, beside the exe as the game names it (SAVE%04lX.sav)
 await page.evaluate(() => {
@@ -258,11 +279,13 @@ context = await launch();
 await routeBuild(context);
 page = context.pages()[0] ?? (await context.newPage());
 await page.goto(address);
-await page.getByText("Your games").waitFor({ timeout: 30_000 });
-check(true, "after a reload the Library is there without importing again");
+await page.getByRole("navigation", { name: "Launcher" }).waitFor({ timeout: 30_000 });
+check(true, "after a reload the launcher is there without importing again");
 // the saves come out as a zip a desktop install can take
+await chooseEdition(page, "ra2md");
+await openTab(page, "GAME");
 const download = page.waitForEvent("download");
-await page.locator('[data-slot-id="1"] [data-game-id="ra2md"]').getByText("Download saves").click();
+await page.getByRole("button", { name: "DOWNLOAD .ZIP" }).click();
 const zipFile = await download;
 const zipPath = await zipFile.path();
 const zipBytes = readFileSync(zipPath);
@@ -271,12 +294,10 @@ check(
     zipBytes.includes(Buffer.from("SAVE0001.sav")),
   "Download saves gives a zip with the saved game in it",
 );
-await page
-  .locator('[data-slot-id="1"] [data-game-id="ra2md"]')
-  .getByRole("button", { name: "Play" })
-  .click();
+await openTab(page, "PLAY");
+await playButton(page).click();
 await running(page);
-check(new URL(page.url()).pathname.endsWith("/game/1"), "Play navigates to the installation route");
+check(new URL(page.url()).pathname.endsWith("/game/1"), "PLAY navigates to the installation route");
 const direct = new URL("game/1?edition=ra2md&e2e=1", address);
 await page.goto(direct.toString());
 await running(page);
@@ -298,12 +319,9 @@ if (hasRa2) {
   context = await launch();
   page = context.pages()[0] ?? (await context.newPage());
   await page.goto(address);
-  await page.getByText("Your games").waitFor({ timeout: 30_000 });
-  await page.locator('[data-slot-id="1"]').getByRole("radio", { name: "Red Alert 2" }).click();
-  await page
-    .locator('[data-slot-id="1"] [data-game-id="ra2"]')
-    .getByRole("button", { name: "Play" })
-    .click();
+  await page.getByRole("navigation", { name: "Launcher" }).waitFor({ timeout: 30_000 });
+  await chooseEdition(page, "ra2");
+  await playButton(page).click();
   await running(page);
   check(true, "Red Alert 2 starts from the shared import in OPFS");
 }
@@ -313,10 +331,10 @@ await context.close();
 context = await launch();
 page = context.pages()[0] ?? (await context.newPage());
 await page.goto(address);
-await page
-  .locator('[data-slot-id="2"] [data-game-id="ra2md"]')
-  .getByRole("button", { name: "Play" })
-  .click();
+await waitForLauncher(page, 30_000);
+await useInstall(page, 2);
+await chooseEdition(page, "ra2md");
+await playButton(page).click();
 await running(page);
 const otherSave = await page.evaluate(() => {
   try {
@@ -330,30 +348,32 @@ const oldWorkers = new Set(page.workers());
 check(oldWorkers.size > 0, "the game has workers before browser Back");
 for (const worker of oldWorkers) worker.on("close", () => oldWorkers.delete(worker));
 await page.goBack();
-await page.getByText("Your games").waitFor({ timeout: 30_000 });
+await page.getByRole("navigation", { name: "Launcher" }).waitFor({ timeout: 30_000 });
 check(
   await page.evaluate(() => !window.Module && !window.ra2Session),
   "browser Back unloads the runtime before showing the launcher",
 );
 check(oldWorkers.size === 0, "browser Back closes the old game's workers");
-const removeSlot = async (slot) => {
-  const card = page.locator(`[data-slot-id="${slot}"]`);
-  await card.hover(); // the removal control is deliberately revealed on hover
-  await card.getByRole("button", { name: /^Remove / }).click();
-  await page.getByRole("button", { name: "Remove", exact: true }).click();
-  await card.waitFor({ state: "detached", timeout: 60_000 });
-};
-await removeSlot(1);
+// slot 2 is the active install now; slot 1 is under OTHER INSTALLS
+await openTab(page, "GAME");
+const otherInstalls = page.getByRole("region", { name: "OTHER INSTALLS" });
+await otherInstalls.getByRole("button", { name: /^Remove / }).click();
+await page.getByRole("alertdialog").getByRole("button", { name: "REMOVE", exact: true }).click();
+// by element, not role: while the confirm is open the page behind it is hidden from the role tree
+await page
+  .locator('section[aria-labelledby="game-others"]')
+  .waitFor({ state: "detached", timeout: 120_000 });
 check(
-  await page.locator('[data-slot-id="2"]').isVisible(),
-  "removing one installation keeps the other",
+  await page.getByRole("region", { name: "INSTALLED" }).isVisible(),
+  "removing one install keeps the other",
 );
 check(
   (await opfsGameFiles()).filter((name) => name.toLowerCase().endsWith("/ra2.mix")).length === 1,
   "removal retains the other installation's game data",
 );
-await removeSlot(2);
-await page.getByText("Your games").waitFor({ timeout: 60_000 });
+await page.getByRole("button", { name: "REMOVE GAME", exact: true }).click();
+await page.getByRole("alertdialog").getByRole("button", { name: "REMOVE", exact: true }).click();
+await page.getByRole("button", { name: "INSTALL THE GAME" }).waitFor({ timeout: 60_000 });
 /** Every file under an OPFS folder, as paths. */
 const left = await page.evaluate(async () => {
   const root = await navigator.storage.getDirectory();

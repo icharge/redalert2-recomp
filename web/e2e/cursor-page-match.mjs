@@ -8,7 +8,7 @@
 import { chromium } from "playwright-core";
 import { mkdirSync, existsSync } from "node:fs";
 import path from "node:path";
-import { sharedProfile } from "./lib.mjs";
+import { chooseEdition, installIfMissing, playButton, sharedProfile } from "./lib.mjs";
 
 const argv = process.argv.slice(2);
 const option = (name, fallback) => {
@@ -39,16 +39,9 @@ let urlAtGame = "";
 const installed = existsSync(path.join(profile, "Default"));
 await page.goto(url);
 if (!installed) console.log("[browser] importing the install into OPFS (once)…");
-await page.getByRole("heading", { name: "Your games" }).waitFor({ timeout: 180_000 });
-const slot = page.locator('[data-slot-id="1"]');
-if (!(await slot.count())) {
-  await page.getByRole("button", { name: "Import a folder…" }).click();
-  await page.locator('input[type="file"]').setInputFiles(game);
-  await page.getByText(/^Found /).waitFor({ timeout: 180_000 });
-  await page.getByRole("button", { name: /^Import / }).click();
-  await slot.waitFor({ timeout: 900_000 });
-}
-await slot.locator('[data-game-id="ra2md"]').getByRole("button", { name: "Play" }).click();
+await installIfMissing(page, game);
+await chooseEdition(page, "ra2md");
+await playButton(page).click();
 await page.waitForURL(/\/game\/1(?:\?|$)/, { timeout: 120_000 });
 urlAtGame = page.url();
 

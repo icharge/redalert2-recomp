@@ -6,7 +6,7 @@ sound, files and faults.
 
 ```
 ┌──────────── Main thread: the page (web/, React) ──────────────────────┐
-│  Import, Library, Play, Settings                                      │
+│  Launcher (Play, Mods, Game, Settings), Install, the game page        │
 │  presenter.ts: draws the shared picture on a 2D canvas, each frame    │
 │  input.ts: mouse and keys in, as calls on the game's exports          │
 └───────────────┬──────────────────────────────────────────▲───────────┘

@@ -31,6 +31,8 @@ const waitForLog = async (run, text, timeoutMs = 45000) => {
 };
 
 const openLan = async (run) => {
+  const star = run.page.getByRole("button", { name: "Page controls" });
+  if ((await star.getAttribute("aria-expanded")) !== "true") await star.click();
   await run.page.getByRole("button", { name: "LAN", exact: true }).click();
 };
 
@@ -56,7 +58,7 @@ try {
   assert.notDeepEqual(keys[0], keys[1], "LAN clients must receive distinct WOL keys");
 
   await Promise.all([openLan(host), openLan(guest)]);
-  await host.page.getByRole("button", { name: "Create invitation" }).click();
+  await host.page.getByRole("button", { name: "CREATE", exact: true }).click();
   const hostOffer = host.page.getByLabel("LAN invitation", { exact: true });
   await hostOffer.waitFor({ timeout: 45000 });
   const offer = await hostOffer.inputValue();
@@ -73,6 +75,7 @@ try {
   await host.shot("lan-host-offer");
   assert.ok(offer.trim().length > 0, "the host must produce a non-empty SDP offer");
 
+  await guest.page.getByRole("radio", { name: "JOIN" }).click();
   const guestOffer = guest.page.getByLabel("LAN invitation to join", { exact: true });
   await guestOffer.fill(offer);
   assert.equal(
@@ -80,11 +83,11 @@ try {
     offer.length,
     "the guest received the full offer text",
   );
-  const join = guest.page.getByRole("button", { name: "Join with invitation" });
+  const join = guest.page.getByRole("button", { name: "JOIN", exact: true });
   await join.waitFor({ state: "visible" });
   await guest.page.waitForFunction(() => {
-    const button = [...document.querySelectorAll("button")].find((item) =>
-      item.textContent?.includes("Join with invitation"),
+    const button = [...document.querySelectorAll('[role="dialog"] button')].find(
+      (item) => item.textContent?.trim() === "JOIN",
     );
     return button instanceof HTMLButtonElement && !button.disabled;
   });
@@ -94,18 +97,21 @@ try {
   const answer = await guestAnswer.inputValue();
 
   await host.page.getByLabel("LAN answer to connect", { exact: true }).fill(answer);
-  await host.page.getByRole("button", { name: "Connect with answer" }).click();
+  await host.page.getByRole("button", { name: "CONNECT", exact: true }).click();
   const connected = async (run) =>
     run.page.waitForFunction(
-      () => document.querySelector('[role="status"]')?.textContent?.includes("Connected."),
+      () =>
+        document
+          .querySelector('[role="dialog"] [role="status"]')
+          ?.textContent?.includes("CONNECTED"),
       undefined,
       { timeout: 45000 },
     );
   await Promise.all([connected(host), connected(guest)]);
 
   // Give both players distinct in-game names before entering the IPX lobby.
-  await host.page.getByRole("button", { name: "Done", exact: true }).click();
-  await guest.page.getByRole("button", { name: "Done", exact: true }).click();
+  await host.page.getByRole("button", { name: "CLOSE", exact: true }).click();
+  await guest.page.getByRole("button", { name: "CLOSE", exact: true }).click();
   await Promise.all(
     [host, guest].map(async (run) => {
       await run.page.getByRole("dialog").waitFor({ state: "hidden" });

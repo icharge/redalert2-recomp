@@ -35,7 +35,7 @@ import { createInterface } from "node:readline";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { lastFailure, options, startPage } from "./lib.mjs";
+import { installIfMissing, lastFailure, options, startPage, waitForLauncher } from "./lib.mjs";
 import { compare, mergeCases, resolveRepoPath, thaiFixState } from "./perf-report.mjs";
 import {
   at,
@@ -640,15 +640,20 @@ function record(results) {
   writeRun();
 }
 
-/** Imports ../game into the profile when it is not there yet (the Library shows its card when it is). */
+/** Imports ../game into the profile when it is not there yet (the game rail shows it when it is). */
 async function ensureImported() {
   const t = await startPage({ ...base, noDev: true, url: base.url });
   try {
     const page = t.page;
-    await page.getByRole("heading", { name: "Your games" }).waitFor({ timeout: 60_000 });
+    await waitForLauncher(page);
     const gameIds = await page
-      .locator("[data-slot-id] [data-game-id]")
-      .evaluateAll((games) => games.map((game) => game.getAttribute("data-game-id")));
+      .getByRole("navigation", { name: "Games" })
+      .getByRole("button")
+      .evaluateAll((tiles) =>
+        tiles.map((tile) =>
+          tile.getAttribute("aria-label")?.startsWith("Yuri") ? "ra2md" : "ra2",
+        ),
+      );
     const have = hasImportedGame(gameIds);
     if (!have) {
       const hasStoredGame = await page.evaluate(async () => {
@@ -663,16 +668,10 @@ async function ensureImported() {
       });
       if (hasStoredGame)
         throw new Error(
-          "game data exists in this profile but no Library card was found; refusing to import again",
+          "game data exists in this profile but the launcher shows no game; refusing to import again",
         );
       log(`importing ${gameDir} into the profile (once)`);
-      await page.getByRole("button", { name: "Import a folder…" }).click();
-      await page.getByText("Bring your game").waitFor({ timeout: 30_000 });
-      await page.locator('input[type="file"]').setInputFiles(gameDir);
-      await page.getByText(/^Found /).waitFor({ timeout: 120_000 });
-      await page.waitForTimeout(500);
-      await page.getByRole("button", { name: /^Import / }).click();
-      await page.getByText("Your games").waitFor({ timeout: 900_000 });
+      await installIfMissing(page, gameDir);
     }
   } finally {
     await t.browser.close().catch(() => {});

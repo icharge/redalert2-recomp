@@ -3,7 +3,14 @@
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import path from "node:path";
-import { options, startPage } from "./lib.mjs";
+import {
+  answerExit,
+  chooseEdition,
+  options,
+  playButton,
+  startPage,
+  waitForLauncher,
+} from "./lib.mjs";
 
 const opts = options(process.argv.slice(2));
 if (!opts.profile) throw new Error("Pass --profile <imported profile>.");
@@ -79,7 +86,7 @@ async function readGameCsf(name) {
 }
 
 try {
-  await run.page.getByRole("heading", { name: "Your games" }).waitFor({ timeout: 60_000 });
+  await waitForLauncher(run.page);
   const staticConfig = await run.page.evaluate(async () => {
     const response = await fetch("strings.json");
     if (!response.ok) throw new Error(`strings.json: ${response.status}`);
@@ -92,9 +99,8 @@ try {
   );
   report.static = "strings.json";
 
-  const editionChoice = run.page.getByRole("radio", { name: new RegExp(title) });
-  if ((await editionChoice.count()) > 0) await editionChoice.click();
-  await run.page.getByRole("button", { name: "Play" }).click();
+  await chooseEdition(run.page, edition);
+  await playButton(run.page).click();
   await run.waitFor("the main menu", (state) => state?.phase === "running", 300);
 
   const csf = Uint8Array.from(await readGameCsf(csfFile));
@@ -105,10 +111,9 @@ try {
 
   const { size } = await run.state();
   await run.clickGame(719 + ((size?.w ?? 800) - 800) / 2, 554 + ((size?.h ?? 600) - 600) / 2);
-  await run.page.getByRole("heading", { name: "Exit game?" }).waitFor({ timeout: 30_000 });
-  await run.page.getByRole("button", { name: "Exit game" }).click();
+  await answerExit(run.page);
   await run.page.waitForURL((url) => !url.searchParams.has("test") && !url.searchParams.has("dev"));
-  await run.page.getByRole("heading", { name: "Your games" }).waitFor({ timeout: 60_000 });
+  await waitForLauncher(run.page);
   report.returned = true;
   console.log(`PASS: ${title} reads strings.json and shows GUI:ExitGame as Exit to Launcher.`);
 } catch (error) {

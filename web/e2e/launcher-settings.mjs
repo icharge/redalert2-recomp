@@ -3,7 +3,15 @@
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import path from "node:path";
-import { options, startPage } from "./lib.mjs";
+import {
+  answerExit,
+  chooseEdition,
+  openTab,
+  options,
+  playButton,
+  startPage,
+  waitForLauncher,
+} from "./lib.mjs";
 
 const opts = options(process.argv.slice(2));
 if (!opts.profile) throw new Error("Pass --profile <imported profile>.");
@@ -17,15 +25,13 @@ const run = await startPage(opts);
 const report = { edition };
 
 try {
-  await run.page.getByRole("heading", { name: "Your games" }).waitFor({ timeout: 60_000 });
-  const editionChoice = run.page.getByRole("radio", { name: new RegExp(title) });
-  if ((await editionChoice.count()) > 0) await editionChoice.click();
-  const settings = run.page.getByRole("button", { name: `Settings for ${title}` });
-  await settings.waitFor({ timeout: 60_000 });
-  await settings.click();
-  await run.page.getByRole("dialog", { name: `${title} settings` }).waitFor();
+  await waitForLauncher(run.page);
+  await chooseEdition(run.page, edition);
+  const section = (name) =>
+    run.page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name, exact: true });
+  await run.page.getByRole("link", { name: "Settings", exact: true }).click();
 
-  await run.page.getByRole("tab", { name: /Gameplay/ }).click();
+  await section("GAMEPLAY").click();
   const autoScroll = run.page.getByRole("switch", { name: "Auto scroll" });
   await autoScroll.waitFor();
   const before = await autoScroll.isChecked();
@@ -34,31 +40,28 @@ try {
   assert.notEqual(before, after, "the switch must change");
   report.autoScroll = { before, after };
 
-  await run.page.getByRole("tab", { name: /Audio/ }).click();
-  const volume = run.page.getByRole("slider", { name: "Sound volume" });
+  await section("AUDIO").click();
+  const volume = run.page.getByRole("slider", { name: "Sound", exact: true });
   await volume.focus();
   await volume.press("Home");
-  for (let i = 0; i < 40; i++) await volume.press("ArrowRight");
+  for (let i = 0; i < 4; i++) await volume.press("ArrowRight");
   await run.page.waitForTimeout(300);
   report.volume = await volume.getAttribute("aria-valuenow");
-  assert.equal(report.volume, "40", "the volume slider must reach 40");
+  assert.equal(report.volume, "40", "the volume pips must reach 40");
 
-  await run.page.getByRole("tab", { name: /Keyboard/ }).click();
+  await section("KEYBOARD").click();
   // Start from the standard bindings so this run does not fight the last run's key.
-  await run.page.getByRole("button", { name: "Reset All" }).click();
+  await run.page.getByRole("button", { name: "RESET ALL KEYS" }).click();
   await run.page.waitForTimeout(300);
-  await run.page.getByRole("combobox", { name: "Category" }).click();
-  await run.page.getByRole("option", { name: "Interface" }).click();
-  await run.page.getByRole("button", { name: "Game Menu" }).click();
-  await run.page.getByRole("button", { name: "Assign new hotkey" }).click();
+  await run.page.getByRole("button", { name: "Interface", exact: true }).click();
+  await run.page.getByRole("button", { name: /^Game Menu/ }).click();
+  await run.page.getByRole("button", { name: "CHANGE KEY" }).click();
   await run.page.keyboard.press("F5");
-  await run.page.getByRole("button", { name: "Assign", exact: true }).click();
   await run.page.waitForTimeout(500);
   report.hotkey = "F5";
-  await run.page.waitForTimeout(300);
 
-  await run.page.getByRole("button", { name: "Done" }).click();
-  await run.page.getByRole("button", { name: "Play" }).click();
+  await openTab(run.page, "PLAY");
+  await playButton(run.page).click();
   await run.waitFor("the main menu", (state) => state?.phase === "running", 300);
 
   const readGame = (wanted) =>
@@ -79,31 +82,28 @@ try {
 
   const { size } = await run.state();
   await run.clickGame(719 + ((size?.w ?? 800) - 800) / 2, 554 + ((size?.h ?? 600) - 600) / 2);
-  await run.page.getByRole("heading", { name: "Exit game?" }).waitFor({ timeout: 30_000 });
-  await run.page.getByRole("button", { name: "Exit game" }).click();
+  await answerExit(run.page);
   await run.page.waitForURL((url) => !url.searchParams.has("test") && !url.searchParams.has("dev"));
-  await run.page.getByRole("heading", { name: "Your games" }).waitFor({ timeout: 60_000 });
-  const returnedEdition = run.page.getByRole("radio", { name: new RegExp(title) });
-  if ((await returnedEdition.count()) > 0) await returnedEdition.click();
-  const returned = run.page.getByRole("button", { name: `Settings for ${title}` });
-  await returned.waitFor({ timeout: 30_000 });
-  await returned.click();
-  await run.page.getByRole("tab", { name: /Gameplay/ }).click();
+  await waitForLauncher(run.page);
+  await chooseEdition(run.page, edition);
+  await run.page.getByRole("link", { name: "Settings", exact: true }).click();
+  await section("GAMEPLAY").click();
   assert.equal(
     await run.page.getByRole("switch", { name: "Auto scroll" }).isChecked(),
     after,
     "the launcher must read the setting back after Exit",
   );
-  await run.page.getByRole("tab", { name: /Audio/ }).click();
+  await section("AUDIO").click();
   assert.equal(
-    await run.page.getByRole("slider", { name: "Sound volume" }).getAttribute("aria-valuenow"),
+    await run.page
+      .getByRole("slider", { name: "Sound", exact: true })
+      .getAttribute("aria-valuenow"),
     "40",
     "the launcher must read the volume back after Exit",
   );
-  await run.page.getByRole("tab", { name: /Keyboard/ }).click();
-  await run.page.getByRole("combobox", { name: "Category" }).click();
-  await run.page.getByRole("option", { name: "Interface" }).click();
-  await run.page.getByRole("button", { name: "Game Menu" }).click();
+  await section("KEYBOARD").click();
+  await run.page.getByRole("button", { name: "Interface", exact: true }).click();
+  await run.page.getByRole("button", { name: /^Game Menu/ }).click();
   assert.ok(
     (await run.page.getByText("F5", { exact: true }).count()) > 0,
     "the launcher must read the hotkey back after Exit",

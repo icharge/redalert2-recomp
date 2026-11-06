@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import path from "node:path";
-import { options, startPage } from "./lib.mjs";
+import { options, startPage, waitForLauncher } from "./lib.mjs";
 import { openGame } from "./perf-nav.mjs";
 
 const opts = options(process.argv.slice(2));
@@ -16,7 +16,7 @@ const report = {};
 const requests = [];
 
 const waitForExitPrompt = async () => {
-  await run.page.getByRole("heading", { name: "Exit game?" }).waitFor({ timeout: 30_000 });
+  await run.page.getByRole("heading", { name: "LEAVE THE GAME?" }).waitFor({ timeout: 30_000 });
   const request = await run.page.evaluate(() => window.ra2Store?.getSnapshot().exitConfirmation);
   assert.ok(request?.request, "the web prompt must carry a unique confirmation request");
   assert.ok(!requests.includes(request.request), "reopened prompts must have new request IDs");
@@ -61,7 +61,7 @@ try {
   );
   report.invalidRepliesRejected = true;
   await run.shot("exit-confirm-web");
-  await run.page.getByRole("button", { name: "Stay in game" }).click();
+  await run.page.getByRole("button", { name: "STAY", exact: true }).click();
   await run.page.waitForFunction(() => window.ra2Store?.getSnapshot().exitConfirmation === null);
   assert.equal(
     (await run.state()).phase,
@@ -100,7 +100,7 @@ try {
   run.page.on("worker", (worker) => worker.on("close", () => workers.delete(worker)));
   assert.ok(workers.size > 0, "the running game must have worker threads");
   const exitStarted = Date.now();
-  await run.page.getByRole("button", { name: "Exit game" }).click();
+  await run.page.getByRole("button", { name: "EXIT GAME", exact: true }).click();
   await run.page.waitForURL(
     (url) => !url.searchParams.has("test") && !url.searchParams.has("dev"),
     { timeout: 30_000 },
@@ -110,9 +110,7 @@ try {
     report.exitMs < 4000,
     `Exit took ${report.exitMs} ms; the fast path should not wait for guest teardown`,
   );
-  await run.page
-    .getByRole("heading", { name: /Your games|Bring your game/ })
-    .waitFor({ timeout: 30_000 });
+  await waitForLauncher(run.page, 30_000);
   await run.page.waitForFunction(() => !window.Module && !window.ra2Session);
   assert.equal(workers.size, 0, "leaving the game document must terminate its workers");
   assert.ok(

@@ -1,7 +1,7 @@
 // The production service worker must serve clean routes under a context path offline.
 import assert from "node:assert/strict";
 import { chromium } from "playwright-core";
-import { options } from "./lib.mjs";
+import { options, waitForLauncher } from "./lib.mjs";
 
 const opts = options(process.argv.slice(2));
 const browser = await chromium.launch({ executablePath: opts.chrome, args: ["--no-sandbox"] });
@@ -9,11 +9,11 @@ try {
   const context = await browser.newContext();
   const page = await context.newPage();
   await page.goto(opts.url);
-  await page.getByRole("heading", { name: "Your games" }).waitFor();
+  await waitForLauncher(page, 30_000);
   await page.evaluate(() => navigator.serviceWorker.ready);
   await page.waitForFunction(() => !!navigator.serviceWorker.controller);
   await page.reload();
-  await page.getByRole("heading", { name: "Your games" }).waitFor();
+  await waitForLauncher(page, 30_000);
   const keptBuild = await page.evaluate(async () => {
     const base = new URL((await navigator.serviceWorker.ready).scope).pathname;
     const response = await (
@@ -29,7 +29,7 @@ try {
   const home = page.getByRole("link", { name: "Back to launcher" });
   assert.equal(await home.getAttribute("href"), new URL(opts.url).pathname);
   await home.click();
-  await page.getByRole("heading", { name: "Your games" }).waitFor();
+  await waitForLauncher(page, 30_000);
   console.log("PASS: offline direct routes and launcher links retain the deployment context path.");
 } finally {
   await browser.close();

@@ -35,17 +35,28 @@ web/
   public/
     game/                   ra2.js/.wasm/.data (RA2) and ra2md.js/.wasm/.data (Yuri; local build output)
     icons/, manifest.webmanifest
+    fonts/                  Russo One, Barlow, Barlow Condensed (OFL, self-hosted for offline use)
+    brand/                  logo, edition icons, backgrounds: git-ignored, on the owner's machine only
   src/
     main.tsx                mounts <App>, registers the service worker
-    App.tsx                 <Theme>, picks the screen
+    App.tsx                 <Theme>, the routes, the active install and edition
+    styles/tokens.css       colours, fonts and shapes as CSS variables
     screens/
-      Import.tsx            pick or drop the folder, check it, copy it
-      Library.tsx           the games found, storage use, remove
-      Play.tsx              the canvas, the first-click bar, the crash view
+      launcher/
+        Shell.tsx           the top bar (logo, PLAY / MODS / GAME, storage) and the game rail
+        PlayScreen.tsx      the edition's art and title, the mod (PROFILE) picker, PLAY, the status
+        ModsScreen.tsx      every mod of the install, install / play / remove
+        GameScreen.tsx      the install: editions, files, saved games, storage, other installs, remove
+        settings/           SettingsScreen and one file per tab; controls.tsx (Toggle, Segmented, PipBar, Row)
+      Import.tsx            the Install screen: pick or drop the folder, check it, copy it
+      Play.tsx              the canvas, the page controls (GameTray), the dialogs over the game
+      GameTray.tsx          the red star and the bar of page controls in game
+      LoadingScreen.tsx     the copy and start-up screen over the edition's art
+      CrashDialog.tsx, ExitConfirm.tsx
     components/
-      SettingsDialog.tsx    browser-side settings (below)
-      StorageMeter.tsx
-      SoundControl.tsx      the "click to start sound" bar, the volume and the two switches about when the game is heard
+      KeyArt.tsx, BrandImage.tsx, brand.ts   the art and brand images, each with a fallback
+      SettingsDialog.tsx    the in-game F10 panel (below)
+      SoundControl.tsx      the "Sound is off until you click" bar, the volume pips and the two switches about when the game is heard
       LanPanel.tsx          one-peer LAN setup through a manual WebRTC offer/answer
       LinkDialog.tsx        a WOL-era link: iframe or confirmation, in game chrome
       GameDialogChrome.tsx  the game's frame, title strip and button plates
@@ -68,6 +79,9 @@ web/
       manifest.ts           what is imported (IndexedDB)
       install.ts            the allowlist and the PE checks (storage.md)
       settings.ts           the page's settings (IndexedDB)
+      active-install.ts     which install and edition the launcher shows
+      all-games.ts          a settings change written to every edition of that install
+      active-mod.ts         the mod PLAY loads: the host's `[mods] active=`
     styles/
       global.css            body, the canvas, the full-window play layout
 ```
@@ -78,51 +92,69 @@ the game isn't built.
 
 ## Screens
 
-The app uses clean routes under its deployment base: `/` is the installation
-launcher, `/import` imports a folder, and `/game/:slot` launches an installation.
-Each slot has its own available edition buttons; `?edition=ra2` or
-`?edition=ra2md` selects one explicitly. Yuri's Revenge is the default when
-both are available. Invalid or unfinished slots explain the problem and
-link back to the launcher or to Resume import. Game routes survive refreshes.
+The app uses clean routes under its deployment base: `/` (Play), `/mods`, `/manage` (Game) and
+`/settings/<tab>` are the launcher; `/import` installs a folder; `/game/:slot` launches an
+install, with `?edition=ra2` or `?edition=ra2md` naming the edition. `/settings` and an unknown tab
+go to `/settings/launcher`. Invalid or unfinished slots explain the problem and link back to the
+launcher or to Resume import. Game routes survive refreshes.
 
-The launcher groups editions by imported folder and supports multiple copies
-of the same game. Returning from a cancelled or failed import refreshes its
-metadata so the incomplete slot is immediately resumable.
+**One install.** The manifest keeps every install slot, and several copies of the game are still
+allowed. The launcher shows one of them, the *active install*: the slot remembered in
+`ra2-active-slot`, else the lowest slot with a complete game, else the lowest slot
+(`storage/active-install.ts`). Its editions are the tiles in the game rail, Red Alert 2 first; the
+chosen one is remembered per slot in `ra2-edition:<slot>` and defaults to Yuri's Revenge. The Game
+screen lists the other installs under OTHER INSTALLS with USE and remove; a new copy becomes the
+active install when its import finishes.
+
+**All games.** A setting changed on the Settings screen is written to every edition of the active
+install, each into its own files (`storage/all-games.ts`): `RA2.INI` and `RA2MD.INI`, both
+`.host` files, and the per-`storage` local-storage preferences. A key binding that only Yuri's
+Revenge has (VeterancyNav, PreviousObject, CursorCheat) is written to that edition only, and
+Campaign difficulty only to Yuri's Revenge. The values shown are those of the edition chosen in the
+rail. Writes run one at a time.
+
+**The active mod.** The PROFILE picker on Play and the PLAY of a mod row set the host's
+`[mods] active=` in the edition's `.host` file, the value the host reads at start-up
+(`src/web/settings.c`); F9 in game still switches mods. A mod that is no longer there reads as
+Vanilla, and removing the active mod clears it.
 
 Normal Exit stops browser input, presentation, audio, and LAN callbacks,
 flushes pending saves/settings, then replaces the document with the base
 launcher URL. Document teardown ends workers and makes WASM memory reclaimable.
-Failed persistence keeps the page with a retry action. Crashes retain their
-report and an explicit Back to launcher action. Browser Back or switching
+Failed persistence keeps the page with a retry action. Crashes keep their
+message and log, with RELOAD and LAUNCHER. Browser Back or switching
 a loaded game's route also uses document navigation; the classic runtime
 is never reused for another slot. Mod/font restarts reload the same game URL.
 
 1. **Browser check** (only if needed). This browser lacks something the
    game needs: `SharedArrayBuffer` (the page isn't cross-origin isolated),
    WebGL2, or OPFS. It says what, and which browsers have it.
-2. **Import.** No game in this browser yet. A button for the folder picker
-   (`showDirectoryPicker`, Chromium) and a drop zone (everywhere). Then the
-   checks from [storage.md](storage.md): which game was found, whether it's
-   the build the lift came from, and how much space it needs against the
-   quota. Then the copy, with a Radix Progress bar, the current file, and
-   Cancel. It's resumable: a reload continues from the manifest.
-3. **Library.** One card per installation, with separate RA2/Yuri launch
-   choices, file browsing, edition settings and saves, and installation
-   removal (a Radix AlertDialog confirms). "Import a folder" creates another
-   slot. Unfinished slots offer Resume import.
-4. **Play.** The canvas fills the window. A thin bar says "click to start
-   sound" until the first gesture. Esc is the game's key, so the page's own
-   menu is a small button in a corner that fades out after a few seconds,
-   opening Settings and Quit. If the game thread dies, the canvas gives way
-   to the crash report.
+2. **Play.** The edition's art and title, the PROFILE (mod) picker, PLAY and a status line
+   ("Ready", or what is missing). With nothing installed, one INSTALL THE GAME button. An
+   unfinished import offers RESUME INSTALL.
+3. **Mods.** Every mod of the install with its edition and size, filtered by edition; IN USE marks
+   the active one. INSTALL MOD (or a dropped folder) asks which edition when there are two.
+4. **Game.** The install's editions and their readiness, BROWSE FILES, RESUME INSTALL, ADD MOVIES,
+   the saved games of the chosen edition (DOWNLOAD .ZIP, IMPORT .ZIP), browser storage, REMOVE
+   GAME (an alert dialog says the size and that saves and settings are kept), and OTHER INSTALLS.
+5. **Install** (`/import`, full screen). Steps 1 FOLDER, 2 CHECK, 3 COPY: the folder picker
+   (`showDirectoryPicker`, Chromium), the file picker and a drop zone; then the checks from
+   [storage.md](storage.md) and three options (movies, saved games, settings and hotkeys); then
+   the copy with CANCEL. It's resumable: a reload continues from the manifest.
+6. **Settings.** Launcher, Gameplay, Audio, Video and Keyboard (below).
+7. **In game.** The canvas fills the window. A red star at the top-left opens the page controls:
+   SETTINGS F10, TYPE, FILES, LAN, the volume and F11. The loading screen shows the edition's art
+   and a segmented bar; "Sound is off until you click" waits for the first gesture.
+
+On a phone (under 720px) the rail becomes a row under the bar, the tabs scroll sideways in the
+bar, Play's footer stacks, and the Settings sections become a row.
 
 ## Settings: what lives where
 
-Game settings stay in the game's own F10 menu during play, drawn by the host as
-on Linux, so each setting has one copy. The launcher's `LauncherGameSettings`
-dialog edits the same files: its Launcher tab has the host presentation
-settings (scaling, blur menu bars, HD vehicles, cursor, FPS overlay), and its
-Gameplay,
+Game settings stay in the game's own files, so each setting has one copy. The launcher's Settings
+screen edits them for every edition of the install (All games, above): its Launcher tab has Skip
+intro, the host presentation settings (scaling, menu bars, cursor, HD vehicles, FPS counter) and
+the Thai font, and its Gameplay,
 Audio, Video and Keyboard tabs read and write the per-edition
 `RA2.INI`/`RA2MD.INI` and `KEYBOARD.INI`/`KEYBOARDMD.INI` in
 `save/<storage>/`. The host settings live in `.host/<edition>.ini`; a fresh
@@ -133,7 +165,7 @@ fullscreen preference: fullscreen on start, or game match only, where the launch
 menus stay windowed, the game page enters fullscreen at the match's loading screen and gives the
 window back after the score screen. Escape in fullscreen opens the game's pause
 menu (the page locks the key with `navigator.keyboard.lock`); leaving fullscreen
-is F11, the button beside the volume control, or a two-second Escape hold in
+is F11, the F11 page control, or a two-second Escape hold in
 Chromium. The in-game F10 menu has the same Resolution choice (fixed sizes
 or "Match browser size"); changing it writes the game's INI/options, so it applies to the next
 match, and "Match browser size" keeps following a resized window until then. The Keyboard tab
@@ -142,17 +174,17 @@ layout: pick a
 category, pick a command, read its description, then capture and assign a key
 (or reset every binding to the game's defaults). With no keyboard file in the
 import, it starts from the game's standard bindings and writes a complete file
-on the first change. Gameplay is grouped into Player, Match, Campaign, Camera,
-Controls and Interface; Player holds the name written to `[MultiPlayer] Handle`,
-Campaign has the `-SPEEDCONTROL` switch that puts the speed slider in campaign
+on the first change. Gameplay is grouped into Player, Match, Controls, Camera
+and Interface; Player holds the name written to `[MultiPlayer] Handle`,
+Match has the `-SPEEDCONTROL` switch that puts the speed slider in campaign
 missions, Controls has the MOBA-style right-click-to-order toggle (`.host`
-settings), and each settings tab can restore its section's defaults. The Import
-screen leaves
-the folder's settings files out unless "Bring my settings and hotkeys" is
+settings), and RESET DEFAULTS restores the open tab only. Explanations are ⓘ tooltips. The
+Install screen leaves the folder's settings files out unless "Settings and hotkeys" is
 ticked, so a fresh import starts from `web/src/storage/game-settings-defaults.ts`;
 `ensureDefaultMainSettings` writes that profile into the save store before the
-first launch. The page's in-game Settings dialog (Radix Dialog with Tabs) has only
-what belongs to the browser:
+first launch. The in-game F10 panel (a Radix Dialog shown as a side panel) has what applies while
+the game runs (scaling, resolution, menu bars, HD vehicles, MOBA style, lock pointer, FPS counter,
+the mod) and these browser settings:
 
 | Setting | Where it's kept |
 |---|---|
@@ -163,6 +195,8 @@ what belongs to the browser:
 | Mute when the window loses focus (off by default) | IndexedDB; a page-side gain, the game keeps mixing |
 | Menu music (on by default) | IndexedDB, sent to the game (`ra2_set_menu_music`); the launcher's Audio → Music tab has the same switch |
 | Storage: used, quota, "persist storage" request, remove a game | OPFS, `navigator.storage` |
+| The active install, and the edition per install | localStorage, `ra2-active-slot` and `ra2-edition:<slot>` |
+| The page controls open or collapsed | localStorage, `ra2-tray-open` |
 | Show the frame-time overlay | IndexedDB |
 
 ## The game's state in React
@@ -221,16 +255,22 @@ still shows the game's palette and bevels; the component tests cover both.
 
 ## Look
 
-Radix Themes with `appearance="dark"` by default (the game is dark), and
-the accent colour taken from the game (red for Red Alert 2, purple for Yuri's
-Revenge, set on the Library card and the Play screen). Radix's scale is used
-as it comes: no custom tokens until a screen needs one. The UI is only on
-screens around the game. During play, the page shows nothing but the canvas
-and the corner button.
+The redesign's tokens are CSS variables in `web/src/styles/tokens.css` (`--bg`, `--red`, `--yuri`,
+`--amber`, `--panel`, ...), used through CSS Modules. Radix Themes stays the base
+(`appearance="dark"`, red accent) for its dialogs and focus handling. Display titles use Russo One,
+labels, tabs and buttons Barlow Condensed in capitals, and body text Barlow; the fonts are
+self-hosted under `web/public/fonts/` so the page works offline. Primary buttons have the cut
+corner (`--cut`), switches are square, and progress is segmented pips.
 
-Accessibility comes mostly free with Radix Primitives: focus management in
-dialogs, keyboard navigation and labels. The Import drop zone is also a
-button. Progress and errors are announced (`aria-live`).
+The logo, the edition icons and the two backgrounds are EA artwork, so they are not in git:
+`web/public/brand/` holds them on the owner's machine (`yurinet.png`, `ra2-icon.png`,
+`yr-icon.png`, `bg-ra2.webp`, `bg-yr.webp`). Every use falls back without a broken image: the logo
+to the word YURINET, an icon to an RA2 / YR tile, a background to a gradient
+(`BrandImage`, `KeyArt`).
+
+Accessibility: every control is reachable by keyboard and labelled; the current tab, rail tile and
+settings section carry `aria-current`; the pip bars are sliders for the keyboard (arrow keys move
+one pip); progress and errors are announced (`aria-live`).
 
 ## Conventions
 

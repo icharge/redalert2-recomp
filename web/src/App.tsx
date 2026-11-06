@@ -29,6 +29,7 @@ import { readActiveMod, writeActiveMod } from "./storage/active-mod";
 import { loadBuildInfo, type BuildInfo } from "./storage/install";
 import { Manifest, type GameRecord, type InstallationRecord } from "./storage/manifest";
 import { listMods, type ModRecord } from "./storage/mods";
+import { serial } from "./storage/serial";
 import {
   missingGameFiles,
   opfsSaveStore,
@@ -101,6 +102,9 @@ function Main() {
   const [modState, setModState] = useState<ModState>({ mods: {}, active: {} });
   const [modsVersion, setModsVersion] = useState(0);
   const target = useMemo(() => opfsTarget(), []);
+  // The file check and removals both rewrite the manifest: one at a time, so a removal is not undone
+  // by a check that read the records before it.
+  const manifestWork = useMemo(() => serial(), []);
   const route = location.pathname + location.search;
   const runtimeRoute = useRef(route);
   const manifestRef = useRef<Manifest | null>(null);
@@ -155,14 +159,16 @@ function Main() {
     let live = true;
     void (async () => {
       try {
-        const records = await refresh(manifest);
-        // The record can be stale: a file was dropped, replaced, or copied but never marked done.
-        await Promise.all(
-          records.installations.map((installation) =>
-            reconcileInstallation(manifest, target, installation.slot).catch(() => {}),
-          ),
-        );
-        const reconciled = await refresh(manifest);
+        const reconciled = await manifestWork(async () => {
+          const records = await refresh(manifest);
+          // The record can be stale: a file was dropped, replaced, or copied but never marked done.
+          await Promise.all(
+            records.installations.map((installation) =>
+              reconcileInstallation(manifest, target, installation.slot).catch(() => {}),
+            ),
+          );
+          return refresh(manifest);
+        });
         if (live)
           setBoot((previous) =>
             previous.name === "ready" ? { ...previous, ...reconciled } : previous,
@@ -174,7 +180,8 @@ function Main() {
     return () => {
       live = false;
     };
-  }, [location.pathname, launcherPage, fixture, refresh, target, boot.name]);
+    // on entering the launcher (from an import or a game), not on every tab
+  }, [launcherPage, fixture, refresh, target, boot.name, manifestWork]);
 
   const ready = boot.name === "ready" ? boot : null;
   const active = useMemo(
@@ -365,7 +372,9 @@ function Main() {
                 : `${count} saved game${count === 1 ? "" : "s"} brought in.`;
             }}
             onRemove={async (installation) => {
-              await removeFiles(target, await manifest.removeInstallation(installation.slot));
+              await manifestWork(async () =>
+                removeFiles(target, await manifest.removeInstallation(installation.slot)),
+              );
               await reload();
             }}
           />,

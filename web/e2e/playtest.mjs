@@ -1,5 +1,6 @@
 // One tools/playtest.py case against the built page. Game files are fulfilled only
 // inside this isolated browser context; the web server never hosts the install.
+import { chooseEdition, installIfMissing, playButton } from "./lib.mjs";
 import { chromium } from "playwright-core";
 import { createWriteStream, existsSync, readFileSync } from "node:fs";
 import { serveGame } from "./files-server.mjs";
@@ -74,21 +75,9 @@ try {
   let url = new URL(config.url);
   if (config.import) {
     await page.goto(url.toString());
-    await page.getByRole("heading", { name: "Your games" }).waitFor({ timeout: 60_000 });
-    await page.getByRole("button", { name: "Import a folder…" }).click();
-    await page.locator('input[type="file"]').setInputFiles(game);
-    await page.getByText(/^Found /).waitFor({ timeout: 120_000 });
-    await page.getByRole("button", { name: /^Import / }).click();
-    await page.locator('[data-slot-id="1"]').waitFor({ timeout: 900_000 });
-    const installation = page.locator('[data-slot-id="1"]');
-    const edition = installation.getByRole("radio", {
-      name: config.target === "game" ? "Red Alert 2" : "Yuri's Revenge",
-    });
-    if (await edition.count()) await edition.click();
-    const card = installation.locator(
-      `[data-game-id="${config.target === "game" ? "ra2" : "ra2md"}"]`,
-    );
-    await card.getByRole("button", { name: "Play" }).click();
+    await installIfMissing(page, game);
+    await chooseEdition(page, config.target === "game" ? "ra2" : "ra2md");
+    await playButton(page).click();
     await page.waitForURL(/\/game\/1(?:\?|$)/, { timeout: 30_000 });
     url = new URL(page.url());
     // page flags from --web-url (cursor=page, ...) survive the import flow's own URL

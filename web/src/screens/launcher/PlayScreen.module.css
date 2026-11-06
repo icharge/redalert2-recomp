@@ -5,7 +5,7 @@
 
 .empty {
   position: absolute;
-  inset: var(--bar-h, 64px) 0 0 var(--rail-w, 88px);
+  inset: var(--stage-top, 64px) 0 0 var(--rail-w, 88px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -253,4 +253,48 @@
   margin: 0;
   font-size: 13px;
   color: #ff8a80;
+}
+
+/* Phones: the footer stacks (profile, then PLAY full width, then the status) and the title sits above it. */
+@media (max-width: 720px) {
+  .footer {
+    left: 0;
+    height: auto;
+    padding: 16px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+  .left,
+  .center,
+  .right {
+    justify-self: stretch;
+  }
+  .right {
+    justify-content: space-between;
+  }
+  .profileButton,
+  .menu {
+    width: 100%;
+  }
+  .play {
+    width: 100%;
+    min-width: 0;
+    height: 64px;
+    padding: 0 16px;
+    font-size: 24px;
+    letter-spacing: 0.1em;
+  }
+  .title {
+    left: 16px;
+    right: 16px;
+    bottom: 236px;
+  }
+  .heading {
+    font-size: 48px;
+  }
+  .empty .play {
+    width: auto;
+    padding: 0 24px;
+    font-size: 22px;
+  }
 }

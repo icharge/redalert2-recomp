@@ -8,7 +8,7 @@ import { chromium } from "playwright-core";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { options } from "./lib.mjs";
+import { chooseEdition, installIfMissing, openTab, options, playButton } from "./lib.mjs";
 
 const argv = process.argv.slice(2);
 const flag = (name, fallback) => {
@@ -45,45 +45,35 @@ try {
     if (message.type() === "error") console.error("console.error:", message.text());
   });
   await page.goto(base.url);
-  await page.getByRole("heading", { name: "Your games" }).waitFor({ timeout: 30_000 });
-  await page.getByRole("button", { name: "Import a folder…" }).click();
-  await page.locator('input[type="file"]').setInputFiles(gameDir);
-  await page.getByText(/^Found /).waitFor({ timeout: 30_000 });
-  console.log("    " + (await page.getByText(/^Found /).innerText()));
-  await page.getByRole("button", { name: /^Import / }).click();
   console.log("    importing into OPFS...");
-  await page.locator('[data-slot-id="1"]').waitFor({ timeout: 900_000 });
-  console.log("    game card appeared");
+  await installIfMissing(page, gameDir);
+  console.log("    the game is in the rail");
 
-  const installation = page.locator('[data-slot-id="1"]');
-  const ra2Edition = installation.getByRole("radio", { name: "Red Alert 2" });
-  if (await ra2Edition.count()) await ra2Edition.click();
-  const card = page.locator('[data-slot-id="1"] [data-game-id="ra2"]');
-  await card.waitFor({ timeout: 30_000 });
+  await chooseEdition(page, "ra2");
+  await openTab(page, "GAME");
   console.log("    importing the campaign save...");
-  await card.locator('input[aria-label="Saves for Red Alert 2"]').setInputFiles(saveZip);
+  await page.getByLabel("Saves for Red Alert 2").setInputFiles(saveZip);
   await page
     .getByRole("status")
     .filter({ hasText: /saved game.*brought in/i })
     .waitFor({ timeout: 30_000 });
   console.log("    opening launcher settings...");
-  const settings = async () => {
-    await card.getByRole("button", { name: "Settings for Red Alert 2" }).click();
-    return page.getByRole("dialog");
-  };
-
-  await settings();
-  await page.getByRole("combobox", { name: "Red Alert 2 resolution" }).click();
-  await page.getByRole("option", { name: `${target.w} × ${target.h}` }).click();
-  await page.getByRole("button", { name: "Done" }).click();
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
+  await page
+    .getByRole("navigation", { name: "Settings" })
+    .getByRole("link", { name: "VIDEO" })
+    .click();
+  await page.getByRole("radio", { name: "Fixed" }).click();
+  await page.getByRole("combobox", { name: "Size" }).selectOption(`${target.w}x${target.h}`);
+  await openTab(page, "PLAY");
   const preference = await page.evaluate(
     () => Object.entries(localStorage).find(([key]) => key.startsWith("ra2.video.")) ?? null,
   );
   check(Boolean(preference), "the launcher stores the selected 1280x720 size");
 
-  const playButton = card.getByRole("button", { name: "Play" });
-  check(await playButton.isEnabled(), "the imported Red Alert 2 build is playable");
-  await playButton.click();
+  const play = playButton(page);
+  check(await play.isEnabled(), "the imported Red Alert 2 build is playable");
+  await play.click();
   console.log("    clicked Play; current URL:", page.url());
   await page.waitForURL(/\/game\/1(?:\?|$)/, { timeout: 30_000 });
   const gameUrl = new URL(page.url());

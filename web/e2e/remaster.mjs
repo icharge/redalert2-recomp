@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { chromium } from "playwright-core";
 import { appendFileSync, copyFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
-import { options } from "./lib.mjs";
+import { installIfMissing, openTab, options, playButton } from "./lib.mjs";
 
 const argv = process.argv.slice(2);
 const option = (name, fallback) => (argv.includes(name) ? argv[argv.indexOf(name) + 1] : fallback);
@@ -36,20 +36,14 @@ try {
   url.searchParams.append("arg", "3");
   url.searchParams.append("arg", "--windows");
   await page.goto(url.toString());
-  await page.getByText(/Bring your game|Your games/, { exact: true }).waitFor();
-  if (await page.getByText("Bring your game", { exact: true }).isVisible()) {
-    await page.getByLabel("Game folder").setInputFiles(gameDir);
-    await page.getByRole("button", { name: /^Import / }).waitFor({ timeout: 120000 });
-    await page.getByRole("button", { name: /^Import / }).click();
-    await page.getByText("Your games", { exact: true }).waitFor({ timeout: 300000 });
-  }
-  await page.getByRole("button", { name: "Mods…" }).click();
-  if (!(await page.getByText(/^WebTest ·/).isVisible())) {
+  await installIfMissing(page, gameDir, 300000);
+  await openTab(page, "MODS");
+  if (!(await page.getByRole("heading", { name: "WebTest" }).isVisible())) {
     await page.getByLabel("Mod folder").setInputFiles(path.join(output, "fixture", "WebTest"));
-    await page.getByText(/WebTest imported/).waitFor();
+    await page.getByRole("heading", { name: "WebTest" }).waitFor();
   }
-  await page.getByRole("button", { name: "Done", exact: true }).click();
-  await page.getByRole("button", { name: "Play", exact: true }).click();
+  await openTab(page, "PLAY");
+  await playButton(page).click();
   const running = () =>
     page.waitForFunction(() => window.ra2Store?.getSnapshot().phase === "running", null, {
       timeout: 180000,
@@ -58,23 +52,30 @@ try {
   await running();
   await page.waitForTimeout(3000);
   await page.keyboard.press("F10");
-  await page.getByRole("dialog", { name: "Game settings" }).waitFor();
-  await page.getByRole("combobox", { name: "Scaling" }).click();
-  await page.getByRole("option", { name: "Nearest", exact: true }).click();
-  await page.getByRole("combobox", { name: "Resolution", exact: true }).click();
-  await page.getByRole("option", { name: "1280 × 720", exact: true }).click();
+  await page.getByRole("dialog", { name: "Settings" }).waitFor();
+  await page
+    .getByRole("radiogroup", { name: "Scaling" })
+    .getByRole("radio", { name: "Nearest" })
+    .click();
+  await page.getByRole("combobox", { name: "Resolution", exact: true }).selectOption("1280x720");
   const hd = page.getByRole("switch", { name: "HD vehicles", exact: true });
-  if ((await hd.getAttribute("data-state")) !== "checked") await hd.click();
-  const modern = page.getByRole("switch", { name: "Modern controls and Queue Five" });
-  if ((await modern.getAttribute("data-state")) !== "checked") await modern.click();
+  if ((await hd.getAttribute("aria-checked")) !== "true") await hd.click();
+  const modern = page.getByRole("switch", { name: "MOBA style" });
+  if ((await modern.getAttribute("aria-checked")) !== "true") await modern.click();
   await page.waitForFunction(() => {
     const s = window.ra2Store.getSnapshot().settings;
     return s?.scale === "nearest" && s.width === 1280 && s.height === 720 && s.hd && s.modern;
   });
   await page.screenshot({ path: path.join(output, "settings.png") });
-  await page.getByRole("button", { name: "Fullscreen (F11)" }).click();
+  await page
+    .getByRole("dialog", { name: "Settings" })
+    .getByRole("button", { name: "Fullscreen" })
+    .click();
   await page.waitForFunction(() => !!document.fullscreenElement);
-  await page.getByRole("button", { name: "Leave fullscreen" }).click();
+  await page
+    .getByRole("dialog", { name: "Settings" })
+    .getByRole("button", { name: "Leave fullscreen" })
+    .click();
   await page.waitForFunction(() => !document.fullscreenElement);
   await page.bringToFront();
   console.log(
@@ -85,15 +86,15 @@ try {
       visibility: document.visibilityState,
     })),
   );
-  await page.getByRole("button", { name: "Lock pointer for edge scrolling" }).click();
+  await page.getByRole("switch", { name: "Lock pointer" }).click();
   await page.waitForFunction(() => !!document.pointerLockElement);
   await page.mouse.move(400, 300);
   await page.evaluate(() => document.exitPointerLock());
   await page.waitForFunction(() => !document.pointerLockElement);
   await page.waitForTimeout(5000);
   await page.reload();
-  await page.getByRole("button", { name: "Play", exact: true }).waitFor();
-  await page.getByRole("button", { name: "Play", exact: true }).click();
+  await playButton(page).waitFor();
+  await playButton(page).click();
   await running();
   const saved = (await snapshot()).settings;
   assert.equal(saved.scale, "nearest");

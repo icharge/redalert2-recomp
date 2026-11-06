@@ -2,7 +2,7 @@
 
 .page {
   position: absolute;
-  top: var(--bar-h, 64px);
+  top: var(--stage-top, 64px);
   left: var(--rail-w, 88px);
   right: 0;
   bottom: 0;

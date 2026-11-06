@@ -57,7 +57,7 @@ Not in this plan (each gets its own plan; their tabs stay hidden until then):
 | 14 | In-game F10 panel | Done |
 | 15 | Loading screen and crash dialog | Done |
 | 16 | LAN, exit and sound-start dialogs | Done |
-| 17 | Phone layout, docs, e2e | Not started |
+| 17 | Phone layout, docs, e2e | Done |
 
 ## Global Constraints
 

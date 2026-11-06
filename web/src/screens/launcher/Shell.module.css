@@ -1,6 +1,8 @@
 .shell {
   --bar-h: 64px;
   --rail-w: 88px;
+  /* where screens start: under the bar, and on phones under the rail too */
+  --stage-top: var(--bar-h);
   position: fixed;
   inset: 0;
   overflow: hidden;
@@ -204,4 +206,73 @@
 .shell :focus-visible {
   outline: 2px solid var(--amber);
   outline-offset: 2px;
+}
+
+/* Phones: the rail becomes a row under the bar, and the tabs scroll sideways inside the bar. */
+@media (max-width: 720px) {
+  .shell {
+    --rail-w: 0px;
+    --rail-row: 64px;
+    --stage-top: calc(var(--bar-h) + var(--rail-row));
+  }
+  .bar {
+    padding: 0 12px 0 100px;
+    gap: 12px;
+  }
+  .logo {
+    left: 8px;
+    top: 14px;
+    height: 36px;
+  }
+  .logoText {
+    left: 8px;
+    font-size: 14px;
+  }
+  .tabs {
+    gap: 20px;
+    font-size: 16px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .storage {
+    display: none;
+  }
+  .rail {
+    top: var(--bar-h);
+    right: 0;
+    bottom: auto;
+    width: auto;
+    height: var(--rail-row);
+    padding: 0 8px;
+    flex-direction: row;
+    gap: 4px;
+    border-right: 0;
+    border-bottom: 1px solid #2c1517;
+  }
+  .edition,
+  .settings {
+    width: auto;
+    height: var(--rail-row);
+    padding: 0 10px;
+    flex-direction: row;
+    gap: 8px;
+    border-left: 0;
+    border-bottom: 3px solid transparent;
+  }
+  .edition[aria-current="true"],
+  .settings[aria-current="page"] {
+    border-bottom-color: var(--red);
+  }
+  .icon {
+    width: 40px;
+    height: 40px;
+  }
+  .tile {
+    width: 32px;
+    height: 32px;
+  }
+  .editionName {
+    max-width: 72px;
+    text-align: left;
+  }
 }

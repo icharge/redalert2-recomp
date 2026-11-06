@@ -343,3 +343,53 @@ intended peer.
 host-candidate connectivity is insufficient. Then add a separately operated
 signaling service or ICE configuration without changing the IPX data-channel
 contract. Internet lobby/session support remains Stage 13.
+
+## D14. The launcher shows one active install over the existing slots
+
+**Decided (2026-11-06, launcher redesign).** The manifest keeps its install slots, and an import can
+still make a second copy. The launcher shows one of them: the slot remembered in
+`ra2-active-slot`, else the lowest slot with a complete game, else the lowest slot. The others are
+listed on the Game screen with USE and remove; nothing is deleted to get to one install.
+
+**Why.** The redesign is "one game install, separate mod slots". Changing the storage to one
+install would mean migrating every player's OPFS copy; picking an active slot gives the same screen
+with no migration, and players with several copies keep them.
+
+**Costs.** Slots are still there under the surface, so a second copy is one click away and takes the
+full size again. Code that lists games has to choose the active install rather than all slots.
+
+**Would change if.** Mod slots inside one install (mods are already per edition) cover every
+reason players keep a second copy; then a migration could fold the slots into one.
+
+## D15. Settings are written to every edition ("All games")
+
+**Decided (2026-11-06).** A change on the Settings screen is written to Red Alert 2 and Yuri's
+Revenge of the active install, each into its own files (`RA2.INI` / `RA2MD.INI`, both `.host`
+files, the per-`storage` preferences). A key binding only Yuri's Revenge has goes to that edition
+only, and so does Campaign difficulty. The screen shows the values of the edition chosen in the rail.
+
+**Why.** The design has one Settings screen for the install. The files stay per edition because
+the game reads them that way, so the launcher writes each one rather than sharing a file.
+
+**Costs.** The two editions can still differ (a change made in game with F10 touches one edition),
+and the screen then shows the chosen edition's value. A write is one load and one write per
+edition, run one after another.
+
+**Would change if.** Players want different settings per edition; then an edition switch on the
+Settings screen would be needed.
+
+## D16. Brand images stay out of git, with fallbacks
+
+**Decided (2026-11-06).** The YuriNet logo, the RA2 and YR icons and the two backgrounds are EA
+artwork. They live in the git-ignored `web/public/brand/` on the owner's machine. Every use has a
+fallback (the word YURINET, an RA2 / YR tile, a gradient), so the public build shows no broken
+image. The fonts are OFL and are committed under `web/public/fonts/`.
+
+**Why.** REPO_RULES section 3: retail and EA art is not redistributed, the same reason
+`web/public/dialog-art/` is ignored (D8).
+
+**Costs.** The public build looks plainer than the design. A build on a machine that has the folder
+copies it into `dist/brand/`, so a deploy from there carries the art; one built elsewhere doesn't.
+
+**Would change if.** Original art made for the project replaces the EA images; that art can be
+committed.

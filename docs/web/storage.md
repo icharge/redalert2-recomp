@@ -66,7 +66,7 @@ separate identities without changing the user's install or sharing a key between
    `navigator.storage.persist()`, so the browser doesn't evict the copy
    under storage pressure. If the browser refuses, the page says the copy
    may be cleared and would then need importing again.
-4. **Content readiness.** Import and Library compare each edition's core loose
+4. **Content readiness.** The Install, Play and Game screens compare each edition's core loose
    archives with the startup requirements traced in
    [runtime-bundle.md](runtime-bundle.md). Movie packs are reported separately;
    placeholders keep startup archive probes satisfied when their video content
@@ -215,19 +215,20 @@ settings looks and is used on `pagehide` and when the game reports `settingsSave
 writes `.host/ra2.ini` for Red Alert 2 and `.host/ra2md.ini` for Yuri; an existing Yuri
 `.host/ra2.ini` is copied to the new name once at startup.
 
-The Library card offers "download saves": every `.sav` in `save/<edition-storage>/` (and any in an
+The Game screen's SAVED GAMES offers DOWNLOAD .ZIP: every `.sav` in `save/<edition-storage>/` (and any in an
 older `Saved Games/` folder there), plus the saves that came with the import, zipped under the names
-the game keeps them by, so a save can move to the desktop build or another browser. "Import saves"
+the game keeps them by, so a save can move to the desktop build or another browser. IMPORT .ZIP
 takes the `.sav` files of such a zip, or a zip of just the files, and puts them in
 `save/<edition-storage>/` where the game looks for them.
 
 ## Managing files
 
-A Library card is an installation: both games of an import live in it, their shared files in one place
-(`game/slot-N/`). When it has two games a picker on the card chooses which one the card shows and
-starts (the choice is remembered per installation); Settings, Mods and the saves links follow it.
+An installation holds both games of an import, their shared files in one place (`game/slot-N/`).
+The launcher shows one installation at a time (the active install, [frontend.md](frontend.md)); when
+it has two games the game rail chooses which one PLAY starts and SAVED GAMES works on (the choice is
+remembered per installation).
 
-"Browse files" is one browser for the whole installation: every game's imported files in one list
+BROWSE FILES is one browser for the whole installation: every game's imported files in one list
 (a shared file once), and a `Saves` folder with what the games themselves wrote (saved games,
 `RA2MD.INI`; not mods or the host's own files), split into a folder per game when there are two.
 Mods are separate (`game/<storage>/mods/`, "Mods…") and are not in this browser. The player can:
