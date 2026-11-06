@@ -110,8 +110,9 @@ active install when its import finishes.
 install, each into its own files (`storage/all-games.ts`): `RA2.INI` and `RA2MD.INI`, both
 `.host` files, and the per-`storage` local-storage preferences. A key binding that only Yuri's
 Revenge has (VeterancyNav, PreviousObject, CursorCheat) is written to that edition only, and
-Campaign difficulty only to Yuri's Revenge. The values shown are those of the edition chosen in the
-rail. Writes run one at a time.
+Campaign difficulty only to Yuri's Revenge. The values shown are those of the edition last chosen in the
+rail. Settings is a screen of its own: no rail tile is marked there, and a tile goes back to that
+edition's Play screen. Writes run one at a time.
 
 **The active mod.** The PROFILE picker on Play and the PLAY of a mod row set the host's
 `[mods] active=` in the edition's `.host` file, the value the host reads at start-up

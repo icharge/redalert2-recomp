@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Link, NavLink, useLocation } from "react-router";
+import { Link, NavLink, useLocation, useNavigate } from "react-router";
 import { BrandImage } from "../../components/BrandImage";
 import { EDITION_BRAND, LOGO_SRC } from "../../components/brand";
 import { appPath } from "../../paths";
@@ -85,6 +85,7 @@ export function Shell({
   estimate?: Estimate;
 }) {
   const inSettings = useLocation().pathname.startsWith("/settings");
+  const navigate = useNavigate();
   return (
     <div className={styles.shell}>
       <main className={styles.stage}>{children}</main>
@@ -92,7 +93,8 @@ export function Shell({
       <nav className={styles.rail} aria-label="Games">
         {editions.map((game) => {
           const brand = EDITION_BRAND[game.id];
-          const current = game.id === edition?.id;
+          // Settings is a screen of its own: no game is marked, and a game goes back to its Play.
+          const current = !inSettings && game.id === edition?.id;
           return (
             <button
               key={game.id}
@@ -100,7 +102,10 @@ export function Shell({
               className={styles.edition}
               aria-label={brand.title}
               aria-current={current ? "true" : undefined}
-              onClick={() => onEdition(game)}
+              onClick={() => {
+                onEdition(game);
+                if (inSettings) void navigate("/");
+              }}
             >
               <EditionIcon game={game} />
               <span className={styles.editionName}>{brand.title.toUpperCase()}</span>

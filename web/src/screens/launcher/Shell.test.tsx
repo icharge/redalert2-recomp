@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, useLocation } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 import type { GameId } from "../../storage/install";
 import type { GameRecord } from "../../storage/manifest";
@@ -20,6 +20,10 @@ const g = (id: GameId): GameRecord => ({
 const ra2 = g("ra2");
 const yr = g("ra2md");
 
+function Where() {
+  return <output aria-label="Path">{useLocation().pathname}</output>;
+}
+
 function renderShell(props: Partial<Parameters<typeof Shell>[0]> = {}, path = "/") {
   const onEdition = vi.fn();
   render(
@@ -33,6 +37,7 @@ function renderShell(props: Partial<Parameters<typeof Shell>[0]> = {}, path = "/
       >
         <p>content</p>
       </Shell>
+      <Where />
     </MemoryRouter>,
   );
   return { onEdition };
@@ -104,6 +109,26 @@ describe("Shell settings link", () => {
   it("is current on any settings tab", () => {
     renderShell({}, "/settings/audio");
     expect(screen.getByRole("link", { name: "Settings" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("marks no game while Settings is open", () => {
+    renderShell({}, "/settings/gameplay");
+    expect(screen.getByRole("button", { name: "Yuri’s Revenge" })).not.toHaveAttribute(
+      "aria-current",
+    );
+  });
+
+  it("a game tile goes back to that game's Play screen", async () => {
+    const { onEdition } = renderShell({}, "/settings/gameplay");
+    await userEvent.click(screen.getByRole("button", { name: "Red Alert 2" }));
+    expect(onEdition).toHaveBeenCalledWith(ra2);
+    expect(screen.getByRole("status", { name: "Path" })).toHaveTextContent(/^\/$/);
+  });
+
+  it("a game tile keeps Mods on Mods", async () => {
+    renderShell({}, "/mods");
+    await userEvent.click(screen.getByRole("button", { name: "Red Alert 2" }));
+    expect(screen.getByRole("status", { name: "Path" })).toHaveTextContent("/mods");
   });
 });
 
