@@ -878,7 +878,8 @@ class MovieSkipPatchTests(unittest.TestCase):
                 patches = movie_skip_patches(self.image(target), 0, target)
                 self.assertEqual(list(patches), [site])
                 self.assertIn('ra2_startup_logo_skip()', patches[site])
-                self.assertIn('MEM32(h + 0xC) = MEM32(h + 0x10)', patches[site])
+                self.assertIn('MEM32(h + 0x8) = 2', patches[site])
+                self.assertIn('MEM32(h + 0x18) = 1', patches[site])
 
     def test_a_different_loop_is_untouched(self):
         for target in ('gamemd', 'game'):
