@@ -2,6 +2,7 @@ import { EXPORT_SIGNATURES, type Ra2Exports } from "./protocol";
 import { appPath } from "../paths";
 import { type GameStore, gameStore } from "./store";
 import type { WasmMemory } from "./presenter";
+import { liveBytes, liveViews } from "./memory-views";
 import type { GameRecord } from "../storage/manifest";
 import {
   gamePath,
@@ -572,10 +573,7 @@ function createHandle(module: Ra2Module, saves: SaveSync | null, game: GameId): 
   const ra2 = exports as unknown as Ra2Exports;
   return {
     exports: ra2,
-    memory: () => {
-      if (!module.HEAPU8 || !module.HEAP32) throw new Error("the game's memory is not up yet");
-      return { HEAPU8: module.HEAPU8, HEAP32: module.HEAP32 };
-    },
+    memory: () => liveViews(module),
     shared: ra2.ra2_shared(),
     files: liveGameFileSource(module.FS, game === "ra2" ? "Red Alert 2" : "Yuri's Revenge"),
     saves,
@@ -770,10 +768,7 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
         if (udpTrace) (module.cwrap("ra2_net_trace", null, ["number"]) as (on: number) => void)(1);
         udpRelay = new UdpRelay(
           udp,
-          () => {
-            if (!module.HEAPU8) throw new Error("the game's memory is not up yet");
-            return module.HEAPU8;
-          },
+          () => liveBytes(module),
           undefined,
           (message) => console.warn(`[udp-relay] ${message}`),
           udpTrace,
