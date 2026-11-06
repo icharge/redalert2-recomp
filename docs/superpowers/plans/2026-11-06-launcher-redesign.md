@@ -43,7 +43,7 @@ Not in this plan (each gets its own plan; their tabs stay hidden until then):
 | --- | --- | --- |
 | 1 | Tokens, fonts, brand assets | Done |
 | 2 | Key art background | Done |
-| 3 | Active installation and edition | Not started |
+| 3 | Active installation and edition | Done |
 | 4 | "All games" writes | Not started |
 | 5 | Active mod | Not started |
 | 6 | Launcher shell | Not started |
