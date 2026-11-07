@@ -119,6 +119,21 @@ describe("SettingsScreen", () => {
     expect(version).toHaveTextContent(__APP_VERSION__);
   });
 
+  it("gives About the full width for its two columns, and the other sections their narrow one", async () => {
+    setup();
+    expect(screen.getByRole("heading", { name: "SETTINGS" }).closest("[data-wide]")).toBeNull();
+    await userEvent.click(screen.getByRole("link", { name: "ABOUT" }));
+    const version = await screen.findByRole("region", { name: "Version" });
+    const credits = screen.getByRole("region", { name: "Credits" });
+    expect(version.closest("[data-wide]")).not.toBeNull();
+    // version and what's new in one column, credits and legal in the other
+    expect(version.parentElement).not.toBe(credits.parentElement);
+    expect(screen.getByRole("region", { name: /What's new/ }).parentElement).toBe(
+      version.parentElement,
+    );
+    expect(screen.getByRole("region", { name: "Legal" }).parentElement).toBe(credits.parentElement);
+  });
+
   it("shows About with no game installed, where the other sections ask for the game", async () => {
     const { unmount } = render(
       <MemoryRouter>

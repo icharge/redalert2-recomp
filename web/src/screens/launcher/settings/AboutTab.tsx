@@ -156,169 +156,173 @@ export function AboutTab({
 
   return (
     <div className={styles.about}>
-      <section aria-label="Version" className={styles.card}>
-        <h2 className={styles.name}>YURINET</h2>
-        <p className={styles.lede}>
-          Red Alert 2 and Yuri’s Revenge, recompiled and running in your browser.
-        </p>
-        <dl className={styles.facts}>
-          <dt>Version</dt>
-          <dd>{deps.version}</dd>
-          <dt>Build</dt>
-          <dd>{build ?? "…"}</dd>
-          {edition && (
-            <>
-              <dt>Game</dt>
-              <dd>{edition.title}</dd>
-            </>
-          )}
-        </dl>
-        <div className={styles.actions}>
-          <button
-            type="button"
-            className={styles.button}
-            data-state={copied}
-            onClick={() => void copy()}
-          >
-            {COPY_LABEL[copied]}
-          </button>
-          {applyUpdate ? (
-            <button type="button" className={styles.button} onClick={applyUpdate}>
-              RELOAD TO UPDATE
-            </button>
-          ) : (
+      <div className={styles.column}>
+        <section aria-label="Version" className={styles.card}>
+          <h2 className={styles.name}>YURINET</h2>
+          <p className={styles.lede}>
+            Red Alert 2 and Yuri’s Revenge, recompiled and running in your browser.
+          </p>
+          <dl className={styles.facts}>
+            <dt>Version</dt>
+            <dd>{deps.version}</dd>
+            <dt>Build</dt>
+            <dd>{build ?? "…"}</dd>
+            {edition && (
+              <>
+                <dt>Game</dt>
+                <dd>{edition.title}</dd>
+              </>
+            )}
+          </dl>
+          <div className={styles.actions}>
             <button
               type="button"
-              className={styles.quiet}
-              disabled={check === "checking"}
-              onClick={() => void checkNow()}
+              className={styles.button}
+              data-state={copied}
+              onClick={() => void copy()}
             >
-              CHECK FOR UPDATES
+              {COPY_LABEL[copied]}
             </button>
-          )}
-        </div>
-        <p className={styles.status} role="status">
-          {applyUpdate
-            ? "A new version is ready."
-            : check === "checking"
-              ? "Checking…"
-              : check
-                ? UPDATE_MESSAGE[check]
-                : ""}
-        </p>
-      </section>
+            {applyUpdate ? (
+              <button type="button" className={styles.button} onClick={applyUpdate}>
+                RELOAD TO UPDATE
+              </button>
+            ) : (
+              <button
+                type="button"
+                className={styles.quiet}
+                disabled={check === "checking"}
+                onClick={() => void checkNow()}
+              >
+                CHECK FOR UPDATES
+              </button>
+            )}
+          </div>
+          <p className={styles.status} role="status">
+            {applyUpdate
+              ? "A new version is ready."
+              : check === "checking"
+                ? "Checking…"
+                : check
+                  ? UPDATE_MESSAGE[check]
+                  : ""}
+          </p>
+        </section>
 
-      <section aria-labelledby="about-news">
-        <div className={styles.sectionHead}>
-          <h2 id="about-news" className={styles.label}>
-            {heading}
+        <section aria-labelledby="about-news">
+          <div className={styles.sectionHead}>
+            <h2 id="about-news" className={styles.label}>
+              {heading}
+            </h2>
+            {release?.date && <span className={styles.meta}>{longDate(release.date)}</span>}
+          </div>
+          {changes.length === 0 ? (
+            <p className={styles.meta}>No changes are listed yet.</p>
+          ) : (
+            <>
+              {counts && <p className={styles.meta}>{counts}</p>}
+              <ul className={styles.changes} data-all={showAll || undefined}>
+                {shown.map((change, i) => (
+                  <li key={i} className={styles.change}>
+                    <span className={styles.tag} data-kind={change.kind}>
+                      {TAGS[change.kind] ?? change.kind.toUpperCase()}
+                    </span>
+                    <span className={styles.changeText}>
+                      {change.title && <span className={styles.changeTitle}>{change.title}</span>}
+                      <span>{change.text}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              {changes.length > FIRST && (
+                <button
+                  type="button"
+                  className={styles.more}
+                  aria-expanded={showAll}
+                  onClick={() => setShowAll((now) => !now)}
+                >
+                  {showAll ? "Show fewer" : `Show all ${changes.length} changes`}
+                </button>
+              )}
+            </>
+          )}
+        </section>
+      </div>
+
+      <div className={styles.column}>
+        <section aria-labelledby="about-credits">
+          <h2 id="about-credits" className={styles.label}>
+            Credits
           </h2>
-          {release?.date && <span className={styles.meta}>{longDate(release.date)}</span>}
-        </div>
-        {changes.length === 0 ? (
-          <p className={styles.meta}>No changes are listed yet.</p>
-        ) : (
-          <>
-            {counts && <p className={styles.meta}>{counts}</p>}
-            <ul className={styles.changes} data-all={showAll || undefined}>
-              {shown.map((change, i) => (
-                <li key={i} className={styles.change}>
-                  <span className={styles.tag} data-kind={change.kind}>
-                    {TAGS[change.kind] ?? change.kind.toUpperCase()}
-                  </span>
-                  <span className={styles.changeText}>
-                    {change.title && <span className={styles.changeTitle}>{change.title}</span>}
-                    <span>{change.text}</span>
-                  </span>
+          <dl className={styles.credits}>
+            {CREDITS.map((credit) => (
+              <div key={credit.role} className={styles.credit}>
+                <dt>{credit.role}</dt>
+                <dd>
+                  {credit.href ? (
+                    <a
+                      href={credit.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={styles.link}
+                    >
+                      {credit.who}
+                      <svg
+                        width="13"
+                        height="13"
+                        viewBox="0 0 16 16"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.6"
+                        aria-hidden="true"
+                      >
+                        <path d="M6 3H3v10h10v-3M9 2.5h4.5V7M13.5 2.5L7.5 8.5" />
+                      </svg>
+                    </a>
+                  ) : (
+                    credit.who
+                  )}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+
+        <section aria-labelledby="about-legal" className={styles.legal}>
+          <h2 id="about-legal" className={styles.label}>
+            Legal
+          </h2>
+          <p>
+            Command &amp; Conquer: Red Alert 2 and Yuri’s Revenge are © Electronic Arts Inc. YuriNET
+            is a fan project. It is not made, endorsed or supported by Electronic Arts.
+          </p>
+          <p className={styles.meta}>
+            The game files come from your own copy and stay in this browser.
+          </p>
+          <p className={styles.meta}>
+            YuriNET © 2026 THAI RA2. Its code is under the MIT licence and builds on the
+            recompilation, © 2026 sp00nz.
+          </p>
+          <button
+            type="button"
+            className={styles.quiet}
+            aria-expanded={licences}
+            onClick={() => setLicences((now) => !now)}
+          >
+            OPEN-SOURCE LICENCES
+          </button>
+          {licences && (
+            <ul className={styles.licences}>
+              {LICENCES.map(([name, licence]) => (
+                <li key={name}>
+                  <span>{name}</span>
+                  <span className={styles.meta}>{licence}</span>
                 </li>
               ))}
             </ul>
-            {changes.length > FIRST && (
-              <button
-                type="button"
-                className={styles.more}
-                aria-expanded={showAll}
-                onClick={() => setShowAll((now) => !now)}
-              >
-                {showAll ? "Show fewer" : `Show all ${changes.length} changes`}
-              </button>
-            )}
-          </>
-        )}
-      </section>
-
-      <section aria-labelledby="about-credits">
-        <h2 id="about-credits" className={styles.label}>
-          Credits
-        </h2>
-        <dl className={styles.credits}>
-          {CREDITS.map((credit) => (
-            <div key={credit.role} className={styles.credit}>
-              <dt>{credit.role}</dt>
-              <dd>
-                {credit.href ? (
-                  <a
-                    href={credit.href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={styles.link}
-                  >
-                    {credit.who}
-                    <svg
-                      width="13"
-                      height="13"
-                      viewBox="0 0 16 16"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.6"
-                      aria-hidden="true"
-                    >
-                      <path d="M6 3H3v10h10v-3M9 2.5h4.5V7M13.5 2.5L7.5 8.5" />
-                    </svg>
-                  </a>
-                ) : (
-                  credit.who
-                )}
-              </dd>
-            </div>
-          ))}
-        </dl>
-      </section>
-
-      <section aria-labelledby="about-legal" className={styles.legal}>
-        <h2 id="about-legal" className={styles.label}>
-          Legal
-        </h2>
-        <p>
-          Command &amp; Conquer: Red Alert 2 and Yuri’s Revenge are © Electronic Arts Inc. YuriNET
-          is a fan project. It is not made, endorsed or supported by Electronic Arts.
-        </p>
-        <p className={styles.meta}>
-          The game files come from your own copy and stay in this browser.
-        </p>
-        <p className={styles.meta}>
-          YuriNET © 2026 THAI RA2. Its code is under the MIT licence and builds on the
-          recompilation, © 2026 sp00nz.
-        </p>
-        <button
-          type="button"
-          className={styles.quiet}
-          aria-expanded={licences}
-          onClick={() => setLicences((now) => !now)}
-        >
-          OPEN-SOURCE LICENCES
-        </button>
-        {licences && (
-          <ul className={styles.licences}>
-            {LICENCES.map(([name, licence]) => (
-              <li key={name}>
-                <span>{name}</span>
-                <span className={styles.meta}>{licence}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+          )}
+        </section>
+      </div>
     </div>
   );
 }

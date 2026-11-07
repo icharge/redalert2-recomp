@@ -59,6 +59,10 @@
   gap: 20px;
   padding-bottom: 48px;
 }
+/* About lays out two columns, so it takes the screen's width. */
+.content[data-wide] {
+  max-width: 1180px;
+}
 
 .head {
   display: flex;

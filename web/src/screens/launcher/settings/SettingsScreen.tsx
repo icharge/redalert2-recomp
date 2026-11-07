@@ -64,7 +64,7 @@ export function SettingsScreen({
             </Link>
           ))}
         </nav>
-        <div className={styles.content}>
+        <div className={styles.content} data-wide={tab === "about" || undefined}>
           <div className={styles.head}>
             <h1 className={page.title}>SETTINGS</h1>
           </div>
@@ -94,7 +94,7 @@ export function SettingsEmpty({ tab }: { tab?: SettingsTab }) {
       <div className={page.page}>
         <h1 className={page.title}>{tab === "about" ? "ABOUT" : "SETTINGS"}</h1>
         {tab === "about" ? (
-          <div className={styles.content}>
+          <div className={styles.content} data-wide>
             <AboutTab />
           </div>
         ) : (
