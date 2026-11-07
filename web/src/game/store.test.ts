@@ -124,30 +124,6 @@ describe("GameStore", () => {
     }
   });
 
-  it("keeps where the map list is while it is up, and forgets it when it closes", () => {
-    const store = new GameStore();
-    store.begin();
-    store.line(boot());
-    expect(store.getSnapshot().mapList).toBeNull();
-    store.line(
-      '@ra2 {"e":"mapList","open":1,"x":332,"y":186,"w":177,"h":264,"shown":48,"total":48,"matched":-1,"seq":0}',
-    );
-    expect(store.getSnapshot().mapList).toEqual({
-      x: 332,
-      y: 186,
-      w: 177,
-      h: 264,
-      shown: 48,
-      total: 48,
-      matched: -1,
-      seq: 0,
-    });
-    store.line(
-      '@ra2 {"e":"mapList","open":0,"x":0,"y":0,"w":0,"h":0,"shown":0,"total":0,"matched":-1,"seq":0}',
-    );
-    expect(store.getSnapshot().mapList).toBeNull();
-  });
-
   it("keeps a link open until the player closes it, then clears it", () => {
     const store = new GameStore();
     store.begin();

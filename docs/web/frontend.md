@@ -251,15 +251,13 @@ to the retail installer's registry URL (`src/web/wol_pages.h`), so the event
 carries the real Westwood URL. An unknown key has `url: ""` and the key in
 `page`, and the dialog names the page.
 
-**The map search.** While a map screen is up (Customize Battle, and the network game's map
-screen), the game sends `mapList` with where the list is and how many maps it shows, and `Play`
-lays `MapSearch` over it: a search box and a Players picker in the row above the list, placed
-from the canvas's letterboxed picture. Each change goes to the game as `ra2_map_search(text,
-players, seq)`; the game does the narrowing (`src/web/map_search.c`, rules in `map_match.c`):
-the list keeps only the maps whose names hold every word and whose "(2-4)" admits that many
-players, and the game sees the shorter list as the whole list (win32hle's `hle_list_filter`), so
-Use Map starts the map the player picked. A search that keeps nothing leaves the list whole and
-says "No maps match". The search starts empty each time the screen comes up; Escape clears it.
+**The map search.** Customize Battle and the network game's map screen have a native edit box above
+the map list. The game applies each change to the list (src/web/map_search.c, with matching rules
+in `map_match.c`): every search word must occur in the map name, and a number from 1 to 8 narrows
+the list to maps whose "(2-4)" range admits that many players. The game sees the shorter list as
+the whole list (win32hle's `hle_list_filter`), so Use Map starts the map the player picked. When a
+search has no matches, the game restores the full list; the attempted help-line message is not
+visible in the current web build.
 
 ### Link dialog art
 

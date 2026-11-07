@@ -32,6 +32,7 @@
 #ifdef __EMSCRIPTEN__
 void web_presenter_dialog_created(uint32_t hwnd, uint32_t resource_id);
 void web_map_search_dialog(uint32_t hwnd, uint32_t resource_id);   /* src/web/map_search.c */
+void web_map_search_start(void);
 #include "web_api.h"
 void ra2_setting(int key, int value, int extra);  /* src/web/presenter.c */
 #endif
@@ -450,6 +451,9 @@ void script_start(void) {
     pthread_t t;
     hle_dialog_hook = dialog_created;
     hle_proc_hook = watch;
+#ifdef __EMSCRIPTEN__
+    web_map_search_start();                      /* the map screens' search box */
+#endif
     pthread_create(&t, NULL, dialog_poller, NULL);
     pthread_detach(t);
     if (!g_nev) return;

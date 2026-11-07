@@ -769,3 +769,12 @@ node build-web/map-match-selftest.js   # map_match_selftest: ok
 ```
 
 The list filter itself is win32hle's `user32_listfilter_selftest` (pcrecomp, `build_selftests_web.py`).
+
+`src/web/map_dialog.c` adds the native Edit control to the dialog template and moves the map list
+down to make room. Its standalone test checks the rewritten template and malformed input:
+
+```powershell
+emcc src/web/map_dialog_selftest.c src/web/map_dialog.c -sENVIRONMENT=node -sEXIT_RUNTIME=1 `
+  -o build-web/map-dialog-selftest.js
+node build-web/map-dialog-selftest.js   # map_dialog_selftest: ok
+```

@@ -38,10 +38,27 @@ int main(void) {
     assert(matches("A map with no count", "", 0));
     assert(matches("Brackets (in) the name (2-8)", "", 8));   /* the last brackets count */
 
-    /* the page's UTF-8 becomes the game's CP874: Thai letters fold to the same bytes */
-    char thai[] = { (char)0xE1, (char)0xBC, (char)0xB9, ' ', '(', '2', ')', 0 };   /* "แผน (2)" in CP874 */
-    assert(matches(thai, "\xE0\xB9\x81\xE0\xB8\x9C\xE0\xB8\x99", 0));            /* "แผน" in UTF-8 */
-    assert(!matches(thai, "\xE0\xB8\x81", 0));                                   /* "ก" */
+    /* the box holds the game's bytes (CP874): Thai is matched as it is, only ASCII changes case */
+    char thai[] = { (char)0xE1, (char)0xBC, (char)0xB9, ' ', '(', '2', ')', 0 };   /* "แผน (2)" */
+    assert(matches(thai, "\xE1\xBC\xB9", 0));
+    assert(!matches(thai, "\xA1", 0));                                             /* "ก" */
+
+    /* a number on its own, 1 to 8, is a player count, taken out of the words */
+    {
+        char q[64];
+        ra2_map_query(q, sizeof q, "lake 4");
+        assert(ra2_map_players(q) == 4 && !strcmp(q, "lake"));
+        ra2_map_query(q, sizeof q, "2 war");
+        assert(ra2_map_players(q) == 2 && !strcmp(q, "war"));
+        ra2_map_query(q, sizeof q, "defcon 6");
+        assert(ra2_map_players(q) == 6 && !strcmp(q, "defcon"));
+        ra2_map_query(q, sizeof q, "lake");
+        assert(ra2_map_players(q) == 0 && !strcmp(q, "lake"));
+        ra2_map_query(q, sizeof q, "lake 12 0");                     /* not a count: words */
+        assert(ra2_map_players(q) == 0 && !strcmp(q, "lake 12 0"));
+        ra2_map_query(q, sizeof q, "8");
+        assert(ra2_map_players(q) == 8 && !strcmp(q, ""));
+    }
 
     char query[8];
     ra2_map_query(query, sizeof query, "alongquery");                      /* cut, not overrun */

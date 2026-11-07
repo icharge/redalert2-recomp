@@ -31,22 +31,6 @@ export interface Pacing {
   publishMs: number;
 }
 
-/** The game's map list, while a map screen is up (the page's map search, src/web/map_search.c). */
-export interface MapList {
-  /** where the list is, in the picture's pixels */
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  /** maps it shows, of all it has */
-  shown: number;
-  total: number;
-  /** what the last search applied kept: 0 none (the list then shows all), -1 no search yet */
-  matched: number;
-  /** the number of the last search the game applied (ra2_map_search) */
-  seq: number;
-}
-
 export type GameEvent =
   | { e: "boot"; protocol: number; title: string; exe: string; stamp: number }
   | { e: "menu" }
@@ -64,7 +48,6 @@ export type GameEvent =
    */
   | { e: "open"; url: string; ask: number; seq: number; page?: string }
   | { e: "settingsSaved"; path: string }
-  | ({ e: "mapList"; open: boolean } & MapList)
   | { e: "error"; message: string };
 
 const PREFIX = "@ra2 ";
@@ -172,13 +155,6 @@ export function parseEventLine(line: string): GameEvent | null {
       return value.page === undefined
         ? { e: "open", url: value.url, ask: value.ask, seq: value.seq }
         : { e: "open", url: value.url, ask: value.ask, seq: value.seq, page: value.page };
-    case "mapList": {
-      const keys = ["x", "y", "w", "h", "shown", "total", "matched", "seq"] as const;
-      if (!keys.every((key) => typeof value[key] === "number") || typeof value.open !== "number")
-        return null;
-      const list = Object.fromEntries(keys.map((key) => [key, value[key]])) as unknown as MapList;
-      return { e: "mapList", open: value.open !== 0, ...list };
-    }
     case "error":
       return typeof value.message === "string" ? { e: "error", message: value.message } : null;
     default:
@@ -349,8 +325,6 @@ export interface Ra2Exports {
   ra2_input_key(down: number, vk: number, scan: number): void;
   /** a wheel turn at x, y in game pixels: 120 a notch, positive away from the player; missing in older builds */
   ra2_input_wheel?(delta: number, x: number, y: number): void;
-  /** the map search over the game's map list: words, a player count (0 any), its number; missing in older builds */
-  ra2_map_search?(text: string, players: number, seq: number): void;
   /** committed Unicode text; the game host converts supported characters to CP874 WM_CHAR messages */
   ra2_input_text(text: string): void;
   ra2_crash_report(why: string): void;
@@ -376,7 +350,6 @@ export const EXPORT_SIGNATURES: {
   ra2_input_pointer: { returns: null, args: ["number", "number", "number", "number"] },
   ra2_input_key: { returns: null, args: ["number", "number", "number"] },
   ra2_input_wheel: { returns: null, args: ["number", "number", "number"] },
-  ra2_map_search: { returns: null, args: ["string", "number", "number"] },
   ra2_input_text: { returns: null, args: ["string"] },
   ra2_crash_report: { returns: null, args: ["string"] },
 };

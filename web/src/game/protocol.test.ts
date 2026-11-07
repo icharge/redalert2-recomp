@@ -37,23 +37,6 @@ describe("parseEventLine", () => {
       e: "exitConfirm",
       request: 123,
     });
-    expect(
-      parseEventLine(
-        '@ra2 {"e":"mapList","open":1,"x":332,"y":186,"w":177,"h":264,"shown":4,"total":48,"matched":4,"seq":3}',
-      ),
-    ).toEqual({
-      e: "mapList",
-      open: true,
-      x: 332,
-      y: 186,
-      w: 177,
-      h: 264,
-      shown: 4,
-      total: 48,
-      matched: 4,
-      seq: 3,
-    });
-    expect(parseEventLine('@ra2 {"e":"mapList","open":1,"x":1}')).toBeNull();
     expect(parseEventLine('@ra2 {"e":"settingsSaved","path":"/opfs/game/RA2MD.INI"}')).toEqual({
       e: "settingsSaved",
       path: "/opfs/game/RA2MD.INI",

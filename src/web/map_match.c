@@ -1,36 +1,41 @@
 /* The map search's rules (map_match.h). No game state here: map_match_selftest.c tests it alone. */
 #include "map_match.h"
 
-#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
-void ra2_map_query(char *out, size_t size, const char *utf8) {
+void ra2_map_query(char *out, size_t size, const char *text) {
     size_t n = 0;
     int space = 1;   /* no space at the start, none doubled */
-    const unsigned char *p = (const unsigned char *)(utf8 ? utf8 : "");
     if (!size) return;
-    while (*p && n + 1 < size) {
-        uint32_t c = *p++;
-        if (c >= 0xC0) {   /* a UTF-8 sequence: its code point */
-            int more = c >= 0xF0 ? 3 : c >= 0xE0 ? 2 : 1;
-            c &= 0x3Fu >> more;
-            while (more-- && (*p & 0xC0) == 0x80) c = c << 6 | (*p++ & 0x3Fu);
+    for (const unsigned char *p = (const unsigned char *)(text ? text : ""); *p && n + 1 < size; p++) {
+        if (*p == ' ' || *p == '\t') {
+            if (!space) out[n++] = ' ', space = 1;
+            continue;
         }
-        unsigned char b;
-        if (c == ' ' || c == '\t') {
-            if (space) continue;
-            b = ' ', space = 1;
-        } else {
-            b = c < 0x80 ? (unsigned char)(c >= 'A' && c <= 'Z' ? c + 32 : c)
-                : c >= 0x0E01 && c <= 0x0E5B ? (unsigned char)(0xA1 + (c - 0x0E01))   /* Thai, as CP874 */
-                : '?';
-            space = 0;
-        }
-        out[n++] = (char)b;
+        out[n++] = (char)(*p >= 'A' && *p <= 'Z' ? *p + 32 : *p);
+        space = 0;
     }
     if (n && out[n - 1] == ' ') n--;
     out[n] = 0;
+}
+
+int ra2_map_players(char *query) {
+    int players = 0;
+    char *w = query, *out = query;
+    while (*w) {
+        size_t len = strcspn(w, " ");
+        if (len == 1 && w[0] >= '1' && w[0] <= '8' && !players) {
+            players = w[0] - '0';
+        } else {
+            if (out != query) *out++ = ' ';
+            memmove(out, w, len), out += len;
+        }
+        w += len;
+        while (*w == ' ') w++;
+    }
+    *out = 0;
+    return players;
 }
 
 /* The players a name admits, from its last brackets: "(3)" or "(2-4)". 0 when it says nothing. */
