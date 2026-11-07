@@ -7,7 +7,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
-#define RA2_WEB_PROTOCOL 11
+#define RA2_WEB_PROTOCOL 12
 
 #define RA2_CURSOR_PX 32
 /* The largest cursor frame the page accepts. MOUSE.SHA's header gives 55x43 as
@@ -121,6 +121,9 @@ void ra2_open_url(uint32_t url_va, uint32_t ask);
 /* the embedded WOL browser's page key (DoWebPageDialog), mapped to a URL */
 void ra2_open_wol_page(uint32_t key_va);
 int ra2_exit_confirmation_reply(uint32_t request, int exit_game);
+int ra2_web_save_reference_prompt(void);
+int ra2_web_save_reference_reply(uint32_t request, int ignore);
+void ra2_web_save_reference_reset(void);
 
 enum { RA2_SETTING_SCALE, RA2_SETTING_BARS, RA2_SETTING_HD, RA2_SETTING_MODERN,
        RA2_SETTING_RESOLUTION, RA2_SETTING_MENU };

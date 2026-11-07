@@ -4,8 +4,8 @@
  * There is no SDL window here. win32hle's screen.c runs headless (it builds
  * the frame from the primary surface and calls hle_screen_frame_hook); this
  * file turns that frame into RGBA in shared memory, which the page draws on a
- * canvas, and takes the page's mouse and keys back through a ring. The game's
- * thread never waits for the page and the page never waits for the game.
+ * canvas, and takes the page's mouse and keys back through a ring. The game
+ * thread normally does not wait for the page, except for explicit modal replies.
  *
  * Threads: the page calls the ra2_* exports on the main thread; everything
  * else here runs on the game's thread: input and the cursor from its pump, the
@@ -231,7 +231,9 @@ static int (*g_menus_cursor)(void);
  * count is not used: after a match it keeps moving while the score and setup screens are up. */
 static volatile int g_scenario;
 void web_presenter_scenario_start(int starting) {
+    int was_starting = g_scenario;
     g_scenario = starting != 0;
+    if (g_scenario && !was_starting) ra2_web_save_reference_reset();
     g_sh.match_state = g_scenario;   /* the page's "Game match only" fullscreen follows this */
 }
 

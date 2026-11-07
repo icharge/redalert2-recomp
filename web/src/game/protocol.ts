@@ -1,7 +1,7 @@
 // What the page and the game say to each other (docs/web/protocol.md). The C side is
 // src/web/web_api.h: change the two together, and RA2_WEB_PROTOCOL with them.
 
-export const RA2_WEB_PROTOCOL = 11;
+export const RA2_WEB_PROTOCOL = 12;
 
 export const SCALES = ["sharp", "smooth", "crt", "nearest", "integer"] as const;
 export type Scale = (typeof SCALES)[number];
@@ -56,6 +56,7 @@ export type GameEvent =
   | { e: "fps"; fps: number; ms: number; pacing: Pacing | null }
   | { e: "exit"; code: number }
   | { e: "exitConfirm"; request: number }
+  | { e: "saveReference"; request: number }
   /**
    * A WOL-era link. `url` is the game's own string, unchanged, or "" when the
    * game only named a WOL page (YR's DoWebPageDialog passes a page key, not a
@@ -151,6 +152,12 @@ export function parseEventLine(line: string): GameEvent | null {
         Number(value.request) > 0 &&
         Number(value.request) <= 0xffffffff
         ? { e: "exitConfirm", request: Number(value.request) }
+        : null;
+    case "saveReference":
+      return Number.isInteger(value.request) &&
+        Number(value.request) > 0 &&
+        Number(value.request) <= 0xffffffff
+        ? { e: "saveReference", request: Number(value.request) }
         : null;
     case "settingsSaved":
       return typeof value.path === "string" ? { e: "settingsSaved", path: value.path } : null;
@@ -335,6 +342,7 @@ export interface Ra2Exports {
   ra2_setting(key: number, value: number, extra: number): void;
   /** reply to the intercepted Exit confirmation without creating a native dialog */
   ra2_exit_confirmation_reply(request: number, exitGame: number): number;
+  ra2_web_save_reference_reply(request: number, ignore: number): number;
   /** kind: PointerKind; x and y in game pixels; button as the DOM numbers it (0 left, 1 middle, 2 right) */
   ra2_input_pointer(kind: number, x: number, y: number, button: number): void;
   /** vk: a Windows virtual key; scan: the set-1 scan code */
@@ -364,6 +372,7 @@ export const EXPORT_SIGNATURES: {
   ra2_quit: { returns: null, args: [] },
   ra2_setting: { returns: null, args: ["number", "number", "number"] },
   ra2_exit_confirmation_reply: { returns: "number", args: ["number", "number"] },
+  ra2_web_save_reference_reply: { returns: "number", args: ["number", "number"] },
   ra2_input_pointer: { returns: null, args: ["number", "number", "number", "number"] },
   ra2_input_key: { returns: null, args: ["number", "number", "number"] },
   ra2_input_wheel: { returns: null, args: ["number", "number", "number"] },

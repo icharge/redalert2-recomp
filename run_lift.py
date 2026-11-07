@@ -482,6 +482,34 @@ def theme_song_guard(code, cs, target):
         'run_lift.py theme_song_guard */')}
 
 
+def save_reference_fault_patch(code, cs, target):
+    """Offer to skip an unmatched entry at Yuri's zero-divide assertion.
+
+    The merge loop at 0x006CF3DD deliberately divides by zero when a saved
+    reference cannot be matched. The lifter's generic div fallback used to
+    substitute zero for #DE, after which the loop never made progress. Ask the
+    page whether to skip this entry or stop the load. Other divide instructions
+    keep the generic fallback because some rendering paths intentionally divide
+    by zero.
+    """
+    if target != 'gamemd':
+        return {}
+    va = 0x006CF3DD
+    if code[va - cs:va - cs + 4] != bytes.fromhex('f77c2410'):
+        print('[*] save_reference_fault_patch: swizzler assertion does not match; no skip prompt')
+        return {}
+    return {va: ('@replace:{ int64_t _dividend = 0; int32_t _dv = 0; '
+                 'extern int ra2_web_save_reference_prompt(void); '
+                 'if (ra2_web_save_reference_prompt()) { '
+                 'fprintf(stderr, "[save] ignored unresolved object reference and continued loading\\n"); '
+                 'uint32_t missing_ref = MEM32(edi + 4); if (missing_ref) MEM32(missing_ref) = 0; '
+                 'edi += 8; ebp -= 1; goto L_006CF3E5; '
+                 '} '
+                 'fprintf(stderr, "[save] unresolved object reference; load cancelled\\n"); abort(); '
+                 '/* remaster: let the player ignore an unresolved saved reference, '
+                 'run_lift.py save_reference_fault_patch */')}
+
+
 # The `mov edi, [esp+0x10]` that loads Theme::PlaySong's song id, in each exe.
 THEME_PLAYSONG_ARG = {'gamemd': 0x00720BDF, 'game': 0x006E7EDF}
 
@@ -1533,6 +1561,7 @@ def targets():
                        patches=lambda code, cs: {**sidebar_rows_patches(code, cs), **dropdown_frame_patches(code, cs), **HD_VOXEL_PATCHES,
                                                  **modern_controls_patches('gamemd'), **queue_five_patches('gamemd'),
                                                  **theme_song_guard(code, cs, 'gamemd'),
+                                                 **save_reference_fault_patch(code, cs, 'gamemd'),
                                                  **page_cursor_patches(code, cs, 'gamemd'),
                                                  **page_cursor_palette_patches(code, cs, 'gamemd'),
                                                  **yr_online_patches(code, cs), **yr_startup_order_patches(code, cs),

@@ -819,8 +819,17 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
     // a trap in the game's thread reaches the page as an uncaught error from its worker
     window.addEventListener("error", (event) => {
       const phase = store.getSnapshot().phase;
-      if (phase !== "exited" && phase !== "crashed")
-        fail(new Error(event.message || "the game stopped"));
+      if (phase !== "exited" && phase !== "crashed") {
+        const nested = event.error as { message?: unknown } | null;
+        const detail = typeof nested?.message === "string" ? nested.message : event.message;
+        fail(
+          new Error(
+            detail === "Uncaught [object ErrorEvent]"
+              ? "The game stopped after an uncaught error. Open LOG for the game trace."
+              : detail || "the game stopped",
+          ),
+        );
+      }
     });
 
     window.Module = module;

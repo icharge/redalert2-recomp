@@ -42,6 +42,7 @@ from run_lift import (
     thai_font_call_replacements,
     THEME_PLAYSONG_ARG,
     theme_song_guard,
+    save_reference_fault_patch,
     web_exit_confirmation_patches,
     WEB_URL_SITES,
     web_url_patches,
@@ -675,6 +676,33 @@ class ThemeSongGuardTests(unittest.TestCase):
             va = THEME_PLAYSONG_ARG[target]
             with self.subTest(target=target):
                 self.assertEqual(theme_song_guard(self.image(target, corrupt=va), 0, target), {})
+
+
+class SaveReferenceFaultPatchTests(unittest.TestCase):
+    """Turn the save swizzler's impossible divide into an optional skip prompt."""
+
+    def test_only_the_expected_yuri_swizzler_instruction_becomes_a_skip_prompt(self):
+        va = 0x006CF3DD
+        image = bytearray(va + 4)
+        image[va:va + 4] = bytes.fromhex('f77c2410')
+        patches = save_reference_fault_patch(image, 0, 'gamemd')
+        self.assertEqual(set(patches), {va})
+        self.assertIn('ra2_web_save_reference_prompt()', patches[va])
+        self.assertIn('edi += 8; ebp -= 1; goto L_006CF3E5;', patches[va])
+        self.assertIn('abort();', patches[va])
+
+        body = '    eax = 0; /* 0x006CF3DD: idiv dword ptr [esp + 0x10] */\n'
+        result = apply_patches(body, patches)
+        self.assertIn('abort();', result)
+        self.assertNotIn('eax = 0;', result)
+
+    def test_other_targets_and_different_binaries_are_not_patched(self):
+        va = 0x006CF3DD
+        image = bytearray(va + 4)
+        image[va:va + 4] = bytes.fromhex('f77c2410')
+        self.assertEqual(save_reference_fault_patch(image, 0, 'game'), {})
+        image[va] ^= 0xFF
+        self.assertEqual(save_reference_fault_patch(image, 0, 'gamemd'), {})
 
 
 class WebUrlPatchTests(unittest.TestCase):

@@ -326,6 +326,45 @@ EMSCRIPTEN_KEEPALIVE int ra2_exit_confirmation_reply(uint32_t request, int exit_
     return 1;
 }
 
+/* An unresolved saved object can be ignored at the game's reference-merge
+ * point. Keep the load thread parked while the page asks; once accepted, later
+ * unmatched references in the same load are skipped without another prompt. */
+static uint32_t g_save_ref_serial, g_save_ref_request, g_save_ref_answer;
+static int g_ignore_save_references;
+
+int ra2_web_save_reference_prompt(void) {
+    if (__atomic_load_n(&g_ignore_save_references, __ATOMIC_ACQUIRE)) return 1;
+    uint32_t request = ++g_save_ref_serial;
+    if (!request) request = ++g_save_ref_serial;
+    __atomic_store_n(&g_save_ref_answer, 0, __ATOMIC_RELAXED);
+    __atomic_store_n(&g_save_ref_request, request, __ATOMIC_RELEASE);
+    char event[96];
+    snprintf(event, sizeof event, "{\"e\":\"saveReference\",\"request\":%u}", request);
+    web_event_json(event);
+
+    hle_block_begin();
+    uint32_t answer;
+    while (!(answer = __atomic_load_n(&g_save_ref_answer, __ATOMIC_ACQUIRE)))
+        usleep(10000);
+    hle_block_end();
+    if (answer != 1) return 0;
+    __atomic_store_n(&g_ignore_save_references, 1, __ATOMIC_RELEASE);
+    return 1;
+}
+
+void ra2_web_save_reference_reset(void) {
+    __atomic_store_n(&g_ignore_save_references, 0, __ATOMIC_RELEASE);
+}
+
+EMSCRIPTEN_KEEPALIVE int ra2_web_save_reference_reply(uint32_t request, int ignore) {
+    if (!request || (ignore != 0 && ignore != 1)) return 0;
+    uint32_t expected = request;
+    if (!__atomic_compare_exchange_n(&g_save_ref_request, &expected, 0, 0,
+                                     __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) return 0;
+    __atomic_store_n(&g_save_ref_answer, ignore ? 1u : 2u, __ATOMIC_RELEASE);
+    return 1;
+}
+
 /* WinMain checks that Blowfish.dll, the Westwood cipher's COM server, can be
  * created, and the MIX archives' headers are decrypted through it: its object
  * is served by blowfish.c. */

@@ -28,6 +28,7 @@ import { FileExplorer } from "../components/FileExplorer";
 import { GameTray, trayItem } from "./GameTray";
 import { CrashDialog } from "./CrashDialog";
 import { MapSearch, type Place } from "./MapSearch";
+import { SaveReferencePrompt } from "./SaveReferencePrompt";
 import { ExitConfirm } from "./ExitConfirm";
 import {
   argsFromQuery,
@@ -136,6 +137,7 @@ export function Play({ files }: { files: FileSource }) {
   const error = useGameState((s) => s.error);
   const exitCode = useGameState((s) => s.exitCode);
   const exitConfirmation = useGameState((s) => s.exitConfirmation);
+  const saveReferencePrompt = useGameState((s) => s.saveReferencePrompt);
   const openLink = useGameState((s) => s.openLink);
   const linkDialogTarget = useMemo(
     () => (openLink ? linkTarget(openLink.url, undefined, openLink.page) : null),
@@ -260,6 +262,16 @@ export function Play({ files }: { files: FileSource }) {
       .finally(() => {
         exitFlushing.current = false;
       });
+  };
+  const answerSaveReferencePrompt = (ignore: boolean) => {
+    const pending = gameStore.getSnapshot().saveReferencePrompt;
+    const game = handle.current;
+    if (!pending || !game) return;
+    if (!game.exports.ra2_web_save_reference_reply(pending.request, Number(ignore))) {
+      setBrowserError("The saved-game prompt is no longer open.");
+      return;
+    }
+    gameStore.resolveSaveReferencePrompt(pending.request);
   };
   useEffect(() => {
     const full = () => setFullscreen(!!document.fullscreenElement);
@@ -465,6 +477,7 @@ export function Play({ files }: { files: FileSource }) {
               gameStore.getSnapshot().phase === "running" &&
               !gameStore.getSnapshot().settings?.open &&
               !gameStore.getSnapshot().exitConfirmation &&
+              !gameStore.getSnapshot().saveReferencePrompt &&
               !gameStore.getSnapshot().openLink,
           );
         let presenter: GamePresenter | null = null;
@@ -483,6 +496,7 @@ export function Play({ files }: { files: FileSource }) {
               runtimeLive() &&
               !gameStore.getSnapshot().settings?.open &&
               !gameStore.getSnapshot().exitConfirmation &&
+              !gameStore.getSnapshot().saveReferencePrompt &&
               !gameStore.getSnapshot().openLink,
             shortcut: (event) => {
               if (event.code === "F11" || (event.code === "Enter" && event.altKey)) {
@@ -687,6 +701,10 @@ export function Play({ files }: { files: FileSource }) {
   }, [files]);
 
   const crashed = phase === "crashed";
+  const crashLog = gameStore.getLog();
+  const unresolvedSaveReference = crashLog.some((line) =>
+    line.includes("[save] unresolved object reference"),
+  );
   const liveFiles = handle.current?.files ?? null;
   const waiting = !startError && !crashed && (phase === "idle" || phase === "loading");
 
@@ -813,6 +831,11 @@ export function Play({ files }: { files: FileSource }) {
         onAnswer={answerExitConfirmation}
         returnFocus={() => canvas.current?.focus()}
       />
+      <SaveReferencePrompt
+        open={saveReferencePrompt !== null}
+        onAnswer={answerSaveReferencePrompt}
+        returnFocus={() => canvas.current?.focus()}
+      />
       <LinkDialog
         target={linkDialogTarget}
         onClose={() => gameStore.dismissOpenLink()}
@@ -868,8 +891,12 @@ export function Play({ files }: { files: FileSource }) {
       )}
       {(crashed || (startError && !(startError instanceof GameNotBuilt))) && (
         <CrashDialog
-          message={exitError ?? error ?? startError?.message ?? "The game stopped."}
-          log={gameStore.getLog()}
+          message={
+            unresolvedSaveReference
+              ? "This saved game contains an object reference this build cannot load. Open LOG for the missing class details."
+              : (exitError ?? error ?? startError?.message ?? "The game stopped.")
+          }
+          log={crashLog}
           onReload={() => window.location.reload()}
           onReturn={returnToLauncher}
         />

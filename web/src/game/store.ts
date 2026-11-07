@@ -44,6 +44,7 @@ export interface GameState {
   error: string | null;
   exitCode: number | null;
   exitConfirmation: { request: number } | null;
+  saveReferencePrompt: { request: number } | null;
   /** a WOL-era link: the page shows our dialog instead of the system browser */
   openLink: OpenLink | null;
   settings: HostSettings | null;
@@ -64,6 +65,7 @@ const INITIAL: GameState = {
   error: null,
   exitCode: null,
   exitConfirmation: null,
+  saveReferencePrompt: null,
   openLink: null,
   settings: null,
   restart: null,
@@ -172,6 +174,9 @@ export class GameStore {
       case "exitConfirm":
         this.set({ exitConfirmation: { request: event.request } });
         return;
+      case "saveReference":
+        this.set({ saveReferencePrompt: { request: event.request } });
+        return;
       case "open": {
         const link: OpenLink = { seq: event.seq, url: event.url, ask: event.ask };
         if (event.page !== undefined) link.page = event.page;
@@ -193,6 +198,11 @@ export class GameStore {
 
   resolveExitConfirmation(request: number): void {
     if (this.state.exitConfirmation?.request === request) this.set({ exitConfirmation: null });
+  }
+
+  resolveSaveReferencePrompt(request: number): void {
+    if (this.state.saveReferencePrompt?.request === request)
+      this.set({ saveReferencePrompt: null });
   }
 
   /** The player closed the link dialog (the game keeps running). */
