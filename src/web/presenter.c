@@ -342,13 +342,53 @@ static void on_frame(const uint8_t *px, int w, int h, int pitch, int bpp) {
 
 /* ---- the cursor ------------------------------------------------------------ */
 
+/* The mouse art (MOUSE.SHA in YR, MOUSE.SHP in RA2). The game hands it to the mouse object only at a
+ * match's mode change, and its boot-time load finds nothing, so it is asked for the way the mode
+ * change does: the MIX lookup, with the name in ecx, returns the file in a loaded MIX, or 0. */
+#if defined(RA2_TARGET_GAME)
+#define RA2_RETRIEVE_VA   0x005956C0u                    /* called at 0x00543669 */
+#define RA2_MOUSE_FILE_VA 0x007DB964u                    /* "MOUSE.SHP" */
+#else
+#define RA2_RETRIEVE_VA   0x005B40B0u                    /* called at 0x00560D7B */
+#define RA2_MOUSE_FILE_VA 0x0082604Cu                    /* "MOUSE.SHA" */
+#endif
+extern uint32_t g_ecx;
+static uint32_t mouse_shape(void) {
+    uint32_t keep = g_ecx;                               /* the pump runs inside a shim: its caller's ecx */
+    g_ecx = RA2_MOUSE_FILE_VA;
+    uint32_t shape = hle_call_guest(RA2_RETRIEVE_VA, 0, NULL);
+    g_ecx = keep;
+    return shape;
+}
+
+/* The menus and the pause dialog show the match's arrow (frame 0 of that file, page_cursor.c) instead
+ * of the game's Win32 one, a 1-bit white arrow. Looked up every half second until it decodes, then
+ * again only when the palette is reloaded; nonzero (the palette's count) while there is one. */
+static uint8_t g_arrow[RA2_CURSOR_PX * RA2_CURSOR_PX * 4];
+static int g_arrow_hot_x, g_arrow_hot_y;
+static uint32_t game_arrow(void) {
+    static uint32_t palette_was, ok, asked_at, said = ~0u;
+    uint32_t palette = ra2_page_cursor_state()->palette_seq, now = hle_ticks_ms();
+    if (palette != palette_was) palette_was = palette, ok = 0, asked_at = now - 1000u;
+    if (!ok && palette && !(palette & 1u) && now - asked_at >= 500u) {
+        asked_at = now;
+        uint32_t shape = mouse_shape();
+        ok = shape && ra2_page_cursor_arrow(shape, g_arrow, RA2_CURSOR_PX, &g_arrow_hot_x, &g_arrow_hot_y);
+        if (ok != said)
+            fprintf(stderr, "[present] menu cursor: %s\n",
+                    ok ? "the game's arrow (the mouse SHP's frame 0)" : "the Win32 arrow (no mouse SHP yet)");
+        said = ok;
+    }
+    return ok ? palette | 1u : 0;
+}
+
 /* The game's Windows cursor, from its resources: 32x32, AND and XOR masks,
  * rows top-down, the leftmost pixel the top bit. AND 0 is opaque (XOR picks
  * black or white); AND 1 is transparent (and XOR 1 would invert, which a
- * page cannot do: transparent too). */
+ * page cannot do: transparent too). Unless the game's arrow above is there. */
 static void update_cursor(void) {
     static int was_kind = -1;
-    static uint32_t was_handle;
+    static uint32_t was_handle, was_arrow;
     int pause = pause_dialog_visible();
     int show = pause || (g_menus_cursor && g_menus_cursor());
     uint32_t handle = hle_current_cursor();
@@ -358,6 +398,18 @@ static void update_cursor(void) {
         __atomic_add_fetch(&g_sh.cursor_seq, 1, __ATOMIC_RELEASE);
         return;
     }
+    uint32_t arrow = game_arrow();
+    if (arrow) {
+        int kind = pause ? RA2_CURSOR_OVERLAY : RA2_CURSOR_IMAGE;
+        if (was_kind == kind && was_arrow == arrow) return;
+        memcpy(g_sh.cursor_rgba, g_arrow, sizeof g_sh.cursor_rgba);
+        g_sh.cursor_hot_x = g_arrow_hot_x, g_sh.cursor_hot_y = g_arrow_hot_y;
+        g_sh.cursor_kind = (uint32_t)kind, was_kind = kind;
+        was_arrow = arrow, was_handle = ~0u;             /* the Win32 arrow, if it comes back, is new */
+        __atomic_add_fetch(&g_sh.cursor_seq, 1, __ATOMIC_RELEASE);
+        return;
+    }
+    if (was_arrow) was_arrow = 0, was_handle = ~0u;
     const hle_cursor_image_t *img = hle_cursor_image(handle);
     if (!img) {
         int kind = pause ? RA2_CURSOR_OVERLAY : RA2_CURSOR_ARROW;

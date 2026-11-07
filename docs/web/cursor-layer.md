@@ -155,6 +155,19 @@ The game has two cursor paths, and the page draws both on the same canvas:
 | Menus (Win32 dialogs) | 32×32 AND/XOR arrow, resource 0x68 | `cursor_kind = Image` + RGBA   | the mouse's own `clientX/Y`              |
 | Pause over a match    | the same arrow, or the placeholder | `cursor_kind = Overlay` + RGBA | `Shared.pointer_x/y` (the game warps it) |
 
+- **The browser shows the match's arrow in both.** The Win32 arrow is 1-bit
+  (white, black edge), so `src/web/presenter.c` publishes frame 0 of the mouse
+  SHP (`MOUSE.SHA` in YR, `MOUSE.SHP` in RA2) through `MOUSEPAL.PAL`
+  (`ra2_page_cursor_arrow`, hot spot 0,0) as the RGBA instead. The game only
+  gives the mouse object that file at a match's mode change (its boot-time load
+  finds nothing, and the object's shape is 0 in the shell), so the presenter
+  asks the MIX lookup for it the same way the mode change does (RA2
+  `0x005956C0`, YR `0x005B40B0`, name in ecx) through `hle_call_guest` from
+  the pump, every half second until it decodes and again when the palette is
+  reloaded. Both editions have it before the main menu opens. Until then, or if
+  the frame does not fit 32×32, the Win32 arrow stays. `--debuglog` runs print
+  `[present] menu cursor: …` when it changes.
+
 - **The menus cannot use the shared pointer.** In the shell the game calls
   `SetCursorPos`, which the web host turns into `warp_cursor`: it writes
   `pointer_x/y`. Measured in the YR main menu, a real move to (640, 480) left

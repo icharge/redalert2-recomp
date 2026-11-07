@@ -338,6 +338,31 @@ void ra2_page_cursor_tick(void) {
 
 const ra2_page_cursor_t *ra2_page_cursor_state(void) { return &g_state; }
 
+/* The match's normal arrow, frame 0 of the mouse SHP: the game draws it with the hot spot at the
+ * sheet's corner ("frame 0: 22x17 at 0,0 in 55x43, hot 0,0"). Its own buffer: g_frame belongs to
+ * the mouse thread's draws. */
+int ra2_page_cursor_arrow(uint32_t shape, uint8_t *rgba, int px, int *hot_x, int *hot_y) {
+    static uint8_t indices[PC_MAX * PC_MAX];
+    int sheet_w, sheet_h, x, y, w, h;
+    if (!shape || !g_state.palette_seq || (g_state.palette_seq & 1u)) return 0;
+    if (!decode_frame(shape, 0, indices, &sheet_w, &sheet_h, &x, &y, &w, &h)) return 0;
+    if (x < 0 || y < 0 || x + w > px || y + h > px) return 0;
+    memset(rgba, 0, (size_t)px * px * 4);
+    for (int row = 0; row < h; row++)
+        for (int col = 0; col < w; col++) {
+            uint8_t i = indices[row * w + col];
+            uint8_t *p = rgba + ((size_t)(y + row) * px + (x + col)) * 4;
+            if (!i) continue;                        /* index 0 is transparent */
+            for (int c = 0; c < 3; c++) {
+                uint8_t v = g_palette[i * 3 + c] & 63u;
+                p[c] = (uint8_t)(v << 2 | v >> 4);   /* 0..63 to 0..255 */
+            }
+            p[3] = 255;
+        }
+    *hot_x = 0, *hot_y = 0;
+    return 1;
+}
+
 void ra2_page_cursor_log(const char *why) {
     if (!g_on) return;
     fprintf(stderr, "[cursor] %s: %dx%d in %dx%d at %d,%d, hot %d,%d, visible %d, seq %u\n",

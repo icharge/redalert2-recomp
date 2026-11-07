@@ -61,5 +61,10 @@ const ra2_page_cursor_t *ra2_page_cursor_state(void);
 /* Clears the state once the game has stopped drawing the cursor (movies, the
  * end of a match, a locked screen): call each presenter frame. */
 void ra2_page_cursor_tick(void);
+/* The match's normal arrow (frame 0 of the mouse SHP at `shape`, through MOUSEPAL.PAL) as
+ * px*px RGBA, index 0 transparent, with its hot spot: what the menus and the pause dialog show
+ * in place of the game's 1-bit Win32 arrow. 0 without a shape or the palette, or if it does not
+ * fit. The game frees and reloads the file with each video mode, so call it on the game's thread. */
+int  ra2_page_cursor_arrow(uint32_t shape, uint8_t *rgba, int px, int *hot_x, int *hot_y);
 /* One line of what was captured, for --debuglog / RA2_PAGE_CURSOR_DEBUG. */
 void ra2_page_cursor_log(const char *why);
