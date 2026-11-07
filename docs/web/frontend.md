@@ -144,7 +144,8 @@ is never reused for another slot. Mod/font restarts reload the same game URL.
    (`showDirectoryPicker`, Chromium), the file picker and a drop zone; then CHECK sorts the folder
    (`plan.found`, [storage.md](storage.md)): game content (always, with each edition's readiness),
    then movies, mods, custom maps, saved games, and settings and hotkeys, each with a count, a
-   size and a checkbox; a group the folder lacks says None. A mod that patches the exe is named and
+   size and a checkbox; a group the folder lacks says None. The mod count opens a list of each mod with
+   its game, size and files. A mod that patches the exe is named and
    left out. Then the copy with CANCEL, and the mods after the game. It's resumable: a reload
    continues from the manifest.
 6. **Settings.** Launcher, Gameplay, Audio, Video and Keyboard (below), then About: the launcher's

@@ -1,4 +1,4 @@
-import { useRef, useState, type DragEvent } from "react";
+import { Fragment, useRef, useState, type DragEvent } from "react";
 import { BrandImage } from "../components/BrandImage";
 import { EDITION_BRAND, LOGO_SRC } from "../components/brand";
 import { formatBytes } from "../components/format";
@@ -19,6 +19,7 @@ import {
   type BuildInfo,
   type EditionReadiness,
   type GameId,
+  type FoundMod,
   type ImportOptions,
 } from "../storage/install";
 import type { Manifest } from "../storage/manifest";
@@ -383,6 +384,38 @@ const GROUPS: { id: Choosable; label: string; hint: string; unit: [string, strin
 const counted = (count: number, [one, many]: [string, string]) =>
   count === 0 ? "None" : `${count} ${count === 1 ? one : many}`;
 
+/** The folder's mods, opened from the Mods row: each one's game, size and files. */
+function ModList({ mods }: { mods: FoundMod[] }) {
+  return (
+    <ul id="import-mods" aria-label="Mods in the folder" className={styles.mods}>
+      {mods.map((mod) => (
+        <li key={mod.name} aria-label={mod.name}>
+          <div className={styles.modHead}>
+            <span className={styles.modName}>{mod.name}</span>
+            {mod.problem ? (
+              <span className={styles.notReady}>Left out: patches the game</span>
+            ) : (
+              <span className={styles.count}>
+                {EDITION_BRAND[mod.game].title} · {formatBytes(mod.bytes)}
+              </span>
+            )}
+          </div>
+          {!mod.problem && (
+            <ul className={styles.modFiles}>
+              {mod.files.map((entry) => (
+                <li key={entry.path}>
+                  <span>{entry.path.split(/[\\/]/).at(-1)}</span>
+                  <span className={styles.count}>{formatBytes(entry.size)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function Review({
   stage,
   onOptions,
@@ -404,6 +437,7 @@ function Review({
     mods: { count: runnable.length, bytes: runnable.reduce((sum, mod) => sum + mod.bytes, 0) },
   };
   const chosen = (id: Choosable) => options[id] ?? true;
+  const [modsOpen, setModsOpen] = useState(false);
   const leftOut = plan.skipped.filter((file) => !file.reason.endsWith("not brought")).length;
   return (
     <div className={styles.body}>
@@ -467,22 +501,53 @@ function Review({
         </div>
         {GROUPS.map((group) => {
           const { count, bytes } = found[group.id];
+          const expandable = group.id === "mods" && plan.mods.length > 0;
           return (
-            <label key={group.id} className={styles.kind} data-off={!chosen(group.id) || undefined}>
-              <input
-                type="checkbox"
-                aria-label={group.label}
-                checked={count > 0 && chosen(group.id)}
-                disabled={count === 0}
-                onChange={(event) => onOptions({ ...options, [group.id]: event.target.checked })}
-              />
-              <span className={styles.kindText}>
-                <span className={styles.kindName}>{group.label}</span>
-                <span className={styles.kindHint}>{group.hint}</span>
-              </span>
-              <span className={styles.count}>{counted(count, group.unit)}</span>
-              <span className={styles.size}>{count > 0 ? formatBytes(bytes) : ""}</span>
-            </label>
+            <Fragment key={group.id}>
+              <label className={styles.kind} data-off={!chosen(group.id) || undefined}>
+                <input
+                  type="checkbox"
+                  aria-label={group.label}
+                  checked={count > 0 && chosen(group.id)}
+                  disabled={count === 0}
+                  onChange={(event) => onOptions({ ...options, [group.id]: event.target.checked })}
+                />
+                <span className={styles.kindText}>
+                  <span className={styles.kindName}>{group.label}</span>
+                  <span className={styles.kindHint}>{group.hint}</span>
+                </span>
+                {expandable ? (
+                  <button
+                    type="button"
+                    className={styles.expand}
+                    aria-expanded={modsOpen}
+                    aria-controls="import-mods"
+                    onClick={(event) => {
+                      // a click inside the label would also tick the checkbox
+                      event.preventDefault();
+                      setModsOpen((open) => !open);
+                    }}
+                  >
+                    {counted(count, group.unit)}
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 16 16"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      aria-hidden="true"
+                    >
+                      <path d="M4 6l4 4 4-4" />
+                    </svg>
+                  </button>
+                ) : (
+                  <span className={styles.count}>{counted(count, group.unit)}</span>
+                )}
+                <span className={styles.size}>{count > 0 ? formatBytes(bytes) : ""}</span>
+              </label>
+              {expandable && modsOpen && <ModList mods={plan.mods} />}
+            </Fragment>
           );
         })}
       </div>

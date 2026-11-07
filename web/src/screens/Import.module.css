@@ -264,6 +264,69 @@ label.kind {
   font-size: 14px;
   text-align: right;
 }
+.expand {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  margin: -4px -8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.expand:hover,
+.expand:focus-visible {
+  border-color: #3a3b40;
+}
+.expand svg {
+  transition: transform 0.15s;
+}
+.expand[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+.mods {
+  margin: 0;
+  padding: 8px 0 8px 36px;
+  list-style: none;
+  max-height: 240px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.02);
+}
+.modHead {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding-right: 12px;
+  font-size: 14px;
+}
+.modName {
+  font-weight: 600;
+}
+.modFiles {
+  margin: 4px 0 0;
+  padding: 0 12px 0 12px;
+  list-style: none;
+  font-size: 13px;
+  font-family: ui-monospace, Consolas, monospace;
+}
+.modFiles li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 0;
+}
+.modFiles li span:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .editions {
   margin: 0;
   padding: 0;

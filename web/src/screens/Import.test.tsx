@@ -278,6 +278,34 @@ describe("Import", () => {
     expect(screen.getByText(/^Patched is left out: it patches the game/)).toBeInTheDocument();
   });
 
+  it("opens the mods to show each one's game, size and files", async () => {
+    const { user } = await setup(
+      sorted(
+        file("Mods/Lite/expandmd90.mix", 9),
+        file("Mods/Patched/Ares.dll", 4),
+        file("Mods/Patched/rulesmd.ini", 5),
+      ),
+    );
+    await user.click(screen.getByRole("button", { name: "CHOOSE FOLDER" }));
+    const toggle = await screen.findByRole("button", { name: "1 mod" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("list", { name: "Mods in the folder" })).toBeNull();
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    // opening the list does not untick the mods
+    expect(screen.getByRole("checkbox", { name: "Mods" })).toBeChecked();
+    const list = screen.getByRole("list", { name: "Mods in the folder" });
+    const lite = within(list).getByRole("listitem", { name: "Lite" });
+    expect(lite).toHaveTextContent("Yuri’s Revenge");
+    expect(within(lite).getByText("rulesmd.ini")).toBeInTheDocument();
+    expect(within(lite).getByText("expandmd90.mix")).toBeInTheDocument();
+    expect(within(list).getByRole("listitem", { name: "Patched" })).toHaveTextContent(
+      "Left out: patches the game",
+    );
+    await user.click(toggle);
+    expect(screen.queryByRole("list", { name: "Mods in the folder" })).toBeNull();
+  });
+
   it("brings the real movie archive when asked", async () => {
     const { user, target, onDone } = await setup(folder());
     await user.click(screen.getByRole("button", { name: "CHOOSE FOLDER" }));
