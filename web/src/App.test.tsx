@@ -14,8 +14,14 @@ afterEach(() => {
   delete window.ra2Session;
 });
 
-/** A stand-in for OPFS: the files at their slash paths, with the sizes given. */
-function fakeOpfs(files: Record<string, number>): FileSystemDirectoryHandle {
+/**
+ * A stand-in for OPFS: the files at their slash paths, with the sizes given. A name in `locked` will
+ * not delete, as a file the game open in another tab holds.
+ */
+function fakeOpfs(
+  files: Record<string, number>,
+  locked: ReadonlySet<string> = new Set(),
+): FileSystemDirectoryHandle {
   type Node = { dirs: Map<string, Node>; files: Map<string, number> };
   const root: Node = { dirs: new Map(), files: new Map() };
   for (const [path, size] of Object.entries(files)) {
@@ -42,6 +48,11 @@ function fakeOpfs(files: Record<string, number>): FileSystemDirectoryHandle {
       const size = node.files.get(name);
       if (size === undefined) throw new DOMException(`${name} is not there`, "NotFoundError");
       return { kind: "file", getFile: async () => ({ size }) };
+    },
+    async removeEntry(name: string) {
+      if (locked.has(name))
+        throw new DOMException(`${name} is in use`, "NoModificationAllowedError");
+      if (!node.files.delete(name)) throw new DOMException(`${name} is not there`, "NotFoundError");
     },
   });
   return handle(root) as unknown as FileSystemDirectoryHandle;
@@ -287,11 +298,13 @@ describe("Launcher routes", () => {
     m.close();
   });
 
-  it("REMOVE GAME forgets the game on the page even when a file will not delete", async () => {
+  it("REMOVE GAME keeps the game, and says why, while a file is in use", async () => {
     const m = await installed();
-    // the copy is there, but this stand-in for OPFS cannot remove anything
+    // the game open in another tab holds ra2.mix
+    const locked = new Set(["ra2.mix"]);
     const opfs = fakeOpfs(
       Object.fromEntries(Object.keys(files).map((name) => [`game/slot-1/${name}`, 4])),
+      locked,
     );
     vi.stubGlobal("navigator", {
       storage: {
@@ -304,8 +317,16 @@ describe("Launcher routes", () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "REMOVE GAME" }));
     await user.click(screen.getByRole("button", { name: "REMOVE" }));
-    // the record is gone, so the page must not keep offering this installation (its RESUME
-    // INSTALL would open an import for a slot that no longer exists)
+    // the record stays: forgetting it would leave the files behind, and RESUME INSTALL on a
+    // page that still listed it would name an installation that does not exist
+    expect(await screen.findByRole("alert")).toHaveTextContent(/in use.*another tab/);
+    expect(await m.listInstallations()).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "REMOVE GAME" })).toBeInTheDocument();
+
+    // the tab is closed: REMOVE GAME again goes through
+    locked.clear();
+    await user.click(screen.getByRole("button", { name: "REMOVE GAME" }));
+    await user.click(screen.getByRole("button", { name: "REMOVE" }));
     expect(await screen.findByText("No game installed yet.")).toBeInTheDocument();
     expect(await m.listInstallations()).toEqual([]);
     m.close();

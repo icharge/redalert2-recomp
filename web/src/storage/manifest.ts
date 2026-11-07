@@ -440,11 +440,20 @@ export class Manifest {
     return this.removeRecords(slot);
   }
 
+  /** The files removeInstallation would return, with the records left as they are. */
+  async installationFiles(slot: number): Promise<{ home: string; name: string }[]> {
+    return this.removeRecords(slot, undefined, true);
+  }
+
   private async removeRecords(
     slot: number,
     id?: GameId,
+    keep = false,
   ): Promise<{ home: string; name: string }[]> {
-    const tx = this.db.transaction([GAMES, INSTALLATIONS, SETTINGS], "readwrite");
+    const tx = this.db.transaction(
+      [GAMES, INSTALLATIONS, SETTINGS],
+      keep ? "readonly" : "readwrite",
+    );
     const store = tx.objectStore(GAMES);
     const all = (await request(store.getAll())) as GameRecord[];
     const selected = (game: GameRecord) =>
@@ -470,10 +479,11 @@ export class Manifest {
           const name = `mods/${mod.name}/${file.name}`;
           doomed.set(`${game.storage}/${name}`, { home: game.storage, name });
         }
+      if (keep) continue;
       tx.objectStore(SETTINGS).delete(`mods:${game.storage}`);
       store.delete([slot, game.id]);
     }
-    if (id === undefined) tx.objectStore(INSTALLATIONS).delete(slot);
+    if (id === undefined && !keep) tx.objectStore(INSTALLATIONS).delete(slot);
     await finished(tx);
     return [...doomed.values()];
   }

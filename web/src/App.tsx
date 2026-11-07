@@ -35,9 +35,9 @@ import {
   opfsSaveStore,
   opfsTarget,
   readGameFile,
-  removeFiles,
   type CopyTarget,
 } from "./storage/opfs";
+import { removeInstall } from "./storage/remove-install";
 import { exportSaves, importSaves, isSavePath } from "./storage/saves";
 import { managedInstallationSource } from "./storage/file-manager";
 import { reconcileInstallation } from "./storage/reconcile";
@@ -380,12 +380,9 @@ function Main() {
               }}
               onRemove={async (installation) => {
                 try {
-                  await manifestWork(async () =>
-                    removeFiles(target, await manifest.removeInstallation(installation.slot)),
-                  );
+                  await manifestWork(() => removeInstall(manifest, target, installation.slot));
                 } finally {
-                  // the record is gone even when a file would not delete: the page must not
-                  // keep listing the installation (its RESUME INSTALL would name a missing slot)
+                  // what was deleted is gone even when the rest would not go: the page follows
                   await reload();
                 }
               }}
