@@ -5,6 +5,7 @@ import { EDITION_BRAND, LOGO_SRC } from "../../components/brand";
 import { appPath } from "../../paths";
 import type { GameRecord } from "../../storage/manifest";
 import styles from "./Shell.module.css";
+import { APP_VERSION } from "../../version";
 
 export type Estimate = () => Promise<{ quota?: number; usage?: number }>;
 
@@ -137,10 +138,10 @@ export function Shell({
         <Link
           to="/settings/about"
           className={styles.version}
-          aria-label={`About YuriNet, version ${__APP_VERSION__}`}
+          aria-label={`About YuriNET, version ${APP_VERSION}`}
           title="Version, credits and legal"
         >
-          v{__APP_VERSION__}
+          v{APP_VERSION}
         </Link>
       </nav>
 

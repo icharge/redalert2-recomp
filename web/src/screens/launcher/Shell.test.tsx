@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { GameId } from "../../storage/install";
 import type { GameRecord } from "../../storage/manifest";
 import { Shell } from "./Shell";
+import { APP_VERSION } from "../../version";
 
 const g = (id: GameId): GameRecord => ({
   id,
@@ -127,8 +128,8 @@ describe("Shell settings link", () => {
 
   it("shows the launcher's version under Settings, opening About", async () => {
     renderShell();
-    const version = screen.getByRole("link", { name: `About YuriNet, version ${__APP_VERSION__}` });
-    expect(version).toHaveTextContent(`v${__APP_VERSION__}`);
+    const version = screen.getByRole("link", { name: `About YuriNET, version ${APP_VERSION}` });
+    expect(version).toHaveTextContent(`v${APP_VERSION}`);
     await userEvent.click(version);
     expect(screen.getByRole("status", { name: "Path" })).toHaveTextContent("/settings/about");
   });

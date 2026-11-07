@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import changelogText from "../../../../CHANGELOG.md?raw";
 import { loadBuildInfo, type BuildInfo } from "../../../storage/install";
 import { checkForUpdate, useUpdate, type UpdateCheck } from "../../../update";
+import { APP_VERSION } from "../../../version";
 import { newestRelease, type Release } from "./changelog";
 import type { GameRecord } from "../../../storage/manifest";
 import type { TabProps } from "./shared";
@@ -16,7 +17,7 @@ export interface AboutDeps {
 }
 
 const browserDeps: AboutDeps = {
-  version: __APP_VERSION__,
+  version: APP_VERSION,
   release: newestRelease(changelogText),
   loadBuild: () => loadBuildInfo(),
   copy: (text) => navigator.clipboard.writeText(text),

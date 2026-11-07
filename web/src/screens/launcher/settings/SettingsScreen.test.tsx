@@ -8,6 +8,7 @@ import { encodeLatin1 } from "../../../storage/game-settings";
 import type { GameRecord } from "../../../storage/manifest";
 import { Manifest } from "../../../storage/manifest";
 import { SettingsEmpty, SettingsScreen, type SettingsTab } from "./SettingsScreen";
+import { APP_VERSION } from "../../../version";
 
 const yr: GameRecord = {
   id: "ra2md",
@@ -116,7 +117,7 @@ describe("SettingsScreen", () => {
     expect(links.at(-1)).toHaveTextContent("ABOUT");
     await userEvent.click(screen.getByRole("link", { name: "ABOUT" }));
     const version = await screen.findByRole("region", { name: "Version" });
-    expect(version).toHaveTextContent(__APP_VERSION__);
+    expect(version).toHaveTextContent(APP_VERSION);
   });
 
   it("gives About the full width for its two columns, and the other sections their narrow one", async () => {
@@ -140,9 +141,7 @@ describe("SettingsScreen", () => {
         <SettingsEmpty tab="about" />
       </MemoryRouter>,
     );
-    expect(await screen.findByRole("region", { name: "Version" })).toHaveTextContent(
-      __APP_VERSION__,
-    );
+    expect(await screen.findByRole("region", { name: "Version" })).toHaveTextContent(APP_VERSION);
     expect(screen.queryByText("Install the game to change its settings.")).toBeNull();
     unmount();
     render(
