@@ -1049,24 +1049,31 @@ def reconnect_patches(code, cs, target):
 LIVE_RESIZE = {
     'gamemd': dict(
         loop=(0x0048CE8A, 0x0055D360),              # call Main_Loop in the game loop
-        scenario=(0x00683DF3, 0x00560BF0, 0x0072DEF0),  # Start_Scenario: switch, then caches
-        bar=((0x0072F35A, 0x00730530), (0x0072F415, 0x0072FC60)),  # sub_0072F350: free, build
-        # 0x006D0304..0x006D037D: the set's rects are x, y, w, h; 0xB0C148 is Button00.SHP
-        bar_caches=('{ uint32_t _r = MEM32(0xB0FC68u), _w = MEM32(_r + 8u); '
-                    'MEM32(0xB0CC2Cu) = MEM32(MEM32(0xB0FC6Cu)) - MEM32(0xB0CB54u) * _w; '
-                    'MEM32(0xB0CD10u) = _w - (uint32_t)(int32_t)(int16_t)MEM16(MEM32(0xB0C148u) + 2u); '
-                    'MEM32(0xB0CC24u) = MEM32(MEM32(0xB0FC58u) + 4u); MEM32(0xB0CC38u) = _w; }'),
+        scenario=(0x00683DF3, 0x00560BF0),          # Start_Scenario's mode switch
+        checks=((0x00683DF8, 0x0072DEF0),           # Start_Scenario: the caches after the switch
+                (0x0072F35A, 0x00730530), (0x0072F415, 0x0072FC60)),  # sub_0072F350: free, build
+        # Before the switch: the bar's rectangle set for the new size, then the bar's
+        # one-time init arithmetic (0x006D0304..0x006D037D: the set's rects are x, y, w,
+        # h; 0xB0C148 is Button00.SHP). After it: the caches, as Start_Scenario does.
+        before=('RECOMP_CALL(sub_00730530); RECOMP_FLAGS_IN(); '
+                'ecx = MEM32(0x00A8EB84u); edx = MEM32(0x00A8EB88u); RECOMP_CALL(sub_0072FC60); RECOMP_FLAGS_IN(); '
+                '{ uint32_t _r = MEM32(0xB0FC68u), _w = MEM32(_r + 8u); '
+                'MEM32(0xB0CC2Cu) = MEM32(MEM32(0xB0FC6Cu)) - MEM32(0xB0CB54u) * _w; '
+                'MEM32(0xB0CD10u) = _w - (uint32_t)(int32_t)(int16_t)MEM16(MEM32(0xB0C148u) + 2u); '
+                'MEM32(0xB0CC24u) = MEM32(MEM32(0xB0FC58u) + 4u); MEM32(0xB0CC38u) = _w; }'),
+        after='RECOMP_CALL(sub_0072DEF0); RECOMP_FLAGS_IN();',
         want=(0x00A8EB84, 0x00A8EB88),              # the options' size (RA2MD.INI [Video])
         now=(0x008A00A4, 0x008A00A8),               # the current display size
         session=0x00A8B238),                        # Session.Type
+    # 'game' (Red Alert 2) is added after RA2_PROFILE_RESET, which it uses.
 }
 
 
 def live_resize_patches(code, cs, target):
     """Apply a pending size during a match (LIVE_RESIZE); browser builds only.
 
-    Checked by bytes first: the loop's call of Main_Loop, and Start_Scenario's switch
-    followed by the cache release. A different build gets no patch."""
+    Checked by bytes first: the loop's call of Main_Loop, Start_Scenario's switch, and
+    the other calls the entry relies on (`checks`). A different build gets no patch."""
     t = LIVE_RESIZE.get(target)
     if not t:
         return {}
@@ -1075,13 +1082,11 @@ def live_resize_patches(code, cs, target):
         rel = int.from_bytes(code[va - cs + 1:va - cs + 5], 'little', signed=True)
         return code[va - cs] == 0xE8 and va + 5 + rel == fn
 
-    loop_va, main_loop = t['loop']
-    scen_va, mode_set, caches = t['scenario']
-    (free_va, bar_free), (build_va, bar_build) = t['bar']
-    if not (calls(loop_va, main_loop) and calls(scen_va, mode_set) and calls(scen_va + 5, caches)
-            and calls(free_va, bar_free) and calls(build_va, bar_build)):
-        print('[*] live_resize_patches: the game loop, the match-start switch or the bar layout '
-              'does not match this build; no patch')
+    loop_va, _main_loop = t['loop']
+    _scen_va, mode_set = t['scenario']
+    if not all(calls(va, fn) for va, fn in (t['loop'], t['scenario']) + tuple(t['checks'])):
+        print('[*] live_resize_patches: the game loop, the match-start switch or the layout '
+              'it relies on does not match this build; no patch')
         return {}
     w, h = t['want']
     return {loop_va: (
@@ -1089,15 +1094,12 @@ def live_resize_patches(code, cs, target):
         '    { extern int ra2_live_resize_due(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t); '
         'uint32_t _keep = eax; '
         'if (ra2_live_resize_due(MEM32(0x%08Xu), MEM32(0x%08Xu), MEM32(0x%08Xu), MEM32(0x%08Xu), MEM32(0x%08Xu))) { '
-        'RECOMP_CALL(sub_%08X); RECOMP_FLAGS_IN(); '
-        'ecx = MEM32(0x%08Xu); edx = MEM32(0x%08Xu); RECOMP_CALL(sub_%08X); RECOMP_FLAGS_IN(); '
         '%s '
         'ecx = MEM32(0x%08Xu); edx = MEM32(0x%08Xu); RECOMP_CALL(sub_%08X); RECOMP_FLAGS_IN(); '
-        'RECOMP_CALL(sub_%08X); RECOMP_FLAGS_IN(); } eax = _keep; }\n'
+        '%s } eax = _keep; }\n'
         '    #endif /* remaster: live resize in a match, run_lift.py live_resize_patches */'
         % (w, h, t['now'][0], t['now'][1], t['session'],
-           bar_free, w, h, bar_build, t['bar_caches'],
-           w, h, mode_set, caches))}
+           t['before'], w, h, mode_set, t['after']))}
 
 
 def ra2_online_patches(code, cs):
@@ -1293,6 +1295,24 @@ def ra2_tab_patches(code, cs):
                  '/* remaster: the command bar follows the switch, run_lift.py ra2_tab_patches */')}
 
 
+# Red Alert 2's live resize (LIVE_RESIZE, live_resize_patches). Its match start differs
+# from Yuri's in order only: the cache release and profile reset (sub_006F30F0) come
+# before the switch, and ra2_profile_patches rebuilds the profile after it. A live switch
+# does the same as that: the switch, then RA2_PROFILE_RESET, as ra2_load_patches does for
+# a loaded game. The command bar needs nothing before the switch here, unlike Yuri's:
+# ra2_tab_patches rebuilds its rectangle set and the two cached values inside the switch,
+# so the patch also checks that site.
+LIVE_RESIZE['game'] = dict(
+    loop=(0x00481DBA, 0x0053FBD0),                  # call Main_Loop in the game loop
+    scenario=(RA2_PROFILE_SITE, 0x005434E0),        # Start_Scenario's mode switch
+    checks=((RA2_TAB_SITE, RA2_TAB_TARGET),),       # where ra2_tab_patches places the bar
+    before='',
+    after=RA2_PROFILE_RESET,
+    want=(0x00A40B38, 0x00A40B3C),                  # the options' size (RA2.INI [Video])
+    now=(0x008523E0, 0x008523E4),                   # the current display size
+    session=0x00A3D298)                             # Session.Type
+
+
 # A mode switch invalidates the display profile cache (sub_006F4160) and sets
 # AC119C back to zero. The next resize through sub_006F33B0 previously jumped
 # straight into sub_006F3E70, which dereferences the now-empty AC1010/AC1128
@@ -1460,7 +1480,9 @@ def targets():
                                                **ra2_confirm_patches(code, cs),
                                                **ra2_cache_patches(code, cs), **ra2_mode_cap_patches(code, cs),
                                                **ra2_load_patches(code, cs), **ra2_profile_patches(code, cs),
+                                               **ra2_tab_patches(code, cs),
                                                **reconnect_patches(code, cs, 'game'),
+                                               **live_resize_patches(code, cs, 'game'),
                                                **web_url_patches(code, cs, 'game')}),
     }
 

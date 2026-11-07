@@ -36,6 +36,8 @@ from run_lift import (
     intro_patches,
     RECONNECT_LEAVE,
     reconnect_patches,
+    LIVE_RESIZE,
+    live_resize_patches,
     ra2_shell_patches,
     thai_font_call_replacements,
     THEME_PLAYSONG_ARG,
@@ -523,6 +525,50 @@ class RA2TabPatchTests(unittest.TestCase):
     def test_a_different_build_gets_no_patch(self):
         self.assertEqual(ra2_tab_patches(self.image(target=0x00500000), 0), {})
         self.assertEqual(ra2_tab_patches(self.image(call=0x90), 0), {})
+
+
+class LiveResizePatchTests(unittest.TestCase):
+    """A size set during a match switches at once, in each edition (live_resize_patches)."""
+
+    @staticmethod
+    def image(target, broken=None):
+        t = LIVE_RESIZE[target]
+        code = bytearray(0x00740000)
+        for va, fn in (t['loop'], t['scenario']) + tuple(t['checks']):
+            code[va] = 0xE8
+            code[va + 1:va + 5] = ((fn - (va + 5)) & 0xFFFFFFFF).to_bytes(4, 'little')
+        if broken is not None:
+            code[broken] = 0x90
+        return bytes(code)
+
+    def test_yuri_rebuilds_the_bar_then_switches_then_frees_the_caches(self):
+        patches = live_resize_patches(self.image('gamemd'), 0, 'gamemd')
+        self.assertEqual(set(patches), {0x0048CE8A})
+        c = patches[0x0048CE8A]
+        self.assertTrue(c.startswith('#ifdef __EMSCRIPTEN__\n'))
+        self.assertIn('ra2_live_resize_due(MEM32(0x00A8EB84u), MEM32(0x00A8EB88u), '
+                      'MEM32(0x008A00A4u), MEM32(0x008A00A8u), MEM32(0x00A8B238u))', c)
+        self.assertLess(c.index('sub_00730530'), c.index('sub_0072FC60'))
+        self.assertLess(c.index('MEM32(0xB0CC38u) = _w'), c.index('sub_00560BF0'))
+        self.assertLess(c.index('sub_00560BF0'), c.index('sub_0072DEF0'))
+        self.assertIn('eax = _keep;', c)
+
+    def test_red_alert_2_switches_then_rebuilds_the_display_profile(self):
+        patches = live_resize_patches(self.image('game'), 0, 'game')
+        self.assertEqual(set(patches), {0x00481DBA})
+        c = patches[0x00481DBA]
+        self.assertIn('ra2_live_resize_due(MEM32(0x00A40B38u), MEM32(0x00A40B3Cu), '
+                      'MEM32(0x008523E0u), MEM32(0x008523E4u), MEM32(0x00A3D298u))', c)
+        self.assertIn('ecx = MEM32(0x00A40B38u); edx = MEM32(0x00A40B3Cu); RECOMP_CALL(sub_005434E0);', c)
+        self.assertLess(c.index('sub_005434E0'), c.index('sub_006F30F0'))
+        self.assertLess(c.index('sub_006F30F0'), c.index('sub_006F44D0'))
+        self.assertIn('eax = _keep;', c)
+
+    def test_a_different_build_gets_no_patch(self):
+        for target in ('gamemd', 'game'):
+            t = LIVE_RESIZE[target]
+            for va, _fn in (t['loop'], t['scenario']) + tuple(t['checks']):
+                self.assertEqual(live_resize_patches(self.image(target, broken=va), 0, target), {})
 
 
 class RA2CachePatchTests(unittest.TestCase):

@@ -174,9 +174,9 @@ window back after the score screen. Escape in fullscreen opens the game's pause
 menu (the page locks the key with `navigator.keyboard.lock`); leaving fullscreen
 is F11, the F11 page control, or a two-second Escape hold in
 Chromium. The in-game F10 menu has the same Resolution choice (fixed sizes
-or "Match browser size"); changing it writes the game's INI/options. In a Yuri's Revenge
-skirmish or campaign it applies at once, between two frames; otherwise (Red Alert 2, an online
-match) from the next match. "Match browser size" follows a resized window, sending the size
+or "Match browser size"); changing it writes the game's INI/options. In a skirmish or
+campaign (either edition) it applies at once, between two frames; otherwise (an online
+match, the menus) from the next match. "Match browser size" follows a resized window, sending the size
 400 ms after the resize settles ([hires.md](../hires.md), "Live resize in the browser"). The Keyboard tab
 follows the game's own Customize Keyboard
 layout: pick a

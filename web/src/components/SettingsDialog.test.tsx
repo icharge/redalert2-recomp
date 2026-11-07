@@ -77,7 +77,7 @@ describe("SettingsDialog", () => {
     expect(screen.getByRole("combobox", { name: "Resolution" })).toHaveDisplayValue("1280 × 720");
     expect(
       screen.getByRole("button", {
-        name: "Applies now in a Yuri's Revenge skirmish or campaign; otherwise from the next match.",
+        name: "Applies now in a skirmish or campaign; otherwise from the next match.",
       }),
     ).toBeInTheDocument();
   });

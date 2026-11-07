@@ -380,7 +380,7 @@ export function Play({ files }: { files: FileSource }) {
 
   // The in-game Video setting: the host writes the size into the game's
   // INI/options (the same path the game's own Options screen uses), and a
-  // Yuri's Revenge match in progress switches to it between two frames
+  // skirmish or campaign in progress switches to it between two frames
   // (docs/hires.md, "Live resize in the browser").
   const changeVideo = useCallback(
     (choice: VideoChoice) => {

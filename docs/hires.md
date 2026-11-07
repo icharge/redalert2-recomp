@@ -74,8 +74,10 @@ Not covered by a run: the online clamp in a real two-player lobby.
 
 ## Live resize in the browser
 
-In the browser build a Yuri's Revenge match changes size while it runs: the
-F10 Resolution choice, and "Match browser size" when the window is resized.
+In the browser build a skirmish or campaign changes size while it runs, in
+both editions: the F10 Resolution choice, and "Match browser size" when the
+window is resized. What follows is Yuri's Revenge; Red Alert 2's differences
+are under "Red Alert 2" below.
 The game already has a routine that does the whole job, the mode switch
 (`sub_00560BF0`) that Start_Scenario runs at every match start with the map
 loaded: it frees and recreates every screen-sized surface (primary, hidden,
@@ -116,11 +118,40 @@ browser-specific; only its trigger is.
   scrolling to the new right and bottom limits (the camera's limits follow
   the size).
 - **Not live.** Online matches (Session.Type 4) keep the size their room
-  agreed on and take the new one at the next match. Red Alert 2 has no patch
-  yet: its switch needs the extra layout fixes of `ra2_tab_patches` and
-  `ra2_profile_patches`.
+  agreed on and take the new one at the next match.
 - **The view.** It keeps its top-left corner, so a smaller size shows the
   left part of what was on screen.
+
+**Red Alert 2.** The same patch, `LIVE_RESIZE['game']`: the check after the
+game loop's `Main_Loop` call (0x00481DBA, `sub_0053FBD0`), with the options'
+size at 0x00A40B38, the current one at 0x008523E0 and Session.Type at
+0x00A3D298. Its match start does the same work in another order: the cache
+release and profile reset (`sub_006F30F0`) before the switch
+(`sub_005434E0`), and `ra2_profile_patches` building the display profile
+again after it. So the live patch runs the switch, then that same profile
+rebuild (`RA2_PROFILE_RESET`), as `ra2_load_patches` does for a loaded game.
+The command bar needs nothing before the switch: `ra2_tab_patches` rebuilds
+its rectangle set and the bar's two cached values (0xABE374, 0xABE37C) inside
+the switch, at every switch, and the live patch is only applied where that
+site matches. (`ra2_tab_patches` had dropped out of the 'game' patch list in
+70977647; it is back.)
+
+- **Checked under Node** (`--resize`, with a temporary dump of the layout
+  globals): 1280x720 to 1920x1080 and on to 1024x768 in a skirmish. The
+  current size, the bar's y and x, its rectangle, the sidebar's height and top
+  match a match started at that size (1920x1080: bar at y 1048, rectangle 0,
+  1048, 1752, 32, sidebar 922 high; 1024x768: y 736, 0, 736, 856, 32, 610).
+  Edge scrolling to the bottom-right stops at the same camera position as in
+  a match started at that size (TacticalClass at 0x0083996C, the camera at
+  +0xB0/+0xB4: -672, 1832 at 1920x1080 and 224, 2144 at 1024x768). 70 to
+  128 ms.
+- **Checked in Chrome**, through the F10 Resolution menu: 1280x720 to
+  1920x1080 (113 ms), then to 1024x768 (28 ms). The map, the sidebar (16 cameo
+  rows at 1920x1080, 10 at 1024x768), the command bar and its buttons look as
+  in a match started at that size. Once, opening F10 also opened the game's
+  own pause menu behind it; the size then applied on Resume Mission.
+- **The pause menu.** It runs its own loop, so a size chosen with Red Alert
+  2's in-game menu open applies when the menu closes.
 
 `--resize WxH@s` (browser build, `src/linux/script.c`) sends the setting from
 a script, so a headless run under Node can switch mid-match:
@@ -129,6 +160,15 @@ a script, so a headless run under Node can switch mid-match:
 node build-web/ra2md.js --run --game <folder> --headless --mute --debuglog --no-intro \
   --press 0xE2:1667@1 --press 0x100:1401@2 --press 0x102:1559@3 --waitlog Capture_Mouse@4 \
   --resize 1920x1080@14 --resize 1024x768@28
+```
+
+Red Alert 2 (a `RA2_TARGET=game` tree's `ra2.js`) has its own skirmish
+controls, and a slower speed so the AI does not win in seconds:
+
+```
+node build-web-game/ra2.js --run --game <folder> --headless --mute --debuglog --no-intro \
+  --press 0xE2:1667@1 --press 0x100:1401@2 --select 0x102:1321=5@3 --press 0x102:1559@4 \
+  --waitlog Capture_Mouse@5 --resize 1920x1080@18 --resize 1024x768@38
 ```
 
 ## What works

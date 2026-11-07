@@ -90,7 +90,7 @@ export function SettingsDialog({
             />
             <Row
               label="Resolution"
-              info="Applies now in a Yuri's Revenge skirmish or campaign; otherwise from the next match."
+              info="Applies now in a skirmish or campaign; otherwise from the next match."
               htmlFor="game-resolution"
             >
               <select
