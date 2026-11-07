@@ -400,6 +400,9 @@ tokens or STARTG tickets when sharing logs.
 
 ### Command delay for Internet matches
 
+The measured delay budget, the lockstep floor and the transport options are in
+[network-performance.md](network-performance.md).
+
 `src/web/net_tuning.c` lowers the lockstep command delay (MaxAhead) of a WOL
 match from the stock online floor of 30 frames (500 ms at 60 fps). It picks a
 profile from the measured path ping and holds `Session.MaxAhead` and

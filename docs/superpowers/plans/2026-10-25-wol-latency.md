@@ -407,6 +407,20 @@ Addresses were read from the lifted code: YR `0xA8B550/0xA8B554/0xA8B56C/
 | `wol-latency-loop6` (66 ms profile, loopback relay) | guest | yes | 17 | 4 | 4 (sustained) | 26 | 7016 frames, 1 FRAMESYNC, 0 late, 0 wait, 0 bumps |
 | `wol-latency-slow3` (40 ms each way through the relay) | host | yes | 17 | 4 | 4 (sustained) | - | 680 frames, 0 late/moved/out-of-sync, 1 FRAMESYNC |
 | `wol-latency-slow3` (40 ms each way through the relay) | guest | yes | 17 | 4 | 4 (sustained) | - | 688 frames, 0 late/moved/out-of-sync, 1 FRAMESYNC |
+| `wol-latency-yr-1104` (40 ms each way, YR) | host | yes | 17 | 4 | 4 (sustained) | - | 1728 frames, 0 late, 0 out-of-sync, 1 FRAMESYNC |
+| `wol-latency-yr-1104` (40 ms each way, YR) | guest | yes | 17 | 4 | 4 (sustained) | - | 1734 frames, 0 late, 0 out-of-sync, 1 FRAMESYNC |
+| `wol-latency-ra2-1104` (40 ms each way, RA2) | host | yes | 17 | 4 | 4 (sustained) | - | 1820 frames, 0 late, 0 out-of-sync, 1 FRAMESYNC |
+| `wol-latency-ra2-1104` (40 ms each way, RA2) | guest | yes | 17 | 4 | 4 (sustained) | - | 1836 frames, 0 late, 0 out-of-sync, 1 FRAMESYNC |
+
+Both editions used the same 40 ms-per-hop relay delay. `wol-latency-ra2-1104`
+is the RA2 module; the rest are YR.
+
+Two browser tabs on one PC exposed a separate defect: the background page lost
+focus, `web_presenter_pause()` pressed Escape, the game opened its menu and
+stopped simulating, and the peer reported a reconnection error. A STARTG match
+now skips that pause (`fix(web): keep an online match running when its page
+loses focus`); single-player still pauses. The delay budget and the remaining
+transport options are in [network-performance.md](../../web/network-performance.md).
 
 Both runs used the loopback RA2Web test server; the 40 ms run delays every
 native-relay datagram, i.e. about an 80 ms path round trip. The automatic
