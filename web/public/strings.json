@@ -3,13 +3,15 @@
   "ra2": {
     "encoding": "windows-1252",
     "strings": {
-      "GUI:ExitGame": "Exit to Launcher"
+      "GUI:ExitGame": "Exit to Launcher",
+      "GUI:Version": "YN {version} /"
     }
   },
   "ra2md": {
     "encoding": "windows-1252",
     "strings": {
-      "GUI:ExitGame": "Exit to Launcher"
+      "GUI:ExitGame": "Exit to Launcher",
+      "GUI:Version": "YN {version} /"
     }
   }
 }

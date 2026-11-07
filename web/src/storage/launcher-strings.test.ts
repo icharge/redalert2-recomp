@@ -1,11 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   editionStrings,
+  expandLauncherText,
   launcherExtras,
   parseLauncherStrings,
   readLauncherStrings,
   validateLauncherStrings,
 } from "./launcher-strings";
+import shippedStrings from "../../public/strings.json?raw";
 
 describe("validateLauncherStrings", () => {
   it("accepts the shipped shape and normalizes labels", () => {
@@ -90,5 +92,29 @@ describe("edition helpers", () => {
     expect(Object.keys(extras)).toEqual(["VOX:X"]);
     expect(Array.from(extras["VOX:X"] ?? [])).toEqual([0, 255, 16]);
     expect(editionStrings(value, "ra2md")).toBeNull();
+  });
+});
+
+describe("expandLauncherText", () => {
+  it("fills {version} and leaves other braces alone", () => {
+    expect(
+      expandLauncherText(
+        { "GUI:VERSION": "YN {version} /", "TXT:OTHER": "{name} and {version}{version}" },
+        { version: "0.1.0" },
+      ),
+    ).toEqual({ "GUI:VERSION": "YN 0.1.0 /", "TXT:OTHER": "{name} and 0.1.00.1.0" });
+  });
+});
+
+describe("the shipped strings.json", () => {
+  it("labels the main menu's version with the launcher's version, then the game's", () => {
+    const value = parseLauncherStrings(shippedStrings);
+    for (const game of ["ra2", "ra2md"] as const) {
+      const strings = expandLauncherText(editionStrings(value, game)!.strings, {
+        version: "0.1.0",
+      });
+      // The game appends " <its own version>" to this text: "YN 0.1.0 / 1.006".
+      expect(strings["GUI:VERSION"]).toBe("YN 0.1.0 /");
+    }
   });
 });

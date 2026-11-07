@@ -120,6 +120,18 @@ describe("applyCsfOverrides", () => {
     expect(written.entries[0]?.values[0]?.value).toBe("Exit to Launcher");
   });
 
+  it("fills {version} in the override text", async () => {
+    const fs = new MemFs();
+    fs.put("/game/ra2md.csf", makeCsf([{ label: "GUI:Version", text: "Version" }]));
+    const result = await applyCsfOverrides(fs, "ra2md", {
+      readStrings: async () => overrides({ "GUI:VERSION": "YN {version} /" }),
+      version: "9.8.7",
+    });
+    expect(result.applied).toBe(true);
+    const written = parseCsf(fs.readFile("/game/ra2md.csf"));
+    expect(written.entries[0]?.values[0]?.value).toBe("YN 9.8.7 /");
+  });
+
   it("rewrites the active mod's CSF, not the root file", async () => {
     const fs = new MemFs();
     fs.put("/game/.host/ra2md.ini", "[mods]\nactive=Thai\n");

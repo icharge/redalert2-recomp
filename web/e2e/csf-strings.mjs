@@ -1,7 +1,7 @@
 // The launcher's static strings.json reaches the game: strings.json -> generated CSF -> main menu.
 // Start Vite, then run with --profile <persistent profile containing an imported game>.
 import assert from "node:assert/strict";
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import {
   answerExit,
@@ -19,6 +19,9 @@ opts.pageArgs.push("--mute");
 const edition = opts.edition ?? "ra2md";
 const title = edition === "ra2" ? "Red Alert 2" : "Yuri's Revenge";
 const csfFile = edition === "ra2" ? "ra2.csf" : "ra2md.csf";
+const launcherVersion = JSON.parse(
+  readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+).version;
 const run = await startPage(opts);
 const report = { edition };
 
@@ -107,6 +110,10 @@ try {
   const value = readCsfLabel(csf, "GUI:ExitGame");
   assert.equal(value, "Exit to Launcher", "the game must read the generated CSF");
   report.csf = { file: csfFile, label: "GUI:ExitGame", value };
+  // The game appends " <its own version>" to GUI:Version on the main menu.
+  const version = readCsfLabel(csf, "GUI:Version");
+  assert.equal(version, `YN ${launcherVersion} /`, "GUI:Version must carry the launcher's version");
+  report.version = { label: "GUI:Version", value: version };
   await run.shot("main-menu");
 
   const { size } = await run.state();
@@ -115,7 +122,9 @@ try {
   await run.page.waitForURL((url) => !url.searchParams.has("test") && !url.searchParams.has("dev"));
   await waitForLauncher(run.page);
   report.returned = true;
-  console.log(`PASS: ${title} reads strings.json and shows GUI:ExitGame as Exit to Launcher.`);
+  console.log(
+    `PASS: ${title} reads strings.json and shows GUI:ExitGame as Exit to Launcher and GUI:Version as "YN ${launcherVersion} /".`,
+  );
 } catch (error) {
   report.error = String(error);
   report.state = await run.state();

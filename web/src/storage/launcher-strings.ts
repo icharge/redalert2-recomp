@@ -10,6 +10,8 @@
 //     "ra2md": { "strings": { "GUI:ExitGame": "Exit to Launcher" } } }
 //
 // Each edition may also set "encoding", "enabled", "inject" and "extra".
+// A text may contain `{version}`, which becomes the launcher's version
+// (web/package.json) when the overrides are applied.
 
 import { appPath } from "../paths";
 import type { CsfEncoding } from "./csf";
@@ -157,6 +159,29 @@ export function editionStrings(
   game: GameId,
 ): LauncherEditionStrings | null {
   return config.editions[game] ?? null;
+}
+
+/** Values a strings.json text may name in braces, such as `{version}`. */
+export interface LauncherTextVars {
+  /** the launcher's version, from web/package.json */
+  version: string;
+}
+
+/**
+ * Fill `{version}` in each text. An unknown `{name}` is left as written, so a
+ * game string that happens to contain braces is not changed.
+ */
+export function expandLauncherText(
+  strings: Record<string, string>,
+  vars: LauncherTextVars,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [label, text] of Object.entries(strings)) {
+    out[label] = text.replace(/\{(\w+)\}/g, (whole, name: string) =>
+      Object.hasOwn(vars, name) ? vars[name as keyof LauncherTextVars] : whole,
+    );
+  }
+  return out;
 }
 
 /** Convert the extra hex strings to bytes for the CSF codec. */

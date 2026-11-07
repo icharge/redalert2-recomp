@@ -10,10 +10,12 @@ import { csfName, findBaseCsf, type CsfSourceFs } from "../storage/csf-source";
 import type { GameId } from "../storage/install";
 import {
   editionStrings,
+  expandLauncherText,
   launcherExtras,
   readLauncherStrings,
   type LauncherStringsConfig,
 } from "../storage/launcher-strings";
+import { APP_VERSION } from "../version";
 
 export interface CsfApplyFs extends CsfSourceFs {
   writeFile(path: string, data: Uint8Array): void;
@@ -24,6 +26,8 @@ export interface CsfApplyOptions {
   thaiFontFixEnabled?: boolean;
   /** Tests and hosts that already hold strings.json. */
   readStrings?: () => Promise<LauncherStringsConfig>;
+  /** the text for `{version}`; defaults to the launcher's package.json version */
+  version?: string;
 }
 
 export interface CsfApplyResult {
@@ -76,7 +80,7 @@ export async function applyCsfOverrides(
   try {
     const parsed = parseCsf(base.data, csf.encoding);
     const result = rewriteCsf(parsed, {
-      strings: csf.strings,
+      strings: expandLauncherText(csf.strings, { version: options.version ?? APP_VERSION }),
       inject: csf.inject,
       encoding: csf.encoding,
       extra: launcherExtras(csf),

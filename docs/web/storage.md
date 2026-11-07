@@ -160,14 +160,21 @@ player's save store, and the page does not edit it:
   "version": 1,
   "ra2": {
     "encoding": "windows-1252",
-    "strings": { "GUI:ExitGame": "Exit to Launcher" }
+    "strings": { "GUI:ExitGame": "Exit to Launcher", "GUI:Version": "YN {version} /" }
   },
   "ra2md": {
     "encoding": "windows-1252",
-    "strings": { "GUI:ExitGame": "Exit to Launcher" }
+    "strings": { "GUI:ExitGame": "Exit to Launcher", "GUI:Version": "YN {version} /" }
   }
 }
 ```
+
+`{version}` in a text becomes the launcher's version from `web/package.json`
+(`src/version.ts`) when the table is written; any other `{name}` is left as is.
+The main menu's version label is `GUI:Version`, a space, and the game's own
+number (`swprintf(L"%s %s", ...)` in `Init.CPP`), so the line above reads
+`YN 0.1.0 / 1.006` in RA2 and `YN 0.1.0 / 1.001` in Yuri's Revenge. The game's
+number comes from the exe, not the CSF.
 
 `web/src/storage/launcher-strings.ts` validates and fetches it (256 KiB cap,
 printable ASCII labels, known encoding). Each edition may also set `enabled`,
