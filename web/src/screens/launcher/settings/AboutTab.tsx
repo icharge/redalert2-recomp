@@ -63,7 +63,7 @@ const CREDITS: { role: string; who: string; href?: string }[] = [
     href: "https://github.com/sp00nznet/pcrecomp",
   },
   { role: "Original game", who: "Westwood Studios" },
-  { role: "Built with", who: "Emscripten, React, Radix UI, Vite" },
+  { role: "Built with", who: "Emscripten, React, Radix UI, Vite, 7-Zip" },
 ];
 
 const LICENCES: [string, string][] = [
@@ -73,6 +73,7 @@ const LICENCES: [string, string][] = [
   ["React Router", "MIT"],
   ["Radix UI Themes and Icons", "MIT"],
   ["Emscripten runtime", "MIT / University of Illinois NCSA"],
+  ["7-Zip (7z-wasm), for archive import", "LGPL 2.1, with the unRAR restriction"],
 ];
 
 /** Settings › About: the launcher's version and build, what changed in it, credits and the legal notes. */

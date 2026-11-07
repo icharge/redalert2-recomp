@@ -31,6 +31,20 @@ export interface FolderSource {
   /** what the folder is called, for the screen */
   name: string;
   list(): Promise<SourceFile[]>;
+  /**
+   * The order this source reads these paths fastest in (an archive: its own); the copy that follows
+   * reads them in it, one after another. A folder has none, and any order is as good.
+   */
+  order?(paths: string[]): string[];
+  /** lets go of what the source holds (an archive's worker) */
+  close?(): void;
+}
+
+/** `paths`' files in the source's best order (`FolderSource.order`), or as they are. */
+function inSourceOrder<T>(source: FolderSource, items: T[], path: (item: T) => string): T[] {
+  if (!source.order) return items;
+  const rank = new Map(source.order(items.map(path)).map((each, at) => [each, at]));
+  return [...items].sort((a, b) => (rank.get(path(a)) ?? 0) - (rank.get(path(b)) ?? 0));
 }
 
 function fromFile(path: string, file: File): SourceFile {
@@ -125,6 +139,8 @@ export interface Prepared {
   space: SpaceCheck;
   /** the folder's files, by path, for the copy */
   files: Map<string, SourceFile>;
+  /** where they come from: the copy reads them in its order */
+  source: FolderSource;
 }
 
 /** Looks at a folder: what game data would be copied and whether it fits. Runtime inputs come from this build. */
@@ -144,6 +160,7 @@ export async function prepareImport(
   const plan = planImport(list, build, options);
   return {
     name: source.name,
+    source,
     plan,
     space: checkSpace(estimate, plan.bytes, plan.movieBytes),
     files,
@@ -226,6 +243,7 @@ export async function runImport(options: RunOptions): Promise<number> {
   const totalBytes = prepared.plan.copy.reduce((sum, file) => sum + file.size, 0);
   const totalFiles = prepared.plan.copy.length;
   const counted = new Set<string>();
+  const stubs = new Set(prepared.plan.copy.filter((file) => file.stub).map((file) => file.path));
   for (const id of prepared.plan.games) {
     const game = build.games[id];
     if (!game) continue;
@@ -266,7 +284,15 @@ export async function runImport(options: RunOptions): Promise<number> {
     });
     const before = { bytes: doneBytes, files: doneFiles };
     await copyInstall({
-      jobs,
+      // stand-ins first: they need nothing from the source
+      jobs: [
+        ...jobs.filter((job) => stubs.has(job.name)),
+        ...inSourceOrder(
+          prepared.source,
+          jobs.filter((job) => !stubs.has(job.name)),
+          (job) => job.name,
+        ),
+      ],
       target,
       signal,
       alreadyBytes: before.bytes,
@@ -299,7 +325,8 @@ async function bringMods(prepared: Prepared, manifest: Manifest, target: CopyTar
     // a resume after the mods were brought finds them there
     const have = await listMods(manifest, game.storage);
     if (have.some((each) => each.name.toLowerCase() === mod.name.toLowerCase())) continue;
-    await importMod(modSource(mod, prepared.files), game.storage, manifest, target);
+    const files = inSourceOrder(prepared.source, mod.files, (file) => file.path);
+    await importMod(modSource({ ...mod, files }, prepared.files), game.storage, manifest, target);
   }
 }
 

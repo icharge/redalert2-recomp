@@ -13,6 +13,27 @@ project.
 | Chrome, Edge (and other Chromium) | `showDirectoryPicker()`: the player picks the install folder, and the page reads only the files it needs |
 | Firefox, Safari                   | drag the folder onto the drop zone. `DataTransferItem.webkitGetAsEntry()` walks it                       |
 | Either                            | an `<input type="file" webkitdirectory>` button as a last resort                                         |
+| Any                               | an archive or installer (Use an archive or installer, or dropped): see Archives below                    |
+
+### Archives
+
+A `.7z`, `.zip` or `.rar` of the game, or an `.exe` 7-Zip can open (a self-extracting 7z, an NSIS
+installer), is read with 7-Zip compiled to wasm (`7z-wasm`, LGPL 2.1 with the unRAR restriction)
+in a worker (`storage/archive.worker.ts`). Inno Setup installers and the original CD's `Setup.exe`
+cannot be opened: the screen says to install the game and pick the installed folder.
+
+- The worker mounts the picked file with Emscripten's WORKERFS, which reads it where it is: a
+  3 GB archive is never held in memory.
+- `7z l -slt` lists it (`sevenzip.ts`). The game folder inside is the one that holds `ra2.mix`, at
+  any depth (`gameRoot`); from there the archive is a folder like any other, and CHECK sorts it.
+- The copy asks the source for its order (`FolderSource.order`) and reads the files in it. One
+  `7z x -so` pass streams them out in the archive's own order, so a solid archive is decompressed
+  once, not once per file. Its stdout is a device that hands whole buffers to the worker, which
+  splits them by the listed sizes and posts each piece to the page.
+- When the page is cross-origin isolated, a shared counter keeps 7-Zip at most 64 MB ahead of the
+  copy (`FLOW_LIMIT`, `archive-host.ts`); CANCEL sets a flag that stops the pass.
+- Each edition's copy, and each mod, is its own pass. A failed or stopped pass leaves 7-Zip
+  unusable, so the next one loads a fresh module.
 
 ## What is copied
 
@@ -27,12 +48,12 @@ level:
 | User game content    | `*.mix` (but not `*.mix.bak`), sound banks, INI and map/data files                                                                                                                                                                                                                                                                                                                                                                                            |
 | Local runtime bundle | The web build's matching `game.exe` or `gamemd.exe`, plus `Blowfish.dll`; neither is imported into OPFS                                                                                                                                                                                                                                                                                                                                                       |
 | Sound                | `audio.bag`, `audio.idx`, `audiomd.bag`, `audiomd.idx`                                                                                                                                                                                                                                                                                                                                                                                                        |
-| Data                 | `*.ini`, `*.csf`, `*.fnt`, `*.mmx` (except the settings files below)                                                                                                                                                                                                                                                                                                                                                               |
+| Data                 | `*.ini`, `*.csf`, `*.fnt`, `*.mmx` (except the settings files below)                                                                                                                                                                                                                                                                                                                                                                                          |
 | Settings             | `RA2.INI`, `RA2MD.INI`, `KEYBOARD.INI`, `KEYBOARDMD.INI`: left out by default so a fresh import starts from the game's own defaults; offered as "bring my settings and hotkeys"                                                                                                                                                                                                                                                                               |
-| Logo overrides       | `WESTLOGO.BIK` / `EA_WWLOGO.BIK`: optional loose files at the top level. The launcher stages its bundled original logos when the import has none; an uploaded or imported loose logo wins, and without either the game uses its `LANGUAGE.MIX` / `LANGMD.MIX` copy. |
+| Logo overrides       | `WESTLOGO.BIK` / `EA_WWLOGO.BIK`: optional loose files at the top level. The launcher stages its bundled original logos when the import has none; an uploaded or imported loose logo wins, and without either the game uses its `LANGUAGE.MIX` / `LANGMD.MIX` copy.                                                                                                                                                                                           |
 | Movies               | `movies*.mix`, `movmd*.mix`: optional. If the source has no `MOVIES01.MIX` or `MOVMD03.MIX`, Import creates an empty 12-byte startup placeholder; when movies are skipped, available movie packs are replaced with empty archives. Without the real archives, video cutscenes are skipped; static loading-screen images are separate game assets. The Import screen shows their size and lets the player skip them; the menu's own movies are in `ra2md.mix`. |
-| Custom maps          | loose `*.map`, `*.mpr` (both games) and `*.yrm` (Yuri's Revenge) at the top level: the game's own maps are inside its archives. Copied beside the game; offered as "Custom maps" (on by default) |
-| Mods                 | each folder in `Mods/` (its top level only): one mod for the MODS tab, imported after the game into `game/<storage>/mods/<name>/` as INSTALL MOD would. For Yuri's Revenge when a file name has `md` in it or the folder has no RA2; a folder with a `.dll` or `.exe` (Ares, Phobos) is named and left out. Offered as "Mods" (on by default) |
+| Custom maps          | loose `*.map`, `*.mpr` (both games) and `*.yrm` (Yuri's Revenge) at the top level: the game's own maps are inside its archives. Copied beside the game; offered as "Custom maps" (on by default)                                                                                                                                                                                                                                                              |
+| Mods                 | each folder in `Mods/` (its top level only): one mod for the MODS tab, imported after the game into `game/<storage>/mods/<name>/` as INSTALL MOD would. For Yuri's Revenge when a file name has `md` in it or the folder has no RA2; a folder with a `.dll` or `.exe` (Ares, Phobos) is named and left out. Offered as "Mods" (on by default)                                                                                                                 |
 | Saves                | `*.sav` at the top level (the game writes `SAVE0001.sav` beside its exe), and `Saved Games/*` of an older layout, if present: offered as "bring your saves"                                                                                                                                                                                                                                                                                                   |
 
 A loose `game.fnt` placed at the top of the selected game folder is imported and
@@ -162,11 +183,17 @@ player's save store, and the page does not edit it:
   "version": 1,
   "ra2": {
     "encoding": "windows-1252",
-    "strings": { "GUI:ExitGame": "Exit to Launcher", "GUI:Version": "YN {version} /" }
+    "strings": {
+      "GUI:ExitGame": "Exit to Launcher",
+      "GUI:Version": "YN {version} /"
+    }
   },
   "ra2md": {
     "encoding": "windows-1252",
-    "strings": { "GUI:ExitGame": "Exit to Launcher", "GUI:Version": "YN {version} /" }
+    "strings": {
+      "GUI:ExitGame": "Exit to Launcher",
+      "GUI:Version": "YN {version} /"
+    }
   }
 }
 ```

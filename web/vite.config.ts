@@ -58,6 +58,8 @@ export default defineConfig(({ mode }) => {
         },
       }),
     ],
+    // the archive import's worker bundles 7-Zip's ES module (src/storage/archive.worker.ts)
+    worker: { format: "es" as const },
     server: { headers: isolation, port: 5173 },
     preview: { headers: isolation, port: 4173 },
     test: {

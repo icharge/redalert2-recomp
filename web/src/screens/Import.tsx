@@ -1,10 +1,11 @@
-import { Fragment, useRef, useState, type DragEvent } from "react";
+import { Fragment, useEffect, useRef, useState, type DragEvent } from "react";
 import { BrandImage } from "../components/BrandImage";
 import { EDITION_BRAND, LOGO_SRC } from "../components/brand";
 import { formatBytes } from "../components/format";
 import { InfoTip } from "../components/InfoTip";
 import { KeyArt } from "../components/KeyArt";
 import { appPath } from "../paths";
+import { ARCHIVE_ACCEPT, archiveSource, isArchiveName } from "../storage/archive";
 import {
   blocker,
   directorySource,
@@ -36,6 +37,8 @@ export interface ImportDeps {
   persist(): Promise<boolean>;
   /** the browser's folder picker, if it has one (Chromium); null if the player closed it */
   pickDirectory: (() => Promise<FolderSource | null>) | null;
+  /** an archive or installer as a folder (7-Zip in a worker); archiveSource by default */
+  openArchive?(file: File): FolderSource;
 }
 
 export function browserDeps(build: BuildInfo, manifest: Manifest, target: CopyTarget): ImportDeps {
@@ -48,6 +51,7 @@ export function browserDeps(build: BuildInfo, manifest: Manifest, target: CopyTa
     build,
     manifest,
     target,
+    openArchive: (file) => archiveSource(file),
     estimate: () => navigator.storage.estimate(),
     persist: async () => (await navigator.storage.persist?.()) ?? false,
     pickDirectory: picker
@@ -105,6 +109,14 @@ export function Import({
   const [stage, setStage] = useState<Stage>({ name: "choose" });
   const abort = useRef<AbortController | null>(null);
   const [over, setOver] = useState(false);
+  // the source being looked at or copied: an archive's holds a worker until it is let go
+  const opened = useRef<FolderSource | null>(null);
+  const release = () => {
+    opened.current?.close?.();
+    opened.current = null;
+  };
+  useEffect(() => release, []);
+  const openArchive = (file: File) => (deps.openArchive ?? archiveSource)(file);
 
   async function look(source: FolderSource, options: ImportOptions) {
     setStage({ name: "looking", folder: source.name });
@@ -119,8 +131,10 @@ export function Import({
   async function choose(pick: Promise<FolderSource | null>) {
     try {
       const source = await pick;
+      if (source !== opened.current) release();
+      opened.current = source;
       if (source) await look(source, FIRST);
-      else setStage({ name: "choose", message: "That is not a folder." });
+      else setStage({ name: "choose", message: "That is not a folder or an archive." });
     } catch (error) {
       setStage({ name: "failed", message: errorText(error) });
     }
@@ -150,13 +164,21 @@ export function Import({
           message: "Cancelled. What was copied is kept: RESUME INSTALL carries on.",
         });
       else setStage({ name: "failed", message: errorText(error) });
+    } finally {
+      release();
     }
   }
 
   function onDrop(event: DragEvent) {
     event.preventDefault();
     setOver(false);
-    void choose(droppedSource(event.dataTransfer.items));
+    // read now: the drop's data is gone once this handler returns
+    const file = event.dataTransfer.files[0];
+    void choose(
+      droppedSource(event.dataTransfer.items).then(
+        (folder) => folder ?? (file && isArchiveName(file.name) ? openArchive(file) : null),
+      ),
+    );
   }
 
   const current = stepOf(stage);
@@ -209,6 +231,7 @@ export function Import({
               onDrop={onDrop}
               onPick={() => deps.pickDirectory && void choose(deps.pickDirectory())}
               onFiles={(files) => void choose(Promise.resolve(fileListSource(files)))}
+              onArchive={(file) => void choose(Promise.resolve(openArchive(file)))}
             />
           )}
 
@@ -273,14 +296,18 @@ function Chooser(props: {
   onDrop(event: DragEvent): void;
   onPick(): void;
   onFiles(files: FileList): void;
+  onArchive(file: File): void;
 }) {
   const input = useRef<HTMLInputElement>(null);
+  const archive = useRef<HTMLInputElement>(null);
   const pickFiles = () => input.current?.click();
   return (
     <div className={styles.body}>
       <div className={styles.intro}>
         <h1 className={styles.title}>INSTALL THE GAME</h1>
-        <p className={styles.muted}>Pick your Red Alert 2 folder. Nothing is uploaded.</p>
+        <p className={styles.muted}>
+          Pick your Red Alert 2 folder, or an archive or installer of it. Nothing is uploaded.
+        </p>
       </div>
       {props.message && (
         <p className={styles.warn} role="status">
@@ -308,7 +335,7 @@ function Chooser(props: {
         >
           <path d="M8 10.5V2.5M5 5.5l3-3 3 3M2.5 10v3.5h11V10" />
         </svg>
-        <span>Drop the folder here</span>
+        <span>Drop the folder or archive here</span>
       </div>
       <div className={styles.actions}>
         <button
@@ -333,6 +360,23 @@ function Chooser(props: {
           webkitdirectory=""
           multiple
           onChange={(event) => event.target.files && props.onFiles(event.target.files)}
+        />
+        <button type="button" className={styles.link} onClick={() => archive.current?.click()}>
+          Use an archive or installer
+        </button>
+        <InfoTip text="A .7z, .zip or .rar of the game folder, or an installer 7-Zip can open. Some installers cannot be opened: install the game, then pick its folder." />
+        <input
+          ref={archive}
+          type="file"
+          className={styles.hidden}
+          tabIndex={-1}
+          aria-label="Archive or installer"
+          accept={ARCHIVE_ACCEPT}
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            event.target.value = "";
+            if (file) props.onArchive(file);
+          }}
         />
       </div>
     </div>

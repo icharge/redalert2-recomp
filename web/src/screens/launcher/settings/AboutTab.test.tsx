@@ -123,6 +123,7 @@ describe("AboutTab", () => {
     expect(screen.queryByText("Emscripten runtime")).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "OPEN-SOURCE LICENCES" }));
     expect(screen.getByText("Emscripten runtime")).toBeInTheDocument();
+    expect(screen.getByText("7-Zip (7z-wasm), for archive import")).toBeInTheDocument();
   });
 
   it("shows the version without copy or update buttons", async () => {

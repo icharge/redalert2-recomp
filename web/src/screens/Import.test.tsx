@@ -123,11 +123,47 @@ describe("Import", () => {
     await setup(folder());
     expect(screen.getByRole("heading", { name: "INSTALL THE GAME" })).toBeInTheDocument();
     expect(
-      screen.getByText("Pick your Red Alert 2 folder. Nothing is uploaded."),
+      screen.getByText(
+        "Pick your Red Alert 2 folder, or an archive or installer of it. Nothing is uploaded.",
+      ),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "CHOOSE FOLDER" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Use file picker" })).toBeInTheDocument();
-    expect(screen.getByText("Drop the folder here")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Use an archive or installer" })).toBeInTheDocument();
+    expect(screen.getByText("Drop the folder or archive here")).toBeInTheDocument();
+  });
+
+  it("opens an archive or installer with 7-Zip, then checks it like a folder", async () => {
+    const manifest = await Manifest.open(new IDBFactory());
+    const close = vi.fn();
+    const openArchive = vi.fn((file: File) => ({ ...folder(), name: file.name, close }));
+    const onDone = vi.fn();
+    render(
+      <Theme>
+        <Import
+          deps={{
+            build,
+            manifest,
+            target: memoryTarget(),
+            estimate: async () => ({ quota: 1e12, usage: 0 }),
+            persist: async () => true,
+            pickDirectory: null,
+            openArchive,
+          }}
+          onDone={onDone}
+        />
+      </Theme>,
+    );
+    const user = userEvent.setup();
+    const archive = new File(["7z"], "RA2.7z");
+    await user.upload(screen.getByLabelText("Archive or installer"), archive);
+    expect(openArchive).toHaveBeenCalledWith(archive);
+    expect(await screen.findByRole("heading", { name: "READY TO INSTALL" })).toBeInTheDocument();
+    expect(screen.getByText(/^From RA2\.7z\./)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /^INSTALL / }));
+    await waitFor(() => expect(onDone).toHaveBeenCalled());
+    // the worker is let go when the copy is done
+    expect(close).toHaveBeenCalled();
   });
 
   it("marks the current step", async () => {
@@ -402,6 +438,6 @@ describe("Import", () => {
   it("goes back to the start when what was picked is not a folder", async () => {
     const { user } = await setup(null);
     await user.click(screen.getByRole("button", { name: "CHOOSE FOLDER" }));
-    expect(await screen.findByText("That is not a folder.")).toBeInTheDocument();
+    expect(await screen.findByText("That is not a folder or an archive.")).toBeInTheDocument();
   });
 });

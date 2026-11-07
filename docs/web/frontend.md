@@ -141,7 +141,8 @@ is never reused for another slot. Mod/font restarts reload the same game URL.
    the saved games of the chosen edition (DOWNLOAD .ZIP, IMPORT .ZIP), browser storage, REMOVE
    GAME (an alert dialog says the size and that saves and settings are kept), and OLDER COPIES.
 5. **Install** (`/import`, full screen). Steps 1 FOLDER, 2 CHECK, 3 COPY: the folder picker
-   (`showDirectoryPicker`, Chromium), the file picker and a drop zone; then CHECK sorts the folder
+   (`showDirectoryPicker`, Chromium), the file picker, Use an archive or installer (7-Zip, see
+   [storage.md](storage.md#archives)) and a drop zone that takes either; then CHECK sorts the folder
    (`plan.found`, [storage.md](storage.md)): game content (always, with each edition's readiness),
    then movies, mods, custom maps, saved games, and settings and hotkeys, each with a count, a
    size and a checkbox; a group the folder lacks says None. The mod count opens a list of each mod with
