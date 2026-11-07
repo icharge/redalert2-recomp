@@ -5,6 +5,7 @@ import {
   DEFAULT_SOUND_PREFERENCES,
   loadSoundPreferences,
   saveSoundPreference,
+  startVolume,
 } from "./sound-preferences";
 
 const fresh = () => {
@@ -36,5 +37,17 @@ describe("the sound preferences", () => {
     const broken = () => Promise.reject(new Error("no storage"));
     expect(await loadSoundPreferences(broken)).toEqual(DEFAULT_SOUND_PREFERENCES);
     await expect(saveSoundPreference("muteOnBlur", true, broken)).resolves.toBeUndefined();
+  });
+});
+
+describe("startVolume", () => {
+  it("is the saved volume", () => {
+    expect(startVolume(0.6, "")).toBe(0.6);
+    expect(startVolume(0.6, "?dev&target=game")).toBe(0.6);
+  });
+
+  it("is 0 with ?mute, for tests in a browser (the saved volume stays as it was)", () => {
+    expect(startVolume(0.6, "?dev&mute")).toBe(0);
+    expect(startVolume(0.6, "?mute=1")).toBe(0);
   });
 });

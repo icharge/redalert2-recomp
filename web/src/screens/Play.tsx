@@ -60,6 +60,7 @@ import {
   DEFAULT_SOUND_PREFERENCES,
   loadSoundPreferences,
   saveSoundPreference,
+  startVolume,
 } from "../game/sound-preferences";
 import { loadVolume, saveVolume } from "../game/volume";
 import { FrameStats } from "./FrameStats";
@@ -630,8 +631,9 @@ export function Play({ files }: { files: FileSource }) {
         if ("ra2Store" in window) (window as unknown as { ra2Audio: GameAudio }).ra2Audio = sound;
         void loadVolume().then((saved) => {
           if (cancelled || !runtimeLive()) return;
-          game.exports.ra2_set_volume(saved);
-          setVolume(saved);
+          const volume = startVolume(saved, window.location.search);
+          game.exports.ra2_set_volume(volume);
+          setVolume(volume);
         });
         // what the game saved is in OPFS within a moment of leaving the tab
         const onHidden = () => {

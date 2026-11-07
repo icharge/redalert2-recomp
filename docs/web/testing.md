@@ -82,6 +82,9 @@ second. Screenshots go to `web/e2e/shots/`. `CHROME_PATH` names the browser. The
 page exposes its store as `window.ra2Store` in development only, for these
 scripts. This is the base `tools/playtest.py --web` grows from (stage 10).
 
+`?mute` in the page's URL starts the game silent (volume 0) without changing the volume the
+player saved: for checks in a browser, `?dev&mute` or `?dev&target=game&mute`.
+
 ## WOL-era links: our dialog instead of the browser
 
 The same build carries `web_url_patches`. With Vite running, from `web/`:

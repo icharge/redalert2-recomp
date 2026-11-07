@@ -39,3 +39,9 @@ export async function saveSoundPreference(
     // the choice is just not remembered
   }
 }
+
+/** The volume a game starts at: the saved one, or 0 with `?mute` in the page's URL (for tests in a
+ * browser; the saved volume is not changed). */
+export function startVolume(saved: number, search: string): number {
+  return new URLSearchParams(search).has("mute") ? 0 : saved;
+}
