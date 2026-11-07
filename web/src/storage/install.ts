@@ -34,7 +34,8 @@ export interface BuildInfo {
   >;
 }
 
-export type FileKind = "archive" | "movie" | "logo" | "sound" | "data" | "settings" | "save";
+export type FileKind =
+  "archive" | "movie" | "logo" | "sound" | "data" | "map" | "settings" | "save";
 
 /** The files the game writes for its own options and hotkeys; a fresh import leaves them out. */
 const SETTINGS_FILES = new Set(["ra2.ini", "ra2md.ini", "keyboard.ini", "keyboardmd.ini"]);
@@ -89,7 +90,10 @@ export function classify(path: string): Classified | null {
   if (name.endsWith(".mix")) return { kind: "archive", needs: md };
   if (/^audio(md)?\.(bag|idx)$/.test(name)) return { kind: "sound", needs: md };
   if (SETTINGS_FILES.has(name)) return { kind: "settings", needs: md };
-  if (/\.(ini|csf|fnt|mmx|map|mpr|yrm)$/.test(name)) return { kind: "data", needs: md };
+  // the game's own maps are inside its archives: a loose one is a custom map
+  if (name.endsWith(".yrm")) return { kind: "map", needs: ["ra2md"] };
+  if (/\.(map|mpr)$/.test(name)) return { kind: "map", needs: BOTH };
+  if (/\.(ini|csf|fnt|mmx)$/.test(name)) return { kind: "data", needs: md };
   return null;
 }
 
@@ -100,7 +104,68 @@ export interface ImportOptions {
   saves: boolean;
   /** bring the folder's RA2.INI / KEYBOARD.INI; off means a fresh start from the game's defaults */
   settings: boolean;
+  /** bring each folder in `Mods/` as a mod (default on) */
+  mods?: boolean;
+  /** bring the loose custom maps (default on) */
+  maps?: boolean;
 }
+
+/** What the review step shows: the folder sorted into what the player can bring. */
+export type FoundGroup = "game" | "movies" | "mods" | "maps" | "saves" | "settings";
+
+/** A folder in the game folder's `Mods/`: one mod for the MODS tab. */
+export interface FoundMod {
+  name: string;
+  /** the edition it is for: Yuri's Revenge when its files say so, or when the folder has no RA2 */
+  game: GameId;
+  /** the data files the mod importer keeps, paths as in the folder */
+  files: InstallFile[];
+  bytes: number;
+  /** why it cannot be brought (it patches the exe), or null */
+  problem: string | null;
+}
+
+/** Files a data mod may have; the rest of a mod folder is not read (mods.ts imports these). */
+export const MOD_DATA =
+  /\.(mix|ini|csf|mmx|map|mpr|yrm|shp|vxl|hva|pal|pcx|wav|aud|bag|idx|fnt|tem|sno|urb|des|lun|ubn)$/i;
+/** A mod with these patches the exe (Ares, Phobos), which the recompiled game cannot run. */
+export const MOD_PATCH = /\.(dll|exe)$/i;
+export const MOD_PATCH_PROBLEM =
+  "This mod includes executable patches. Import a data-only mod; Ares and Phobos cannot run on the recompiled game.";
+
+const MOD_FILE = /^mods\/([^/]+)\/([^/]+)$/i;
+
+function findMods(files: InstallFile[], games: GameId[]): FoundMod[] {
+  const byName = new Map<string, { name: string; all: InstallFile[] }>();
+  for (const file of files) {
+    const match = MOD_FILE.exec(file.path.replace(/\\/g, "/"));
+    if (!match) continue;
+    const name = match[1]!;
+    const entry = byName.get(name.toLowerCase()) ?? { name, all: [] };
+    entry.all.push(file);
+    byName.set(name.toLowerCase(), entry);
+  }
+  return [...byName.values()]
+    .map(({ name, all }) => {
+      const data = all.filter((file) => MOD_DATA.test(file.path));
+      const md = data.some((file) => /md/i.test(file.path.split(/[\\/]/).at(-1) ?? ""));
+      const game: GameId = games.includes("ra2") && !md ? "ra2" : "ra2md";
+      return {
+        name,
+        game,
+        files: data,
+        bytes: data.reduce((sum, file) => sum + file.size, 0),
+        problem: all.some((file) => MOD_PATCH.test(file.path))
+          ? MOD_PATCH_PROBLEM
+          : data.length === 0
+            ? "That folder has no mod data files."
+            : null,
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+const isModFile = (path: string) => /^mods\//i.test(path.replace(/\\/g, "/"));
 
 /**
  * What is written in place of a movie archive the player did not bring: an empty archive. The game
@@ -125,6 +190,12 @@ export interface ImportPlan {
   error: string | null;
   /** per-edition result based on the user's content and this page's runtime bundles */
   readiness: Partial<Record<GameId, EditionReadiness>>;
+  /** what the folder has, by group, chosen or not: files (mods: folders) and bytes */
+  found: Record<FoundGroup, { count: number; bytes: number }>;
+  /** each folder in `Mods/` */
+  mods: FoundMod[];
+  /** the mods without a problem are imported after the game */
+  bringMods: boolean;
 }
 
 export interface EditionReadiness {
@@ -167,6 +238,17 @@ export function assessEditionReadiness(
   return { status: missing.length ? "missing-content" : "ready", missing, moviesMissing };
 }
 
+const GROUP: Record<FileKind, FoundGroup> = {
+  archive: "game",
+  sound: "game",
+  data: "game",
+  logo: "game",
+  movie: "movies",
+  map: "maps",
+  save: "saves",
+  settings: "settings",
+};
+
 export function planImport(
   files: InstallFile[],
   build: BuildInfo,
@@ -180,6 +262,7 @@ export function planImport(
       classified.kind !== "movie" &&
       classified.kind !== "logo" &&
       classified.kind !== "settings" &&
+      classified.kind !== "map" &&
       classified.needs.includes("ra2")
     );
   });
@@ -191,6 +274,7 @@ export function planImport(
       classified.kind !== "movie" &&
       classified.kind !== "logo" &&
       classified.kind !== "settings" &&
+      classified.kind !== "map" &&
       classified.needs.length === 1 &&
       classified.needs[0] === "ra2md"
     );
@@ -209,6 +293,16 @@ export function planImport(
     warnings: [],
     error: null,
     readiness: {},
+    found: {
+      game: { count: 0, bytes: 0 },
+      movies: { count: 0, bytes: 0 },
+      mods: { count: 0, bytes: 0 },
+      maps: { count: 0, bytes: 0 },
+      saves: { count: 0, bytes: 0 },
+      settings: { count: 0, bytes: 0 },
+    },
+    mods: [],
+    bringMods: options.mods !== false,
   };
   if (detectedGames.length === 0) {
     plan.error = "No Red Alert 2 game data was found at the top of this folder.";
@@ -227,8 +321,20 @@ export function planImport(
     plan.error = `This build does not include the ${detectedGames.map((id) => GAME_TITLE[id]).join(" or ")} runtime.`;
     return plan;
   }
+  plan.mods = findMods(files, games);
+  plan.found.mods = {
+    count: plan.mods.length,
+    bytes: plan.mods.reduce((sum, mod) => sum + mod.bytes, 0),
+  };
+  if (plan.bringMods) for (const mod of plan.mods) if (!mod.problem) plan.bytes += mod.bytes;
   for (const file of files) {
+    if (isModFile(file.path)) continue;
     const what = classify(file.path);
+    if (what && what.needs.some((id) => games.includes(id))) {
+      const group = GROUP[what.kind];
+      plan.found[group].count++;
+      plan.found[group].bytes += file.size;
+    }
     if (!what) {
       plan.skipped.push({ path: file.path, reason: "not read by the game" });
       continue;
@@ -251,6 +357,8 @@ export function planImport(
       plan.skipped.push({ path: file.path, reason: "saves not brought" });
     } else if (what.kind === "settings" && !options.settings) {
       plan.skipped.push({ path: file.path, reason: "settings not brought" });
+    } else if (what.kind === "map" && options.maps === false) {
+      plan.skipped.push({ path: file.path, reason: "maps not brought" });
     } else {
       plan.copy.push({ ...file, ...what });
       plan.bytes += file.size;

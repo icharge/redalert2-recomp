@@ -12,7 +12,8 @@ import {
 } from "./install";
 import type { GameRecord, Manifest, PlannedFile } from "./manifest";
 import { copyInstall, gamePath, type CopyJob, type CopyProgress, type CopyTarget } from "./opfs";
-import { EMPTY_ARCHIVE } from "./install";
+import { EMPTY_ARCHIVE, type FoundMod } from "./install";
+import { importMod, listMods } from "./mods";
 
 /** One file of the folder the player picked. */
 export interface SourceFile {
@@ -42,7 +43,18 @@ function fromFile(path: string, file: File): SourceFile {
   };
 }
 
-/** A folder from `showDirectoryPicker()`: its top level, and `Saved Games/`. Nothing else is opened. */
+/**
+ * The folders of a game folder the import reads, besides its top level: `Saved Games/`, and each
+ * mod in `Mods/` (its own top level). The new prefix, or null to leave the folder unread.
+ */
+function descend(prefix: string, name: string): string | null {
+  if (prefix === "" && name.toLowerCase() === "saved games") return "Saved Games/";
+  if (prefix === "" && name.toLowerCase() === "mods") return `${name}/`;
+  if (/^mods\/$/i.test(prefix)) return `${prefix}${name}/`;
+  return null;
+}
+
+/** A folder from `showDirectoryPicker()`: its top level, `Saved Games/` and `Mods/<name>/`. Nothing else is opened. */
 export function directorySource(handle: FileSystemDirectoryHandle): FolderSource {
   async function* directoryEntries(dir: FileSystemDirectoryHandle) {
     const directory = dir as unknown as {
@@ -64,8 +76,9 @@ export function directorySource(handle: FileSystemDirectoryHandle): FolderSource
     for await (const entry of directoryEntries(dir)) {
       if (entry.kind === "file") {
         out.push(fromFile(prefix + entry.name, await (entry as FileSystemFileHandle).getFile()));
-      } else if (prefix === "" && entry.name.toLowerCase() === "saved games") {
-        await walk(entry as FileSystemDirectoryHandle, "Saved Games/", out);
+      } else {
+        const next = descend(prefix, entry.name);
+        if (next !== null) await walk(entry as FileSystemDirectoryHandle, next, out);
       }
     }
   }
@@ -272,7 +285,34 @@ export async function runImport(options: RunOptions): Promise<number> {
     doneBytes += jobs.reduce((sum, job) => sum + job.size, 0);
     doneFiles += jobs.length;
   }
+  if (prepared.plan.bringMods) await bringMods(prepared, manifest, target, slot);
   return slot;
+}
+
+/** The folder's mods, after the game: each one the MODS tab of its edition lists. */
+async function bringMods(prepared: Prepared, manifest: Manifest, target: CopyTarget, slot: number) {
+  const games = await manifest.listGames(slot);
+  for (const mod of prepared.plan.mods) {
+    if (mod.problem) continue;
+    const game = games.find((each) => each.id === mod.game) ?? games[0];
+    if (!game) continue;
+    // a resume after the mods were brought finds them there
+    const have = await listMods(manifest, game.storage);
+    if (have.some((each) => each.name.toLowerCase() === mod.name.toLowerCase())) continue;
+    await importMod(modSource(mod, prepared.files), game.storage, manifest, target);
+  }
+}
+
+/** One mod of the folder as a folder of its own, its files at its top. */
+function modSource(mod: FoundMod, files: Map<string, SourceFile>): FolderSource {
+  return {
+    name: mod.name,
+    list: async () =>
+      mod.files.flatMap((entry) => {
+        const file = files.get(entry.path);
+        return file ? [{ ...file, path: entry.path.split(/[\\/]/).at(-1) ?? entry.path }] : [];
+      }),
+  };
 }
 
 // ---- a dropped folder ---------------------------------------------------------------------------
@@ -306,8 +346,9 @@ export function entrySource(root: LegacyEntry): FolderSource {
       if (entry.isFile && entry.file) {
         const file = await new Promise<File>((ok, fail) => entry.file?.(ok, fail));
         out.push(fromFile(prefix + entry.name, file));
-      } else if (entry.isDirectory && prefix === "" && entry.name.toLowerCase() === "saved games") {
-        await walk(entry, "Saved Games/", out);
+      } else if (entry.isDirectory) {
+        const next = descend(prefix, entry.name);
+        if (next !== null) await walk(entry, next, out);
       }
     }
   }

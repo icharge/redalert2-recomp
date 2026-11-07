@@ -141,9 +141,12 @@ is never reused for another slot. Mod/font restarts reload the same game URL.
    the saved games of the chosen edition (DOWNLOAD .ZIP, IMPORT .ZIP), browser storage, REMOVE
    GAME (an alert dialog says the size and that saves and settings are kept), and OLDER COPIES.
 5. **Install** (`/import`, full screen). Steps 1 FOLDER, 2 CHECK, 3 COPY: the folder picker
-   (`showDirectoryPicker`, Chromium), the file picker and a drop zone; then the checks from
-   [storage.md](storage.md) and three options (movies, saved games, settings and hotkeys); then
-   the copy with CANCEL. It's resumable: a reload continues from the manifest.
+   (`showDirectoryPicker`, Chromium), the file picker and a drop zone; then CHECK sorts the folder
+   (`plan.found`, [storage.md](storage.md)): game content (always, with each edition's readiness),
+   then movies, mods, custom maps, saved games, and settings and hotkeys, each with a count, a
+   size and a checkbox; a group the folder lacks says None. A mod that patches the exe is named and
+   left out. Then the copy with CANCEL, and the mods after the game. It's resumable: a reload
+   continues from the manifest.
 6. **Settings.** Launcher, Gameplay, Audio, Video and Keyboard (below), then About: the launcher's
    version (`web/package.json`, imported by `src/version.ts`) and the build id from `build.json`,
    what's new (the newest section of [web/CHANGELOG.md](../../web/CHANGELOG.md), read at build time

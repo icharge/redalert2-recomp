@@ -49,6 +49,12 @@ describe("classify", () => {
     expect(classify("SAVE0001.SAV")).toEqual({ kind: "save", needs: ["ra2", "ra2md"] });
   });
 
+  it("calls a loose map a custom map; a .yrm is Yuri's Revenge's", () => {
+    expect(classify("Tour of Egypt.map")).toEqual({ kind: "map", needs: ["ra2", "ra2md"] });
+    expect(classify("islands.MPR")).toEqual({ kind: "map", needs: ["ra2", "ra2md"] });
+    expect(classify("psychic.yrm")).toEqual({ kind: "map", needs: ["ra2md"] });
+  });
+
   it("leaves out what it should", () => {
     for (const name of [
       "Ares.dll",
@@ -256,6 +262,77 @@ function pe(stamp: number, lfanew = 0x80): Uint8Array {
   if (lfanew + 12 <= head.length) view.setUint32(lfanew + 8, stamp, true);
   return head;
 }
+
+describe("sorting the folder", () => {
+  const options = { movies: false, saves: true, settings: false };
+  const sorted = [
+    ...folder,
+    { path: "RA2MD.INI", size: 2_000 },
+    { path: "Tour of Egypt.map", size: 30_000 },
+    { path: "psychic.yrm", size: 20_000 },
+    { path: "SAVE0002.SAV", size: 6_000 },
+    { path: "Mods/Lite/rulesmd.ini", size: 70_000 },
+    { path: "Mods/Lite/expandmd90.mix", size: 9_000_000 },
+    { path: "Mods/Lite/notes/readme.txt", size: 10 },
+    { path: "Mods/Classic/rules.ini", size: 50_000 },
+    { path: "mods/Patched/Ares.dll", size: 900_000 },
+    { path: "mods/Patched/rulesmd.ini", size: 60_000 },
+  ];
+
+  it("counts game content, movies, mods, maps, saves and settings apart", () => {
+    const plan = planImport(sorted, yuri, options);
+    expect(plan.found).toEqual({
+      game: { count: 7, bytes: 872_400_000 },
+      movies: { count: 1, bytes: 280_000_000 },
+      mods: { count: 3, bytes: 9_180_000 },
+      maps: { count: 2, bytes: 50_000 },
+      saves: { count: 2, bytes: 11_000 },
+      settings: { count: 1, bytes: 2_000 },
+    });
+  });
+
+  it("finds each folder in Mods as a mod, and says which one cannot run", () => {
+    const plan = planImport(sorted, yuri, options);
+    expect(
+      plan.mods.map(({ name, game, bytes, problem }) => ({ name, game, bytes, problem })),
+    ).toEqual([
+      { name: "Classic", game: "ra2md", bytes: 50_000, problem: null },
+      { name: "Lite", game: "ra2md", bytes: 9_070_000, problem: null },
+      { name: "Patched", game: "ra2md", bytes: 60_000, problem: expect.stringMatching(/Ares/) },
+    ]);
+    expect(plan.mods[1]?.files.map((file) => file.path)).toEqual([
+      "Mods/Lite/rulesmd.ini",
+      "Mods/Lite/expandmd90.mix",
+    ]);
+    // a mod is not game content, and not "left out"
+    expect(plan.copy.some((file) => /^mods\//i.test(file.path))).toBe(false);
+    expect(plan.skipped.some((file) => /^mods\//i.test(file.path))).toBe(false);
+  });
+
+  it("brings the mods that can run and the maps, unless they are left out", () => {
+    const all = planImport(sorted, yuri, options);
+    const none = planImport(sorted, yuri, { ...options, mods: false, maps: false });
+    expect(all.bringMods).toBe(true);
+    expect(none.bringMods).toBe(false);
+    expect(all.copy.filter((file) => file.kind === "map")).toHaveLength(2);
+    expect(none.copy.some((file) => file.kind === "map")).toBe(false);
+    expect(none.skipped.filter((file) => file.reason === "maps not brought")).toHaveLength(2);
+    // the two mods that can run, and the two maps
+    expect(all.bytes - none.bytes).toBe(9_120_000 + 50_000);
+  });
+
+  it("gives a mod for both games to Red Alert 2 when the folder has it", () => {
+    const both: BuildInfo = {
+      games: {
+        ...yuri.games,
+        ra2: { ...yuri.games.ra2md!, title: "Red Alert 2", exe: "game.exe" },
+      },
+    };
+    const plan = planImport(sorted, both, options);
+    expect(plan.mods.find((mod) => mod.name === "Classic")?.game).toBe("ra2");
+    expect(plan.mods.find((mod) => mod.name === "Lite")?.game).toBe("ra2md");
+  });
+});
 
 describe("the exe's stamp", () => {
   it("reads the timestamp the way src/web/main.c does", () => {

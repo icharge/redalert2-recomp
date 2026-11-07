@@ -16,7 +16,6 @@ import {
   type Prepared,
 } from "../storage/importer";
 import {
-  classify,
   type BuildInfo,
   type EditionReadiness,
   type GameId,
@@ -70,7 +69,13 @@ type Stage =
   | { name: "copying"; progress: CopyProgress | null; persistent: boolean | null }
   | { name: "failed"; message: string };
 
-const FIRST: ImportOptions = { movies: false, saves: true, settings: false };
+const FIRST: ImportOptions = {
+  movies: false,
+  saves: true,
+  settings: false,
+  mods: true,
+  maps: true,
+};
 
 const STEPS = ["1 FOLDER", "2 CHECK", "3 COPY"];
 
@@ -339,6 +344,45 @@ function readinessText(readiness: EditionReadiness): string {
   return "Found";
 }
 
+type Choosable = "movies" | "mods" | "maps" | "saves" | "settings";
+
+/** The groups the player can bring or leave, in the order the CHECK step lists them. */
+const GROUPS: { id: Choosable; label: string; hint: string; unit: [string, string] }[] = [
+  {
+    id: "movies",
+    label: "Movies",
+    hint: "Without them, cutscenes are black",
+    unit: ["file", "files"],
+  },
+  {
+    id: "mods",
+    label: "Mods",
+    hint: "Each folder in Mods becomes a mod on the MODS tab",
+    unit: ["mod", "mods"],
+  },
+  {
+    id: "maps",
+    label: "Custom maps",
+    hint: "Loose .map, .mpr and .yrm files",
+    unit: ["map", "maps"],
+  },
+  {
+    id: "saves",
+    label: "Saved games",
+    hint: "Saved Games folder and .sav files",
+    unit: ["save", "saves"],
+  },
+  {
+    id: "settings",
+    label: "Settings and hotkeys",
+    hint: "RA2.INI, RA2MD.INI and KEYBOARD files. Off: the game’s defaults",
+    unit: ["file", "files"],
+  },
+];
+
+const counted = (count: number, [one, many]: [string, string]) =>
+  count === 0 ? "None" : `${count} ${count === 1 ? one : many}`;
+
 function Review({
   stage,
   onOptions,
@@ -353,11 +397,14 @@ function Review({
   const { prepared, options } = stage;
   const { plan } = prepared;
   const stopped = blocker(prepared);
-  const saveCount = plan.copy.filter((file) => file.kind === "save").length;
-  const settingCount = [...prepared.files.keys()].filter(
-    (path) => classify(path)?.kind === "settings",
-  ).length;
   const ids = Object.keys(plan.readiness) as GameId[];
+  const runnable = plan.mods.filter((mod) => !mod.problem);
+  const found: Record<Choosable | "game", { count: number; bytes: number }> = {
+    ...plan.found,
+    mods: { count: runnable.length, bytes: runnable.reduce((sum, mod) => sum + mod.bytes, 0) },
+  };
+  const chosen = (id: Choosable) => options[id] ?? true;
+  const leftOut = plan.skipped.filter((file) => !file.reason.endsWith("not brought")).length;
   return (
     <div className={styles.body}>
       <h1 className={styles.title}>READY TO INSTALL</h1>
@@ -366,83 +413,94 @@ function Review({
           {stopped}
         </p>
       )}
-      <ul className={styles.games}>
-        {ids.map((id) => {
-          const readiness = plan.readiness[id];
-          if (!readiness) return null;
-          const brand = EDITION_BRAND[id];
+      <div role="group" aria-label="What the folder has" className={styles.sorted}>
+        <div className={styles.kind}>
+          <svg
+            className={styles.lock}
+            width="18"
+            height="18"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.4"
+            role="img"
+            aria-label="Always installed"
+          >
+            <rect x="3.5" y="7" width="9" height="6.5" />
+            <path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" />
+          </svg>
+          <span className={styles.kindText}>
+            <span className={styles.kindName}>Game content</span>
+            <ul className={styles.editions}>
+              {ids.map((id) => {
+                const readiness = plan.readiness[id];
+                if (!readiness) return null;
+                const brand = EDITION_BRAND[id];
+                const ready = readiness.status === "ready";
+                return (
+                  <li key={id} aria-label={brand.title}>
+                    <BrandImage
+                      src={appPath(brand.icon)}
+                      alt=""
+                      className={styles.icon}
+                      fallback={
+                        <span
+                          className={styles.tile}
+                          style={{ background: brand.tile, borderColor: brand.tileBorder }}
+                        >
+                          {brand.short}
+                        </span>
+                      }
+                    />
+                    {brand.title}
+                    <span className={ready ? styles.dotReady : styles.dotWait} aria-hidden="true" />
+                    <span className={ready ? styles.srOnly : styles.notReady}>
+                      {readinessText(readiness)}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </span>
+          <span className={styles.count}>{counted(found.game.count, ["file", "files"])}</span>
+          <span className={styles.size}>{formatBytes(found.game.bytes)}</span>
+        </div>
+        {GROUPS.map((group) => {
+          const { count, bytes } = found[group.id];
           return (
-            <li key={id} aria-label={brand.title}>
-              <BrandImage
-                src={appPath(brand.icon)}
-                alt=""
-                className={styles.icon}
-                fallback={
-                  <span
-                    className={styles.tile}
-                    style={{ background: brand.tile, borderColor: brand.tileBorder }}
-                  >
-                    {brand.short}
-                  </span>
-                }
+            <label key={group.id} className={styles.kind} data-off={!chosen(group.id) || undefined}>
+              <input
+                type="checkbox"
+                aria-label={group.label}
+                checked={count > 0 && chosen(group.id)}
+                disabled={count === 0}
+                onChange={(event) => onOptions({ ...options, [group.id]: event.target.checked })}
               />
-              <span className={styles.gameName}>{brand.title}</span>
-              <span className={styles.state}>
-                <span
-                  className={readiness.status === "ready" ? styles.dotReady : styles.dotWait}
-                  aria-hidden="true"
-                />
-                {readinessText(readiness)}
+              <span className={styles.kindText}>
+                <span className={styles.kindName}>{group.label}</span>
+                <span className={styles.kindHint}>{group.hint}</span>
               </span>
-            </li>
+              <span className={styles.count}>{counted(count, group.unit)}</span>
+              <span className={styles.size}>{count > 0 ? formatBytes(bytes) : ""}</span>
+            </label>
           );
         })}
-      </ul>
+      </div>
+      {plan.mods
+        .filter((mod) => mod.problem)
+        .map((mod) => (
+          <p key={mod.name} className={styles.warn}>
+            {mod.name} is left out: it patches the game (Ares or Phobos), which cannot run here.
+          </p>
+        ))}
       {plan.warnings.map((warning) => (
         <p key={warning} className={styles.warn}>
           {warning}
         </p>
       ))}
-      <div className={styles.options}>
-        <div className={styles.option}>
-          <label>
-            <input
-              type="checkbox"
-              checked={options.movies}
-              disabled={plan.movieBytes === 0}
-              onChange={(event) => onOptions({ ...options, movies: event.target.checked })}
-            />
-            Movies <span className={styles.muted}>{formatBytes(plan.movieBytes)}</span>
-          </label>
-          <InfoTip text="Without them, cutscenes show as black." />
-        </div>
-        <div className={styles.option}>
-          <label>
-            <input
-              type="checkbox"
-              checked={options.saves}
-              disabled={saveCount === 0 && !options.saves}
-              onChange={(event) => onOptions({ ...options, saves: event.target.checked })}
-            />
-            Saved games
-          </label>
-        </div>
-        <div className={styles.option}>
-          <label>
-            <input
-              type="checkbox"
-              checked={options.settings}
-              disabled={settingCount === 0 && !options.settings}
-              onChange={(event) => onOptions({ ...options, settings: event.target.checked })}
-            />
-            Settings and hotkeys
-          </label>
-          <InfoTip text="Off: start from the game's own settings. On: bring the RA2.INI, RA2MD.INI and KEYBOARD files in the folder." />
-        </div>
-      </div>
       <p className={styles.small}>
-        {plan.copy.length} files from {stage.source.name}. {plan.skipped.length} left out
-        <InfoTip text="Tools, other games, mods and files the game does not read are not copied." />
+        From {stage.source.name}. {leftOut} left out
+        <InfoTip text="Tools, the game's exe and DLLs, and files the game does not read are not copied." />
       </p>
       <div className={styles.actions}>
         <button

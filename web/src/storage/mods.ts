@@ -1,4 +1,5 @@
 import type { FolderSource } from "./importer";
+import { MOD_DATA, MOD_PATCH, MOD_PATCH_PROBLEM } from "./install";
 import { Manifest } from "./manifest";
 import { gamePath, mountedPath, READ_IN_PLACE_BYTES, readGameFile, type CopyTarget } from "./opfs";
 import type { FsLike } from "./saves";
@@ -34,17 +35,9 @@ export async function importMod(
   if (mods.some((mod) => mod.name.toLowerCase() === name.toLowerCase()))
     throw new Error("That mod is already imported. Remove it before importing its replacement.");
   const files = await source.list();
-  if (files.some((f) => /\.(dll|exe)$/i.test(f.path)))
-    throw new Error(
-      "This mod includes executable patches. Import a data-only mod; Ares and Phobos cannot run on the recompiled game.",
-    );
+  if (files.some((f) => MOD_PATCH.test(f.path))) throw new Error(MOD_PATCH_PROBLEM);
   const kept = files.filter(
-    (f) =>
-      !/[\\/]/.test(f.path) &&
-      !f.path.startsWith(".") &&
-      /\.(mix|ini|csf|mmx|map|mpr|yrm|shp|vxl|hva|pal|pcx|wav|aud|bag|idx|fnt|tem|sno|urb|des|lun|ubn)$/i.test(
-        f.path,
-      ),
+    (f) => !/[\\/]/.test(f.path) && !f.path.startsWith(".") && MOD_DATA.test(f.path),
   );
   if (!kept.length) throw new Error("That folder has no mod data files.");
   if (new Set(kept.map((f) => f.path.toLowerCase())).size !== kept.length)

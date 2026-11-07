@@ -1,6 +1,15 @@
 import { IDBFactory } from "fake-indexeddb";
 import { describe, expect, it } from "vitest";
-import { blocker, prepareImport, runImport, type FolderSource, type SourceFile } from "./importer";
+import {
+  blocker,
+  directorySource,
+  entrySource,
+  prepareImport,
+  runImport,
+  type FolderSource,
+  type SourceFile,
+} from "./importer";
+import { listMods } from "./mods";
 import type { BuildInfo } from "./install";
 import { Manifest } from "./manifest";
 import type { CopyTarget } from "./opfs";
@@ -264,6 +273,38 @@ describe("runImport", () => {
     await expect(run(prepared, manifest, target, { slot: 1 })).rejects.toThrow(/already installed/);
   });
 
+  const withMods = () => [
+    ...folder(),
+    file("Mods/Lite/rulesmd.ini", 6),
+    file("Mods/Lite/expandmd90.mix", 9),
+    file("mods/Patched/Ares.dll", 4),
+    file("mods/Patched/rulesmd.ini", 5),
+  ];
+
+  it("brings each mod in Mods after the game, for the MODS tab", async () => {
+    const manifest = await Manifest.open(new IDBFactory());
+    const target = memoryTarget();
+    const prepared = await prepareImport(source(withMods()), build, all, roomy);
+    await run(prepared, manifest, target);
+    const [yuri] = await manifest.listGames();
+    const mods = await listMods(manifest, yuri!.storage);
+    expect(mods.map((mod) => mod.name)).toEqual(["Lite"]);
+    expect(mods[0]?.files.map((f) => f.name).sort()).toEqual(["expandmd90.mix", "rulesmd.ini"]);
+    expect(target.files.get(`game/${yuri!.storage}/mods/Lite/expandmd90.mix`)).toBe(9);
+    // a mod is not game content
+    expect([...target.files.keys()].some((path) => path.startsWith("game/slot-1/Mods"))).toBe(
+      false,
+    );
+  });
+
+  it("leaves the mods out when asked", async () => {
+    const manifest = await Manifest.open(new IDBFactory());
+    const prepared = await prepareImport(source(withMods()), build, { ...all, mods: false }, roomy);
+    await run(prepared, manifest, memoryTarget());
+    const [yuri] = await manifest.listGames();
+    expect(await listMods(manifest, yuri!.storage)).toEqual([]);
+  });
+
   it("resumes after a reload between finishing the first edition and starting the second", async () => {
     const manifest = await Manifest.open(new IDBFactory());
     const installation = await manifest.createInstallation("Both games", ["ra2", "ra2md"]);
@@ -284,5 +325,82 @@ describe("runImport", () => {
       }),
     ).resolves.toBe(installation.slot);
     expect((await manifest.listGames(installation.slot)).every((game) => game.complete)).toBe(true);
+  });
+});
+
+/** A picked folder as the browser hands it over, from paths. */
+function handleTree(paths: string[]) {
+  type Dir = { kind: "directory"; name: string; children: Map<string, Dir | Leaf> };
+  type Leaf = { kind: "file"; name: string; getFile(): Promise<File> };
+  const root: Dir = { kind: "directory", name: "RA2", children: new Map() };
+  for (const path of paths) {
+    const parts = path.split("/");
+    let dir = root;
+    for (const part of parts.slice(0, -1)) {
+      let next = dir.children.get(part) as Dir | undefined;
+      if (!next) {
+        next = { kind: "directory", name: part, children: new Map() };
+        dir.children.set(part, next);
+      }
+      dir = next;
+    }
+    const name = parts.at(-1)!;
+    dir.children.set(name, { kind: "file", name, getFile: async () => new File(["x"], name) });
+  }
+  const handle = (dir: Dir): unknown => ({
+    kind: "directory",
+    name: dir.name,
+    async *entries() {
+      for (const [name, child] of dir.children)
+        yield [name, child.kind === "file" ? child : handle(child)];
+    },
+  });
+  const entry = (node: Dir | Leaf): unknown =>
+    node.kind === "file"
+      ? {
+          isFile: true,
+          isDirectory: false,
+          name: node.name,
+          file: (ok: (f: File) => void) => void node.getFile().then(ok),
+        }
+      : {
+          isFile: false,
+          isDirectory: true,
+          name: node.name,
+          createReader() {
+            let done = false;
+            return {
+              readEntries(ok: (entries: unknown[]) => void) {
+                ok(done ? [] : [...node.children.values()].map(entry));
+                done = true;
+              },
+            };
+          },
+        };
+  return {
+    handle: handle(root) as FileSystemDirectoryHandle,
+    entry: entry(root) as Parameters<typeof entrySource>[0],
+  };
+}
+
+describe("folder sources", () => {
+  const tree = [
+    "ra2md.mix",
+    "Saved Games/one.sav",
+    "Mods/Lite/rulesmd.ini",
+    "Mods/Lite/art/deep.shp",
+    "Maps/Custom/x.map",
+    "Tools/x.exe",
+  ];
+  const expected = ["Mods/Lite/rulesmd.ini", "Saved Games/one.sav", "ra2md.mix"];
+
+  it("a picked folder: the top, Saved Games, and each mod in Mods", async () => {
+    const files = await directorySource(handleTree(tree).handle).list();
+    expect(files.map((f) => f.path).sort()).toEqual(expected);
+  });
+
+  it("a dropped folder reads the same", async () => {
+    const files = await entrySource(handleTree(tree).entry).list();
+    expect(files.map((f) => f.path).sort()).toEqual(expected);
   });
 });

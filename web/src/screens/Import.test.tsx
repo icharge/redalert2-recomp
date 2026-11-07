@@ -1,11 +1,12 @@
 import { Theme } from "@radix-ui/themes";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { IDBFactory } from "fake-indexeddb";
 import { describe, expect, it, vi } from "vitest";
 import type { FolderSource, SourceFile } from "../storage/importer";
 import type { BuildInfo } from "../storage/install";
 import { Manifest } from "../storage/manifest";
+import { listMods } from "../storage/mods";
 import type { CopyTarget } from "../storage/opfs";
 import { Import, type ImportDeps } from "./Import";
 
@@ -203,6 +204,78 @@ describe("Import", () => {
     expect(target.files.get("game/slot-1/ra2.mix")).toBe(4000);
     expect(target.files.has("game/slot-1/readme.txt")).toBe(false);
     expect((await manifest.getGame("ra2md"))?.complete).toBe(true);
+  });
+
+  const sorted = (...extra: SourceFile[]): FolderSource => ({
+    name: "RA2",
+    list: async () => [
+      ...(await folder().list()),
+      file("Tour of Egypt.map", 30),
+      file("Mods/Lite/rulesmd.ini", 6),
+      file("RA2MD.INI", 20),
+      ...extra,
+    ],
+  });
+  const row = (name: string) =>
+    screen.getByRole("checkbox", { name }).closest("label") as HTMLElement;
+
+  it("sorts the folder into game content, movies, mods, maps, saves and settings", async () => {
+    const { user } = await setup(sorted());
+    await user.click(screen.getByRole("button", { name: "CHOOSE FOLDER" }));
+    const group = await screen.findByRole("group", { name: "What the folder has" });
+    expect(within(group).getByText("Game content").closest("div")).toHaveTextContent("4 files");
+    expect(row("Movies")).toHaveTextContent("1 file");
+    expect(row("Mods")).toHaveTextContent("1 mod");
+    expect(row("Custom maps")).toHaveTextContent("1 map");
+    expect(row("Saved games")).toHaveTextContent("1 save");
+    expect(row("Settings and hotkeys")).toHaveTextContent("1 file");
+    expect(screen.getByRole("checkbox", { name: "Mods" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Custom maps" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Movies" })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Settings and hotkeys" })).not.toBeChecked();
+  });
+
+  it("says what the folder does not have", async () => {
+    const { user } = await setup(folder());
+    await user.click(screen.getByRole("button", { name: "CHOOSE FOLDER" }));
+    await screen.findByRole("group", { name: "What the folder has" });
+    expect(screen.getByRole("checkbox", { name: "Custom maps" })).toBeDisabled();
+    expect(row("Custom maps")).toHaveTextContent("None");
+    expect(screen.getByRole("checkbox", { name: "Mods" })).toBeDisabled();
+  });
+
+  it("brings the mods to the MODS tab and the maps to the game", async () => {
+    const { user, target, manifest, onDone } = await setup(sorted());
+    await user.click(screen.getByRole("button", { name: "CHOOSE FOLDER" }));
+    await user.click(await screen.findByRole("button", { name: /^INSTALL / }));
+    await waitFor(() => expect(onDone).toHaveBeenCalled());
+    expect((await listMods(manifest, "slot-1-ra2md")).map((mod) => mod.name)).toEqual(["Lite"]);
+    expect(target.files.get("game/slot-1/Tour of Egypt.map")).toBe(30);
+  });
+
+  it("leaves the mods and the maps out when asked", async () => {
+    const { user, target, manifest, onDone } = await setup(sorted());
+    await user.click(screen.getByRole("button", { name: "CHOOSE FOLDER" }));
+    await user.click(await screen.findByRole("checkbox", { name: "Mods" }));
+    await waitFor(() => expect(screen.getByRole("checkbox", { name: "Mods" })).not.toBeChecked());
+    await user.click(screen.getByRole("checkbox", { name: "Custom maps" }));
+    await waitFor(() =>
+      expect(screen.getByRole("checkbox", { name: "Custom maps" })).not.toBeChecked(),
+    );
+    await user.click(screen.getByRole("button", { name: /^INSTALL / }));
+    await waitFor(() => expect(onDone).toHaveBeenCalled());
+    expect(await listMods(manifest, "slot-1-ra2md")).toEqual([]);
+    expect(target.files.has("game/slot-1/Tour of Egypt.map")).toBe(false);
+  });
+
+  it("names a mod that patches the exe, and leaves it out", async () => {
+    const { user } = await setup(
+      sorted(file("Mods/Patched/Ares.dll", 4), file("Mods/Patched/rulesmd.ini", 5)),
+    );
+    await user.click(screen.getByRole("button", { name: "CHOOSE FOLDER" }));
+    await screen.findByRole("group", { name: "What the folder has" });
+    expect(row("Mods")).toHaveTextContent("1 mod");
+    expect(screen.getByText(/^Patched is left out: it patches the game/)).toBeInTheDocument();
   });
 
   it("brings the real movie archive when asked", async () => {
