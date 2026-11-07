@@ -107,7 +107,7 @@ export function toGamePixels(
  */
 export function attachInput(
   canvas: HTMLCanvasElement,
-  game: Pick<Ra2Exports, "ra2_input_pointer" | "ra2_input_key" | "ra2_focus">,
+  game: Pick<Ra2Exports, "ra2_input_pointer" | "ra2_input_key" | "ra2_focus" | "ra2_input_wheel">,
   options: {
     picture?: () => Size;
     enabled?: () => boolean;
@@ -196,6 +196,26 @@ export function attachInput(
   const onDown = onButton(PointerKind.Down);
   const onUp = onButton(PointerKind.Up);
   const onContextMenu = (event: Event) => event.preventDefault();
+  /** The wheel, in notches of 120 as Windows counts them: a mouse gives one an event, a
+   * touchpad's small steps add up to one first. Pixels: 100 a notch; lines: 3. */
+  let wheelRest = 0;
+  const onWheel = (event: WheelEvent) => {
+    const send = game.ra2_input_wheel;
+    if (typeof send !== "function" || options.enabled?.() === false) return;
+    const p = point(event);
+    if (!p) return;
+    event.preventDefault();
+    wheelRest +=
+      event.deltaMode === 1
+        ? event.deltaY / 3
+        : event.deltaMode === 2
+          ? event.deltaY
+          : event.deltaY / 100;
+    const notches = Math.trunc(wheelRest);
+    if (notches === 0) return;
+    wheelRest -= notches;
+    send(-120 * notches, p.x, p.y);
+  };
 
   const onKey = (down: boolean) => (event: KeyboardEvent) => {
     if (options.enabled?.() === false) return;
@@ -332,6 +352,7 @@ export function attachInput(
   canvas.addEventListener("mousedown", onDown);
   canvas.addEventListener("mouseup", onUp);
   canvas.addEventListener("contextmenu", onContextMenu);
+  canvas.addEventListener("wheel", onWheel, { passive: false });
   window.addEventListener("keydown", onKeyDown);
   window.addEventListener("keyup", onKeyUp);
   options.textInput?.addEventListener("compositionstart", onCompositionStart);
@@ -346,6 +367,7 @@ export function attachInput(
     canvas.removeEventListener("mousedown", onDown);
     canvas.removeEventListener("mouseup", onUp);
     canvas.removeEventListener("contextmenu", onContextMenu);
+    canvas.removeEventListener("wheel", onWheel);
     window.removeEventListener("keydown", onKeyDown);
     window.removeEventListener("keyup", onKeyUp);
     options.textInput?.removeEventListener("compositionstart", onCompositionStart);

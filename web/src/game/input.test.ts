@@ -98,6 +98,62 @@ describe("attachInput", () => {
     detach();
   });
 
+  it("sends the wheel as notches at the pointer, and keeps it from scrolling the page", () => {
+    const canvas = document.createElement("canvas");
+    canvas.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 1600, height: 1200 }) as DOMRect;
+    const game = {
+      ra2_input_pointer: vi.fn(),
+      ra2_input_key: vi.fn(),
+      ra2_focus: vi.fn(),
+      ra2_input_wheel: vi.fn(),
+    };
+    const detach = attachInput(canvas, game, { picture: () => ({ width: 800, height: 600 }) });
+    const wheel = (deltaY: number, deltaMode = 0) => {
+      const event = new WheelEvent("wheel", {
+        deltaY,
+        deltaMode,
+        clientX: 800,
+        clientY: 600,
+        cancelable: true,
+      });
+      canvas.dispatchEvent(event);
+      return event;
+    };
+    // a mouse notch toward the player scrolls down: Windows' -120
+    expect(wheel(100).defaultPrevented).toBe(true);
+    expect(game.ra2_input_wheel).toHaveBeenLastCalledWith(-120, 400, 300);
+    wheel(-100);
+    expect(game.ra2_input_wheel).toHaveBeenLastCalledWith(120, 400, 300);
+    // a touchpad's small steps add up to a notch
+    game.ra2_input_wheel.mockClear();
+    wheel(30);
+    wheel(30);
+    expect(game.ra2_input_wheel).not.toHaveBeenCalled();
+    wheel(40);
+    expect(game.ra2_input_wheel).toHaveBeenCalledWith(-120, 400, 300);
+    // Firefox counts lines: three a notch
+    wheel(3, 1);
+    expect(game.ra2_input_wheel).toHaveBeenLastCalledWith(-120, 400, 300);
+    detach();
+  });
+
+  it("leaves the wheel alone for a game without it", () => {
+    const canvas = document.createElement("canvas");
+    canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: 800, height: 600 }) as DOMRect;
+    const game = { ra2_input_pointer: vi.fn(), ra2_input_key: vi.fn(), ra2_focus: vi.fn() };
+    const detach = attachInput(canvas, game);
+    const event = new WheelEvent("wheel", {
+      deltaY: 100,
+      clientX: 10,
+      clientY: 10,
+      cancelable: true,
+    });
+    canvas.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+    detach();
+  });
+
   it("keeps the relative cursor under the pointer when a match changes the picture size", () => {
     const canvas = document.createElement("canvas");
     canvas.getBoundingClientRect = () =>

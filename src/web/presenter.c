@@ -491,7 +491,7 @@ static void update_page_cursor(void) {
 
 /* ---- input: the page's side, then the game's ------------------------------- */
 
-enum { IN_MOVE, IN_DOWN, IN_UP, IN_KEYDOWN, IN_KEYUP, IN_CHAR, IN_QUIT, IN_FOCUS, IN_SETTING };
+enum { IN_MOVE, IN_DOWN, IN_UP, IN_KEYDOWN, IN_KEYUP, IN_CHAR, IN_QUIT, IN_FOCUS, IN_SETTING, IN_WHEEL };
 typedef struct { uint32_t kind, a, b, c; } input_t;
 #define RING 512
 static input_t g_ring[RING];
@@ -513,6 +513,8 @@ EMSCRIPTEN_KEEPALIVE void ra2_input_pointer(int kind, int x, int y, int button) 
     if (kind == 0) push(IN_MOVE, (uint32_t)x, (uint32_t)y, 0);
     else push(kind == 1 ? IN_DOWN : IN_UP, (uint32_t)x, (uint32_t)y, (uint32_t)button);
 }
+/* a wheel turn at x, y: delta in WHEEL_DELTA units, 120 a notch, positive away from the player */
+EMSCRIPTEN_KEEPALIVE void ra2_input_wheel(int delta, int x, int y) { push(IN_WHEEL, (uint32_t)x, (uint32_t)y, (uint32_t)delta); }
 /* vk is a Windows virtual key and scan the set-1 scan code, as the page's key table gives them */
 EMSCRIPTEN_KEEPALIVE void ra2_input_key(int down, int vk, int scan) { push(down ? IN_KEYDOWN : IN_KEYUP, (uint32_t)vk, (uint32_t)scan, 0); }
 /* Browser text input arrives as UTF-8; the game's ANSI edit controls and Thai
@@ -582,6 +584,7 @@ static void drain_input(void) {
             hle_input_mouse(m, (int)e.a, (int)e.b);
             break;
         }
+        case IN_WHEEL: hle_input_wheel((int)e.c, (int)e.a, (int)e.b); break;
         case IN_KEYDOWN: case IN_KEYUP:
             if (e.a == 0x79) { if (e.kind == IN_KEYDOWN) web_settings_command(RA2_SETTING_MENU, -1, 0); break; }
             if (mods_handle_key((int)e.a, e.kind == IN_KEYDOWN)) break;

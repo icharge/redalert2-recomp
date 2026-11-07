@@ -315,6 +315,8 @@ export interface Ra2Exports {
   ra2_input_pointer(kind: number, x: number, y: number, button: number): void;
   /** vk: a Windows virtual key; scan: the set-1 scan code */
   ra2_input_key(down: number, vk: number, scan: number): void;
+  /** a wheel turn at x, y in game pixels: 120 a notch, positive away from the player; missing in older builds */
+  ra2_input_wheel?(delta: number, x: number, y: number): void;
   /** committed Unicode text; the game host converts supported characters to CP874 WM_CHAR messages */
   ra2_input_text(text: string): void;
   ra2_crash_report(why: string): void;
@@ -338,6 +340,7 @@ export const EXPORT_SIGNATURES: {
   ra2_exit_confirmation_reply: { returns: "number", args: ["number", "number"] },
   ra2_input_pointer: { returns: null, args: ["number", "number", "number", "number"] },
   ra2_input_key: { returns: null, args: ["number", "number", "number"] },
+  ra2_input_wheel: { returns: null, args: ["number", "number", "number"] },
   ra2_input_text: { returns: null, args: ["string"] },
   ra2_crash_report: { returns: null, args: ["string"] },
 };

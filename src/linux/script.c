@@ -9,6 +9,7 @@
  *   --move x,y@s  --click [c][s][a]+x,y@s  --rclick [c][s][a]+x,y@s
  *   --key [c][s][a]+vk@s  --wait VA@s
  *   --drag x1,y1,x2,y2@s
+ *   --wheel delta,x,y@s  a wheel turn at x,y (120 a notch, negative toward the player), as the host gets it
  *   --resize WxH@s       (browser build) the resolution setting, applied live in a match
  *
  * s is seconds after the main menu's dialog (0xE2) opened; events run in time order on their
@@ -71,6 +72,9 @@ int script_arg(int argc, char **argv, int i) {
         }
         if (sscanf(a, "%d,%d@%lf", &e.x, &e.y, &e.t) != 3) return 0;
         e.kind = argv[i][2];
+    } else if (!strcmp(argv[i], "--wheel")) {
+        if (sscanf(a, "%d,%d,%d@%lf", &e.mods, &e.x, &e.y, &e.t) != 4) return 0;
+        e.kind = 'h';
     } else if (!strcmp(argv[i], "--drag")) {
         int x2, y2;
         if (sscanf(a, "%d,%d,%d,%d@%lf", &e.x, &e.y, &x2, &y2, &e.t) != 5) return 0;
@@ -416,6 +420,11 @@ static void *script(void *unused) {
             post(h, WM_LBUTTONUP, 0, lp_of(x2, y2));
             key_state(1, 0);
             lb_seen();
+            continue;
+        }
+        if (e->kind == 'h') {
+            fprintf(stderr, "[input] %.1fs wheel %d at %d,%d\n", e->t, e->mods, e->x, e->y);
+            hle_input_wheel(e->mods, e->x, e->y);
             continue;
         }
         fprintf(stderr, "[input] %.1fs %s %s%d,%d\n", e->t, e->kind == 'c' ? "click" : "move",
