@@ -87,10 +87,19 @@ browser-specific; only its trigger is.
 
 - **When.** `run_lift.py`'s `live_resize_patches` adds a check after each
   `Main_Loop` call in the game loop (0x0048CE8A): one frame has finished, and
-  no modal menu or network wait loop is running (those run their own loops,
-  so a size chosen while the pause menu is open applies when it closes). The
-  check asks the host (`src/web/settings.c`, `ra2_live_resize_due`) whether a
-  size set through `RA2_SETTING_RESOLUTION` differs from the current mode.
+  no modal menu or network wait loop is running. The check asks the host
+  (`src/web/settings.c`, `ra2_live_resize_due`) whether a size set through
+  `RA2_SETTING_RESOLUTION` differs from the current mode.
+- **With the pause menu open.** The menu (dialog 0xB5, `sub_004F10E0`) runs
+  its own loop inside `Main_Loop`, so `live_resize_menu_patches` adds the same
+  check to that loop's step (0x004F115D), in a skirmish or campaign. There the
+  map is not drawn and the dialog keeps the layout it was made with, so the
+  patch destroys the menu, runs the switch below, draws the map whole once
+  (its redraw flag at 2, then `GScreenClass::Render`, as `Main_Loop` does) and
+  makes the menu again as `sub_004F10E0` does, with the same result variable.
+  The rebuilt menu matches one opened fresh at that size, and Resume works.
+  Game Controls, Save, Load and Abort's confirm run loops of their own; a size
+  chosen there applies back in the menu.
 - **What.** First the command bar's rectangle set is freed and built for the
   new size (`sub_00730530`, `sub_0072FC60`, the pair the menus' layout uses).
   The menus build that set for the size the next match will have, so the
@@ -108,7 +117,9 @@ browser-specific; only its trigger is.
   so the match starts at the old size and switches on its first frame.
 - **Cost.** The switch and the frame after it: 23 to 58 ms in Chrome
   (1920x1080 to 1024x768, 1600x900 to 1280x720, 1280x720 to 1920x1080), 140 to
-  165 ms under Node on a busy machine. The host logs it (`live resize done`).
+  165 ms under Node on a busy machine. With the pause menu open, 60 to 203 ms
+  (2580x1080 to 1280x720, 1280x720 to 1600x900, 1600x900 to 1280x720). The
+  host logs it (`live resize done`).
   The page sends "Match browser size" 400 ms after a resize settles, so a
   window drag costs one switch at its end; until then the presenter scales
   the last frame.
@@ -116,7 +127,9 @@ browser-specific; only its trigger is.
   skirmish: the map, the sidebar (cameo rows follow the height; a build in
   progress keeps going), the command bar, the pause menu's layout, and edge
   scrolling to the new right and bottom limits (the camera's limits follow
-  the size).
+  the size). With the pause menu open: F10's "Match browser size", then
+  window resizes, then one from Game Controls (applied on Back); after Resume
+  the match runs at the new size.
 - **Not live.** Online matches (Session.Type 4) keep the size their room
   agreed on and take the new one at the next match.
 - **The view.** It keeps its top-left corner, so a smaller size shows the

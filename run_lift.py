@@ -1102,6 +1102,71 @@ def live_resize_patches(code, cs, target):
            t['before'], w, h, mode_set, t['after']))}
 
 
+# Live resize with the in-game menu open (Yuri's Revenge, browser). The menu of a skirmish
+# or campaign (dialog 0xB5, sub_004F10E0) runs its own loop inside Main_Loop's special-
+# dialog step, so the game-loop check above waits until it closes. In that loop the map is
+# not drawn and the dialog keeps the layout it was made with. So when a size is due at the
+# loop's step (0x004F115D): the menu is destroyed, the switch runs as in the game loop
+# (LIVE_RESIZE's before, switch, after), the map is drawn whole once (its redraw flag at 2,
+# then GScreenClass::Render, as Main_Loop does), and the menu is made again the way
+# sub_004F10E0 makes it (0x004F1129..0x004F1150): the same dialog and proc, the result
+# variable at [esp+4] stored as its DWL_USER, the new window in esi. Options, Save, Load
+# and Abort's confirm run loops of their own; a size chosen there applies back in the menu.
+LIVE_RESIZE_MENU = dict(
+    step=(0x004F115D, 0x00623120),                  # the menu loop's call of its step
+    checks=((0x004F1135, 0x00622650), (0x004F1150, 0x00622800),  # create, show
+            (0x004F117A, 0x00622720), (0x0055D84F, 0x004F4480)),  # destroy; Main_Loop's render
+    # push 0; mov edx, 0x4F11B0 (the proc); mov ecx, 0xB5; then SetWindowLongA's call
+    shapes=((0x004F1129, '6a00bab0114f00b9b5000000'), (0x004F1148, 'ff1570147e00')),
+    sessions=(0, 5),                                # campaign, skirmish: the 0xB5 menu
+    map=0x0087F7E8, redraw=0x004F42F0, render=0x004F4480)
+
+
+def live_resize_menu_patches(code, cs):
+    """Apply a pending size while Yuri's in-game menu is open (LIVE_RESIZE_MENU).
+
+    Checked by bytes first, with the game-loop patch's own checks; a different build gets
+    no patch."""
+    t, m = LIVE_RESIZE['gamemd'], LIVE_RESIZE_MENU
+
+    def calls(va, fn):
+        rel = int.from_bytes(code[va - cs + 1:va - cs + 5], 'little', signed=True)
+        return code[va - cs] == 0xE8 and va + 5 + rel == fn
+
+    sites = (t['loop'], t['scenario'], m['step']) + tuple(t['checks']) + m['checks']
+    if not (all(calls(va, fn) for va, fn in sites)
+            and all(code[va - cs:va - cs + len(bytes.fromhex(s))] == bytes.fromhex(s)
+                    for va, s in m['shapes'])):
+        print('[*] live_resize_menu_patches: the in-game menu or the switch does not match '
+              'this build; no patch')
+        return {}
+    w, h = t['want']
+    s = t['session']
+    return {m['step'][0]: (
+        '#ifdef __EMSCRIPTEN__\n'
+        '    { extern int ra2_live_resize_due(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t); '
+        'uint32_t _keep = eax, _session = MEM32(0x%08Xu); '
+        'if ((_session == %du || _session == %du) && '
+        'ra2_live_resize_due(MEM32(0x%08Xu), MEM32(0x%08Xu), MEM32(0x%08Xu), MEM32(0x%08Xu), _session)) { '
+        'uint32_t _result = esp + 4u; '
+        'ecx = esi; RECOMP_CALL(sub_00622720); RECOMP_FLAGS_IN(); '
+        '%s '
+        'ecx = MEM32(0x%08Xu); edx = MEM32(0x%08Xu); RECOMP_CALL(sub_%08X); RECOMP_FLAGS_IN(); '
+        '%s '
+        'ecx = 0x%08Xu; PUSH32(esp, 2u); RECOMP_ICALL(0x%08Xu); RECOMP_FLAGS_IN(); '
+        'ecx = 0x%08Xu; RECOMP_ICALL(0x%08Xu); RECOMP_FLAGS_IN(); '
+        'PUSH32(esp, 0u); edx = 0x004F11B0u; ecx = 0xB5u; RECOMP_CALL(sub_00622650); RECOMP_FLAGS_IN(); '
+        'esi = eax; '
+        'if (esi) { PUSH32(esp, _result); PUSH32(esp, 8u); PUSH32(esp, esi); '
+        'RECOMP_ICALL(MEM32(0x007E1470u)); ecx = esi; RECOMP_CALL(sub_00622800); RECOMP_FLAGS_IN(); } '
+        '} eax = _keep; }\n'
+        '    #endif /* remaster: live resize with the in-game menu open, '
+        'run_lift.py live_resize_menu_patches */'
+        % (s, m['sessions'][0], m['sessions'][1], w, h, t['now'][0], t['now'][1],
+           t['before'], w, h, t['scenario'][1], t['after'],
+           m['map'], m['redraw'], m['map'], m['render']))}
+
+
 def ra2_online_patches(code, cs):
     """Red Alert 2's online resolution range (see RA2_ONLINE_SITES).
 
@@ -1455,6 +1520,7 @@ def targets():
                                                  **yr_online_patches(code, cs), **yr_startup_order_patches(code, cs),
                                                  **reconnect_patches(code, cs, 'gamemd'),
                                                  **live_resize_patches(code, cs, 'gamemd'),
+                                                 **live_resize_menu_patches(code, cs),
                                                  **web_exit_confirmation_patches(code, cs, 'gamemd'),
                                                  **web_url_patches(code, cs, 'gamemd')}),
         'game': dict(exe=os.path.join(_HERE, 'game', 'game.exe'),
