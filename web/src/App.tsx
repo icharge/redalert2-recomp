@@ -447,7 +447,7 @@ function SettingsRoute({
   return edition ? (
     <SettingsScreen editions={editions} edition={edition} tab={tab} />
   ) : (
-    <SettingsEmpty />
+    <SettingsEmpty tab={tab} />
   );
 }
 

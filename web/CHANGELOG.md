@@ -9,7 +9,7 @@ The native releases (v0.1.0 to v0.1.3) are in the repository's
 [CHANGELOG.md](../CHANGELOG.md); none of them include the browser build. The
 commit after each entry is where to read more.
 
-## [Unreleased]
+## [0.1.0] - 2026-11-07
 
 The first browser release: everything since the port started on 2026-10-17.
 

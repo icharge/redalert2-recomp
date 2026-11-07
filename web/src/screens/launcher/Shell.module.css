@@ -258,6 +258,22 @@
   background: rgba(255, 255, 255, 0.06);
 }
 
+/* Under Settings: the launcher's version, which opens Settings › About. */
+.version {
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  color: #8a8c92;
+  font-family: var(--font-label);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-decoration: none;
+}
+.version:hover {
+  color: var(--text);
+}
+
 .shell :focus-visible {
   outline: 2px solid var(--amber);
   outline-offset: 2px;

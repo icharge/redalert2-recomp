@@ -2,6 +2,7 @@ import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 import { loadEnv } from "vite";
 import { defineConfig } from "vitest/config";
+import pkg from "./package.json" with { type: "json" };
 import { devGame } from "./vite.dev-game";
 import { precompressedWasm } from "./vite.precompressed-wasm";
 import { gameModuleHashes } from "./vite.game-hashes";
@@ -20,6 +21,8 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "RA2_");
   return {
     base: env.RA2_BASE || "/",
+    // the launcher's version (Settings › About), from package.json; web/CHANGELOG.md has its notes
+    define: { __APP_VERSION__: JSON.stringify(pkg.version) },
     plugins: [
       react(),
       devGame(),

@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { encodeLatin1 } from "../../../storage/game-settings";
 import type { GameRecord } from "../../../storage/manifest";
 import { Manifest } from "../../../storage/manifest";
-import { SettingsScreen, type SettingsTab } from "./SettingsScreen";
+import { SettingsEmpty, SettingsScreen, type SettingsTab } from "./SettingsScreen";
 
 const yr: GameRecord = {
   id: "ra2md",
@@ -108,6 +108,34 @@ describe("SettingsScreen", () => {
     await open("AUDIO");
     expect(screen.getByRole("link", { name: "AUDIO" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: "LAUNCHER" })).not.toHaveAttribute("aria-current");
+  });
+
+  it("ends the sections with About, which shows the launcher's version", async () => {
+    setup();
+    const links = within(screen.getByRole("navigation", { name: "Settings" })).getAllByRole("link");
+    expect(links.at(-1)).toHaveTextContent("ABOUT");
+    await userEvent.click(screen.getByRole("link", { name: "ABOUT" }));
+    const version = await screen.findByRole("region", { name: "Version" });
+    expect(version).toHaveTextContent(__APP_VERSION__);
+  });
+
+  it("shows About with no game installed, where the other sections ask for the game", async () => {
+    const { unmount } = render(
+      <MemoryRouter>
+        <SettingsEmpty tab="about" />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByRole("region", { name: "Version" })).toHaveTextContent(
+      __APP_VERSION__,
+    );
+    expect(screen.queryByText("Install the game to change its settings.")).toBeNull();
+    unmount();
+    render(
+      <MemoryRouter>
+        <SettingsEmpty tab="audio" />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("Install the game to change its settings.")).toBeInTheDocument();
   });
 
   it("has no scope badge beside the title", () => {

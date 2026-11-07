@@ -134,6 +134,14 @@ export function Shell({
           </svg>
           <span>SETTINGS</span>
         </Link>
+        <Link
+          to="/settings/about"
+          className={styles.version}
+          aria-label={`About YuriNet, version ${__APP_VERSION__}`}
+          title="Version, credits and legal"
+        >
+          v{__APP_VERSION__}
+        </Link>
       </nav>
 
       <header className={styles.bar}>

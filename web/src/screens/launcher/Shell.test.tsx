@@ -125,6 +125,14 @@ describe("Shell settings link", () => {
     expect(screen.getByRole("status", { name: "Path" })).toHaveTextContent(/^\/$/);
   });
 
+  it("shows the launcher's version under Settings, opening About", async () => {
+    renderShell();
+    const version = screen.getByRole("link", { name: `About YuriNet, version ${__APP_VERSION__}` });
+    expect(version).toHaveTextContent(`v${__APP_VERSION__}`);
+    await userEvent.click(version);
+    expect(screen.getByRole("status", { name: "Path" })).toHaveTextContent("/settings/about");
+  });
+
   it("a game tile keeps Mods on Mods", async () => {
     renderShell({}, "/mods");
     await userEvent.click(screen.getByRole("button", { name: "Red Alert 2" }));
