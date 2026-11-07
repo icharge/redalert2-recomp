@@ -142,6 +142,38 @@ void web_settings_start(const char *override_scale) {
     }
 }
 
+/* Live resize (run_lift.py live_resize_patches). A new size set during a match is
+ * applied by the game loop between two frames, through the game's own mode switch.
+ * The page sends "Match browser size" only once a resize has settled (Play.tsx), so
+ * a window drag costs one switch at its end; until then the presenter scales the
+ * last frame. Online games (Session.Type 4) keep the size their room agreed on and
+ * take the new one at the next match.
+ *
+ * The size is the last one asked for (video_w/h), not the options' (the patch's
+ * want_w/h): a size sent before the game has read its options reaches only the
+ * INI, and the match then starts at the old one. The switch reads the options'
+ * size, so they are set to it first. */
+static int live_resize_pending;
+static uint32_t live_resize_at;                  /* when the last switch began, until the next frame ends */
+int ra2_live_resize_due(uint32_t want_w, uint32_t want_h, uint32_t now_w, uint32_t now_h, uint32_t session) {
+    if (live_resize_at) {
+        fprintf(stderr, "[present] live resize done: %u ms with the frame after it\n", hle_ticks_ms() - live_resize_at);
+        live_resize_at = 0;
+    }
+    if (!live_resize_pending || menu_open) return 0;
+    live_resize_pending = 0;
+    uint32_t w = (uint32_t)video_w, h = (uint32_t)video_h;
+    if (w == now_w && h == now_h) return 0;
+    if (session == 4) {
+        fprintf(stderr, "[present] online match: %ux%u waits for the next match\n", w, h);
+        return 0;
+    }
+    if (w != want_w || h != want_h) MEM32(OPTIONS_W) = w, MEM32(OPTIONS_W + 4) = h;
+    fprintf(stderr, "[present] live resize %ux%u -> %ux%u\n", now_w, now_h, w, h);
+    live_resize_at = hle_ticks_ms() | 1u;
+    return 1;
+}
+
 void web_settings_command(int key, int value, int extra) {
     switch (key) {
     case RA2_SETTING_SCALE: if (value < 0 || value >= 5) return; scale_mode = value; break;
@@ -155,7 +187,8 @@ void web_settings_command(int key, int value, int extra) {
         if (MEM32(OPTIONS_W) >= 320 && MEM32(OPTIONS_W) <= 8192 && MEM32(OPTIONS_W + 4) >= 200 && MEM32(OPTIONS_W + 4) <= 8192) {
             MEM32(OPTIONS_W) = (uint32_t)value; MEM32(OPTIONS_W + 4) = (uint32_t)extra;
         }
-        fprintf(stderr, "[present] game resolution %dx%d (next game)\n", value, extra);
+        live_resize_pending = 1;                         /* a match in progress takes it now */
+        fprintf(stderr, "[present] game resolution %dx%d\n", value, extra);
         break;
     }
     case RA2_SETTING_MENU:

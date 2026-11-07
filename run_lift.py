@@ -1027,6 +1027,79 @@ def reconnect_patches(code, cs, target):
             for va, _fn in t['returns']}
 
 
+# Live resize (browser): a size chosen during a match applies at once, not at the next
+# match. The game loop's top-level call of Main_Loop (Conquer.CPP) is the safe point: one
+# frame has finished, and no modal menu or network wait loop is running. There the host
+# (src/web/settings.c, ra2_live_resize_due) says whether a new size is waiting; if so the
+# patch does what Start_Scenario does at match start (0x00683DF3): the mode switch, which
+# rebuilds every screen surface, the tactical view and the sidebar, then the release of
+# the screen-sized caches. Main_Loop's result in eax is kept for the test that follows.
+#
+# One thing the match-start switch never needed: the command bar's rectangle set
+# (0xB0FC30..0xB0FC6C, built by sub_0072FC60 for the options' size) is built in the menus
+# for the size the match will have, so it already fits when a match starts. During a match
+# it still describes the old size: the bar and its two buttons stayed at the old y (a
+# 1280x720 -> 1600x900 switch left them at y 688, below the picture's 868). So before the
+# switch the set is freed (sub_00730530) and built for the new size, the pair the menus'
+# layout (sub_0072F350) uses; the switch's TabClass placement then reads the new set.
+# The bar's own one-time init (MouseClass slot 53, 0x006D02B0, from 0x006D0304 on) also
+# copies four values out of the set: its y (0xB0CC24), width (0xB0CC38), width less the
+# button art's (0xB0CD10) and left edge (0xB0CC2C). That init loads the sidebar's art
+# too and is not for a running match, so its arithmetic is repeated here.
+LIVE_RESIZE = {
+    'gamemd': dict(
+        loop=(0x0048CE8A, 0x0055D360),              # call Main_Loop in the game loop
+        scenario=(0x00683DF3, 0x00560BF0, 0x0072DEF0),  # Start_Scenario: switch, then caches
+        bar=((0x0072F35A, 0x00730530), (0x0072F415, 0x0072FC60)),  # sub_0072F350: free, build
+        # 0x006D0304..0x006D037D: the set's rects are x, y, w, h; 0xB0C148 is Button00.SHP
+        bar_caches=('{ uint32_t _r = MEM32(0xB0FC68u), _w = MEM32(_r + 8u); '
+                    'MEM32(0xB0CC2Cu) = MEM32(MEM32(0xB0FC6Cu)) - MEM32(0xB0CB54u) * _w; '
+                    'MEM32(0xB0CD10u) = _w - (uint32_t)(int32_t)(int16_t)MEM16(MEM32(0xB0C148u) + 2u); '
+                    'MEM32(0xB0CC24u) = MEM32(MEM32(0xB0FC58u) + 4u); MEM32(0xB0CC38u) = _w; }'),
+        want=(0x00A8EB84, 0x00A8EB88),              # the options' size (RA2MD.INI [Video])
+        now=(0x008A00A4, 0x008A00A8),               # the current display size
+        session=0x00A8B238),                        # Session.Type
+}
+
+
+def live_resize_patches(code, cs, target):
+    """Apply a pending size during a match (LIVE_RESIZE); browser builds only.
+
+    Checked by bytes first: the loop's call of Main_Loop, and Start_Scenario's switch
+    followed by the cache release. A different build gets no patch."""
+    t = LIVE_RESIZE.get(target)
+    if not t:
+        return {}
+
+    def calls(va, fn):
+        rel = int.from_bytes(code[va - cs + 1:va - cs + 5], 'little', signed=True)
+        return code[va - cs] == 0xE8 and va + 5 + rel == fn
+
+    loop_va, main_loop = t['loop']
+    scen_va, mode_set, caches = t['scenario']
+    (free_va, bar_free), (build_va, bar_build) = t['bar']
+    if not (calls(loop_va, main_loop) and calls(scen_va, mode_set) and calls(scen_va + 5, caches)
+            and calls(free_va, bar_free) and calls(build_va, bar_build)):
+        print('[*] live_resize_patches: the game loop, the match-start switch or the bar layout '
+              'does not match this build; no patch')
+        return {}
+    w, h = t['want']
+    return {loop_va: (
+        '#ifdef __EMSCRIPTEN__\n'
+        '    { extern int ra2_live_resize_due(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t); '
+        'uint32_t _keep = eax; '
+        'if (ra2_live_resize_due(MEM32(0x%08Xu), MEM32(0x%08Xu), MEM32(0x%08Xu), MEM32(0x%08Xu), MEM32(0x%08Xu))) { '
+        'RECOMP_CALL(sub_%08X); RECOMP_FLAGS_IN(); '
+        'ecx = MEM32(0x%08Xu); edx = MEM32(0x%08Xu); RECOMP_CALL(sub_%08X); RECOMP_FLAGS_IN(); '
+        '%s '
+        'ecx = MEM32(0x%08Xu); edx = MEM32(0x%08Xu); RECOMP_CALL(sub_%08X); RECOMP_FLAGS_IN(); '
+        'RECOMP_CALL(sub_%08X); RECOMP_FLAGS_IN(); } eax = _keep; }\n'
+        '    #endif /* remaster: live resize in a match, run_lift.py live_resize_patches */'
+        % (w, h, t['now'][0], t['now'][1], t['session'],
+           bar_free, w, h, bar_build, t['bar_caches'],
+           w, h, mode_set, caches))}
+
+
 def ra2_online_patches(code, cs):
     """Red Alert 2's online resolution range (see RA2_ONLINE_SITES).
 
@@ -1361,6 +1434,7 @@ def targets():
                                                  **page_cursor_palette_patches(code, cs, 'gamemd'),
                                                  **yr_online_patches(code, cs), **yr_startup_order_patches(code, cs),
                                                  **reconnect_patches(code, cs, 'gamemd'),
+                                                 **live_resize_patches(code, cs, 'gamemd'),
                                                  **web_exit_confirmation_patches(code, cs, 'gamemd'),
                                                  **web_url_patches(code, cs, 'gamemd')}),
         'game': dict(exe=os.path.join(_HERE, 'game', 'game.exe'),

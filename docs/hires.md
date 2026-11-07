@@ -72,6 +72,65 @@ range hold when that range is already free.
 
 Not covered by a run: the online clamp in a real two-player lobby.
 
+## Live resize in the browser
+
+In the browser build a Yuri's Revenge match changes size while it runs: the
+F10 Resolution choice, and "Match browser size" when the window is resized.
+The game already has a routine that does the whole job, the mode switch
+(`sub_00560BF0`) that Start_Scenario runs at every match start with the map
+loaded: it frees and recreates every screen-sized surface (primary, hidden,
+composite, tile, sidebar, alternate), sets the tactical view and its Z and A
+buffers, and lays the sidebar's cameo buttons out again. Nothing in it is
+browser-specific; only its trigger is.
+
+- **When.** `run_lift.py`'s `live_resize_patches` adds a check after each
+  `Main_Loop` call in the game loop (0x0048CE8A): one frame has finished, and
+  no modal menu or network wait loop is running (those run their own loops,
+  so a size chosen while the pause menu is open applies when it closes). The
+  check asks the host (`src/web/settings.c`, `ra2_live_resize_due`) whether a
+  size set through `RA2_SETTING_RESOLUTION` differs from the current mode.
+- **What.** First the command bar's rectangle set is freed and built for the
+  new size (`sub_00730530`, `sub_0072FC60`, the pair the menus' layout uses).
+  The menus build that set for the size the next match will have, so the
+  match-start switch never needed this; during a match it still describes the
+  old size, and without the rebuild the bar and its two buttons stay at the
+  old y (below the picture after growing). The bar's one-time init
+  (MouseClass slot 53) copies four values out of that set (its y, width, width
+  less the button art's, left edge); the patch repeats that arithmetic, since
+  the init itself reloads the sidebar's art. Then the mode switch, then the
+  release of the screen-sized caches (`sub_0072DEF0`), as Start_Scenario does.
+  A dump of the bar's globals after a 1280x720 to 1600x900 switch matches a
+  match started at 1600x900, apart from heap addresses.
+- **Which size.** The host's last requested size, not the options': a size
+  the page sends before the game has read its options reaches only the INI,
+  so the match starts at the old size and switches on its first frame.
+- **Cost.** The switch and the frame after it: 23 to 58 ms in Chrome
+  (1920x1080 to 1024x768, 1600x900 to 1280x720, 1280x720 to 1920x1080), 140 to
+  165 ms under Node on a busy machine. The host logs it (`live resize done`).
+  The page sends "Match browser size" 400 ms after a resize settles, so a
+  window drag costs one switch at its end; until then the presenter scales
+  the last frame.
+- **Checked in Chrome.** Grow and shrink between 1024x768 and 1920x1080 in a
+  skirmish: the map, the sidebar (cameo rows follow the height; a build in
+  progress keeps going), the command bar, the pause menu's layout, and edge
+  scrolling to the new right and bottom limits (the camera's limits follow
+  the size).
+- **Not live.** Online matches (Session.Type 4) keep the size their room
+  agreed on and take the new one at the next match. Red Alert 2 has no patch
+  yet: its switch needs the extra layout fixes of `ra2_tab_patches` and
+  `ra2_profile_patches`.
+- **The view.** It keeps its top-left corner, so a smaller size shows the
+  left part of what was on screen.
+
+`--resize WxH@s` (browser build, `src/linux/script.c`) sends the setting from
+a script, so a headless run under Node can switch mid-match:
+
+```
+node build-web/ra2md.js --run --game <folder> --headless --mute --debuglog --no-intro \
+  --press 0xE2:1667@1 --press 0x100:1401@2 --press 0x102:1559@3 --waitlog Capture_Mouse@4 \
+  --resize 1920x1080@14 --resize 1024x768@28
+```
+
 ## What works
 
 The playtest suite checks each size in a skirmish, and 1080p in a campaign

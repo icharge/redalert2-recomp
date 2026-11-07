@@ -378,9 +378,10 @@ export function Play({ files }: { files: FileSource }) {
     void leaveFullscreen().catch(() => {});
   }, [phase, fullscreenPreference.onlyInGame]);
 
-  // The in-game Video setting: the game keeps rendering the match it is in,
-  // and the host writes the size into the game's INI/options so the next match
-  // starts at it (the same path the game's own Options screen uses).
+  // The in-game Video setting: the host writes the size into the game's
+  // INI/options (the same path the game's own Options screen uses), and a
+  // Yuri's Revenge match in progress switches to it between two frames
+  // (docs/hires.md, "Live resize in the browser").
   const changeVideo = useCallback(
     (choice: VideoChoice) => {
       setVideoChoice(choice);
@@ -391,8 +392,9 @@ export function Play({ files }: { files: FileSource }) {
     [gameId],
   );
 
-  // "Match browser size" follows the window: a resize updates the size the
-  // next match will use (the running match keeps the size it started with).
+  // "Match browser size" follows the window. The size goes to the game once a
+  // resize has settled, so a drag costs one switch at its end; until then the
+  // presenter scales the last frame.
   useEffect(() => {
     if (videoChoice !== BROWSER_VIDEO_SIZE) return;
     let timer = 0;

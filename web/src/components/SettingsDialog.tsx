@@ -88,7 +88,11 @@ export function SettingsDialog({
               choices={SCALES.map((mode) => ({ value: mode, label: SCALE_LABELS[mode] }))}
               onChange={(mode) => command(Setting.Scale, SCALES.indexOf(mode))}
             />
-            <Row label="Resolution" info="Takes effect next match." htmlFor="game-resolution">
+            <Row
+              label="Resolution"
+              info="Applies now in a Yuri's Revenge skirmish or campaign; otherwise from the next match."
+              htmlFor="game-resolution"
+            >
               <select
                 id="game-resolution"
                 aria-label="Resolution"

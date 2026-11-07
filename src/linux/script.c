@@ -9,6 +9,7 @@
  *   --move x,y@s  --click [c][s][a]+x,y@s  --rclick [c][s][a]+x,y@s
  *   --key [c][s][a]+vk@s  --wait VA@s
  *   --drag x1,y1,x2,y2@s
+ *   --resize WxH@s       (browser build) the resolution setting, applied live in a match
  *
  * s is seconds after the main menu's dialog (0xE2) opened; events run in time order on their
  * own thread, and a wait moves every later event back by however long it
@@ -29,6 +30,8 @@
 
 #ifdef __EMSCRIPTEN__
 void web_presenter_dialog_created(uint32_t hwnd, uint32_t resource_id);
+#include "web_api.h"
+void ra2_setting(int key, int value, int extra);  /* src/web/presenter.c */
 #endif
 
 #define WM_COMMAND     0x0111u
@@ -89,6 +92,11 @@ int script_arg(int argc, char **argv, int i) {
     } else if (!strcmp(argv[i], "--wait")) {
         if (sscanf(a, "%i@%lf", &e.x, &e.t) != 2) return 0;
         e.kind = 'w';
+#ifdef __EMSCRIPTEN__
+    } else if (!strcmp(argv[i], "--resize")) {
+        if (sscanf(a, "%dx%d@%lf", &e.x, &e.y, &e.t) != 3) return 0;
+        e.kind = 'z';
+#endif
     } else if (!strcmp(argv[i], "--key")) {
         const char *plus = strchr(a, '+');
         if (plus) {
@@ -354,6 +362,13 @@ static void *script(void *unused) {
             fprintf(stderr, "[input] %.1fs waited %.1fs for [0x%X] = %u\n", e->t, (now_ms() - w0) / 1000.0, e->x, MEM32((uint32_t)e->x));
             continue;
         }
+#ifdef __EMSCRIPTEN__
+        if (e->kind == 'z') {                        /* the page's resolution setting, as a resize sends it */
+            fprintf(stderr, "[input] %.1fs resize %dx%d\n", e->t, e->x, e->y);
+            ra2_setting(RA2_SETTING_RESOLUTION, e->x, e->y);
+            continue;
+        }
+#endif
         if (e->kind == 'k') {
             fprintf(stderr, "[input] %.1fs key %s%s%s0x%X\n", e->t, e->y & 1 ? "Ctrl-" : "", e->y & 2 ? "Shift-" : "",
                     e->y & 4 ? "Alt-" : "", e->x);

@@ -72,10 +72,14 @@ describe("SettingsDialog", () => {
     expect(command).toHaveBeenCalledWith(Setting.Scale, 2);
   });
 
-  it("shows the resolution the next match will use, with its tip", () => {
+  it("shows the game resolution, with its tip", () => {
     setup();
     expect(screen.getByRole("combobox", { name: "Resolution" })).toHaveDisplayValue("1280 × 720");
-    expect(screen.getByRole("button", { name: "Takes effect next match." })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: "Applies now in a Yuri's Revenge skirmish or campaign; otherwise from the next match.",
+      }),
+    ).toBeInTheDocument();
   });
 
   it("offers Match browser size", async () => {
