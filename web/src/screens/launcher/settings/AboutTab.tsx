@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import changelogText from "../../../../CHANGELOG.md?raw";
 import { loadBuildInfo, type BuildInfo } from "../../../storage/install";
-import { checkForUpdate, useUpdate, type UpdateCheck } from "../../../update";
 import { APP_VERSION } from "../../../version";
 import { newestRelease, type Release } from "./changelog";
 import type { GameRecord } from "../../../storage/manifest";
@@ -12,16 +11,12 @@ export interface AboutDeps {
   version: string;
   release: Release | null;
   loadBuild(): Promise<BuildInfo>;
-  copy(text: string): Promise<void>;
-  checkUpdate(): Promise<UpdateCheck>;
 }
 
 const browserDeps: AboutDeps = {
   version: APP_VERSION,
   release: newestRelease(changelogText),
   loadBuild: () => loadBuildInfo(),
-  copy: (text) => navigator.clipboard.writeText(text),
-  checkUpdate: () => checkForUpdate(),
 };
 
 /** How many changes are shown before "Show all". */
@@ -80,19 +75,6 @@ const LICENCES: [string, string][] = [
   ["Emscripten runtime", "MIT / University of Illinois NCSA"],
 ];
 
-const UPDATE_MESSAGE: Record<UpdateCheck, string> = {
-  current: "Up to date.",
-  found: "A new version is downloading. You'll be asked to reload.",
-  none: "This page can't check for updates.",
-};
-
-type CopyState = "idle" | "copied" | "failed";
-const COPY_LABEL: Record<CopyState, string> = {
-  idle: "COPY BUILD INFO",
-  copied: "COPIED",
-  failed: "COULDN'T COPY",
-};
-
 /** Settings › About: the launcher's version and build, what changed in it, credits and the legal notes. */
 /** The other tabs' props are taken but not needed: About shows with no game installed too. */
 export function AboutTab({
@@ -100,11 +82,8 @@ export function AboutTab({
   deps = browserDeps,
 }: Partial<Omit<TabProps, "edition">> & { edition?: GameRecord | null; deps?: AboutDeps }) {
   const [build, setBuild] = useState<string | null>(null);
-  const [copied, setCopied] = useState<CopyState>("idle");
-  const [check, setCheck] = useState<UpdateCheck | "checking" | null>(null);
   const [showAll, setShowAll] = useState(false);
   const [licences, setLicences] = useState(false);
-  const applyUpdate = useUpdate();
 
   const editionId = edition?.id;
   useEffect(() => {
@@ -136,25 +115,6 @@ export function AboutTab({
   const heading =
     release && release.version !== "Unreleased" ? `What's new in ${release.version}` : "What's new";
 
-  const copy = async () => {
-    const text = `YuriNET ${deps.version}, build ${build ?? "unknown"}, ${edition?.title ?? "no game installed"}, ${navigator.userAgent}`;
-    try {
-      await deps.copy(text);
-      setCopied("copied");
-    } catch {
-      setCopied("failed");
-    }
-  };
-
-  const checkNow = async () => {
-    setCheck("checking");
-    try {
-      setCheck(await deps.checkUpdate());
-    } catch {
-      setCheck("none");
-    }
-  };
-
   return (
     <div className={styles.about}>
       <div className={styles.column}>
@@ -175,39 +135,6 @@ export function AboutTab({
               </>
             )}
           </dl>
-          <div className={styles.actions}>
-            <button
-              type="button"
-              className={styles.button}
-              data-state={copied}
-              onClick={() => void copy()}
-            >
-              {COPY_LABEL[copied]}
-            </button>
-            {applyUpdate ? (
-              <button type="button" className={styles.button} onClick={applyUpdate}>
-                RELOAD TO UPDATE
-              </button>
-            ) : (
-              <button
-                type="button"
-                className={styles.quiet}
-                disabled={check === "checking"}
-                onClick={() => void checkNow()}
-              >
-                CHECK FOR UPDATES
-              </button>
-            )}
-          </div>
-          <p className={styles.status} role="status">
-            {applyUpdate
-              ? "A new version is ready."
-              : check === "checking"
-                ? "Checking…"
-                : check
-                  ? UPDATE_MESSAGE[check]
-                  : ""}
-          </p>
         </section>
 
         <section aria-labelledby="about-news">

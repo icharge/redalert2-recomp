@@ -143,10 +143,9 @@ is never reused for another slot. Mod/font restarts reload the same game URL.
    [storage.md](storage.md) and three options (movies, saved games, settings and hotkeys); then
    the copy with CANCEL. It's resumable: a reload continues from the manifest.
 6. **Settings.** Launcher, Gameplay, Audio, Video and Keyboard (below), then About: the launcher's
-   version (`web/package.json`, imported by `src/version.ts`) and the build id from
-   `build.json`, COPY BUILD INFO for bug reports, CHECK FOR UPDATES (asks the service worker), what's
-   new (the newest section of [web/CHANGELOG.md](../../web/CHANGELOG.md), read at build time by
-   `changelog.ts`), the credits with their GitHub links, and the legal notes and licences. About
+   version (`web/package.json`, imported by `src/version.ts`) and the build id from `build.json`,
+   what's new (the newest section of [web/CHANGELOG.md](../../web/CHANGELOG.md), read at build time
+   by `changelog.ts`), the credits with their GitHub links, and the legal notes and licences. About
    needs no game, so it shows before one is installed. The version under SETTINGS in the rail opens
    it. A release bumps `package.json` and starts a new changelog section.
 7. **In game.** The canvas fills the window. A red star in the bottom-right corner opens the page

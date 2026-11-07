@@ -55,19 +55,13 @@
   font-weight: 600;
   overflow-wrap: anywhere;
 }
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  padding-top: 4px;
-}
-.button,
 .quiet {
+  align-self: flex-start;
   height: 44px;
   padding: 0 18px;
-  border: 1px solid var(--red);
+  border: 1px solid #3a3b40;
   background: transparent;
-  color: var(--text);
+  color: var(--muted);
   font-family: var(--font-label);
   font-size: 16px;
   font-weight: 700;
@@ -75,35 +69,11 @@
   cursor: pointer;
   transition:
     border-color 0.2s,
-    background 0.2s;
-}
-.button:hover {
-  background: rgba(211, 38, 43, 0.14);
-}
-.button[data-state="copied"] {
-  border-color: var(--amber);
-}
-.button[data-state="failed"] {
-  border-color: #ff8a80;
-  color: #ff8a80;
-}
-.quiet {
-  align-self: flex-start;
-  border-color: #3a3b40;
-  color: var(--muted);
+    color 0.2s;
 }
 .quiet:hover:not(:disabled) {
   border-color: var(--muted);
   color: var(--text);
-}
-.quiet:disabled {
-  cursor: progress;
-}
-.status {
-  margin: 0;
-  min-height: 20px;
-  font-size: 14px;
-  color: var(--amber);
 }
 
 .sectionHead {

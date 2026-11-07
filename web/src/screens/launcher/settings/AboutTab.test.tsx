@@ -49,8 +49,6 @@ function setup(deps: Partial<AboutDeps> = {}) {
     version: "0.1.0",
     release,
     loadBuild: vi.fn(async () => build),
-    copy: vi.fn(async () => {}),
-    checkUpdate: vi.fn(async () => "current" as const),
     ...deps,
   };
   render(<AboutTab editions={[yr]} edition={yr} settings={{} as AllGamesSettings} deps={all} />);
@@ -70,17 +68,11 @@ describe("AboutTab", () => {
       version: "0.1.0",
       release,
       loadBuild: vi.fn(async () => build),
-      copy: vi.fn(async () => {}),
-      checkUpdate: vi.fn(async () => "current" as const),
     };
     render(<AboutTab deps={deps} />);
     const version = screen.getByRole("region", { name: "Version" });
     expect(await within(version).findByText("722705c66c8d2a2b")).toBeInTheDocument();
     expect(within(version).queryByText("Game")).toBeNull();
-    await userEvent.click(screen.getByRole("button", { name: "COPY BUILD INFO" }));
-    expect(deps.copy).toHaveBeenCalledWith(
-      expect.stringMatching(/^YuriNET 0\.1\.0, build 722705c66c8d2a2b, no game installed, /),
-    );
   });
 
   it("lists the newest changes, five at first and every one on request", async () => {
@@ -133,29 +125,10 @@ describe("AboutTab", () => {
     expect(screen.getByText("Emscripten runtime")).toBeInTheDocument();
   });
 
-  it("copies the version, build and game for a bug report", async () => {
-    const deps = setup();
-    await screen.findByText("722705c66c8d2a2b");
-    await userEvent.click(screen.getByRole("button", { name: "COPY BUILD INFO" }));
-    expect(deps.copy).toHaveBeenCalledWith(
-      expect.stringMatching(/^YuriNET 0\.1\.0, build 722705c66c8d2a2b, Yuri's Revenge, /),
-    );
-    expect(screen.getByRole("button", { name: "COPIED" })).toBeInTheDocument();
-  });
-
-  it("says when copying failed", async () => {
-    setup({ copy: vi.fn(async () => Promise.reject(new Error("denied"))) });
-    await userEvent.click(screen.getByRole("button", { name: "COPY BUILD INFO" }));
-    expect(await screen.findByRole("button", { name: "COULDN'T COPY" })).toBeInTheDocument();
-  });
-
-  it.each([
-    ["current", "Up to date."],
-    ["found", "A new version is downloading. You'll be asked to reload."],
-    ["none", "This page can't check for updates."],
-  ] as const)("reports an update check that finds %s", async (result, message) => {
-    setup({ checkUpdate: vi.fn(async () => result) });
-    await userEvent.click(screen.getByRole("button", { name: "CHECK FOR UPDATES" }));
-    expect(await screen.findByRole("status")).toHaveTextContent(message);
+  it("shows the version without copy or update buttons", async () => {
+    setup();
+    const version = screen.getByRole("region", { name: "Version" });
+    await within(version).findByText("722705c66c8d2a2b");
+    expect(within(version).queryByRole("button")).toBeNull();
   });
 });
