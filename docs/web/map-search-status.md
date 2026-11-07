@@ -30,6 +30,8 @@ The native map search is implemented for Red Alert 2 and Yuri's Revenge. Nothing
 - Rebuilt both web targets with `cmake --build build-web-game --parallel 8` and
   `cmake --build build-web --parallel 8`.
 - Browser check after rebuilding: typing `lake` narrowed YR to three maps and RA2 to two maps.
+- The rebuilt YR browser check with `lake 4` returned the full-list fallback. Since an empty result
+  also restores the full list, the numeric player filter needs a clearer runtime check.
 - A no-match query restores the full list. The code attempts to set “No maps match” on static help
   control 1685, but that text does not render in the current web UI. The zero-result feedback needs
   a separate rendering approach.
