@@ -27,6 +27,7 @@ import { LanPanel } from "../components/LanPanel";
 import { FileExplorer } from "../components/FileExplorer";
 import { GameTray, trayItem } from "./GameTray";
 import { CrashDialog } from "./CrashDialog";
+import { MapSearch, type Place } from "./MapSearch";
 import { ExitConfirm } from "./ExitConfirm";
 import {
   argsFromQuery,
@@ -141,6 +142,21 @@ export function Play({ files }: { files: FileSource }) {
   );
   const settings = useGameState((s) => s.settings);
   const restart = useGameState((s) => s.restart);
+  const mapList = useGameState((s) => s.mapList);
+  const pictureSize = useGameState((s) => s.size);
+  /** a point of the game's picture on the stage: the canvas letterboxes the picture */
+  const placeOnStage: Place = (x, y) => {
+    const box = canvas.current?.getBoundingClientRect();
+    const frame = stage.current?.getBoundingClientRect();
+    if (!box || !frame) return { left: x, top: y, scale: 1 };
+    const picture = pictureSize ?? { w: 800, h: 600 };
+    const scale = Math.min(box.width / picture.w, box.height / picture.h) || 1;
+    return {
+      left: box.left - frame.left + (box.width - picture.w * scale) / 2 + x * scale,
+      top: box.top - frame.top + (box.height - picture.h * scale) / 2 + y * scale,
+      scale,
+    };
+  };
   const cursorDebugMode = cursorDebug();
   const pageCursorMode = cursorPage();
   const [exitError, setExitError] = useState<string | null>(null);
@@ -783,6 +799,13 @@ export function Play({ files }: { files: FileSource }) {
       {browseFiles && liveFiles && (
         <FileExplorer source={liveFiles} onClose={() => setBrowseFiles(false)} />
       )}
+      <MapSearch
+        list={mapList}
+        place={placeOnStage}
+        onSearch={(text, players, seq) =>
+          handle.current?.exports.ra2_map_search?.(text, players, seq)
+        }
+      />
       <ExitConfirm
         open={exitConfirmation !== null}
         onAnswer={answerExitConfirmation}

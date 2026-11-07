@@ -642,10 +642,12 @@ void web_presenter_start(int (*menus_use_windows_cursor)(void)) {
     ra2_page_cursor_on(1);
 }
 
+void web_map_search_pump(void);                          /* map_search.c */
 void web_presenter_pump(void) {
     static uint32_t next_fps, last_frames;
     static int fps_started;
     drain_input();
+    web_map_search_pump();
     update_cursor();
     update_page_cursor();
     /* Dialog paints can finish without a primary Unlock. Sample the game's

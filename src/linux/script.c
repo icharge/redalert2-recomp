@@ -31,6 +31,7 @@
 
 #ifdef __EMSCRIPTEN__
 void web_presenter_dialog_created(uint32_t hwnd, uint32_t resource_id);
+void web_map_search_dialog(uint32_t hwnd, uint32_t resource_id);   /* src/web/map_search.c */
 #include "web_api.h"
 void ra2_setting(int key, int value, int extra);  /* src/web/presenter.c */
 #endif
@@ -136,6 +137,7 @@ static void dialog_created(uint32_t h, uint32_t id) {
     fprintf(stderr, "[dialog] open 0x%X\n", id);
 #ifdef __EMSCRIPTEN__
     web_presenter_dialog_created(h, id);
+    web_map_search_dialog(h, id);
 #endif
     if (id == 0xE2 && !__sync_lock_test_and_set(&g_menu_open, 1)) {
         g_t0 = now_ms();

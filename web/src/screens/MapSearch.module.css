@@ -1,0 +1,58 @@
+/* The map search, over the game's map list: dark like the game's frames, its yellow text. */
+.box {
+  position: absolute;
+  z-index: 2;
+  min-width: 200px;
+}
+
+.row {
+  display: flex;
+  gap: 4px;
+}
+
+.text,
+.players {
+  height: 100%;
+  border: 1px solid #8a1d1d;
+  border-radius: 0;
+  background: #000;
+  color: #f2d34b;
+  font-family: var(--font-label);
+  font-size: 14px;
+}
+
+.text {
+  flex: 1;
+  appearance: none;
+  min-width: 0;
+  padding: 0 8px;
+}
+
+.text::placeholder {
+  color: rgba(242, 211, 75, 0.55);
+}
+
+.text:focus,
+.players:focus {
+  outline: 1px solid #f2d34b;
+  outline-offset: -1px;
+}
+
+.players {
+  flex: none;
+  width: 64px;
+  padding: 0 4px;
+}
+
+.status {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 2px);
+  margin: 0;
+  padding: 1px 6px;
+  background: rgba(0, 0, 0, 0.85);
+  color: #f2d34b;
+  font-family: var(--font-label);
+  font-size: 12px;
+  white-space: nowrap;
+}

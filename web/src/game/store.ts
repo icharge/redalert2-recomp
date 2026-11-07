@@ -5,6 +5,7 @@ import {
   type GameEvent,
   type Pacing,
   type HostSettings,
+  type MapList,
 } from "./protocol";
 
 export type Phase = "idle" | "loading" | "booting" | "running" | "exited" | "crashed";
@@ -47,6 +48,8 @@ export interface GameState {
   openLink: OpenLink | null;
   settings: HostSettings | null;
   restart: { mod: string } | null;
+  /** the game's map list, while a map screen is up */
+  mapList: MapList | null;
 }
 
 const INITIAL: GameState = {
@@ -64,6 +67,7 @@ const INITIAL: GameState = {
   openLink: null,
   settings: null,
   restart: null,
+  mapList: null,
 };
 
 /** How many log lines are kept for the crash report. */
@@ -176,6 +180,11 @@ export class GameStore {
       }
       case "settingsSaved":
         return;
+      case "mapList": {
+        const { x, y, w, h, shown, total, matched, seq } = event;
+        this.set({ mapList: event.open ? { x, y, w, h, shown, total, matched, seq } : null });
+        return;
+      }
       case "error":
         this.set({ error: event.message });
         return;

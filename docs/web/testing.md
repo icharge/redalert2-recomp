@@ -753,3 +753,16 @@ then `cmake --build work/build-web-prof` (about ten minutes at `-O3`). `WEB_OUT`
 `--build <dir>` takes a build directory holding the edition's module files. A both-edition tree has
 `ra2md.*` (Yuri's Revenge) and `ra2.*` (Red Alert 2); a single-edition tree holds `ra2.*` for either,
 and the e2e scripts serve it for the page's `ra2md.*` request too.
+
+## The map search's rules
+
+`src/web/map_match.c` decides which map list items a search keeps (`src/web/map_search.c` applies it in
+the game). Its selftest needs nothing else, from the repository root:
+
+```powershell
+emcc src/web/map_match_selftest.c src/web/map_match.c -sENVIRONMENT=node -sEXIT_RUNTIME=1 `
+  -o build-web/map-match-selftest.js
+node build-web/map-match-selftest.js   # map_match_selftest: ok
+```
+
+The list filter itself is win32hle's `user32_listfilter_selftest` (pcrecomp, `build_selftests_web.py`).
