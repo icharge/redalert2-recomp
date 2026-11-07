@@ -1035,6 +1035,12 @@ def reconnect_patches(code, cs, target):
 # rebuilds every screen surface, the tactical view and the sidebar, then the release of
 # the screen-sized caches. Main_Loop's result in eax is kept for the test that follows.
 #
+# The switch also deletes the mouse object (WWMouseClass) and makes a new one, which starts
+# released. At match start Start_Scenario captures it later; here nothing did, so the page,
+# which holds Pointer Lock only while the game's mouse is captured, let the pointer go and
+# showed the browser's arrow. A mouse captured before the switch is captured again after
+# it: Capture_Mouse, the class's slot 6 (+0x18); +0x10 is its captured byte.
+#
 # One thing the match-start switch never needed: the command bar's rectangle set
 # (0xB0FC30..0xB0FC6C, built by sub_0072FC60 for the options' size) is built in the menus
 # for the size the match will have, so it already fits when a match starts. During a match
@@ -1064,9 +1070,18 @@ LIVE_RESIZE = {
         after='RECOMP_CALL(sub_0072DEF0); RECOMP_FLAGS_IN();',
         want=(0x00A8EB84, 0x00A8EB88),              # the options' size (RA2MD.INI [Video])
         now=(0x008A00A4, 0x008A00A8),               # the current display size
-        session=0x00A8B238),                        # Session.Type
+        session=0x00A8B238,                         # Session.Type
+        mouse=0x00B78164),                          # the mouse object, set by its constructor
     # 'game' (Red Alert 2) is added after RA2_PROFILE_RESET, which it uses.
 }
+
+
+def live_resize_mouse(t):
+    """The C that keeps the mouse captured across the switch: (before it, after it)."""
+    m = t['mouse']
+    return ('uint32_t _mouse = MEM32(0x%08Xu), _captured = _mouse && MEM8(_mouse + 0x10u);' % m,
+            '_mouse = MEM32(0x%08Xu); if (_captured && _mouse && !MEM8(_mouse + 0x10u)) { '
+            'ecx = _mouse; RECOMP_ICALL(MEM32(MEM32(_mouse) + 0x18u)); RECOMP_FLAGS_IN(); }' % m)
 
 
 def live_resize_patches(code, cs, target):
@@ -1089,17 +1104,18 @@ def live_resize_patches(code, cs, target):
               'it relies on does not match this build; no patch')
         return {}
     w, h = t['want']
+    keep = live_resize_mouse(t)
     return {loop_va: (
         '#ifdef __EMSCRIPTEN__\n'
         '    { extern int ra2_live_resize_due(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t); '
         'uint32_t _keep = eax; '
         'if (ra2_live_resize_due(MEM32(0x%08Xu), MEM32(0x%08Xu), MEM32(0x%08Xu), MEM32(0x%08Xu), MEM32(0x%08Xu))) { '
-        '%s '
+        '%s %s '
         'ecx = MEM32(0x%08Xu); edx = MEM32(0x%08Xu); RECOMP_CALL(sub_%08X); RECOMP_FLAGS_IN(); '
-        '%s } eax = _keep; }\n'
+        '%s %s } eax = _keep; }\n'
         '    #endif /* remaster: live resize in a match, run_lift.py live_resize_patches */'
         % (w, h, t['now'][0], t['now'][1], t['session'],
-           t['before'], w, h, mode_set, t['after']))}
+           keep[0], t['before'], w, h, mode_set, t['after'], keep[1]))}
 
 
 # Live resize with the in-game menu open (Yuri's Revenge, browser). The menu of a skirmish
@@ -1142,6 +1158,7 @@ def live_resize_menu_patches(code, cs):
         return {}
     w, h = t['want']
     s = t['session']
+    keep = live_resize_mouse(t)
     return {m['step'][0]: (
         '#ifdef __EMSCRIPTEN__\n'
         '    { extern int ra2_live_resize_due(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t); '
@@ -1150,9 +1167,9 @@ def live_resize_menu_patches(code, cs):
         'ra2_live_resize_due(MEM32(0x%08Xu), MEM32(0x%08Xu), MEM32(0x%08Xu), MEM32(0x%08Xu), _session)) { '
         'uint32_t _result = esp + 4u; '
         'ecx = esi; RECOMP_CALL(sub_00622720); RECOMP_FLAGS_IN(); '
-        '%s '
+        '%s %s '
         'ecx = MEM32(0x%08Xu); edx = MEM32(0x%08Xu); RECOMP_CALL(sub_%08X); RECOMP_FLAGS_IN(); '
-        '%s '
+        '%s %s '
         'ecx = 0x%08Xu; PUSH32(esp, 2u); RECOMP_ICALL(0x%08Xu); RECOMP_FLAGS_IN(); '
         'ecx = 0x%08Xu; RECOMP_ICALL(0x%08Xu); RECOMP_FLAGS_IN(); '
         'PUSH32(esp, 0u); edx = 0x004F11B0u; ecx = 0xB5u; RECOMP_CALL(sub_00622650); RECOMP_FLAGS_IN(); '
@@ -1163,7 +1180,7 @@ def live_resize_menu_patches(code, cs):
         '    #endif /* remaster: live resize with the in-game menu open, '
         'run_lift.py live_resize_menu_patches */'
         % (s, m['sessions'][0], m['sessions'][1], w, h, t['now'][0], t['now'][1],
-           t['before'], w, h, t['scenario'][1], t['after'],
+           keep[0], t['before'], w, h, t['scenario'][1], t['after'], keep[1],
            m['map'], m['redraw'], m['map'], m['render']))}
 
 
@@ -1375,7 +1392,8 @@ LIVE_RESIZE['game'] = dict(
     after=RA2_PROFILE_RESET,
     want=(0x00A40B38, 0x00A40B3C),                  # the options' size (RA2.INI [Video])
     now=(0x008523E0, 0x008523E4),                   # the current display size
-    session=0x00A3D298)                             # Session.Type
+    session=0x00A3D298,                             # Session.Type
+    mouse=0x00B2AF5C)                               # the mouse object, set by its constructor
 
 
 # A mode switch invalidates the display profile cache (sub_006F4160) and sets

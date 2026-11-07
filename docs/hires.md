@@ -112,6 +112,15 @@ browser-specific; only its trigger is.
   release of the screen-sized caches (`sub_0072DEF0`), as Start_Scenario does.
   A dump of the bar's globals after a 1280x720 to 1600x900 switch matches a
   match started at 1600x900, apart from heap addresses.
+- **The mouse.** The switch deletes the mouse object (`WWMouseClass`) and
+  makes a new one, which starts released (its captured byte, +0x10, is 0).
+  At match start Start_Scenario captures it later; after a live switch nothing
+  did, and the page, which holds Pointer Lock only while the game's mouse is
+  captured, let the pointer go and showed the browser's white arrow until a
+  focus change captured it again. Both patches note whether the mouse was
+  captured before the switch and, if so, call `Capture_Mouse` (slot 6, +0x18)
+  on the new one. The pointer at `0x00B78164` (Red Alert 2: `0x00B2AF5C`) is
+  the one the host's cursor test reads.
 - **Which size.** The host's last requested size, not the options': a size
   the page sends before the game has read its options reaches only the INI,
   so the match starts at the old size and switches on its first frame.

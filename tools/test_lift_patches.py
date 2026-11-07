@@ -564,6 +564,19 @@ class LiveResizePatchTests(unittest.TestCase):
         self.assertLess(c.index('sub_006F30F0'), c.index('sub_006F44D0'))
         self.assertIn('eax = _keep;', c)
 
+    def test_a_captured_mouse_is_captured_again_after_the_switch(self):
+        # the switch makes a new, released mouse object; the page holds Pointer Lock
+        # only while the game's mouse is captured
+        for target, va, mouse, switch in (('gamemd', 0x0048CE8A, '0x00B78164u', 'sub_00560BF0'),
+                                          ('game', 0x00481DBA, '0x00B2AF5Cu', 'sub_005434E0')):
+            c = live_resize_patches(self.image(target), 0, target)[va]
+            before = '_captured = _mouse && MEM8(_mouse + 0x10u);'
+            capture = 'RECOMP_ICALL(MEM32(MEM32(_mouse) + 0x18u));'
+            self.assertIn('uint32_t _mouse = MEM32(%s), %s' % (mouse, before), c)
+            self.assertLess(c.index(before), c.index(switch))
+            self.assertLess(c.index(switch), c.index(capture))
+            self.assertIn('if (_captured && _mouse && !MEM8(_mouse + 0x10u))', c)
+
     def test_a_different_build_gets_no_patch(self):
         for target in ('gamemd', 'game'):
             t = LIVE_RESIZE[target]
