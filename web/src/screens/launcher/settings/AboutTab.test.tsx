@@ -105,10 +105,14 @@ describe("AboutTab", () => {
 
   it("links the credits to their GitHub repositories, in a new tab", () => {
     setup();
-    const web = screen.getByRole("link", { name: /redalert2-recomp/ });
-    expect(web).toHaveAttribute("href", "https://github.com/sp00nznet/redalert2-recomp");
+    const web = screen.getByRole("link", { name: /THAI RA2/ });
+    expect(web).toHaveAttribute("href", "https://github.com/icharge/redalert2-recomp");
     expect(web).toHaveAttribute("target", "_blank");
     expect(web).toHaveAttribute("rel", "noopener noreferrer");
+    expect(screen.getByRole("link", { name: /sp00nz · redalert2-recomp/ })).toHaveAttribute(
+      "href",
+      "https://github.com/sp00nznet/redalert2-recomp",
+    );
     expect(screen.getByRole("link", { name: /pcrecomp/ })).toHaveAttribute(
       "href",
       "https://github.com/sp00nznet/pcrecomp",

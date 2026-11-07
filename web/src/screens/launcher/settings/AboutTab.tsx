@@ -52,7 +52,12 @@ function longDate(date: string): string {
 
 const CREDITS: { role: string; who: string; href?: string }[] = [
   {
-    role: "Recompilation and web port",
+    role: "Web port",
+    who: "THAI RA2 · redalert2-recomp",
+    href: "https://github.com/icharge/redalert2-recomp",
+  },
+  {
+    role: "Recompilation",
     who: "sp00nz · redalert2-recomp",
     href: "https://github.com/sp00nznet/redalert2-recomp",
   },
