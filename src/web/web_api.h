@@ -7,7 +7,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
-#define RA2_WEB_PROTOCOL 12
+#define RA2_WEB_PROTOCOL 13
 
 #define RA2_CURSOR_PX 32
 /* The largest cursor frame the page accepts. MOUSE.SHA's header gives 55x43 as

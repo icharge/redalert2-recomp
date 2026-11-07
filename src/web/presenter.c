@@ -43,6 +43,7 @@
 #define WM_MBUTTONUP    0x0208u
 
 void web_map_search_message(uint32_t hwnd, uint32_t message, uint32_t wParam, uint32_t lParam);
+void web_map_search_click(int x, int y);
 void web_map_search_pump(void);
 
 /* ---- events ---------------------------------------------------------------- */
@@ -587,6 +588,7 @@ static void drain_input(void) {
                        : (down ? WM_LBUTTONDOWN : WM_LBUTTONUP);
             web_modern_pointer(m, (int)e.a, (int)e.b);
             hle_input_mouse(m, (int)e.a, (int)e.b);
+            if (down && e.c == 0) web_map_search_click((int)e.a, (int)e.b);
             break;
         }
         case IN_WHEEL: hle_input_wheel((int)e.c, (int)e.a, (int)e.b); break;

@@ -153,6 +153,7 @@ in test logs.
 | `boot`          | `title`, `exe`, `stamp`                          | the exe is mapped and bound                                                                                                                                                                                                                                    |
 | `menu`          | none                                             | the main menu's dialog (0xE2) opened: `phase` becomes `running`                                                                                                                                                                                                |
 | `mode`          | `w`, `h`                                         | the picture's size changed (the game set a display mode)                                                                                                                                                                                                       |
+| `mapSearch`     | `open`, `noMatches`, `x`, `y`, `w`, `h`          | the native map picker is open and the map-list rectangle in game pixels; the page shows “No maps match” over it when applicable                                                                                                                                 |
 | `fps`           | `fps`, `ms`, and `worst`, `late`, `pub`, `pubms` | once a second: the game's own frames per second, the longest gap between two game frames (ms), how many came more than 25 ms after the one before, how many pictures were published and the mean ms to make one. The page shows them only if the overlay is on |
 | `exit`          | `code`                                           | the game's entry returned                                                                                                                                                                                                                                      |
 | `exitConfirm`   | `request`                                        | the main menu's Exit confirmation call was intercepted before native dialog creation; reply using `ra2_exit_confirmation_reply`                                                                                                                                |
@@ -249,3 +250,7 @@ instead of misreading events.
 
 Protocol 9 adds the `open` event for WOL-era links. It changes no shared
 memory word.
+
+Protocol 13 adds the `mapSearch` event for the native map picker status. The
+game keeps its safe list-filter fallback when a query matches no maps; the
+page displays the no-match status over the list rectangle.

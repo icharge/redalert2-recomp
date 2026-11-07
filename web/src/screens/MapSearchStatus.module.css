@@ -1,0 +1,13 @@
+.status {
+  position: absolute;
+  z-index: 2;
+  transform: translateX(-100%);
+  padding: 1px 6px;
+  background: rgba(0, 0, 0, 0.88);
+  color: #f2d34b;
+  font-family: var(--font-label);
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
+  pointer-events: none;
+}

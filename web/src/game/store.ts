@@ -28,6 +28,15 @@ export interface OpenLink {
   page?: string;
 }
 
+export interface MapSearchStatus {
+  open: boolean;
+  noMatches: boolean;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 export interface GameState {
   phase: Phase;
   /** what is being loaded, while it loads (a file name, "game files") */
@@ -46,6 +55,7 @@ export interface GameState {
   saveReferencePrompt: { request: number } | null;
   /** a WOL-era link: the page shows our dialog instead of the system browser */
   openLink: OpenLink | null;
+  mapSearchStatus: MapSearchStatus;
   settings: HostSettings | null;
   restart: { mod: string } | null;
 }
@@ -64,6 +74,7 @@ const INITIAL: GameState = {
   exitConfirmation: null,
   saveReferencePrompt: null,
   openLink: null,
+  mapSearchStatus: { open: false, noMatches: false, x: 0, y: 0, w: 0, h: 0 },
   settings: null,
   restart: null,
 };
@@ -153,6 +164,18 @@ export class GameStore {
         return;
       case "mode":
         this.set({ size: { w: event.w, h: event.h } });
+        return;
+      case "mapSearch":
+        this.set({
+          mapSearchStatus: {
+            open: event.open,
+            noMatches: event.noMatches,
+            x: event.x,
+            y: event.y,
+            w: event.w,
+            h: event.h,
+          },
+        });
         return;
       case "fps":
         this.set({ fps: event.fps, ms: event.ms, pacing: event.pacing });

@@ -29,6 +29,7 @@ import { GameTray, trayItem } from "./GameTray";
 import { CrashDialog } from "./CrashDialog";
 import { SaveReferencePrompt } from "./SaveReferencePrompt";
 import { ExitConfirm } from "./ExitConfirm";
+import { MapSearchStatus } from "./MapSearchStatus";
 import {
   argsFromQuery,
   GameNotBuilt,
@@ -138,6 +139,8 @@ export function Play({ files }: { files: FileSource }) {
   const exitConfirmation = useGameState((s) => s.exitConfirmation);
   const saveReferencePrompt = useGameState((s) => s.saveReferencePrompt);
   const openLink = useGameState((s) => s.openLink);
+  const mapSearchStatus = useGameState((s) => s.mapSearchStatus);
+  const gameSize = useGameState((s) => s.size);
   const linkDialogTarget = useMemo(
     () => (openLink ? linkTarget(openLink.url, undefined, openLink.page) : null),
     [openLink],
@@ -712,6 +715,7 @@ export function Play({ files }: { files: FileSource }) {
   return (
     <div ref={stage} className={styles.stage}>
       <canvas ref={canvas} className={styles.canvas} tabIndex={0} aria-label="The game" />
+      <MapSearchStatus status={mapSearchStatus} size={gameSize} stage={stage} canvas={canvas} />
       {pageCursorMode && (
         <canvas ref={pageCursorCanvas} className={styles.pageCursor} aria-hidden="true" />
       )}

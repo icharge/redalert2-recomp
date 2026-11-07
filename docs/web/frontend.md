@@ -256,8 +256,8 @@ the map list. The game applies each change to the list (src/web/map_search.c, wi
 in `map_match.c`): every search word must occur in the map name, and a number from 1 to 8 narrows
 the list to maps whose "(2-4)" range admits that many players. The game sees the shorter list as
 the whole list (win32hle's `hle_list_filter`), so Use Map starts the map the player picked. When a
-search has no matches, the game restores the full list; the attempted help-line message is not
-visible in the current web build.
+search has no matches, the list retains its safe selection and the page displays a no-match label
+over it; editing the query restores the filtered results.
 
 ### Link dialog art
 

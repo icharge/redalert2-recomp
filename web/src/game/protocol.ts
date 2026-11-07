@@ -1,7 +1,7 @@
 // What the page and the game say to each other (docs/web/protocol.md). The C side is
 // src/web/web_api.h: change the two together, and RA2_WEB_PROTOCOL with them.
 
-export const RA2_WEB_PROTOCOL = 12;
+export const RA2_WEB_PROTOCOL = 13;
 
 export const SCALES = ["sharp", "smooth", "crt", "nearest", "integer"] as const;
 export type Scale = (typeof SCALES)[number];
@@ -37,6 +37,15 @@ export type GameEvent =
   | ({ e: "settings" } & HostSettings)
   | { e: "restart"; mod: string }
   | { e: "mode"; w: number; h: number }
+  | {
+      e: "mapSearch";
+      open: boolean;
+      noMatches: boolean;
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+    }
   | { e: "fps"; fps: number; ms: number; pacing: Pacing | null }
   | { e: "exit"; code: number }
   | { e: "exitConfirm"; request: number }
@@ -123,6 +132,23 @@ export function parseEventLine(line: string): GameEvent | null {
     case "mode":
       return typeof value.w === "number" && typeof value.h === "number"
         ? { e: "mode", w: value.w, h: value.h }
+        : null;
+    case "mapSearch":
+      return typeof value.open === "boolean" &&
+        typeof value.noMatches === "boolean" &&
+        typeof value.x === "number" &&
+        typeof value.y === "number" &&
+        typeof value.w === "number" &&
+        typeof value.h === "number"
+        ? {
+            e: "mapSearch",
+            open: value.open,
+            noMatches: value.noMatches,
+            x: value.x,
+            y: value.y,
+            w: value.w,
+            h: value.h,
+          }
         : null;
     case "fps":
       return typeof value.fps === "number" && typeof value.ms === "number"
