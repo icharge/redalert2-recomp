@@ -1,6 +1,6 @@
 import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
 import { Button, Callout, Code, Flex, Text, Theme } from "@radix-ui/themes";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { BrowserCheck } from "./components/BrowserCheck";
 import { checkBrowser, missingRequired } from "./components/features";
 import { UpdateStrip } from "./components/UpdateStrip";
@@ -332,13 +332,8 @@ function Main() {
               edition={edition}
               others={others}
               build={build}
-              onUse={switchInstall}
               onImport={() => navigate("/import")}
               onResume={resumeImport}
-              onRenameInstallation={async (installation, displayName) => {
-                await manifest.renameInstallation(installation.slot, displayName);
-                await reload();
-              }}
               browseSource={(installation, slotGames) =>
                 managedInstallationSource(
                   installation.displayName ?? installation.name,
@@ -405,17 +400,18 @@ function Main() {
           (!resume || !installations.some((entry) => entry.slot === resume)) ? (
             <RouteError message="That installation was not found." />
           ) : (
-            <Import
-              key={resume ?? "new"}
-              deps={browserDeps(build, manifest, target)}
-              {...(resume ? { slot: resume } : {})}
-              {...(edition ? { edition: edition.id } : {})}
-              onBack={() => navigate("/")}
-              onDone={(done) => {
-                if (done !== undefined) switchInstall(done);
-                void reload().then(() => navigate("/"));
-              }}
-            />
+            <OneInstall key={resume ?? "new"} installed={!resume && installations.length > 0}>
+              <Import
+                deps={browserDeps(build, manifest, target)}
+                {...(resume ? { slot: resume } : {})}
+                {...(edition ? { edition: edition.id } : {})}
+                onBack={() => navigate("/")}
+                onDone={(done) => {
+                  if (done !== undefined) switchInstall(done);
+                  void reload().then(() => navigate("/"));
+                }}
+              />
+            </OneInstall>
           )
         }
       />
@@ -449,6 +445,16 @@ function SettingsRoute({
   ) : (
     <SettingsEmpty tab={tab} />
   );
+}
+
+/**
+ * One install only: with a game already in the browser a new import goes to the Game screen, where
+ * REMOVE GAME comes first. Judged once, as the screen opens, so the import's own finish does not
+ * count.
+ */
+function OneInstall({ installed, children }: { installed: boolean; children: ReactNode }) {
+  const [blocked] = useState(installed);
+  return blocked ? <Navigate to="/manage" replace /> : children;
 }
 
 function InstallationGame({

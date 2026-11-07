@@ -18,7 +18,6 @@ import {
   openTray,
   options,
   playButton,
-  useInstall,
   waitForLauncher,
 } from "./lib.mjs";
 
@@ -171,22 +170,17 @@ if (hasRa2) {
   check(shared.length === 1, "the shared RA2 archive is stored once");
 }
 
-await openInstall(page);
-await page.locator('input[type="file"]').setInputFiles(gameDir);
-await page.getByRole("heading", { name: "READY TO INSTALL" }).waitFor({ timeout: 120_000 });
-await page.getByRole("button", { name: /^INSTALL \d/ }).click();
-await page.getByRole("navigation", { name: "Launcher" }).waitFor({ timeout: 900_000 });
-await openTab(page, "GAME");
-const others = page.getByRole("region", { name: "OTHER INSTALLS" });
+// one install only: with a game in the browser, the Install screen sends the player to GAME
+const second = new URL("import", address);
+second.search = new URL(address).search;
+await page.goto(second.toString());
+await page.getByRole("region", { name: "INSTALLED" }).waitFor({ timeout: 30_000 });
 check(
-  (await others.getByRole("button", { name: "USE", exact: true }).count()) === 1,
-  "the same folder imports as a second install, and the first is listed beside it",
+  new URL(page.url()).pathname.endsWith("/manage") &&
+    (await page.getByRole("button", { name: "INSTALL ANOTHER COPY" }).count()) === 0,
+  "with a game installed, a second install goes to GAME: remove it first",
 );
 await page.screenshot({ path: path.join(base.shots, "installations.png") });
-check(
-  (await opfsGameFiles()).filter((name) => name.toLowerCase().endsWith("/ra2.mix")).length === 2,
-  "each installation has its own copy of shared game data",
-);
 
 async function browseText(open, name, what, managed = false) {
   await open();
@@ -213,7 +207,6 @@ async function browseText(open, name, what, managed = false) {
   await page.getByRole("button", { name: "Close" }).click();
 }
 
-await useInstall(page, 1);
 await openTab(page, "GAME");
 await browseText(
   () => page.getByRole("button", { name: "BROWSE FILES" }).click(),
@@ -326,24 +319,15 @@ if (hasRa2) {
   check(true, "Red Alert 2 starts from the shared import in OPFS");
 }
 
-// ---- installation isolation and removal ---------------------------------------------------------
+// ---- leaving the game, and removal ---------------------------------------------------------
 await context.close();
 context = await launch();
 page = context.pages()[0] ?? (await context.newPage());
 await page.goto(address);
 await waitForLauncher(page, 30_000);
-await useInstall(page, 2);
 await chooseEdition(page, "ra2md");
 await playButton(page).click();
 await running(page);
-const otherSave = await page.evaluate(() => {
-  try {
-    return new TextDecoder().decode(window.Module.FS.readFile("/game/SAVE0001.sav"));
-  } catch {
-    return null;
-  }
-});
-check(otherSave === null, "the second installation does not inherit the first installation's save");
 const oldWorkers = new Set(page.workers());
 check(oldWorkers.size > 0, "the game has workers before browser Back");
 for (const worker of oldWorkers) worker.on("close", () => oldWorkers.delete(worker));
@@ -354,23 +338,7 @@ check(
   "browser Back unloads the runtime before showing the launcher",
 );
 check(oldWorkers.size === 0, "browser Back closes the old game's workers");
-// slot 2 is the active install now; slot 1 is under OTHER INSTALLS
 await openTab(page, "GAME");
-const otherInstalls = page.getByRole("region", { name: "OTHER INSTALLS" });
-await otherInstalls.getByRole("button", { name: /^Remove / }).click();
-await page.getByRole("alertdialog").getByRole("button", { name: "REMOVE", exact: true }).click();
-// by element, not role: while the confirm is open the page behind it is hidden from the role tree
-await page
-  .locator('section[aria-labelledby="game-others"]')
-  .waitFor({ state: "detached", timeout: 120_000 });
-check(
-  await page.getByRole("region", { name: "INSTALLED" }).isVisible(),
-  "removing one install keeps the other",
-);
-check(
-  (await opfsGameFiles()).filter((name) => name.toLowerCase().endsWith("/ra2.mix")).length === 1,
-  "removal retains the other installation's game data",
-);
 await page.getByRole("button", { name: "REMOVE GAME", exact: true }).click();
 await page.getByRole("alertdialog").getByRole("button", { name: "REMOVE", exact: true }).click();
 await page.getByRole("button", { name: "INSTALL THE GAME" }).waitFor({ timeout: 60_000 });

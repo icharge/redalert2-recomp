@@ -1,5 +1,5 @@
 import { AlertDialog } from "@radix-ui/themes";
-import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { EDITION_BRAND } from "../../components/brand";
 import { FileExplorer } from "../../components/FileExplorer";
 import { formatBytes } from "../../components/format";
@@ -19,9 +19,8 @@ const browserEstimate: Estimate = async () => (await navigator.storage?.estimate
 
 export interface GameActions {
   onResume(slot: number): void;
-  /** the Install screen, for another copy */
+  /** the Install screen, when nothing is installed */
   onImport(): void;
-  onRenameInstallation?(installation: InstallationRecord, displayName: string): Promise<void>;
   /** forget the install and delete what only it reads; resolves when done */
   onRemove(installation: InstallationRecord): Promise<void>;
   /** hands the player a zip of the edition's saved games; says what happened */
@@ -131,16 +130,63 @@ function RemoveButton({
   );
 }
 
-/** The active install: its editions, files, saved games and storage, and any other installs. */
+/** Copies left from when the launcher kept several installs: the player can delete them, after a confirm. */
+function OlderCopies({ others, onDelete }: { others: ActiveInstall[]; onDelete(): void }) {
+  const bytes = others.reduce(
+    (sum, other) => sum + other.editions.reduce((total, game) => total + game.bytes, 0),
+    0,
+  );
+  const count = others.length === 1 ? "1 older copy" : `${others.length} older copies`;
+  return (
+    <section className={`${page.panel} ${styles.wide}`} aria-labelledby="game-older">
+      <h2 id="game-older" className={page.label}>
+        OLDER COPIES
+      </h2>
+      <div className={styles.line}>
+        <span className={page.warn}>
+          {count} of the game take {formatBytes(bytes)}.
+        </span>
+        <AlertDialog.Root>
+          <AlertDialog.Trigger>
+            <button type="button" className={page.quiet}>
+              DELETE THEM
+            </button>
+          </AlertDialog.Trigger>
+          <AlertDialog.Content maxWidth="440px" className={page.dialog}>
+            <AlertDialog.Title className={page.dialogTitle}>
+              DELETE {count.toUpperCase()}?
+            </AlertDialog.Title>
+            <AlertDialog.Description size="2">
+              Deletes {formatBytes(bytes)} from this browser. The game you play is kept, and so are
+              saved games and settings.
+            </AlertDialog.Description>
+            <div className={page.dialogActions}>
+              <AlertDialog.Cancel>
+                <button type="button" className={page.quiet}>
+                  KEEP THEM
+                </button>
+              </AlertDialog.Cancel>
+              <AlertDialog.Action>
+                <button type="button" className={page.primary} onClick={onDelete}>
+                  DELETE
+                </button>
+              </AlertDialog.Action>
+            </div>
+          </AlertDialog.Content>
+        </AlertDialog.Root>
+      </div>
+    </section>
+  );
+}
+
+/** The installed game: its editions, files, saved games and storage. One install only. */
 export function GameScreen({
   install,
   edition,
   others,
   build,
-  onUse,
   onResume,
   onImport,
-  onRenameInstallation,
   onRemove,
   onDownloadSaves,
   onImportSaves,
@@ -150,16 +196,13 @@ export function GameScreen({
   install: ActiveInstall | null;
   /** the edition chosen in the rail: the one SAVED GAMES works on */
   edition: GameRecord | null;
+  /** installs left from the slot system; only offered for deletion */
   others: ActiveInstall[];
   build?: BuildInfo;
-  onUse(slot: number): void;
 }) {
   const [notice, setNotice] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [browsing, setBrowsing] = useState(false);
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState("");
-  const [localName, setLocalName] = useState<{ slot: number; name: string } | null>(null);
   const [removed, setRemoved] = useState(0);
   const savesInput = useRef<HTMLInputElement>(null);
 
@@ -216,7 +259,6 @@ export function GameScreen({
 
   const { installation, editions } = install;
   const slot = installation.slot;
-  const name = localName?.slot === slot ? localName.name : installName(install);
   const bytes = editions.reduce((sum, game) => sum + game.bytes, 0);
   const fileCount = editions.reduce((sum, game) => sum + Object.keys(game.files).length, 0);
   const moviesMissing = editions.some(
@@ -224,80 +266,12 @@ export function GameScreen({
   );
   const savesGame = editions.find((game) => game.id === edition?.id) ?? editions.at(-1) ?? null;
 
-  async function saveName(event: FormEvent) {
-    event.preventDefault();
-    const next = draft.trim();
-    if (!next) {
-      setFailure("Enter a name for this install.");
-      return;
-    }
-    try {
-      await onRenameInstallation?.(installation, next);
-      setLocalName({ slot, name: next });
-      setEditing(false);
-      setFailure(null);
-    } catch (error) {
-      setFailure(message(error));
-    }
-  }
-
   return (
     <div className={styles.screen}>
       <KeyArt edition={edition?.id ?? null} dim={0.78} />
       <div className={page.page}>
         <div className={page.header}>
-          {editing ? (
-            <form className={styles.nameForm} onSubmit={(event) => void saveName(event)}>
-              <input
-                autoFocus
-                aria-label="Installation name"
-                className={styles.nameField}
-                value={draft}
-                maxLength={64}
-                onChange={(event) => setDraft(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Escape") setEditing(false);
-                }}
-              />
-              <button type="submit" className={page.outline}>
-                SAVE
-              </button>
-              <button type="button" className={page.quiet} onClick={() => setEditing(false)}>
-                CANCEL
-              </button>
-            </form>
-          ) : (
-            <div className={styles.titleRow}>
-              <h1 className={page.title}>{name}</h1>
-              {onRenameInstallation && (
-                <button
-                  type="button"
-                  className={page.icon}
-                  aria-label={`Rename ${name}`}
-                  title="Rename"
-                  onClick={() => {
-                    setDraft(name);
-                    setEditing(true);
-                  }}
-                >
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 16 16"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.3"
-                    aria-hidden="true"
-                  >
-                    <path d="M11 2.5l2.5 2.5L6 12.5H3.5V10z" />
-                  </svg>
-                </button>
-              )}
-            </div>
-          )}
-          <button type="button" className={page.quiet} onClick={onImport}>
-            INSTALL ANOTHER COPY
-          </button>
+          <h1 className={page.title}>GAME</h1>
         </div>
 
         {(notice || failure) && (
@@ -408,47 +382,14 @@ export function GameScreen({
           </div>
 
           {others.length > 0 && (
-            <section className={`${page.panel} ${styles.wide}`} aria-labelledby="game-others">
-              <h2 id="game-others" className={page.label}>
-                OTHER INSTALLS
-              </h2>
-              <ul className={styles.editions}>
-                {others.map((other) => (
-                  <li key={other.installation.slot} className={styles.edition}>
-                    <span className={styles.editionName}>{installName(other)}</span>
-                    <span className={page.status}>
-                      {other.editions.map((game) => EDITION_BRAND[game.id].short).join(" · ") ||
-                        "Not finished"}
-                    </span>
-                    <button
-                      type="button"
-                      className={page.outline}
-                      onClick={() => onUse(other.installation.slot)}
-                    >
-                      USE
-                    </button>
-                    <RemoveButton
-                      install={other}
-                      label={`Remove ${installName(other)}`}
-                      className={page.icon}
-                      onRemove={() => void remove(other.installation)}
-                    >
-                      <svg
-                        width="16"
-                        height="16"
-                        viewBox="0 0 16 16"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.3"
-                        aria-hidden="true"
-                      >
-                        <path d="M2.5 4h11M6 4V2.5h4V4M4 4l.7 9.5h6.6L12 4" />
-                      </svg>
-                    </RemoveButton>
-                  </li>
-                ))}
-              </ul>
-            </section>
+            <OlderCopies
+              others={others}
+              onDelete={() =>
+                void (async () => {
+                  for (const other of others) await remove(other.installation);
+                })()
+              }
+            />
           )}
         </div>
       </div>

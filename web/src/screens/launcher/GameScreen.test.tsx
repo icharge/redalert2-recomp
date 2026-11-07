@@ -35,7 +35,6 @@ function show(over: Partial<Parameters<typeof GameScreen>[0]> = {}) {
     install: install([yr]),
     edition: yr,
     others: [],
-    onUse: vi.fn(),
     onResume: vi.fn(),
     onImport: vi.fn(),
     onRemove: vi.fn(async () => {}),
@@ -111,15 +110,11 @@ describe("GameScreen", () => {
     expect(screen.getByRole("button", { name: "RESUME INSTALL" })).toBeInTheDocument();
   });
 
-  it("renames the install", async () => {
-    const onRenameInstallation = vi.fn(async () => {});
-    const { user } = show({ onRenameInstallation });
-    await user.click(screen.getByRole("button", { name: "Rename Yuri's Revenge" }));
-    const field = screen.getByRole("textbox", { name: "Installation name" });
-    await user.clear(field);
-    await user.type(field, "Main{Enter}");
-    expect(onRenameInstallation).toHaveBeenCalledWith(expect.objectContaining({ slot: 1 }), "Main");
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Main");
+  it("is titled GAME, with no rename and no second copy", () => {
+    show({ install: install([game()], { displayName: "Modded" }) });
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("GAME");
+    expect(screen.queryByRole("button", { name: /^Rename/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "INSTALL ANOTHER COPY" })).toBeNull();
   });
 
   it("browses the files of the whole installation", async () => {
@@ -200,40 +195,33 @@ describe("GameScreen", () => {
     expect(await screen.findByText("storage said no")).toBeInTheDocument();
   });
 
-  it("lists other installs with USE and REMOVE", async () => {
-    const other = install([game({ slot: 2, storage: "slot-2-ra2md" })], {
-      slot: 2,
-      name: "Copy",
-      displayName: "Modded",
-    });
-    const { props, user } = show({ others: [other] });
-    const panel = screen.getByRole("region", { name: "OTHER INSTALLS" });
-    expect(panel).toHaveTextContent("Modded");
-    await user.click(within(panel).getByRole("button", { name: "USE" }));
-    expect(props.onUse).toHaveBeenCalledWith(2);
-    await user.click(within(panel).getByRole("button", { name: "Remove Modded" }));
-    await user.click(
-      within(await screen.findByRole("alertdialog")).getByRole("button", { name: "REMOVE" }),
-    );
-    await waitFor(() =>
-      expect(props.onRemove).toHaveBeenCalledWith(expect.objectContaining({ slot: 2 })),
-    );
+  it("offers to delete the copies left from the slot system, after asking", async () => {
+    const copy = (slot: number) =>
+      install([game({ slot, storage: `slot-${slot}-ra2md` })], { slot, name: "Copy" });
+    const { props, user } = show({ others: [copy(2), copy(3)] });
+    const panel = screen.getByRole("region", { name: "OLDER COPIES" });
+    expect(panel).toHaveTextContent("2 older copies of the game take 2.00 GB.");
+    expect(within(panel).queryByRole("button", { name: "USE" })).toBeNull();
+    await user.click(within(panel).getByRole("button", { name: "DELETE THEM" }));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog).toHaveTextContent("DELETE 2 OLDER COPIES?");
+    expect(dialog).toHaveTextContent("Deletes 2.00 GB from this browser.");
+    expect(props.onRemove).not.toHaveBeenCalled();
+    await user.click(within(dialog).getByRole("button", { name: "DELETE" }));
+    await waitFor(() => expect(props.onRemove).toHaveBeenCalledTimes(2));
+    expect(props.onRemove).toHaveBeenCalledWith(expect.objectContaining({ slot: 2 }));
+    expect(props.onRemove).toHaveBeenCalledWith(expect.objectContaining({ slot: 3 }));
+    expect(props.onRemove).not.toHaveBeenCalledWith(expect.objectContaining({ slot: 1 }));
   });
 
-  it("has no OTHER INSTALLS panel with one install", () => {
+  it("has no OLDER COPIES panel with one install", () => {
     show();
-    expect(screen.queryByRole("region", { name: "OTHER INSTALLS" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "OLDER COPIES" })).toBeNull();
   });
 
   it("nothing installed shows INSTALL THE GAME", async () => {
     const { props, user } = show({ install: null, edition: null });
     await user.click(screen.getByRole("button", { name: "INSTALL THE GAME" }));
-    expect(props.onImport).toHaveBeenCalled();
-  });
-
-  it("can install another copy", async () => {
-    const { props, user } = show();
-    await user.click(screen.getByRole("button", { name: "INSTALL ANOTHER COPY" }));
     expect(props.onImport).toHaveBeenCalled();
   });
 });

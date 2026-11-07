@@ -292,23 +292,12 @@ export async function openTab(page, name) {
     .click();
 }
 
-/** Makes `slot` the active install (Game screen, OTHER INSTALLS, USE) unless it already is. */
-export async function useInstall(page, slot) {
-  const active = await page.evaluate(() => localStorage.getItem("ra2-active-slot"));
-  if (active === String(slot)) return;
-  await page.evaluate((value) => localStorage.setItem("ra2-active-slot", value), String(slot));
-  await page.reload();
-  await waitForLauncher(page);
-}
-
-/** The Install screen: INSTALL THE GAME on a first run, else Game → INSTALL ANOTHER COPY. */
+/** The Install screen, from INSTALL THE GAME. One install only: a browser with a game must remove it first. */
 export async function openInstall(page) {
   const first = page.getByRole("button", { name: "INSTALL THE GAME" });
-  if (await first.isVisible().catch(() => false)) await first.click();
-  else {
-    await openTab(page, "GAME");
-    await page.getByRole("button", { name: "INSTALL ANOTHER COPY" }).click();
-  }
+  if (!(await first.isVisible().catch(() => false)))
+    throw new Error("a game is already installed: remove it (GAME, REMOVE GAME) before installing");
+  await first.click();
   await page.getByRole("heading", { name: "INSTALL THE GAME" }).waitFor({ timeout: 30_000 });
 }
 

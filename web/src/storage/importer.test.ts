@@ -253,16 +253,15 @@ describe("runImport", () => {
     expect((await manifest.getGame("ra2md"))?.complete).toBe(true);
   });
 
-  it("creates a new installation for a second completed import of the same folder", async () => {
+  it("refuses a second install: one game only, removed before another folder", async () => {
     const manifest = await Manifest.open(new IDBFactory());
     const target = memoryTarget();
     const prepared = await prepareImport(source(folder()), build, all, roomy);
     expect(await run(prepared, manifest, target)).toBe(1);
-    expect(await run(prepared, manifest, target)).toBe(2);
-    expect(await manifest.listGames()).toHaveLength(2);
-    expect(target.files.has("game/slot-1/ra2.mix")).toBe(true);
-    expect(target.files.has("game/slot-2/ra2.mix")).toBe(true);
-    await expect(run(prepared, manifest, target, { slot: 1 })).rejects.toThrow(/complete/);
+    await expect(run(prepared, manifest, target)).rejects.toThrow(/already installed/);
+    expect(await manifest.listInstallations()).toHaveLength(1);
+    expect([...target.files.keys()].some((path) => path.startsWith("game/slot-2/"))).toBe(false);
+    await expect(run(prepared, manifest, target, { slot: 1 })).rejects.toThrow(/already installed/);
   });
 
   it("resumes after a reload between finishing the first edition and starting the second", async () => {

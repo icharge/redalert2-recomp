@@ -333,6 +333,16 @@ describe("Launcher routes", () => {
     m.close();
   });
 
+  it("with a game installed, /import goes to the Game screen: remove it first", async () => {
+    const m = await installed();
+    window.history.replaceState({}, "", "/import");
+    render(<App />);
+    expect(await screen.findByRole("region", { name: "INSTALLED" })).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/manage");
+    expect(screen.queryByRole("heading", { name: "INSTALL THE GAME" })).toBeNull();
+    m.close();
+  });
+
   it("nothing installed offers INSTALL THE GAME", async () => {
     vi.stubGlobal("crossOriginIsolated", true);
     vi.stubGlobal("indexedDB", new IDBFactory());

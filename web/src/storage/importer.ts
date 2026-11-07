@@ -145,6 +145,9 @@ export function blocker(prepared: Prepared): string | null {
   return null;
 }
 
+const ALREADY_INSTALLED =
+  "The game is already installed. Remove it first to install from another folder.";
+
 export interface RunOptions {
   prepared: Prepared;
   build: BuildInfo;
@@ -152,7 +155,7 @@ export interface RunOptions {
   target: CopyTarget;
   onProgress?(progress: CopyProgress): void;
   signal?: AbortSignal;
-  /** Explicitly resume an incomplete installation; otherwise create a new slot. */
+  /** Resume this unfinished installation; otherwise create the installation. */
   slot?: number;
 }
 
@@ -165,6 +168,9 @@ export async function runImport(options: RunOptions): Promise<number> {
   const { prepared, build, manifest, target, signal } = options;
   const problem = blocker(prepared);
   if (problem) throw new Error(problem);
+  // One install only: a different folder comes after REMOVE GAME, not beside the game.
+  if (options.slot === undefined && (await manifest.listInstallations()).length > 0)
+    throw new Error(ALREADY_INSTALLED);
   const installation =
     options.slot === undefined
       ? await manifest.createInstallation(prepared.name, prepared.plan.games)
@@ -193,7 +199,7 @@ export async function runImport(options: RunOptions): Promise<number> {
     existing.length &&
     expected.every((id) => existing.some((game) => game.id === id && whole(game)))
   )
-    throw new Error("That installation is already complete. Import it into a new slot instead.");
+    throw new Error(ALREADY_INSTALLED);
   if (
     expected.some((id) => !prepared.plan.games.includes(id)) ||
     existing.some(

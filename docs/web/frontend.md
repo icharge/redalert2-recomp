@@ -46,7 +46,7 @@ web/
         Shell.tsx           the top bar (logo, PLAY / MODS / GAME, storage) and the game rail
         PlayScreen.tsx      the edition's art and title, the mod (PROFILE) picker, PLAY, the status
         ModsScreen.tsx      every mod of the install, install / play / remove
-        GameScreen.tsx      the install: editions, files, saved games, storage, other installs, remove
+        GameScreen.tsx      the install: editions, files, saved games, storage, older copies, remove
         settings/           SettingsScreen and one file per tab; controls.tsx (Toggle, Segmented, PipBar, Row)
       Import.tsx            the Install screen: pick or drop the folder, check it, copy it
       Play.tsx              the canvas, the page controls (GameTray), the dialogs over the game
@@ -98,13 +98,15 @@ install, with `?edition=ra2` or `?edition=ra2md` naming the edition. `/settings`
 go to `/settings/launcher`. Invalid or unfinished slots explain the problem and link back to the
 launcher or to Resume import. Game routes survive refreshes.
 
-**One install.** The manifest keeps every install slot, and several copies of the game are still
-allowed. The launcher shows one of them, the *active install*: the slot remembered in
-`ra2-active-slot`, else the lowest slot with a complete game, else the lowest slot
-(`storage/active-install.ts`). Its editions are the tiles in the game rail, Red Alert 2 first; the
-chosen one is remembered per slot in `ra2-edition:<slot>` and defaults to Yuri's Revenge. The Game
-screen lists the other installs under OTHER INSTALLS with USE and remove; a new copy becomes the
-active install when its import finishes.
+**One install.** The browser holds one copy of the game. To install from another folder the player
+removes the game first: with a game installed, `/import` goes to the Game screen, and `runImport`
+refuses a new install too (a resume, `?resume=<slot>`, still works). Storage keeps its slot layout
+(`game/slot-1/`, `slot-1-ra2md` settings keys), so nothing moves. The launcher shows the *active
+install*: the slot remembered in `ra2-active-slot`, else the lowest slot with a complete game,
+else the lowest slot (`storage/active-install.ts`). Its editions are the tiles in the game rail,
+Red Alert 2 first; the chosen one is remembered per slot in `ra2-edition:<slot>` and defaults to
+Yuri's Revenge. Copies left from when several installs were allowed show on the Game screen as
+OLDER COPIES, with their size and DELETE THEM behind a confirm; nothing is deleted without it.
 
 **All games.** A setting changed on the Settings screen is written to every edition of the active
 install, each into its own files (`storage/all-games.ts`): `RA2.INI` and `RA2MD.INI`, both
@@ -137,7 +139,7 @@ is never reused for another slot. Mod/font restarts reload the same game URL.
    the active one. INSTALL MOD (or a dropped folder) asks which edition when there are two.
 4. **Game.** The install's editions and their readiness, BROWSE FILES, RESUME INSTALL, ADD MOVIES,
    the saved games of the chosen edition (DOWNLOAD .ZIP, IMPORT .ZIP), browser storage, REMOVE
-   GAME (an alert dialog says the size and that saves and settings are kept), and OTHER INSTALLS.
+   GAME (an alert dialog says the size and that saves and settings are kept), and OLDER COPIES.
 5. **Install** (`/import`, full screen). Steps 1 FOLDER, 2 CHECK, 3 COPY: the folder picker
    (`showDirectoryPicker`, Chromium), the file picker and a drop zone; then the checks from
    [storage.md](storage.md) and three options (movies, saved games, settings and hotkeys); then
