@@ -36,9 +36,15 @@ Uncommitted files (all mine, none shared with the other session's work):
 - `src/linux/script.c`: calls `web_map_search_start()` in `script_start()`.
 - `CMakeLists.txt`: adds `src/web/map_dialog.c`.
 
-**Next step:** the last build (RA2, into `web/public/game`) has the `WM_GETTEXT` read; check in the
-browser that typing "lake" in the box narrows the list (it did not with `hle_window_text`). Note the
-browser tool's `type` action does not reach the game; use `key` with "l a k e".
+**Next step (a bug):** with the last build (RA2, into `web/public/game`, `WM_GETTEXT` read) the box
+shows "lake" but the list is still NOT narrowed. Find out which link breaks: is
+`web_map_search_dialog` reached for 0x6B (the swap hook made the dialog), does
+`hle_dialog_item(d, 2400)` find the box, what does `WM_GETTEXT` return (add a temporary
+`fprintf(stderr, "[maps] ...")` in `web_map_search_pump`, run headless:
+`node build-web-game/ra2.js --run --game ./game --headless --mute --debuglog --press 0xE2:1667@2
+--press 0x100:1401@2 --press 0x102:1450@3` then type with `--key 0x4C@8` etc.). The React overlay
+of `602587ac` did narrow the list, so `hle_list_filter` itself works. Note the browser tool's `type`
+action does not reach the game; use `key` with "l a k e".
 
 Then:
 1. Remove the React overlay: `MapSearch.tsx/.module.css/.test.tsx`, its use in `Play.tsx`,
