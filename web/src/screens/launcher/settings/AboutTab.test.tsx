@@ -79,7 +79,7 @@ describe("AboutTab", () => {
     expect(within(version).queryByText("Game")).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: "COPY BUILD INFO" }));
     expect(deps.copy).toHaveBeenCalledWith(
-      expect.stringMatching(/^YuriNet 0\.1\.0, build 722705c66c8d2a2b, no game installed, /),
+      expect.stringMatching(/^YuriNET 0\.1\.0, build 722705c66c8d2a2b, no game installed, /),
     );
   });
 
@@ -105,7 +105,8 @@ describe("AboutTab", () => {
 
   it("links the credits to their GitHub repositories, in a new tab", () => {
     setup();
-    const web = screen.getByRole("link", { name: /THAI RA2/ });
+    const web = screen.getByRole("link", { name: /iCharge · redalert2-recomp/ });
+    expect(screen.getByText("Web port & Launcher")).toBeInTheDocument();
     expect(web).toHaveAttribute("href", "https://github.com/icharge/redalert2-recomp");
     expect(web).toHaveAttribute("target", "_blank");
     expect(web).toHaveAttribute("rel", "noopener noreferrer");
@@ -121,7 +122,12 @@ describe("AboutTab", () => {
 
   it("says the game belongs to Electronic Arts and opens the licence list", async () => {
     setup();
-    expect(screen.getByText(/© Electronic Arts Inc\./)).toBeInTheDocument();
+    expect(
+      screen.getByText(/© Electronic Arts Inc\. YuriNET is a fan project/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/^YuriNET © 2026 THAI RA2\. .*recompilation, © 2026 sp00nz\.$/),
+    ).toBeInTheDocument();
     expect(screen.queryByText("Emscripten runtime")).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "OPEN-SOURCE LICENCES" }));
     expect(screen.getByText("Emscripten runtime")).toBeInTheDocument();
@@ -132,7 +138,7 @@ describe("AboutTab", () => {
     await screen.findByText("722705c66c8d2a2b");
     await userEvent.click(screen.getByRole("button", { name: "COPY BUILD INFO" }));
     expect(deps.copy).toHaveBeenCalledWith(
-      expect.stringMatching(/^YuriNet 0\.1\.0, build 722705c66c8d2a2b, Yuri's Revenge, /),
+      expect.stringMatching(/^YuriNET 0\.1\.0, build 722705c66c8d2a2b, Yuri's Revenge, /),
     );
     expect(screen.getByRole("button", { name: "COPIED" })).toBeInTheDocument();
   });

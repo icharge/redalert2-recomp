@@ -52,8 +52,8 @@ function longDate(date: string): string {
 
 const CREDITS: { role: string; who: string; href?: string }[] = [
   {
-    role: "Web port",
-    who: "THAI RA2 · redalert2-recomp",
+    role: "Web port & Launcher",
+    who: "iCharge · redalert2-recomp",
     href: "https://github.com/icharge/redalert2-recomp",
   },
   {
@@ -71,7 +71,7 @@ const CREDITS: { role: string; who: string; href?: string }[] = [
 ];
 
 const LICENCES: [string, string][] = [
-  ["YuriNet launcher", "MIT"],
+  ["YuriNET launcher", "MIT"],
   ["pcrecomp", "MIT"],
   ["React, React DOM", "MIT"],
   ["React Router", "MIT"],
@@ -136,7 +136,7 @@ export function AboutTab({
     release && release.version !== "Unreleased" ? `What's new in ${release.version}` : "What's new";
 
   const copy = async () => {
-    const text = `YuriNet ${deps.version}, build ${build ?? "unknown"}, ${edition?.title ?? "no game installed"}, ${navigator.userAgent}`;
+    const text = `YuriNET ${deps.version}, build ${build ?? "unknown"}, ${edition?.title ?? "no game installed"}, ${navigator.userAgent}`;
     try {
       await deps.copy(text);
       setCopied("copied");
@@ -290,13 +290,16 @@ export function AboutTab({
           Legal
         </h2>
         <p>
-          Command &amp; Conquer: Red Alert 2 and Yuri’s Revenge are © Electronic Arts Inc. YuriNet
+          Command &amp; Conquer: Red Alert 2 and Yuri’s Revenge are © Electronic Arts Inc. YuriNET
           is a fan project. It is not made, endorsed or supported by Electronic Arts.
         </p>
         <p className={styles.meta}>
           The game files come from your own copy and stay in this browser.
         </p>
-        <p className={styles.meta}>YuriNet’s own code is under the MIT licence, © 2026 sp00nz.</p>
+        <p className={styles.meta}>
+          YuriNET © 2026 THAI RA2. Its code is under the MIT licence and builds on the
+          recompilation, © 2026 sp00nz.
+        </p>
         <button
           type="button"
           className={styles.quiet}
