@@ -287,6 +287,30 @@ describe("Launcher routes", () => {
     m.close();
   });
 
+  it("REMOVE GAME forgets the game on the page even when a file will not delete", async () => {
+    const m = await installed();
+    // the copy is there, but this stand-in for OPFS cannot remove anything
+    const opfs = fakeOpfs(
+      Object.fromEntries(Object.keys(files).map((name) => [`game/slot-1/${name}`, 4])),
+    );
+    vi.stubGlobal("navigator", {
+      storage: {
+        estimate: async () => ({ quota: 1e12, usage: 0 }),
+        getDirectory: async () => opfs,
+      },
+    });
+    window.history.replaceState({}, "", "/manage");
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "REMOVE GAME" }));
+    await user.click(screen.getByRole("button", { name: "REMOVE" }));
+    // the record is gone, so the page must not keep offering this installation (its RESUME
+    // INSTALL would open an import for a slot that no longer exists)
+    expect(await screen.findByText("No game installed yet.")).toBeInTheDocument();
+    expect(await m.listInstallations()).toEqual([]);
+    m.close();
+  });
+
   it("/settings/nope redirects to /settings/launcher", async () => {
     const m = await installed();
     window.history.replaceState({}, "", "/settings/nope");

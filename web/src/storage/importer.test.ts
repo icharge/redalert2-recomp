@@ -273,6 +273,31 @@ describe("runImport", () => {
     await expect(run(prepared, manifest, target, { slot: 1 })).rejects.toThrow(/already installed/);
   });
 
+  it("installs when the page still offered a resume of an installation that has since been removed", async () => {
+    // e.g. REMOVE GAME in another tab, or a removal whose files then failed to delete: the
+    // launcher's list still has the slot, so RESUME INSTALL opened the import for it
+    const manifest = await Manifest.open(new IDBFactory());
+    const target = memoryTarget();
+    const prepared = await prepareImport(source(folder()), build, all, roomy);
+    const gone = await manifest.createInstallation("Removed meanwhile", ["ra2md"]);
+    await manifest.removeInstallation(gone.slot);
+    const slot = await run(prepared, manifest, target, { slot: gone.slot });
+    expect(await manifest.listInstallations()).toEqual([expect.objectContaining({ slot })]);
+    expect((await manifest.getGame("ra2md", slot))?.complete).toBe(true);
+  });
+
+  it("still keeps to one install when the removed installation's slot was resumed", async () => {
+    const manifest = await Manifest.open(new IDBFactory());
+    const prepared = await prepareImport(source(folder()), build, all, roomy);
+    const gone = await manifest.createInstallation("Removed meanwhile", ["ra2md"]);
+    await manifest.removeInstallation(gone.slot);
+    await manifest.createInstallation("Installed meanwhile", ["ra2md"]);
+    await expect(run(prepared, manifest, memoryTarget(), { slot: gone.slot })).rejects.toThrow(
+      /already installed/,
+    );
+    expect(await manifest.listInstallations()).toHaveLength(1);
+  });
+
   const withMods = () => [
     ...folder(),
     file("Mods/Lite/rulesmd.ini", 6),

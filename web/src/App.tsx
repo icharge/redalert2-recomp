@@ -379,10 +379,15 @@ function Main() {
                   : `${count} saved game${count === 1 ? "" : "s"} brought in.`;
               }}
               onRemove={async (installation) => {
-                await manifestWork(async () =>
-                  removeFiles(target, await manifest.removeInstallation(installation.slot)),
-                );
-                await reload();
+                try {
+                  await manifestWork(async () =>
+                    removeFiles(target, await manifest.removeInstallation(installation.slot)),
+                  );
+                } finally {
+                  // the record is gone even when a file would not delete: the page must not
+                  // keep listing the installation (its RESUME INSTALL would name a missing slot)
+                  await reload();
+                }
               }}
             />
           }

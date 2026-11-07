@@ -198,14 +198,15 @@ export async function runImport(options: RunOptions): Promise<number> {
   const { prepared, build, manifest, target, signal } = options;
   const problem = blocker(prepared);
   if (problem) throw new Error(problem);
+  // A resume names the installation the launcher listed, which can have been removed since (in
+  // another tab, or by a REMOVE GAME whose files then failed to delete). Then it is a new install.
+  const resumed =
+    options.slot === undefined ? undefined : await manifest.getInstallation(options.slot);
   // One install only: a different folder comes after REMOVE GAME, not beside the game.
-  if (options.slot === undefined && (await manifest.listInstallations()).length > 0)
+  if (!resumed && (await manifest.listInstallations()).length > 0)
     throw new Error(ALREADY_INSTALLED);
   const installation =
-    options.slot === undefined
-      ? await manifest.createInstallation(prepared.name, prepared.plan.games)
-      : await manifest.getInstallation(options.slot);
-  if (!installation) throw new Error("That installation does not exist.");
+    resumed ?? (await manifest.createInstallation(prepared.name, prepared.plan.games));
   const slot = installation.slot;
   const existing = await manifest.listGames(slot);
   const expected = installation.editions ?? existing.map((game) => game.id);
