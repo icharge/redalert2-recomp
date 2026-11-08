@@ -255,6 +255,8 @@ which settles the doubt left by the second step.
   proc hook (script.c's `watch`) and sends the page `mapFinder`, which opens the panel. The hook sees a message at
   every procedure that passes it along, so one press arrives four times: the C side takes the first and ignores
   repeats for 300 ms. `web/e2e/maps-button.mjs` checks one press is one event.
+- **Restyled.** The panel is inside `GameDialogChrome` (the link dialogs' frame, title strip and red plates), with a
+  dark list well and yellow text like the game's lists. It is still a page panel, not a game screen.
 - **A screen of the game's own.** Not done, and not possible from the host alone. A game screen is a dialog template
   plus the game's own procedure, which is lifted code. The host can edit a template or swap it for a screen the game
   already opens, and watch or send messages, but it has no way to add a procedure, so there is nothing to run a new

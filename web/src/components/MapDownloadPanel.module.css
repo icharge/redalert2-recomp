@@ -1,102 +1,102 @@
-/* "Find maps" over Customize Battle (MapDownloadPanel.tsx). The look follows LanPanel. */
-.panel {
-  width: 620px !important;
-  max-width: calc(100vw - 32px) !important;
-  padding: 24px !important;
-  border-radius: 0 !important;
-  background: rgba(12, 13, 16, 0.97) !important;
-  border: 1px solid #3a2023;
-  border-top: 3px solid var(--red);
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.7);
-  color: var(--text);
-  font-family: var(--font-body);
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
+/* "Find Maps" over Customize Battle (MapDownloadPanel.tsx), dressed as one of the game's own panels by
+   GameDialogChrome: the frame, title strip and red plates come from there. Only the content is ours. */
+.content {
+  width: 640px;
+  max-width: calc(100vw - 32px);
+  padding: 0;
+  overflow: hidden;
+  background: transparent;
+  box-shadow: none;
 }
 
-.title {
-  margin: 0;
-  font-family: var(--font-display);
-  font-size: 26px;
-  font-weight: 400;
-  letter-spacing: 0.04em;
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .note {
   margin: 0;
-  font-size: 13px;
-  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+  color: #d9c89a;
 }
 
 .search {
   display: flex;
   gap: 8px;
 }
+
+/* A list box like the game's: dark well, metal edge, yellow text */
 .input {
   flex: 1;
-  height: 38px;
+  min-width: 0;
+  height: 34px;
   padding: 0 10px;
-  border: 1px solid #3a3b40;
-  background: #15161a;
-  color: var(--text);
-  font-size: 15px;
-}
-.button {
-  min-width: 96px;
-  height: 38px;
-  border: 0;
-  background: var(--red);
-  color: #fff;
-  font-family: var(--font-label);
+  border: 2px solid var(--gd-metal, #9a9da6);
+  border-radius: 2px;
+  background: rgb(6 0 0 / 0.78);
+  color: #ffe9a0;
+  font: inherit;
   font-size: 14px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  cursor: pointer;
 }
-.button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+.input::placeholder {
+  color: #a8966a;
+}
+.input:focus-visible {
+  outline: 2px solid var(--gd-metal-light, #fdfcff);
+  outline-offset: 1px;
 }
 
 .results {
   list-style: none;
   margin: 0;
   padding: 0;
-  max-height: 320px;
+  max-height: 300px;
   overflow-y: auto;
-  border: 1px solid #2a2b30;
+  border: 2px solid var(--gd-metal, #9a9da6);
+  border-radius: 2px;
+  background: rgb(6 0 0 / 0.78);
 }
 .row {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 10px;
+  padding: 6px 10px;
+}
+.row:hover {
+  background: rgb(175 5 5 / 0.35);
 }
 .row + .row {
-  border-top: 1px solid #2a2b30;
+  border-top: 1px solid rgb(154 157 166 / 0.25);
 }
 .name {
   flex: 1;
   min-width: 0;
   overflow-wrap: anywhere;
   font-size: 14px;
+  color: #ffe9a0;
 }
 .tag {
-  font-family: var(--font-label);
-  font-size: 11px;
-  letter-spacing: 0.1em;
-  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #a8966a;
 }
 
 .status {
   margin: 0;
-  font-size: 14px;
-  color: var(--muted);
+  font-size: 13px;
+  color: #d9c89a;
 }
 .error {
   color: #ff8a80;
 }
 .done {
-  color: var(--green);
+  color: #9fe29f;
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
 }

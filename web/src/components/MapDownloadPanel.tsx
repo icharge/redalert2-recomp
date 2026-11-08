@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import type { GameHandle } from "../game/loader";
 import { loadDownloadedMaps } from "../storage/downloaded-maps";
 import { downloadMap, installMap, searchMaps, type MapResult } from "../game/mapdb";
+import { gameDialogButtonClass, GameDialogChrome } from "./GameDialogChrome";
 import styles from "./MapDownloadPanel.module.css";
 
 type Progress = Record<string, "busy" | "done" | string>;
@@ -81,72 +82,82 @@ export function MapDownloadPanel({
 
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
-      <Dialog.Content className={styles.panel} aria-describedby={undefined}>
-        <Dialog.Title className={styles.title}>Find maps</Dialog.Title>
-        <p className={styles.note}>
-          Yuri&apos;s Revenge maps from CnCNet&apos;s map database. Unreviewed fan-made files.
-          Downloaded maps are kept in this browser and listed every time you play.
-        </p>
-        <form
-          className={styles.search}
-          onSubmit={(event) => {
-            event.preventDefault();
-            void search();
-          }}
-        >
-          <input
-            className={styles.input}
-            aria-label="Search maps"
-            placeholder="Map name"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            autoFocus
-          />
-          <button type="submit" className={styles.button} disabled={searching}>
-            SEARCH
-          </button>
-        </form>
-        {error && (
-          <p className={`${styles.status} ${styles.error}`} role="alert">
-            {error}
-          </p>
-        )}
-        {searching && <p className={styles.status}>Searching…</p>}
-        {results && !searching && results.length === 0 && (
-          <p className={styles.status}>No maps found.</p>
-        )}
-        {results && results.length > 0 && (
-          <ul className={styles.results} aria-label="Maps found">
-            {results.map((map) => {
-              const state = progress[map.sha1];
-              return (
-                <li key={map.sha1} className={styles.row}>
-                  <span className={styles.name}>
-                    {map.name}
-                    {state && state !== "busy" && state !== "done" && (
-                      <span className={`${styles.status} ${styles.error}`}> — {state}</span>
-                    )}
-                    {state === "done" && (
-                      <span className={`${styles.status} ${styles.done}`}>
-                        {" "}
-                        — added to the list
+      <Dialog.Content className={styles.content} aria-describedby={undefined}>
+        <GameDialogChrome title="Find Maps">
+          <div className={styles.stack}>
+            <p className={styles.note}>
+              Yuri&apos;s Revenge maps from CnCNet&apos;s map database. Unreviewed fan-made files.
+              Downloaded maps are kept in this browser and listed every time you play.
+            </p>
+            <form
+              className={styles.search}
+              onSubmit={(event) => {
+                event.preventDefault();
+                void search();
+              }}
+            >
+              <input
+                className={styles.input}
+                aria-label="Search maps"
+                placeholder="Map name"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                autoFocus
+              />
+              <button type="submit" className={gameDialogButtonClass} disabled={searching}>
+                Search
+              </button>
+            </form>
+            {error && (
+              <p className={`${styles.status} ${styles.error}`} role="alert">
+                {error}
+              </p>
+            )}
+            {searching && <p className={styles.status}>Searching…</p>}
+            {results && !searching && results.length === 0 && (
+              <p className={styles.status}>No maps found.</p>
+            )}
+            {results && results.length > 0 && (
+              <ul className={styles.results} aria-label="Maps found">
+                {results.map((map) => {
+                  const state = progress[map.sha1];
+                  return (
+                    <li key={map.sha1} className={styles.row}>
+                      <span className={styles.name}>
+                        {map.name}
+                        {state && state !== "busy" && state !== "done" && (
+                          <span className={`${styles.status} ${styles.error}`}> — {state}</span>
+                        )}
+                        {state === "done" && (
+                          <span className={`${styles.status} ${styles.done}`}>
+                            {" "}
+                            — added to the list
+                          </span>
+                        )}
                       </span>
-                    )}
-                  </span>
-                  {map.incomplete && <span className={styles.tag}>UNREVIEWED</span>}
-                  <button
-                    type="button"
-                    className={styles.button}
-                    disabled={state === "busy" || state === "done"}
-                    onClick={() => void download(map)}
-                  >
-                    {state === "busy" ? "…" : state === "done" ? "ADDED" : "DOWNLOAD"}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
+                      {map.incomplete && <span className={styles.tag}>UNREVIEWED</span>}
+                      <button
+                        type="button"
+                        className={gameDialogButtonClass}
+                        disabled={state === "busy" || state === "done"}
+                        onClick={() => void download(map)}
+                      >
+                        {state === "busy" ? "…" : state === "done" ? "Added" : "Download"}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            <div className={styles.footer}>
+              <Dialog.Close>
+                <button type="button" className={gameDialogButtonClass}>
+                  Close
+                </button>
+              </Dialog.Close>
+            </div>
+          </div>
+        </GameDialogChrome>
       </Dialog.Content>
     </Dialog.Root>
   );
