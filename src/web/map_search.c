@@ -117,8 +117,12 @@ static void tell(search_status now) {
     g_told = now;
 }
 
+static void maps_rescan_now(void);
+static int maps_rescan_pending(void);
+
 /* The presenter's pump, on the game's thread. */
 void web_map_search_pump(void) {
+    if (maps_rescan_pending()) maps_rescan_now();
     search_status now = { 0 };
     uint32_t list = screen_showing() ? hle_dialog_item(g_screen.dialog, MAP_LIST_ID) : 0;
     int l, t, r, b;
@@ -135,3 +139,55 @@ void web_map_search_pump(void) {
     now.x = l, now.y = t, now.w = r - l, now.h = b - t;
     tell(now);
 }
+
+/* ---- prototype: scan the map folder again (docs/web/online-maps-research.md) ----------------------
+ * Yuri's Revenge only. The game lists its maps once, in Session's one-time init (0x699980), into the
+ * vector at Session + 0x690. ra2_maps_rescan(truncate) asks the pump to run that scan again on the
+ * game's thread; truncate 1 sets the vector's count to 0 first (the old items are leaked), 0 appends. */
+#ifndef RA2_TARGET_GAME
+#include <emscripten.h>
+#include "recomp_types.h"
+
+#define SESSION_VA 0x00A8B238u
+#define MAP_ITEMS_VA 0x00A8B8CCu    /* the vector's item array */
+#define MAP_COUNT_VA 0x00A8B8D8u
+#define MAP_SCAN_VA 0x00699980u     /* Session::scan_maps(), ecx = Session */
+#define MAP_NAME_OFFSET 0x58u
+
+extern uint32_t g_ecx;
+static volatile int g_rescan;       /* 0 none, 1 append, 2 truncate first */
+
+EMSCRIPTEN_KEEPALIVE int ra2_maps_count(void) { return (int)MEM32(MAP_COUNT_VA); }
+
+EMSCRIPTEN_KEEPALIVE void ra2_maps_rescan(int truncate) { g_rescan = truncate ? 2 : 1; }
+
+static void maps_dump(const char *why) {
+    uint32_t n = MEM32(MAP_COUNT_VA), items = MEM32(MAP_ITEMS_VA);
+    fprintf(stderr, "[maps] %s: %u maps\n", why, n);
+    for (uint32_t i = 0; i < n && i < 4096; i++) {
+        uint32_t item = MEM32(items + 4u * i);
+        fprintf(stderr, "[maps]   %u %s\n", i, item ? (const char *)(uintptr_t)(item + MAP_NAME_OFFSET) : "(null)");
+    }
+}
+
+EMSCRIPTEN_KEEPALIVE void ra2_maps_dump(void) { g_rescan = 3; }
+
+static int maps_rescan_pending(void) { return g_rescan; }
+
+static void maps_rescan_now(void) {
+    int how = g_rescan;
+    g_rescan = 0;
+    if (how == 3) { maps_dump("dump"); return; }
+    uint32_t before = MEM32(MAP_COUNT_VA);
+    if (how == 2) MEM32(MAP_COUNT_VA) = 0;
+    uint32_t keep = g_ecx;
+    g_ecx = SESSION_VA;
+    hle_call_guest(MAP_SCAN_VA, 0, NULL);
+    g_ecx = keep;
+    fprintf(stderr, "[maps] rescan (%s): %u -> %u\n", how == 2 ? "truncate" : "append", before, MEM32(MAP_COUNT_VA));
+    maps_dump("after rescan");
+}
+#else
+static void maps_rescan_now(void) {}
+static int maps_rescan_pending(void) { return 0; }
+#endif
