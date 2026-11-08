@@ -1,0 +1,50 @@
+/* Atmosphere Background trial: the existing art is the entire scope. */
+.launcher-art {
+  --atmosphere-fold-opacity: 0.76;
+  --atmosphere-edge-glow: #b6413526;
+  isolation: isolate;
+}
+.launcher-art::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      ellipse at 88% 88%,
+      var(--atmosphere-edge-glow),
+      transparent 56%
+    ),
+    linear-gradient(
+      94deg,
+      transparent 41%,
+      #b6413500 46%,
+      #b6413518 50%,
+      #b6413500 55%,
+      transparent 64%,
+      #b641351b 72%,
+      transparent 82%
+    );
+  mix-blend-mode: screen;
+}
+.launcher-art.atmosphere-ready::before {
+  display: none;
+}
+.atmosphere-folds {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: var(--atmosphere-fold-opacity);
+  pointer-events: none;
+  mix-blend-mode: screen;
+}
+/* Keep the baseline protective scrim above the light and below the UI. */
+.launcher-art::after {
+  z-index: 1;
+}
+@media (max-width: 767px) {
+  .launcher-art {
+    --atmosphere-fold-opacity: 0.56;
+  }
+}

@@ -1,0 +1,70 @@
+/* Animation Systems trial: retain geometry; establish a reusable motion grammar. */
+:root {
+  --sequence-micro: 160ms;
+  --sequence-state: 220ms;
+  --sequence-panel: 280ms;
+  --sequence-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --sequence-lift: -2px;
+}
+.launcher-button,
+.edition-choice,
+.collection-tools button,
+.launcher-icon-button {
+  transition:
+    transform var(--sequence-micro) var(--sequence-ease),
+    background-color var(--sequence-micro) var(--sequence-ease),
+    border-color var(--sequence-state) var(--sequence-ease),
+    color var(--sequence-micro) var(--sequence-ease);
+}
+.launch-arrow {
+  transition: transform var(--sequence-state) var(--sequence-ease);
+}
+.edition-selected {
+  transition:
+    opacity var(--sequence-state) var(--sequence-ease),
+    transform var(--sequence-state) var(--sequence-ease);
+  transform: scale(0.84);
+}
+.edition-choice[aria-selected="true"] .edition-selected {
+  transform: scale(1);
+}
+.launcher-page :is(button, a, input, select):focus-visible {
+  outline: 2px solid var(--color-launcher-focus);
+  outline-offset: 4px;
+}
+.launch-primary:focus-visible .launch-arrow {
+  transform: translateX(4px);
+}
+.launcher-page :is(button, a):active {
+  transform: translateY(1px);
+}
+.launcher-dialog[open] {
+  animation: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .launcher-button:hover,
+  .edition-choice:hover,
+  .collection-tools button:hover,
+  .launcher-icon-button:hover {
+    transform: translateY(var(--sequence-lift));
+  }
+  .launch-primary:hover .launch-arrow {
+    transform: translateX(4px);
+  }
+  .launcher-page :is(button, a):active {
+    transform: translateY(1px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .launcher-page *,
+  .launcher-page *::before,
+  .launcher-page *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+  .launcher-page :is(button, a):is(:hover, :active),
+  .launch-primary:is(:hover, :focus-visible) .launch-arrow,
+  .edition-selected {
+    transform: none;
+  }
+}

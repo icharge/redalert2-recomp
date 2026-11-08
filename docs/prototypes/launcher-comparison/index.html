@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>RA2 · Launcher design trials</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="./lab.css" />
+    <script src="./variants.js" defer></script>
+    <script src="./lab.js" defer></script>
+  </head>
+  <body>
+    <div class="lab-shell">
+      <header class="lab-header">
+        <a class="lab-brand" href="./index.html"
+          ><span>II</span>RA2 / DESIGN LAB</a
+        ><a class="lab-link" href="../game-sidebar/launcher.html"
+          >Open saved original ↗</a
+        >
+      </header>
+      <main>
+        <section class="lab-intro">
+          <p class="lab-eyebrow">SIX SKILLS · SIX INDEPENDENT TRIALS</p>
+          <h1>Find your next direction.</h1>
+          <p>
+            Compare the visual, interaction, and motion skills against the
+            launcher you chose. Each trial uses the same artwork and working
+            Play → Home flow.
+          </p>
+        </section>
+        <section class="baseline-card" aria-labelledby="baseline-title">
+          <a class="baseline-image" href="../game-sidebar/launcher.html"
+            ><img
+              src="./screenshots/original.png"
+              alt="Your preserved retro modern Red Alert 2 launcher"
+          /></a>
+          <div>
+            <span class="kept-label">PRESERVED ORIGINAL</span>
+            <h2 id="baseline-title">The version you chose.</h2>
+            <p>
+              Your cinematic launcher is kept exactly as it was. The trials live
+              in their own folder and use separate preferences.
+            </p>
+            <div class="baseline-actions">
+              <a class="lab-button" href="../game-sidebar/launcher.html"
+                >Open original ↗</a
+              ><a class="lab-link" href="./preserved-baseline.zip" download
+                >Download snapshot</a
+              >
+            </div>
+          </div>
+        </section>
+        <div class="section-caption">
+          <h2>Explore the six skills</h2>
+          <p>Motion trials are best compared live.</p>
+        </div>
+        <section
+          class="trial-grid"
+          id="trial-grid"
+          aria-label="Launcher design trials"
+        ></section>
+      </main>
+      <footer class="lab-footer">
+        <span>Local prototypes · no game files or production code changed</span
+        ><a href="./README.md">Comparison notes</a>
+      </footer>
+    </div>
+  </body>
+</html>

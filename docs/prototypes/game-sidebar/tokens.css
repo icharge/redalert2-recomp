@@ -45,4 +45,21 @@
   --rail-expanded: 184px;
   --rail-reserved: var(--rail-compact);
   --rail-visible: var(--rail-compact);
+  --font-launcher-display:
+    Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif;
+  --color-launcher-bg: #111516;
+  --color-launcher-panel: #1c2223;
+  --color-launcher-panel-translucent: #1b2021e8;
+  --color-launcher-hover: #303838;
+  --color-launcher-ink: #eee9df;
+  --color-launcher-muted: #b0b5ac;
+  --color-launcher-rule: #424947;
+  --color-launcher-red: #b64135;
+  --color-launcher-red-hover: #c4493b;
+  --color-launcher-selected: #442723;
+  --color-launcher-button-ink: #fff8ef;
+  --color-launcher-focus: #ffb7a8;
+  --color-launcher-shade: #111516e8;
+  --color-launcher-mobile-shade: #11151688;
+  --color-launcher-backdrop: #080c0dcc;
 }

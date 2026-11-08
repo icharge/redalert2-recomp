@@ -1,0 +1,42 @@
+(() => {
+  const grid = document.getElementById("trial-grid");
+  for (const [index, trial] of window.LAUNCHER_VARIANTS.entries()) {
+    const card = document.createElement("article");
+    card.className = "trial-card";
+    const imageLink = document.createElement("a");
+    imageLink.className = "trial-image";
+    imageLink.href = "./preview.html?variant=" + trial.id;
+    const image = document.createElement("img");
+    image.src = "./screenshots/" + trial.id + ".png";
+    image.alt = trial.name + " launcher trial";
+    image.loading = "lazy";
+    imageLink.append(image);
+    const body = document.createElement("div");
+    body.className = "trial-copy";
+    const tag = document.createElement("p");
+    tag.className = "trial-kind";
+    tag.textContent = String(index + 1).padStart(2, "0") + " / " + trial.kind;
+    const heading = document.createElement("h3");
+    heading.textContent = trial.name;
+    const skill = document.createElement("p");
+    skill.className = "trial-skill";
+    skill.textContent = trial.skill;
+    const summary = document.createElement("p");
+    summary.className = "trial-summary";
+    summary.textContent = trial.summary;
+    const actions = document.createElement("div");
+    actions.className = "trial-actions";
+    const compare = document.createElement("a");
+    compare.className = "lab-button";
+    compare.href = "./preview.html?variant=" + trial.id;
+    compare.textContent = "Compare live";
+    const full = document.createElement("a");
+    full.className = "lab-link";
+    full.href = "./variant.html?variant=" + trial.id;
+    full.textContent = "Full size ↗";
+    actions.append(compare, full);
+    body.append(tag, heading, skill, summary, actions);
+    card.append(imageLink, body);
+    grid.append(card);
+  }
+})();

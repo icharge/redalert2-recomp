@@ -40,6 +40,21 @@ describe("BrowserCheck", () => {
 });
 
 describe("App", () => {
+  it("keeps the selected theme on the real import route and back", async () => {
+    vi.stubGlobal("crossOriginIsolated", true);
+    vi.stubGlobal("indexedDB", new IDBFactory());
+    vi.stubGlobal("navigator", { storage: { estimate: async () => ({}) } });
+    vi.stubGlobal("fetch", () => Promise.resolve(new Response(JSON.stringify({ games: {} }))));
+    localStorage.setItem("ra2.launcher.theme", "framed-tech");
+    try {
+      render(<App />);
+      await userEvent.setup().click(await screen.findByRole("button", { name: "Add installation" }));
+      expect(await screen.findByText("Bring your game")).toBeInTheDocument();
+      expect(document.documentElement).toHaveAttribute("data-launcher-theme", "framed-tech");
+      await userEvent.setup().click(screen.getByRole("link", { name: "Back to launcher" }));
+      expect(await screen.findByRole("combobox", { name: "Launcher theme" })).toHaveValue("framed-tech");
+    } finally { localStorage.removeItem("ra2.launcher.theme"); }
+  });
   it("offers resume for a known slot interrupted before edition registration", async () => {
     vi.stubGlobal("crossOriginIsolated", true);
     vi.stubGlobal("indexedDB", new IDBFactory());

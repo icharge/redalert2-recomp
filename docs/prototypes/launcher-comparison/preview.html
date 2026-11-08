@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>RA2 · Live design comparison</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="./lab.css" />
+    <script src="./variants.js" defer></script>
+    <script src="./preview.js" defer></script>
+  </head>
+  <body class="preview-page">
+    <header class="preview-header">
+      <a class="lab-brand" href="./index.html"><span>II</span>All trials</a>
+      <div class="preview-controls">
+        <label class="select-field"
+          >Trial<select
+            id="variant-picker"
+            aria-label="Design trial"
+          ></select></label
+        ><label class="select-field"
+          >Viewport<select id="viewport-picker" aria-label="Preview viewport">
+            <option value="desktop">Desktop · 1440</option>
+            <option value="mobile">Mobile · 390</option>
+          </select></label
+        ><label class="compare-toggle"
+          ><input id="show-original" type="checkbox" checked />Compare
+          original</label
+        ><button id="replay-button" class="lab-button">Replay trial</button>
+      </div>
+    </header>
+    <main class="comparison-main">
+      <div class="comparison-heading">
+        <div>
+          <p id="active-kind" class="lab-eyebrow"></p>
+          <h1 id="active-title"></h1>
+          <p id="active-description"></p>
+        </div>
+        <a
+          id="source-link"
+          class="lab-link"
+          target="_blank"
+          rel="noopener noreferrer"
+          >Read source skill ↗</a
+        >
+      </div>
+      <div id="preview-grid" class="preview-grid">
+        <section
+          id="original-pane"
+          class="preview-pane"
+          aria-label="Preserved original"
+        >
+          <header>
+            <span><i class="saved-dot"></i>Preserved original</span
+            ><a
+              class="lab-link"
+              href="../game-sidebar/launcher.html"
+              target="_blank"
+              rel="noopener"
+              >Open full size ↗</a
+            >
+          </header>
+          <div class="frame-stage">
+            <iframe
+              id="original-frame"
+              title="Preserved original launcher"
+              src="../game-sidebar/launcher.html"
+            ></iframe>
+          </div>
+        </section>
+        <section class="preview-pane" aria-label="Selected design trial">
+          <header>
+            <span id="trial-frame-name"></span
+            ><a
+              id="full-size-link"
+              class="lab-link"
+              target="_blank"
+              rel="noopener"
+              >Open full size ↗</a
+            >
+          </header>
+          <div class="frame-stage">
+            <iframe
+              id="trial-frame"
+              title="Selected launcher design trial"
+            ></iframe>
+          </div>
+        </section>
+      </div>
+      <p class="comparison-tip">
+        Both previews are interactive. Open full size for the closest desktop
+        feel; use Replay trial to see motion again. Home asks before leaving the
+        game preview.
+      </p>
+      <nav class="trial-pagination" aria-label="Design trial navigation">
+        <button id="previous-trial" class="lab-button">← Previous</button
+        ><a href="./index.html" class="lab-link">Back to all six</a
+        ><button id="next-trial" class="lab-button">Next →</button>
+      </nav>
+    </main>
+  </body>
+</html>

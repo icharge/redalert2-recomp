@@ -1,0 +1,10 @@
+# Launcher artwork
+
+- File: launcher-art.png.
+- Mode: built-in ImageGen, generated on 2026-10-25.
+- Purpose: original retro-modern cinematic backdrop for the local launcher prototype.
+- It is illustrative art, not a screenshot of actual game rendering. No production game assets or existing cover artwork were replaced.
+
+## Generation prompt
+
+Use case: stylized-concept. Asset type: original cinematic background illustration for a retro-modern Red Alert 2 game launcher prototype. Create original late-1990s/early-2000s PC strategy game box-art inspired military science fiction, rendered as a sophisticated modern painted 3D illustration with restrained printed grain. NOT a copy of any existing cover. Wide landscape, 16:9 or roughly 1792x1024. A fictional chunky heavy armored tank with two parallel barrels occupies the lower RIGHT half, photographed from a low three-quarter front angle on a worn industrial concrete airfield, with a faint looming airship silhouette and tall concrete/steel industrial structures in the distant RIGHT background. Silhouettes and material detail feel like classic Cold War alternate-history strategy, not contemporary military reportage. NO people, no gore, no national flags, no political symbols, no emblems or lettering, no visible UI, no logos, no text. Palette: deep charcoal, oxidized dark olive metal, dusty warm concrete, a single muted vermilion-red industrial light/haze behind the tank, small soft warm highlights. Atmospheric dusk, low-key cinematic side lighting, disciplined composition, strong iconic silhouette, subtle analog texture. Avoid bright neon, colorful sci-fi energy, lens flare, glossy plastic or excessive explosions. The entire LEFT forty-five percent must be mostly empty very dark charcoal atmosphere with subdued texture and no foreground subjects, reserved for large live interface typography. Darkened edges, tank fully readable on the right, detail concentrates on right third. Keep the bottom edge dark enough for a quiet app footer. This is an illustration asset, not a screenshot or an interface mockup.

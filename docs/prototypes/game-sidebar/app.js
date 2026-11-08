@@ -356,27 +356,11 @@
     $("return-button").textContent = "Returning…";
     stopAudio();
     returnTimer = setTimeout(() => {
-      closeDialog(false);
       state.launcher = true;
-      $("play-screen").hidden = true;
-      $("launcher-screen").hidden = false;
-      $("launcher-title").focus();
-      $("return-button").disabled = false;
-      $("stay-button").disabled = false;
-      $("return-button").removeAttribute("aria-busy");
-      $("return-button").textContent = "Return to launcher";
-      returnTimer = null;
+      window.location.assign(
+        new URL("./launcher.html", window.location.href).href,
+      );
     }, 450);
-  });
-  $("resume-button").addEventListener("click", () => {
-    state.launcher = false;
-    state.hover = false;
-    state.focus = false;
-    state.touch = false;
-    $("launcher-screen").hidden = true;
-    $("play-screen").hidden = false;
-    viewport.focus();
-    renderRail();
   });
 
   const details = {

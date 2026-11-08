@@ -37,6 +37,9 @@ export interface LibraryProps {
   installations?: InstallationRecord[];
   onResume?(slot: number): void;
   onPlay(game: GameRecord): void;
+  /** Shares the active edition when embedded in the cinematic launcher. */
+  selectedEditions?: Readonly<Record<number, string>>;
+  onEditionChange?(slot: number, id: string): void;
   /** the Import screen, for another game or to finish one */
   onImport(): void;
   onRenameInstallation?(installation: InstallationRecord, displayName: string): Promise<void>;
@@ -66,6 +69,8 @@ export function Library({
   installations,
   onResume,
   onPlay,
+  selectedEditions,
+  onEditionChange,
   onImport,
   onRenameInstallation,
   onRemove,
@@ -106,7 +111,7 @@ export function Library({
 
   /** the edition the player chose for this installation, the one they chose last time, else Yuri's Revenge */
   function selectedEdition(slot: number, choices: GameRecord[]): GameRecord | undefined {
-    const remembered = picked[slot] ?? rememberedEdition(slot);
+    const remembered = selectedEditions?.[slot] ?? picked[slot] ?? rememberedEdition(slot);
     return (
       choices.find((game) => game.id === remembered) ??
       choices.find((game) => game.id === "ra2md") ??
@@ -115,6 +120,7 @@ export function Library({
   }
   function pickEdition(slot: number, id: string) {
     setPicked((now) => ({ ...now, [slot]: id }));
+    onEditionChange?.(slot, id);
     try {
       localStorage.setItem(`ra2-edition:${slot}`, id);
     } catch {

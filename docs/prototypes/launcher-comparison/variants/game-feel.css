@@ -1,0 +1,148 @@
+/* Command feedback: the familiar composition, with transient control responses. */
+:root {
+  --feel-confirm: #e8bd8d;
+  --feel-surface: #181e1edb;
+  --feel-response-rule: #6c6455;
+  --feel-press-duration: 100ms;
+  --feel-settle-duration: 260ms;
+  --feel-ease: cubic-bezier(0.16, 0.8, 0.24, 1);
+}
+.launcher-shell {
+  padding-left: max(20px, env(safe-area-inset-left), 4.3vw);
+  padding-right: max(20px, env(safe-area-inset-right), 4.3vw);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.launcher-brand {
+  min-height: 44px;
+}
+.launcher-nav a {
+  min-height: 44px;
+}
+.edition-choice,
+.launch-primary,
+.launch-secondary,
+.collection-tools button {
+  transform-origin: center;
+}
+.launch-primary {
+  position: relative;
+  overflow: hidden;
+  box-shadow:
+    inset 0 1px 0 #ffffff24,
+    0 4px 0 #4d1a16;
+}
+.launch-primary:active {
+  transform: translateY(2px);
+  box-shadow:
+    inset 0 1px 0 #ffffff12,
+    0 2px 0 #4d1a16;
+}
+.launch-primary::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  border: 2px solid var(--feel-confirm);
+}
+.command-response {
+  margin-top: 24px;
+  padding: 12px 14px;
+  min-height: 72px;
+  max-width: 478px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--feel-response-rule);
+  border-left: 3px solid var(--feel-confirm);
+  background: var(--feel-surface);
+}
+.command-response-copy {
+  flex: 1;
+  min-width: 0;
+}
+.command-response-label {
+  display: block;
+  color: var(--feel-confirm);
+  font: 8px/1.6 var(--font-mono);
+  letter-spacing: 0.12em;
+}
+.command-response-message {
+  display: block;
+  color: var(--color-launcher-ink);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.command-response-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--feel-response-rule);
+  color: var(--feel-confirm);
+  font: 15px/1 var(--font-mono);
+}
+.command-feedback-test {
+  min-height: 44px;
+  padding: 8px 10px;
+  flex: none;
+  border: 1px solid var(--color-launcher-rule);
+  border-radius: 2px;
+  background: var(--color-launcher-panel);
+  color: var(--color-launcher-ink);
+  font-size: 11px;
+  white-space: normal;
+}
+.command-feedback-test:hover {
+  background: var(--color-launcher-hover);
+}
+.command-response[data-responding="true"] {
+  border-color: var(--feel-confirm);
+}
+:focus-visible {
+  outline-width: 3px;
+}
+/* Expansion text must stay inside the same content envelope as the original. */
+body[data-edition="yr"] .launch-title {
+  font-size: clamp(59px, 7.1vw, 104px);
+}
+@media (max-width: 767px) {
+  .launcher-shell {
+    padding-inline: max(20px, env(safe-area-inset-left));
+  }
+  .command-response {
+    max-width: 100%;
+  }
+  body[data-edition="yr"] .launch-title {
+    font-size: clamp(54px, 13.3vw, 96px);
+  }
+}
+@media (max-width: 420px) {
+  .launch-title {
+    font-size: clamp(66px, 20vw, 82px);
+  }
+  body[data-edition="yr"] .launch-title {
+    font-size: clamp(54px, 14.8vw, 62px);
+  }
+  .command-response {
+    gap: 9px;
+    padding-inline: 10px;
+  }
+  .command-response-mark {
+    display: none;
+  }
+  .command-feedback-test {
+    max-width: 90px;
+  }
+  .edition-copy strong {
+    font-size: 12px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .launch-primary:active {
+    transform: none;
+  }
+}

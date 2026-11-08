@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>Red Alert 2 · Launcher prototype</title>
+    <link rel="icon" href="../../../web/public/icons/icon.svg" />
+    <link rel="stylesheet" href="./tokens.css" />
+    <link rel="stylesheet" href="./launcher.css" />
+    <script src="./launcher.js" defer></script>
+  </head>
+  <body class="launcher-page">
+    <svg
+      class="symbol-library"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <defs>
+        <symbol id="launch-play" viewBox="0 0 24 24">
+          <path d="m8 4 13 8-13 8Z" />
+        </symbol>
+        <symbol id="launch-folder" viewBox="0 0 24 24">
+          <path d="M3 6h7l2 3h9v11H3Z" />
+        </symbol>
+        <symbol id="launch-plus" viewBox="0 0 24 24">
+          <path d="M12 5v14M5 12h14" />
+        </symbol>
+        <symbol id="launch-arrow" viewBox="0 0 24 24">
+          <path d="M4 12h16m-6-6 6 6-6 6" />
+        </symbol>
+        <symbol id="launch-close" viewBox="0 0 24 24">
+          <path d="m6 6 12 12M6 18 18 6" />
+        </symbol>
+        <symbol id="launch-check" viewBox="0 0 24 24">
+          <path d="m5 12 4 4L19 6" />
+        </symbol>
+      </defs>
+    </svg>
+    <div class="launcher-art" aria-hidden="true"></div>
+    <div class="launcher-shell" id="launcher-screen">
+      <header class="launcher-header">
+        <a
+          class="launcher-brand"
+          href="./launcher.html"
+          aria-label="Red Alert 2 launcher"
+        >
+          <span class="brand-mark" aria-hidden="true">II</span>
+          <span><strong>RED ALERT 2</strong><small>RECOMPILED</small></span>
+        </a>
+        <nav class="launcher-nav" aria-label="Launcher navigation">
+          <span aria-current="page">Library</span>
+          <a href="./index.html"
+            >Game preview <span aria-hidden="true">↗</span></a
+          >
+        </nav>
+        <button
+          class="launcher-button quiet import-button"
+          data-launcher-panel="import"
+        >
+          <svg aria-hidden="true"><use href="#launch-plus" /></svg
+          ><span>Add installation</span>
+        </button>
+      </header>
+
+      <main class="launcher-main">
+        <div class="launch-content">
+          <p class="launch-kicker"><span></span>COMMAND &amp; CONQUER</p>
+          <h1 class="launch-title" id="launcher-title">
+            <span id="edition-title-first">RED</span
+            ><span id="edition-title-second">ALERT <b>2</b></span>
+          </h1>
+          <p class="launch-welcome">Welcome back, Commander.</p>
+          <div class="edition-choices" role="tablist" aria-label="Game edition">
+            <button
+              id="edition-ra2"
+              class="edition-choice"
+              type="button"
+              role="tab"
+              aria-selected="true"
+              aria-controls="edition-summary"
+              data-edition="ra2"
+            >
+              <span class="edition-code">01</span
+              ><span class="edition-copy"
+                ><strong>Red Alert 2</strong><small>THE ORIGINAL</small></span
+              ><svg class="edition-selected" aria-hidden="true">
+                <use href="#launch-check" />
+              </svg>
+            </button>
+            <button
+              id="edition-yr"
+              class="edition-choice"
+              type="button"
+              role="tab"
+              aria-selected="false"
+              aria-controls="edition-summary"
+              tabindex="-1"
+              data-edition="yr"
+            >
+              <span class="edition-code">02</span
+              ><span class="edition-copy"
+                ><strong>Yuri’s Revenge</strong
+                ><small>THE EXPANSION</small></span
+              ><svg class="edition-selected" aria-hidden="true">
+                <use href="#launch-check" />
+              </svg>
+            </button>
+          </div>
+          <div
+            id="edition-summary"
+            class="edition-summary"
+            role="tabpanel"
+            aria-labelledby="edition-ra2"
+          >
+            <span id="edition-description"
+              >Allied or Soviet. Choose your side.</span
+            ><span class="edition-format"
+              >CAMPAIGN / SKIRMISH / MULTIPLAYER</span
+            >
+          </div>
+          <div class="launch-actions">
+            <a
+              id="resume-button"
+              class="launcher-button launch-primary"
+              href="./index.html?edition=ra2"
+              ><svg aria-hidden="true"><use href="#launch-play" /></svg
+              ><span>PLAY</span
+              ><svg class="launch-arrow" aria-hidden="true">
+                <use href="#launch-arrow" /></svg
+            ></a>
+            <button
+              class="launcher-button launch-secondary"
+              data-launcher-panel="settings"
+            >
+              Game settings
+            </button>
+          </div>
+          <p class="launch-shortcut">Your collection. Your command.</p>
+        </div>
+        <div class="art-caption" aria-hidden="true">
+          <span>CLASSIC WARFARE</span><span class="caption-rule"></span
+          ><span>RECOMPILED</span>
+        </div>
+      </main>
+
+      <section class="collection-bar" aria-label="Selected installation">
+        <button class="collection-choice" data-launcher-panel="installation">
+          <svg aria-hidden="true"><use href="#launch-folder" /></svg
+          ><span
+            ><small>INSTALLATION</small
+            ><strong id="collection-name">Classic collection</strong></span
+          ><span class="collection-preview">PREVIEW</span
+          ><span class="collection-chevron" aria-hidden="true">⌄</span>
+        </button>
+        <div class="collection-tools" aria-label="Installation tools">
+          <button data-launcher-panel="files">Browse files</button
+          ><button data-launcher-panel="saves">Saved games</button
+          ><button data-launcher-panel="mods">
+            Mods <span aria-hidden="true">↗</span>
+          </button>
+        </div>
+      </section>
+      <footer class="launcher-footer">
+        <p>
+          <span class="preview-indicator"></span>Design preview · launches the
+          interactive game mockup
+        </p>
+        <span>BUILT FOR YOUR CLASSICS.</span>
+      </footer>
+    </div>
+
+    <dialog
+      id="launcher-dialog"
+      class="launcher-dialog"
+      aria-labelledby="launcher-dialog-title"
+    >
+      <header class="launcher-dialog-header">
+        <div>
+          <p class="dialog-kicker" id="launcher-dialog-kicker">COLLECTION</p>
+          <h2 id="launcher-dialog-title"></h2>
+        </div>
+        <button
+          class="launcher-icon-button"
+          id="launcher-dialog-close"
+          aria-label="Close dialog"
+        >
+          <svg aria-hidden="true"><use href="#launch-close" /></svg>
+        </button>
+      </header>
+      <div id="launcher-dialog-content" class="launcher-dialog-content"></div>
+      <footer class="launcher-dialog-footer">
+        <p id="launcher-dialog-status" role="status"></p>
+        <button
+          class="launcher-button launch-secondary"
+          id="launcher-dialog-done"
+        >
+          Done
+        </button>
+      </footer>
+    </dialog>
+  </body>
+</html>

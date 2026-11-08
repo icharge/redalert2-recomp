@@ -1,0 +1,445 @@
+/* App surfaces and portalled primitives share the selected launcher's material. */
+html[data-launcher-theme] {
+  color-scheme: dark;
+  --ui-bg: #111516;
+  --ui-panel: #1c2223;
+  --ui-raised: #252d2d;
+  --ui-field: #121718;
+  --ui-ink: #eee9df;
+  --ui-muted: #b0b5ac;
+  --ui-line: #424947;
+  --ui-accent: #b64135;
+  --ui-accent-hover: #c4493b;
+  --ui-selected: #442723;
+  --ui-focus: #ffb7a8;
+  --ui-radius: 5px;
+  --ui-control-radius: 3px;
+  --ui-panel-fill: linear-gradient(150deg, #242b2c, #191f20 65%);
+  --ui-panel-shadow: 0 24px 80px #000a, inset 0 1px 0 #ffffff0a;
+  --ui-control-shadow: none;
+  --ui-field-shadow: inset 0 1px 3px #0005;
+  --ui-overlay: #080c0dbb;
+  --ui-body-font: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --ui-display-font: Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif;
+  --ui-mono-font: "Cascadia Code", Consolas, monospace;
+}
+html[data-launcher-theme="skeuomorphic"] {
+  --ui-bg: #161a1a;
+  --ui-panel: #242929;
+  --ui-raised: #333a39;
+  --ui-field: #111616;
+  --ui-line: #5a6460;
+  --ui-accent: #994d3b;
+  --ui-accent-hover: #b25a44;
+  --ui-selected: #46332b;
+  --ui-radius: 16px;
+  --ui-control-radius: 7px;
+  --ui-panel-fill: linear-gradient(145deg, #303635, #171d1d 80%);
+  --ui-panel-shadow:
+    0 2px 0 #7c8279, 0 22px 55px #000b, inset 0 1px 0 #ffffff24, inset 0 0 0 5px #141918;
+  --ui-control-shadow: inset 0 1px 0 #ffffff30, 0 3px 0 #0c1010, 0 4px 8px #0005;
+  --ui-field-shadow: inset 0 2px 6px #000c, 0 1px 0 #ffffff18;
+  --ui-overlay: #0d1111bb;
+}
+html[data-launcher-theme="framed-tech"] {
+  --ui-bg: #0b0d0e;
+  --ui-panel: #141919;
+  --ui-raised: #202827;
+  --ui-field: #0c1112;
+  --ui-ink: #f0f0e9;
+  --ui-muted: #acb5ae;
+  --ui-line: #69716e;
+  --ui-accent: #c84e3d;
+  --ui-accent-hover: #dd604c;
+  --ui-focus: #f1d7ba;
+  --ui-radius: 0px;
+  --ui-control-radius: 0px;
+  --ui-panel-fill: linear-gradient(135deg, #1c2423, #0c1112 65%);
+  --ui-panel-shadow: 0 20px 70px #000c, 0 0 0 5px #0c1112, 0 0 0 6px #69716e66;
+  --ui-field-shadow: none;
+  --ui-overlay: #020506cc;
+}
+html[data-launcher-theme="game-ui"] {
+  --ui-panel: #171f21;
+  --ui-raised: #253033;
+  --ui-field: #101719;
+  --ui-line: #4a5a5b;
+  --ui-accent: #b94d3c;
+  --ui-selected: #442722;
+  --ui-focus: #edc192;
+  --ui-radius: 2px;
+  --ui-control-radius: 1px;
+  --ui-panel-fill: linear-gradient(90deg, #202b2d, #171f21 36%);
+  --ui-panel-shadow: -4px 0 0 #b94d3c, 0 22px 65px #000b;
+}
+html[data-launcher-theme="game-feel"] {
+  --ui-panel: #202627;
+  --ui-raised: #303938;
+  --ui-accent: #b84b38;
+  --ui-accent-hover: #ce5943;
+  --ui-line: #616d62;
+  --ui-focus: #e8c799;
+  --ui-control-shadow: inset 0 1px 0 #ffffff24, 0 3px 0 #341a16;
+  --ui-panel-fill: linear-gradient(150deg, #2b3330, #191f20 70%);
+}
+html[data-launcher-theme="atmosphere"] {
+  --ui-panel: #241f20;
+  --ui-raised: #382a29;
+  --ui-field: #171516;
+  --ui-line: #634943;
+  --ui-panel-fill:
+    radial-gradient(ellipse at 100% 100%, #b641352e, transparent 60%),
+    linear-gradient(130deg, #272a29, #161a1b);
+  --ui-panel-shadow: 0 22px 80px #000c, 0 0 50px #b6413514, inset 0 1px 0 #e6b29b20;
+  --ui-overlay: #0a080bcc;
+}
+html[data-launcher-theme="animation"] {
+  --ui-panel: #1c2424;
+  --ui-raised: #2c3735;
+  --ui-line: #5a685f;
+  --ui-focus: #ffd0b0;
+  --ui-radius: 8px;
+  --ui-control-radius: 4px;
+  --ui-panel-fill: linear-gradient(145deg, #2a3431, #171d1e 75%);
+}
+
+/* Radix creates its own Theme root for each portal. Set these at every root. */
+html[data-launcher-theme] .radix-themes {
+  --default-font-family: var(--ui-body-font);
+  --heading-font-family: var(--ui-display-font);
+  --code-font-family: var(--ui-mono-font);
+  --color-background: var(--ui-bg);
+  --color-panel-solid: var(--ui-panel);
+  --color-panel-translucent: var(--ui-panel);
+  --color-surface: var(--ui-field);
+  --color-overlay: var(--ui-overlay);
+  --gray-1: var(--ui-bg);
+  --gray-2: var(--ui-field);
+  --gray-3: var(--ui-panel);
+  --gray-4: var(--ui-raised);
+  --gray-6: var(--ui-line);
+  --gray-7: var(--ui-line);
+  --gray-8: var(--ui-line);
+  --gray-11: var(--ui-muted);
+  --gray-12: var(--ui-ink);
+  --gray-a2: #ffffff05;
+  --gray-a3: #ffffff0b;
+  --gray-a6: var(--ui-line);
+  --gray-a7: var(--ui-line);
+  --gray-a8: var(--ui-line);
+  --accent-9: var(--ui-accent);
+  --accent-10: var(--ui-accent-hover);
+  --accent-11: var(--ui-focus);
+  --accent-a3: var(--ui-selected);
+  --accent-a4: var(--ui-selected);
+  --accent-a8: var(--ui-focus);
+  color: var(--ui-ink);
+}
+html[data-launcher-theme]
+  :is(
+    .rt-BaseDialogContent,
+    .rt-SelectContent,
+    .rt-DropdownMenuContent,
+    .rt-PopoverContent,
+    .rt-Card
+  ) {
+  color: var(--ui-ink);
+  background: var(--ui-panel-fill);
+  border: 1px solid var(--ui-line);
+  border-radius: var(--ui-radius);
+  box-shadow: var(--ui-panel-shadow);
+}
+html[data-launcher-theme] :is(.rt-BaseDialogContent, .rt-PopoverContent) {
+  padding: clamp(20px, 3vw, 32px);
+  scrollbar-color: var(--ui-line) var(--ui-field);
+}
+html[data-launcher-theme] .rt-BaseDialogOverlay {
+  backdrop-filter: blur(8px);
+}
+html[data-launcher-theme] .rt-BaseDialogOverlay::before {
+  background-color: var(--ui-overlay);
+}
+html[data-launcher-theme] .rt-BaseDialogContent > .rt-Heading,
+html[data-launcher-theme] .rt-BaseDialogContent > .rt-Flex:first-child .rt-Heading {
+  color: var(--ui-ink);
+  font-family: var(--ui-display-font);
+  font-size: clamp(26px, 4vw, 34px);
+  font-weight: 400;
+  letter-spacing: 0.025em;
+  line-height: 1.1;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--ui-line);
+  overflow-wrap: anywhere;
+}
+html[data-launcher-theme] .rt-BaseDialogContent > .rt-DialogDescription {
+  color: var(--ui-muted);
+  line-height: 1.6;
+  font-size: 13px;
+}
+html[data-launcher-theme] :is(.rt-Button, .rt-IconButton, .rt-SelectTrigger, .rt-TextFieldRoot) {
+  min-height: 40px;
+  border-radius: var(--ui-control-radius);
+}
+html[data-launcher-theme] :is(.rt-Button, .rt-IconButton) {
+  cursor: pointer;
+  box-shadow: var(--ui-control-shadow);
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    transform 150ms ease;
+}
+html[data-launcher-theme]
+  :is(.rt-Button, .rt-IconButton).rt-variant-solid:not([data-accent-color]) {
+  background-color: var(--ui-accent);
+  color: #fff8ef;
+  border: 1px solid #ffffff18;
+}
+html[data-launcher-theme]
+  :is(.rt-Button, .rt-IconButton).rt-variant-solid:not([data-accent-color]):hover:not(:disabled) {
+  background-color: var(--ui-accent-hover);
+}
+html[data-launcher-theme]
+  :is(.rt-Button, .rt-IconButton):is(.rt-variant-soft, .rt-variant-outline, .rt-variant-surface) {
+  color: var(--ui-ink);
+  border: 1px solid var(--ui-line);
+  background: var(--ui-raised);
+}
+html[data-launcher-theme] :is(.rt-Button, .rt-IconButton).rt-variant-ghost {
+  color: var(--ui-muted);
+  box-shadow: none;
+}
+html[data-launcher-theme] :is(.rt-Button, .rt-IconButton).rt-variant-ghost:hover {
+  color: var(--ui-ink);
+  background: var(--ui-selected);
+}
+html[data-launcher-theme] :is(.rt-Button, .rt-IconButton)[data-accent-color="red"] {
+  color: #fff3f0;
+  background: var(--red-9);
+  border-color: var(--red-8);
+}
+html[data-launcher-theme] :is(.rt-Button, .rt-IconButton):disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+html[data-launcher-theme]
+  :is(.rt-SelectTrigger, .rt-TextFieldRoot, .rt-TextArea, input[type="file"]) {
+  color: var(--ui-ink);
+  border: 1px solid var(--ui-line);
+  background: var(--ui-field);
+  box-shadow: var(--ui-field-shadow);
+}
+html[data-launcher-theme] .rt-SelectContent {
+  padding: 6px;
+}
+html[data-launcher-theme] .rt-SelectItem {
+  min-height: 36px;
+  border-radius: var(--ui-control-radius);
+  color: var(--ui-ink);
+}
+html[data-launcher-theme] .rt-SelectItem[data-highlighted] {
+  color: var(--ui-ink);
+  background: var(--ui-selected);
+  outline: 1px solid var(--ui-line);
+}
+html[data-launcher-theme] :is(.rt-SwitchRoot, .rt-CheckboxRoot) {
+  box-shadow: inset 0 0 0 1px var(--ui-line);
+}
+html[data-launcher-theme] .rt-CheckboxRoot[data-state="checked"] {
+  background-color: var(--ui-accent);
+}
+html[data-launcher-theme] .rt-SwitchRoot {
+  --switch-border-radius: var(--ui-control-radius);
+  box-shadow: none;
+}
+html[data-launcher-theme] .rt-SwitchRoot:not([data-accent-color])::before {
+  background-image: none;
+  background-color: var(--ui-field);
+  box-shadow: inset 0 0 0 1px var(--ui-line);
+}
+html[data-launcher-theme] .rt-SwitchRoot:not([data-accent-color])[data-state="checked"]::before {
+  background-color: var(--ui-accent);
+}
+html[data-launcher-theme] .rt-SegmentedControlRoot {
+  background: var(--ui-field);
+  border: 1px solid var(--ui-line);
+  border-radius: var(--ui-control-radius);
+}
+html[data-launcher-theme] .rt-SegmentedControlIndicator {
+  background: var(--ui-selected);
+  box-shadow: inset 0 0 0 1px var(--ui-line);
+}
+html[data-launcher-theme] .rt-Card::after {
+  box-shadow: none;
+}
+html[data-launcher-theme] input[type="file"] {
+  width: 100%;
+  max-width: 100%;
+  padding: 8px;
+  margin-block: 8px;
+  border-radius: var(--ui-control-radius);
+  font: 12px/1.5 var(--ui-body-font);
+}
+html[data-launcher-theme] input[type="file"]::file-selector-button {
+  padding: 8px 12px;
+  margin-right: 10px;
+  border: 1px solid var(--ui-line);
+  border-radius: var(--ui-control-radius);
+  background: var(--ui-raised);
+  color: var(--ui-ink);
+  font: inherit;
+  cursor: pointer;
+}
+html[data-launcher-theme] .radix-themes :focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 3px;
+}
+html[data-launcher-theme] .rt-BaseDialogContent :is(pre, code) {
+  color: var(--ui-ink);
+  background-color: var(--ui-field);
+  border-color: var(--ui-line);
+}
+html[data-launcher-theme="framed-tech"] .rt-BaseDialogContent > .rt-Heading {
+  border-top: 1px solid var(--ui-line);
+  padding-top: 14px;
+  font-family: var(--ui-mono-font);
+  font-size: 18px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+html[data-launcher-theme="game-ui"] .rt-BaseDialogContent > .rt-Heading {
+  border-left: 3px solid var(--ui-accent);
+  padding-left: 14px;
+}
+html[data-launcher-theme="game-feel"]
+  .radix-themes
+  :is(.rt-Button, .rt-IconButton):active:not(:disabled) {
+  transform: translateY(2px) scale(0.98);
+  box-shadow: inset 0 1px 3px #0006;
+}
+html[data-launcher-theme="game-feel"] .rt-BaseDialogContent {
+  animation: launcher-dialog-feedback 220ms ease-out;
+}
+html[data-launcher-theme="animation"]
+  :is(.rt-BaseDialogContent, .rt-SelectContent, .rt-PopoverContent) {
+  animation: launcher-dialog-entrance 300ms cubic-bezier(0.16, 0.8, 0.24, 1);
+}
+@keyframes launcher-dialog-feedback {
+  from {
+    opacity: 0.75;
+    transform: translateY(3px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@keyframes launcher-dialog-entrance {
+  from {
+    opacity: 0.5;
+    transform: translateY(12px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+/* Vendored file explorer: preserve icons and behavior while replacing white chrome. */
+html[data-launcher-theme] .fe_fileexplorer_wrap .fe_fileexplorer_inner_wrap {
+  color: var(--ui-ink);
+  background-color: var(--ui-field);
+  border-color: var(--ui-line);
+  border-radius: var(--ui-control-radius);
+}
+html[data-launcher-theme]
+  .fe_fileexplorer_wrap
+  :is(
+    .fe_fileexplorer_path_wrap,
+    .fe_fileexplorer_folder_tools_scroll_wrap,
+    .fe_fileexplorer_statusbar_wrap,
+    .fe_fileexplorer_folder_tool_separator
+  ) {
+  background-color: var(--ui-panel);
+  border-color: var(--ui-line);
+  color: var(--ui-muted);
+}
+html[data-launcher-theme] .fe_fileexplorer_wrap button {
+  color: var(--ui-ink);
+}
+html[data-launcher-theme] .fe_fileexplorer_wrap .fe_fileexplorer_item_wrap_inner {
+  border-color: transparent;
+}
+html[data-launcher-theme]
+  .fe_fileexplorer_wrap
+  .fe_fileexplorer_item_selected
+  .fe_fileexplorer_item_wrap_inner,
+html[data-launcher-theme]
+  .fe_fileexplorer_wrap
+  .fe_fileexplorer_inner_wrap
+  .fe_fileexplorer_items_wrap
+  .fe_fileexplorer_item_wrap
+  .fe_fileexplorer_item_wrap_inner:hover,
+html[data-launcher-theme] .fe_fileexplorer_wrap .fe_fileexplorer_path_segment_wrap:hover,
+html[data-launcher-theme] .fe_fileexplorer_wrap .fe_fileexplorer_path_segment_wrap:focus {
+  background-color: var(--ui-selected);
+  border-color: var(--ui-focus);
+}
+html[data-launcher-theme]
+  .fe_fileexplorer_wrap
+  .fe_fileexplorer_inner_wrap_focused
+  .fe_fileexplorer_items_focus
+  .fe_fileexplorer_item_selected
+  .fe_fileexplorer_item_wrap_inner {
+  background-color: var(--ui-selected);
+  border-color: var(--ui-focus);
+}
+html[data-launcher-theme] .fe_fileexplorer_wrap button:focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: -2px;
+}
+html[data-launcher-theme] .fe_fileexplorer_popup_wrap {
+  color: var(--ui-ink);
+  background: var(--ui-panel);
+  border-color: var(--ui-line);
+  box-shadow: var(--ui-panel-shadow);
+}
+html[data-launcher-theme] .fe_fileexplorer_popup_wrap .fe_fileexplorer_popup_item_wrap:focus {
+  background: var(--ui-selected);
+}
+html[data-launcher-theme] .launcher-import-page {
+  height: 100dvh;
+  overflow: auto;
+  padding: 20px;
+  box-sizing: border-box;
+  background: radial-gradient(ellipse at 80% 0, #b6413514, transparent 65%), var(--ui-bg);
+}
+@media (max-width: 600px) {
+  html[data-launcher-theme]
+    :is(.rt-Button, .rt-IconButton, .rt-SelectTrigger, .rt-SelectItem, .rt-TextFieldRoot) {
+    min-height: 44px;
+  }
+  html[data-launcher-theme] .rt-IconButton {
+    min-width: 44px;
+  }
+  html[data-launcher-theme] :is(.rt-BaseDialogContent, .rt-PopoverContent) {
+    padding: 20px;
+    max-width: calc(100vw - 24px);
+  }
+  html[data-launcher-theme] .rt-BaseDialogContent .rt-Flex {
+    min-width: 0;
+  }
+  html[data-launcher-theme] .rt-BaseDialogContent .rt-Card .rt-Flex {
+    flex-wrap: wrap;
+  }
+}
+html[data-launcher-motion="paused"]
+  :is(.rt-BaseDialogContent, .rt-SelectContent, .rt-PopoverContent) {
+  animation-play-state: paused;
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-launcher-theme]
+    :is(.rt-BaseDialogContent, .rt-SelectContent, .rt-PopoverContent, .rt-Button, .rt-IconButton) {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+  }
+}

@@ -1,0 +1,190 @@
+/* Real installation controls supplement the preserved prototype presentations. */
+.launcher-page {
+  box-sizing: border-box;
+  height: 100dvh;
+  overflow: auto;
+  isolation: isolate;
+  position: relative;
+}
+.launcher-page .launcher-art {
+  position: absolute;
+  min-height: 100%;
+}
+.launcher-page select {
+  color-scheme: dark;
+}
+.launcher-page .launcher-header {
+  gap: 24px;
+  flex-wrap: wrap;
+  padding-block: 16px;
+}
+.launcher-page .launcher-library-label {
+  color: var(--color-launcher-muted);
+  font-size: 12px;
+}
+.launcher-page .appearance-picker {
+  margin-left: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.launcher-page .appearance-picker label,
+.launcher-page .installation-picker label {
+  color: var(--color-launcher-muted);
+  font: 9px/1.5 var(--font-mono);
+  letter-spacing: 0.12em;
+}
+.launcher-page .appearance-picker select,
+.launcher-page .installation-picker select {
+  min-height: 44px;
+  padding: 8px 32px 8px 12px;
+  border: 1px solid var(--color-launcher-rule);
+  border-radius: 3px;
+  background: var(--color-launcher-panel);
+  max-width: 100%;
+}
+.launcher-page .import-button {
+  margin-left: 0;
+}
+.launcher-page .installation-picker {
+  display: grid;
+  gap: 5px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  max-width: 520px;
+}
+.launcher-page .installation-picker label {
+  grid-column: 1 / -1;
+}
+.launcher-page .manage-collection {
+  padding: 8px 12px;
+  min-height: 44px;
+  background: transparent;
+  color: var(--color-launcher-muted);
+  border: 1px solid var(--color-launcher-rule);
+  border-radius: 3px;
+}
+.launcher-page .collection-bar {
+  gap: 20px;
+  padding-block: 18px;
+}
+.launcher-page .collection-tools {
+  flex-wrap: wrap;
+}
+.launcher-page .collection-tools button {
+  min-height: 44px;
+}
+.launcher-page .launch-primary {
+  text-transform: uppercase;
+}
+.launcher-page .launcher-readiness {
+  color: var(--color-launcher-muted);
+  font-size: 12px;
+  max-width: 460px;
+  margin-top: 12px;
+  overflow-wrap: anywhere;
+}
+.launcher-page .edition-choices:empty {
+  display: none;
+}
+.launcher-page .launch-title {
+  pointer-events: none;
+}
+.launcher-page .launcher-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.launcher-page[data-theme="game-ui"] .installation-picker {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+.launcher-page[data-theme="game-ui"] .collection-tools {
+  gap: 4px;
+}
+.launcher-page[data-theme="framed-tech"] .command-console,
+.launcher-page[data-theme="game-ui"] .launch-content {
+  min-width: 0;
+}
+.launcher-page[data-theme="skeuomorphic"] .launcher-art,
+.launcher-page[data-theme="framed-tech"] .launcher-art {
+  min-height: 0;
+}
+.launcher-utility-dialog .collection-management > div {
+  min-height: 0;
+  padding: 0;
+}
+.launcher-utility-dialog {
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+}
+.launcher-utility-dialog input[type="file"] {
+  display: block;
+  max-width: 100%;
+  margin-top: 12px;
+}
+@media (max-width: 900px) {
+  .launcher-page .launcher-library-label {
+    display: none;
+  }
+  .launcher-page .launcher-header {
+    gap: 16px;
+  }
+  .launcher-page .collection-bar {
+    flex-wrap: wrap;
+  }
+}
+@media (max-width: 600px) {
+  .launcher-page .launcher-header {
+    align-items: center;
+  }
+  .launcher-page .launcher-brand {
+    margin-right: auto;
+  }
+  .launcher-page .appearance-picker {
+    order: 3;
+    width: 100%;
+    margin: 0;
+  }
+  .launcher-page .appearance-picker select {
+    width: 100%;
+  }
+  .launcher-page .import-button {
+    min-width: 44px;
+    width: 44px;
+    padding: 0;
+  }
+  .launcher-page .import-button svg {
+    display: block;
+  }
+  .launcher-page .import-button span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .launcher-page .installation-picker {
+    width: 100%;
+    grid-template-columns: minmax(0, 1fr);
+    max-width: none;
+  }
+  .launcher-page .collection-tools {
+    justify-content: flex-start;
+    gap: 12px;
+  }
+  .launcher-page .launcher-footer {
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .launcher-page *,
+  .launcher-page *::before,
+  .launcher-page *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}

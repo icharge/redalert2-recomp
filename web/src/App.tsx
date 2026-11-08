@@ -5,7 +5,7 @@ import { BrowserCheck } from "./components/BrowserCheck";
 import { checkBrowser, missingRequired } from "./components/features";
 import { videoFromQuery, type FileSource } from "./game/loader";
 import { Import, browserDeps } from "./screens/Import";
-import { Library } from "./screens/Library";
+import { Launcher } from "./screens/Launcher";
 import { Play } from "./screens/Play";
 import { loadBuildInfo, type BuildInfo } from "./storage/install";
 import { Manifest, type GameRecord, type InstallationRecord } from "./storage/manifest";
@@ -26,6 +26,7 @@ import {
 import { gamePath, slotFromPath } from "./paths";
 import { leaveGame } from "./game/lifecycle";
 import { readVideoPreference } from "./storage/video-preferences";
+import { LauncherThemeProvider } from "./launcher/LauncherThemeProvider";
 
 type Boot =
   | { name: "loading" }
@@ -43,12 +44,14 @@ export function App() {
   const [requirements] = useState(checkBrowser);
   const missing = missingRequired(requirements).length > 0;
   return (
+    <LauncherThemeProvider>
     <BrowserRouter basename={import.meta.env.BASE_URL}>
       <Theme appearance="dark" accentColor="red" grayColor="slate" radius="small">
         {missing ? <BrowserCheck requirements={requirements} /> : <Main />}
         <UpdatePrompt />
       </Theme>
     </BrowserRouter>
+    </LauncherThemeProvider>
   );
 }
 
@@ -156,7 +159,7 @@ function Main() {
   };
   const resume = slotFromPath(query.get("resume") ?? undefined);
   const library = (
-    <Library
+    <Launcher
       games={games}
       build={build}
       installations={installations}
@@ -217,7 +220,7 @@ function Main() {
           (!resume || !installations.some((entry) => entry.slot === resume)) ? (
             <RouteError message="That installation was not found." />
           ) : (
-            <Flex direction="column">
+            <Flex direction="column" className="launcher-import-page">
               <Link to="/">Back to launcher</Link>
               <Import
                 key={resume ?? "new"}

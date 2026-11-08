@@ -1,0 +1,16 @@
+{
+  "date": "2026-10-25",
+  "source": "../game-sidebar/",
+  "sha256": {
+    "app.js": "3f4e93d1e8eff0ff20cb4356fb3c30d9cf909ae41100c40e3e66e085337334e4",
+    "assets/launcher-art.png": "7844d68c4fd824132f118ca23c89871473736d9216998cf012dba7f274b79612",
+    "assets/README.md": "0290d209cde0cceb48a23147274148301604f993235ffd7edd473bff825b024a",
+    "index.html": "7027b8d7941b6fbf6c7ec05ae66e6c2054b2f9e845e203a71729601b876faf81",
+    "launcher.css": "1d1fe8224934bfe178b783209c60f50f5ecd048985c89b144993a04ac0747e4b",
+    "launcher.html": "de1e462ea80e8a0340fd99dc66427fffaa8364d01fdbaca64aeb184ccc46e9e4",
+    "launcher.js": "2e9be59764e1b6e7698b37e23b66aa75cbbdb012ee6ae9978e55c585cd7f522c",
+    "README.md": "43cbcd62467e3f31be25feb8da64ca6825d308203aa58b900d2f9c7324e61773",
+    "styles.css": "b78af261e2ff63013bbc5b784be100f1cce00476829a232e01fcd30bd089e445",
+    "tokens.css": "620f5b7af0c0dd144168b6cd52daf146a8d1b7b12c7b575e2dd59f69709d1337"
+  }
+}
