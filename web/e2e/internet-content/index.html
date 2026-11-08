@@ -1,0 +1,620 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Internet content · recomp POC</title>
+    <style>
+      @font-face {
+        font-family: Barlow;
+        src: url("/font.woff2") format("woff2");
+        font-weight: 500;
+        font-display: swap;
+      }
+      :root {
+        color-scheme: dark;
+        font:
+          15px/1.4 Barlow,
+          "Arial Narrow",
+          sans-serif;
+        color: #d4d3c8;
+        background: #121310;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+      }
+      button,
+      input,
+      select {
+        font: inherit;
+      }
+      button {
+        cursor: pointer;
+      }
+      .toolbar {
+        padding: 16px 24px;
+        border-bottom: 1px solid #393c32;
+        background: #1b1e18;
+      }
+      .title-row,
+      .controls {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .title-row {
+        justify-content: space-between;
+        margin-bottom: 12px;
+      }
+      h1 {
+        font-size: 20px;
+        font-weight: 500;
+        margin: 0;
+        color: #faf8dd;
+      }
+      .badge {
+        padding: 2px 8px;
+        border: 1px solid #656b4d;
+        color: #d3deab;
+        font-size: 12px;
+        letter-spacing: 1px;
+      }
+      .subtitle,
+      #request-status {
+        color: #a3a795;
+        font-size: 13px;
+      }
+      .subtitle {
+        margin: 4px 0 0;
+      }
+      .controls label {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+      }
+      .source-label {
+        flex: 1;
+        min-width: 230px;
+      }
+      input,
+      select,
+      .controls button,
+      #return {
+        border: 1px solid #555b46;
+        color: #e3e5d7;
+        background: #292e22;
+        border-radius: 2px;
+        padding: 7px 10px;
+      }
+      input {
+        min-width: 100px;
+        width: 100%;
+        background: #10120e;
+      }
+      button:hover {
+        filter: brightness(1.2);
+      }
+      button:focus-visible,
+      input:focus-visible,
+      select:focus-visible {
+        outline: 2px solid #dbd771;
+        outline-offset: 2px;
+      }
+      #load {
+        background: #4a532e;
+      }
+      #request-status {
+        margin: 9px 0 0;
+        min-height: 18px;
+      }
+      .viewport {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 22px;
+        min-height: 610px;
+      }
+      .mount {
+        position: relative;
+        flex: none;
+      }
+      .shell {
+        width: 800px;
+        height: 600px;
+        position: absolute;
+        inset: 0 auto auto 0;
+        transform-origin: top left;
+        overflow: hidden;
+        background: #171a12;
+        box-shadow: 0 10px 60px #0009;
+      }
+      .fallback {
+        position: absolute;
+        inset: 0;
+        border: 7px ridge #6d7068;
+        background: radial-gradient(ellipse at 30% 40%, #49432c, #11130f 70%);
+      }
+      .fallback-menu {
+        position: absolute;
+        right: 0;
+        top: 0;
+        bottom: 0;
+        width: 166px;
+        padding: 15px 9px;
+        border-left: 5px ridge #7c8078;
+        background: linear-gradient(95deg, #31332e, #797c73 12%, #363833 22%, #474a42 90%, #979b90);
+      }
+      .fallback-menu h2 {
+        font-size: 17px;
+        text-align: center;
+        color: #ffff00;
+        background: #060705;
+        margin: 0 0 135px;
+        padding: 8px 0;
+      }
+      .menu-label {
+        margin: 7px 0;
+        padding: 7px 0;
+        text-align: center;
+        color: #ffff00;
+        font-weight: bold;
+        background: linear-gradient(#360900, #ae0a00, #440400);
+        border: 5px ridge #666a61;
+      }
+      .menu-label:last-child {
+        margin-top: 80px;
+      }
+      #reference {
+        position: absolute;
+        inset: 0;
+        width: 800px;
+        height: 600px;
+        pointer-events: none;
+      }
+      .left-art {
+        position: absolute;
+        left: 10px;
+        top: 10px;
+        width: 620px;
+        height: 555px;
+        background:
+          linear-gradient(#071008ab, #090c07c9),
+          url("/backdrop.webp") center / cover,
+          #1d2318;
+      }
+      .panel {
+        position: absolute;
+        left: 36px;
+        width: 560px;
+        color: #ccc;
+        border: 1px solid #8b9687;
+        outline: 1px solid #333d35;
+        outline-offset: 1px;
+        box-shadow: inset 0 0 0 1px #354036;
+        background: rgb(13 15 11 / 82%);
+        padding: 10px 12px;
+        overflow: hidden;
+      }
+      #news-panel {
+        top: 36px;
+        height: 312px;
+      }
+      .panel-heading {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        margin-bottom: 12px;
+      }
+      .panel h2 {
+        color: #e6e36e;
+        font-size: 17px;
+        font-weight: 500;
+        margin: 0;
+      }
+      .panel-note {
+        font-size: 12px;
+        color: #999;
+      }
+      #news-status {
+        color: #999;
+        font-size: 15px;
+        margin: 4px 0;
+      }
+      #posts {
+        display: grid;
+        gap: 13px;
+      }
+      .post {
+        display: grid;
+        grid-template-columns: 88px 1fr;
+        gap: 0;
+        font-size: 15px;
+        line-height: 19px;
+      }
+      .post time {
+        color: #999;
+        font-size: 14px;
+      }
+      .post h3 {
+        font: inherit;
+        color: #fff;
+        margin: 0;
+      }
+      .post p {
+        margin: 2px 0 0;
+        color: #ccc;
+      }
+      .post h3,
+      .post p {
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        overflow: hidden;
+      }
+      #html-frame {
+        border: 0;
+        display: block;
+        width: 100%;
+        height: 258px;
+        background: transparent;
+      }
+      #rules-panel {
+        top: 364px;
+        height: 176px;
+      }
+      #rules-panel ol {
+        margin: 10px 0 0;
+        padding-left: 20px;
+        font-size: 15px;
+        line-height: 22px;
+      }
+      #rules-panel li {
+        padding-left: 3px;
+      }
+      #leave {
+        position: absolute;
+        left: 654px;
+        top: 542px;
+        width: 120px;
+        height: 30px;
+        opacity: 0;
+      }
+      #leave:focus-visible {
+        opacity: 1;
+        background: #740c08;
+        color: #ffff00;
+      }
+      #closed {
+        position: absolute;
+        inset: 0;
+        background: #090c08ed;
+        display: grid;
+        place-content: center;
+        text-align: center;
+      }
+      #closed p {
+        color: #a3a795;
+      }
+      #return {
+        margin-top: 8px;
+      }
+      [hidden] {
+        display: none !important;
+      }
+      footer {
+        text-align: center;
+        color: #858a79;
+        font-size: 13px;
+        padding: 0 20px 18px;
+      }
+      @media (max-width: 650px) {
+        .toolbar {
+          padding: 12px;
+        }
+        .viewport {
+          padding: 12px;
+          min-height: 0;
+        }
+        .source-label {
+          flex-basis: 100%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="toolbar">
+      <div class="title-row">
+        <div>
+          <h1>Internet page · content loading</h1>
+          <p class="subtitle">
+            Static game-shell reference. The news panel fetches live files; this POC is separate
+            from the game.
+          </p>
+        </div>
+        <span class="badge">BROWSER POC</span>
+      </div>
+      <form id="controls" class="controls">
+        <label
+          >Format
+          <select id="format">
+            <option value="json">JSON feed</option>
+            <option value="html">HTML page</option>
+          </select></label
+        >
+        <label class="source-label"
+          >Source <input id="source" aria-label="Content URL" spellcheck="false"
+        /></label>
+        <button id="load">Load content</button>
+        <button id="slow" type="button">Slow load</button>
+        <button id="fail" type="button">Simulate failure</button>
+        <button id="close" type="button">Leave page</button>
+      </form>
+      <p id="request-status" role="status" aria-live="polite">Ready.</p>
+    </header>
+    <main class="viewport">
+      <div class="mount">
+        <div class="shell">
+          <div class="fallback" aria-hidden="true">
+            <div class="fallback-menu">
+              <h2>Westwood Online</h2>
+              <div class="menu-label">Quick Match</div>
+              <div class="menu-label">Quick Co-op</div>
+              <div class="menu-label">Custom Match</div>
+              <div class="menu-label">Buddy List</div>
+              <div class="menu-label">My Information</div>
+              <div class="menu-label">Community</div>
+              <div class="menu-label">Main Menu</div>
+            </div>
+          </div>
+          <img
+            id="reference"
+            src="/reference.png"
+            alt="Static Internet menu reference; its action buttons are not connected."
+          />
+          <div class="left-art" aria-hidden="true"></div>
+          <section class="panel" id="news-panel" aria-label="Latest news" aria-busy="true">
+            <div class="panel-heading">
+              <h2>Latest news</h2>
+              <span class="panel-note" id="content-kind">JSON feed</span>
+            </div>
+            <p id="news-status">Loading the news...</p>
+            <div id="posts"></div>
+            <iframe
+              id="html-frame"
+              title="Loaded HTML news"
+              sandbox=""
+              referrerpolicy="no-referrer"
+              hidden
+            ></iframe>
+          </section>
+          <section class="panel" id="rules-panel" aria-labelledby="rules-title">
+            <h2 id="rules-title">Online rules</h2>
+            <ol>
+              <li>Be respectful to other players.</li>
+              <li>Play fair and keep chat free of spam.</li>
+              <li>Keep personal information private.</li>
+              <li>This is sample copy for the content-loading POC.</li>
+            </ol>
+          </section>
+          <button id="leave" aria-label="Leave Internet preview" title="Leave Internet preview">
+            Main Menu
+          </button>
+          <div id="closed" hidden>
+            <div>
+              <h2>Internet preview closed</h2>
+              <p>Content requests stop when you leave.</p>
+              <button id="return">Return to Internet</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+    <footer>
+      Try JSON or HTML, then edit its source file and reload. External sources need CORS. HTML
+      scripts and navigation are disabled.
+    </footer>
+    <script type="module">
+      const $ = (id) => document.getElementById(id);
+      const format = $("format"),
+        source = $("source"),
+        frame = $("html-frame");
+      const cache = new Map();
+      let request = null,
+        generation = 0,
+        active = true,
+        shown = null;
+      const sample = () => new URL(`news.${format.value}`, location.href).href;
+      const status = (text) => {
+        $("request-status").textContent = text;
+      };
+      const note = (text) => {
+        $("news-status").textContent = text;
+        $("news-status").hidden = !text;
+      };
+
+      function clear() {
+        $("posts").replaceChildren();
+        frame.hidden = true;
+        shown = null;
+      }
+
+      function render(content) {
+        clear();
+        shown = content;
+        $("content-kind").textContent = content.format === "html" ? "HTML page" : "JSON feed";
+        if (content.format === "html") {
+          // A separate, opaque-origin document: no allow-scripts or allow-same-origin.
+          // Put our policy first so fetched markup cannot relax it.
+          const csp =
+            "default-src 'none'; style-src 'unsafe-inline'; img-src data:; form-action 'none'; base-uri 'none'";
+          const document = new DOMParser().parseFromString(content.html, "text/html");
+          document
+            .querySelectorAll("script,meta,base,iframe,frame,frameset,object,embed,form,link")
+            .forEach((node) => node.remove());
+          for (const node of document.querySelectorAll("*")) {
+            for (const attribute of [...node.attributes]) {
+              if (/^on|^(?:href|srcdoc|action)$|:href$/i.test(attribute.name))
+                node.removeAttribute(attribute.name);
+            }
+          }
+          frame.srcdoc = `<meta http-equiv="Content-Security-Policy" content="${csp}"><style>html{color-scheme:dark}body{margin:0;color:#ccc;background:transparent;font:15px/1.4 'Arial Narrow',sans-serif}a{color:#e6e36e}</style>${document.documentElement.innerHTML}`;
+          frame.hidden = false;
+        } else {
+          for (const post of content.posts) {
+            const row = document.createElement("article");
+            row.className = "post";
+            const date = document.createElement("time");
+            date.textContent = post.date;
+            const body = document.createElement("div");
+            const title = document.createElement("h3");
+            title.textContent = post.title;
+            const summary = document.createElement("p");
+            summary.textContent = post.summary;
+            body.append(title, summary);
+            row.append(date, body);
+            $("posts").append(row);
+          }
+        }
+        note("");
+      }
+
+      async function load({ delay = 0, fail = false } = {}) {
+        if (!active) return;
+        request?.abort();
+        const controller = new AbortController();
+        request = controller;
+        const id = ++generation;
+        const kind = format.value;
+        let timeout;
+        try {
+          const url = new URL(source.value, location.href);
+          if (!["http:", "https:"].includes(url.protocol))
+            throw new Error("Use an HTTP or HTTPS content URL.");
+          const key = `${kind}:${url.href}`;
+          const previous = cache.get(key);
+          if (previous) render(previous);
+          else clear();
+          note(previous ? "Refreshing the news..." : "Loading the news...");
+          $("news-panel").setAttribute("aria-busy", "true");
+          status(
+            `Loading ${kind.toUpperCase()} · ${url.pathname}${delay ? " · simulated 1.5 s server delay" : ""}`,
+          );
+          if (delay) url.searchParams.set("delay", String(delay));
+          if (fail) url.searchParams.set("fail", "1");
+          timeout = setTimeout(
+            () => controller.abort(new Error("Content request timed out.")),
+            8000,
+          );
+          const response = await fetch(url, {
+            signal: controller.signal,
+            cache: "no-store",
+            credentials: "omit",
+          });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const text = await response.text();
+          if (new TextEncoder().encode(text).byteLength > 65536)
+            throw new Error("Content exceeds the POC limit (64 KiB).");
+          let content;
+          if (kind === "html") {
+            if (!text.trim()) throw new Error("The HTML page is empty.");
+            content = { format: kind, html: text };
+          } else {
+            const data = JSON.parse(text);
+            if (!Array.isArray(data?.posts)) throw new Error("Expected a JSON object with posts.");
+            const posts = data.posts.slice(0, 5).map((post) => {
+              if (
+                !post ||
+                !["date", "title", "summary"].every((field) => typeof post[field] === "string")
+              )
+                throw new Error("Each post needs date, title and summary strings.");
+              const clip = (s, n) => Array.from(s).slice(0, n).join("");
+              return {
+                date: clip(post.date, 10),
+                title: clip(post.title, 160),
+                summary: clip(post.summary, 400),
+              };
+            });
+            if (!posts.length) throw new Error("There are no news posts.");
+            content = { format: kind, posts };
+          }
+          if (id !== generation || !active) return;
+          cache.set(key, content);
+          render(content);
+          status(
+            `${kind.toUpperCase()} loaded from ${new URL(source.value, location.href).pathname} · ${kind === "html" ? "sandboxed HTML document" : `${content.posts.length} posts`}`,
+          );
+        } catch (error) {
+          if (id !== generation || !active) return;
+          note(
+            shown
+              ? "Could not refresh. Showing the last loaded content."
+              : "The news is unavailable right now.",
+          );
+          status(
+            `${error.message} · ${shown ? "Cached content kept." : "Check the source URL and its CORS settings."}`,
+          );
+        } finally {
+          clearTimeout(timeout);
+          if (id === generation) $("news-panel").setAttribute("aria-busy", "false");
+        }
+      }
+
+      function leave() {
+        active = false;
+        generation++;
+        request?.abort();
+        $("closed").hidden = false;
+        $("news-panel").hidden = $("rules-panel").hidden = true;
+        status("Preview closed. Pending content requests cancelled.");
+        $("return").focus();
+      }
+      $("controls").onsubmit = (event) => {
+        event.preventDefault();
+        void load();
+      };
+      format.onchange = () => {
+        source.value = sample();
+        void load();
+      };
+      $("slow").onclick = () => {
+        void load({ delay: 1500 });
+      };
+      $("fail").onclick = () => {
+        void load({ fail: true });
+      };
+      $("close").onclick = $("leave").onclick = leave;
+      $("return").onclick = () => {
+        active = true;
+        $("closed").hidden = true;
+        $("news-panel").hidden = $("rules-panel").hidden = false;
+        $("load").focus();
+        void load();
+      };
+      $("reference").onerror = () => {
+        $("reference").hidden = true;
+      };
+      const resize = () => {
+        const available =
+          document.querySelector(".viewport").clientWidth - (innerWidth <= 650 ? 24 : 44);
+        const scale = Math.min(1.35, Math.max(0.2, available / 800));
+        const mount = document.querySelector(".mount");
+        mount.style.width = `${800 * scale}px`;
+        mount.style.height = `${600 * scale}px`;
+        document.querySelector(".shell").style.transform = `scale(${scale})`;
+      };
+      new ResizeObserver(resize).observe(document.querySelector(".viewport"));
+      addEventListener("pagehide", () => {
+        active = false;
+        generation++;
+        request?.abort();
+      });
+      source.value = sample();
+      resize();
+      void load();
+    </script>
+  </body>
+</html>

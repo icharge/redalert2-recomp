@@ -1,0 +1,19 @@
+{
+  "posts": [
+    {
+      "date": "2026-11-08",
+      "title": "News delivered without a game rebuild",
+      "summary": "This panel fetched a separate JSON file. Edit this post, click Load content, and the page updates. These are demonstration posts, not release announcements."
+    },
+    {
+      "date": "2026-11-08",
+      "title": "A page that stays useful while loading",
+      "summary": "Try Slow load to see the loading state. A failed refresh keeps the last successfully loaded posts visible."
+    },
+    {
+      "date": "2026-11-08",
+      "title": "Or let the content own its layout",
+      "summary": "Switch to HTML page to fetch a styled document into the same panel. Its scripts and navigation stay disabled."
+    }
+  ]
+}
