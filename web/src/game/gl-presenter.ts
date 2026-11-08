@@ -1,7 +1,7 @@
 import { CursorKind, PixelFormat, PresentMode, Shared, type Scale } from "./protocol";
 import { CURSOR_PX, CURSOR_RGBA_OFFSET } from "./protocol";
 import { FRAGMENT_SOURCE, SCALE_MODE, VERTEX_SOURCE } from "./gl-shaders";
-import type { GamePresenter, PresenterCounters, WasmMemory } from "./presenter";
+import type { GamePresenter, PictureRect, PresenterCounters, WasmMemory } from "./presenter";
 
 type Fallback = (why: "format" | "context") => void;
 
@@ -141,6 +141,9 @@ export class GlPresenter implements GamePresenter {
 
   counters(): PresenterCounters {
     return { pictures: this.pictures, ticks: this.ticks, drawMs: this.drawMs };
+  }
+  pictureRect(): PictureRect {
+    return { ...this.rect };
   }
   gameSize(): { width: number; height: number } {
     return {

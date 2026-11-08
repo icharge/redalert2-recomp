@@ -1,10 +1,13 @@
+/* "No maps match" over the game's map list (MapSearchStatus.tsx). It sits on the game's picture,
+   so it takes the game's list text colour rather than the launcher's tokens. */
 .status {
+  --game-list-text: #f2d34b;
   position: absolute;
   z-index: 2;
   transform: translateX(-100%);
   padding: 1px 6px;
-  background: rgba(0, 0, 0, 0.88);
-  color: #f2d34b;
+  background: var(--bar);
+  color: var(--game-list-text);
   font-family: var(--font-label);
   font-size: 12px;
   line-height: 18px;

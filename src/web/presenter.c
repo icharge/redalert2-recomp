@@ -42,10 +42,6 @@
 #define WM_MBUTTONDOWN  0x0207u
 #define WM_MBUTTONUP    0x0208u
 
-void web_map_search_message(uint32_t hwnd, uint32_t message, uint32_t wParam, uint32_t lParam);
-void web_map_search_click(int x, int y);
-void web_map_search_pump(void);
-
 /* ---- events ---------------------------------------------------------------- */
 
 void web_event_json(const char *json) {
@@ -588,19 +584,16 @@ static void drain_input(void) {
                        : (down ? WM_LBUTTONDOWN : WM_LBUTTONUP);
             web_modern_pointer(m, (int)e.a, (int)e.b);
             hle_input_mouse(m, (int)e.a, (int)e.b);
-            if (down && e.c == 0) web_map_search_click((int)e.a, (int)e.b);
             break;
         }
         case IN_WHEEL: hle_input_wheel((int)e.c, (int)e.a, (int)e.b); break;
         case IN_KEYDOWN: case IN_KEYUP:
             if (e.a == 0x79) { if (e.kind == IN_KEYDOWN) web_settings_command(RA2_SETTING_MENU, -1, 0); break; }
             if (mods_handle_key((int)e.a, e.kind == IN_KEYDOWN)) break;
-            if (e.kind == IN_KEYDOWN) web_map_search_message(hle_focus_window(), 0x0100u, e.a, 0);
             web_modern_key(e.kind == IN_KEYDOWN, e.a);
             hle_input_key(e.kind == IN_KEYDOWN, e.a, e.b); break;
         case IN_CHAR: {
             uint32_t target = hle_focus_window();
-            web_map_search_message(target, 0x0102u, e.a, 0);
             if (target) hle_post_message(target, WM_CHAR, e.a, 0);
             break;
         }
@@ -651,6 +644,7 @@ void web_presenter_start(int (*menus_use_windows_cursor)(void)) {
     ra2_page_cursor_on(1);
 }
 
+void web_map_search_pump(void);                          /* map_search.c */
 void web_presenter_pump(void) {
     static uint32_t next_fps, last_frames;
     static int fps_started;

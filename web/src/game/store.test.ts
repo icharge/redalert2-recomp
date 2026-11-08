@@ -30,6 +30,24 @@ describe("GameStore", () => {
     expect(store.getSnapshot()).toMatchObject({ fps: 29, ms: 34 });
   });
 
+  it("keeps the map search's status for the no-match label", () => {
+    const store = new GameStore();
+    expect(store.getSnapshot().mapSearchStatus).toMatchObject({ open: false, noMatches: false });
+    store.line(
+      '@ra2 {"e":"mapSearch","open":true,"noMatches":true,"x":332,"y":209,"w":177,"h":241}',
+    );
+    expect(store.getSnapshot().mapSearchStatus).toEqual({
+      open: true,
+      noMatches: true,
+      x: 332,
+      y: 209,
+      w: 177,
+      h: 241,
+    });
+    store.line('@ra2 {"e":"mapSearch","open":false,"noMatches":false,"x":0,"y":0,"w":0,"h":0}');
+    expect(store.getSnapshot().mapSearchStatus.open).toBe(false);
+  });
+
   it("keeps the copy's progress until the game boots", () => {
     const store = new GameStore();
     store.begin();

@@ -14,6 +14,27 @@ export interface WasmMemory {
   HEAP32: Int32Array;
 }
 
+/** Where the picture is drawn in the canvas, as fractions of the canvas's size (the rest is bars). */
+export interface PictureRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** A picture scaled to fit its box and centred in it, as CSS's object-fit: contain draws it. */
+export function containRect(
+  box: { width: number; height: number },
+  picture: { width: number; height: number },
+): PictureRect {
+  if (box.width <= 0 || box.height <= 0 || picture.width <= 0 || picture.height <= 0)
+    return { x: 0, y: 0, width: 1, height: 1 };
+  const scale = Math.min(box.width / picture.width, box.height / picture.height);
+  const width = (picture.width * scale) / box.width;
+  const height = (picture.height * scale) / box.height;
+  return { x: (1 - width) / 2, y: (1 - height) / 2, width, height };
+}
+
 export interface PresenterCounters {
   pictures: number;
   ticks: number;
@@ -28,6 +49,7 @@ export interface GamePresenter {
   redraw(): void;
   counters(): PresenterCounters;
   gameSize(): { width: number; height: number };
+  pictureRect(): PictureRect;
   cursorWarp(): { seq: number; x: number; y: number };
   /** The page layer draws the cursor (the default): hide ours, or restore it. */
   setLayerCursor(active: boolean): void;
@@ -98,6 +120,11 @@ export class Presenter2d implements GamePresenter {
   /** Running totals, for the frame-time overlay: pictures put on the canvas, animation frames, time spent drawing. */
   counters(): PresenterCounters {
     return { pictures: this.pictures, ticks: this.ticks, drawMs: this.drawMs };
+  }
+
+  pictureRect(): PictureRect {
+    const box = this.canvas.getBoundingClientRect();
+    return containRect(box, { width: this.canvas.width, height: this.canvas.height });
   }
 
   gameSize(): { width: number; height: number } {

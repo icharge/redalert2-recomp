@@ -28,14 +28,8 @@ export interface OpenLink {
   page?: string;
 }
 
-export interface MapSearchStatus {
-  open: boolean;
-  noMatches: boolean;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}
+/** The map search's status (src/web/map_search.c): the list's place, and whether nothing matched. */
+export type MapSearchStatus = Omit<Extract<GameEvent, { e: "mapSearch" }>, "e">;
 
 export interface GameState {
   phase: Phase;

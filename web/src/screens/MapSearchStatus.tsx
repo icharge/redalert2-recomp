@@ -1,4 +1,5 @@
 import { useEffect, useState, type RefObject } from "react";
+import type { GamePresenter, PictureRect } from "../game/presenter";
 import type { MapSearchStatus as Status } from "../game/store";
 import styles from "./MapSearchStatus.module.css";
 
@@ -7,46 +8,72 @@ interface Position {
   top: number;
 }
 
-/** A page-rendered no-match label over the game's native map list. */
+/** How far inside the list's top right corner the label sits, in CSS pixels: clear of its frame. */
+const INSET_X = 4;
+const INSET_Y = 3;
+
+/**
+ * Where the label goes in the stage: at the list's top right corner (game pixels), mapped
+ * through where the presenter draws the picture in the canvas.
+ */
+export function labelPosition(
+  canvas: { left: number; top: number; width: number; height: number },
+  stage: { left: number; top: number },
+  picture: PictureRect,
+  game: { width: number; height: number },
+  list: { x: number; y: number; w: number },
+): Position {
+  const x = picture.x + (picture.width * (list.x + list.w)) / game.width;
+  const y = picture.y + (picture.height * list.y) / game.height;
+  return {
+    left: canvas.left - stage.left + canvas.width * x - INSET_X,
+    top: canvas.top - stage.top + canvas.height * y + INSET_Y,
+  };
+}
+
+/**
+ * "No maps match" over the game's map list, when its search box hides every map
+ * (src/web/map_search.c). The game itself then shows the whole list.
+ */
 export function MapSearchStatus({
   status,
-  size,
+  presenter,
   stage,
   canvas,
 }: {
   status: Status;
-  size: { w: number; h: number } | null;
+  presenter: Pick<GamePresenter, "pictureRect" | "gameSize"> | null;
   stage: RefObject<HTMLDivElement | null>;
   canvas: RefObject<HTMLCanvasElement | null>;
 }) {
   const [position, setPosition] = useState<Position | null>(null);
+  const showing = status.open && status.noMatches;
 
   useEffect(() => {
-    if (!status.open || !status.noMatches) {
+    if (!showing || !presenter) {
       setPosition(null);
       return;
     }
-
+    // The picture moves with the window, the canvas and the scale setting; follow it each frame
+    // while the label shows.
+    let frame = 0;
     const place = () => {
       const stageRect = stage.current?.getBoundingClientRect();
       const canvasRect = canvas.current?.getBoundingClientRect();
-      if (!stageRect || !canvasRect) return;
-      const picture = size ?? { w: 800, h: 600 };
-      const scale = Math.min(canvasRect.width / picture.w, canvasRect.height / picture.h);
-      const offsetX = canvasRect.left + (canvasRect.width - picture.w * scale) / 2 - stageRect.left;
-      const offsetY = canvasRect.top + (canvasRect.height - picture.h * scale) / 2 - stageRect.top;
-      setPosition({
-        left: offsetX + (status.x + status.w) * scale - 4,
-        top: offsetY + status.y * scale + 3,
-      });
+      const game = presenter.gameSize();
+      if (stageRect && canvasRect && game.width > 0 && game.height > 0) {
+        const next = labelPosition(canvasRect, stageRect, presenter.pictureRect(), game, status);
+        setPosition((last) =>
+          last && last.left === next.left && last.top === next.top ? last : next,
+        );
+      }
+      frame = requestAnimationFrame(place);
     };
-
     place();
-    window.addEventListener("resize", place);
-    return () => window.removeEventListener("resize", place);
-  }, [status.open, status.noMatches, status.x, status.y, status.w, status.h, size, stage, canvas]);
+    return () => cancelAnimationFrame(frame);
+  }, [showing, presenter, status, stage, canvas]);
 
-  if (!status.open || !status.noMatches || !position) return null;
+  if (!showing || !position) return null;
   return (
     <div className={styles.status} role="status" style={position}>
       No maps match

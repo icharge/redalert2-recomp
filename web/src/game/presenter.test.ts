@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Presenter2d, type WasmMemory } from "./presenter";
+import { Presenter2d, containRect, type PictureRect, type WasmMemory } from "./presenter";
 import { CURSOR_PX, CURSOR_RGBA_OFFSET, CursorKind, PixelFormat, Shared } from "./protocol";
 
 // jsdom has no canvas: a context that records what is drawn, and the ImageData it lacks
@@ -485,5 +485,35 @@ describe("Presenter2d", () => {
     presenter.setLayerCursor(false);
     presenter.draw();
     expect(cursor.style.display).toBe("block");
+  });
+});
+
+describe("containRect", () => {
+  it("places a picture fitted to its box, centred, as fractions of the box", () => {
+    const close = (rect: PictureRect, want: PictureRect) =>
+      (Object.keys(want) as (keyof PictureRect)[]).forEach((k) =>
+        expect(rect[k]).toBeCloseTo(want[k]),
+      );
+    close(containRect({ width: 1000, height: 600 }, { width: 800, height: 600 }), {
+      x: 0.1,
+      y: 0,
+      width: 0.8,
+      height: 1,
+    });
+    close(containRect({ width: 800, height: 800 }, { width: 800, height: 600 }), {
+      x: 0,
+      y: 0.125,
+      width: 1,
+      height: 0.75,
+    });
+  });
+
+  it("fills the box when there is nothing to fit", () => {
+    expect(containRect({ width: 0, height: 0 }, { width: 800, height: 600 })).toEqual({
+      x: 0,
+      y: 0,
+      width: 1,
+      height: 1,
+    });
   });
 });

@@ -770,6 +770,16 @@ node build-web/map-match-selftest.js   # map_match_selftest: ok
 
 The list filter itself is win32hle's `user32_listfilter_selftest` (pcrecomp, `build_selftests_web.py`).
 
+`src/web/map_box.c` follows the search box's text from the messages the game's box takes (its
+caret keys do what the game's box does, checked in the game). win32hle's `user32_take_selftest`
+checks that each of those messages is seen once:
+
+```powershell
+emcc src/web/map_box_selftest.c src/web/map_box.c -sENVIRONMENT=node -sEXIT_RUNTIME=1 `
+  -o build-web/map-box-selftest.js
+node build-web/map-box-selftest.js   # map_box_selftest: ok
+```
+
 `src/web/map_dialog.c` adds the native Edit control to the dialog template and moves the map list
 down to make room. Its standalone test checks the rewritten template and malformed input:
 

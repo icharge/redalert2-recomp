@@ -251,13 +251,17 @@ to the retail installer's registry URL (`src/web/wol_pages.h`), so the event
 carries the real Westwood URL. An unknown key has `url: ""` and the key in
 `page`, and the dialog names the page.
 
-**The map search.** Customize Battle and the network game's map screen have a native edit box above
-the map list. The game applies each change to the list (src/web/map_search.c, with matching rules
-in `map_match.c`): every search word must occur in the map name, and a number from 1 to 8 narrows
-the list to maps whose "(2-4)" range admits that many players. The game sees the shorter list as
-the whole list (win32hle's `hle_list_filter`), so Use Map starts the map the player picked. When a
-search has no matches, the list retains its safe selection and the page displays a no-match label
-over it; editing the query restores the filtered results.
+**The map search.** Customize Battle and the network game's map screen have a search box above the
+map list: an Edit added to the screen's template (`src/web/map_dialog.c`), which the game covers
+with a control of its own, drawn in its own frame and font. The game keeps the typed text inside
+that control, so `src/web/map_search.c` follows it from the clicks and keys the game takes from its
+queue for it (win32hle's `hle_take_hook`; the editing rules are `src/web/map_box.c`). That works
+the same whether the page sent a key or, with TYPE on, a character. Every search word must occur
+in the map name (`src/web/map_match.c`), and a number from 1 to 8 narrows the list to maps whose
+"(2-4)" range admits that many players. The game sees the shorter list as the whole list
+(win32hle's `hle_list_filter`), so Use Map starts the map the player picked. When nothing matches,
+the game shows the whole list and the page puts "No maps match" over its top right corner
+(`MapSearchStatus.tsx`), placed where the presenter drew the picture (`pictureRect()`).
 
 ### Link dialog art
 

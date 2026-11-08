@@ -1,26 +1,52 @@
 # Map search status (2026-11-08)
 
-Native map search is implemented for Red Alert 2 and Yuri's Revenge. Work is local and has not been pushed.
+The map search works in both games' map screens: Customize Battle (dialog `0x6B`) and the network
+game's map screen (`0xCD`). How it works is in [frontend.md](frontend.md), "The map search".
 
-## Behavior
+## What it does
 
-- Customize Battle (dialog `0x6B`) and the network map picker (`0xCD`) receive a native Edit control above map list `1363`.
-- Search words match case-insensitively in the map name. CP874 input and a player-count term from 1 to 8 are supported.
-- The game applies filtering through `hle_list_filter`, so the selected map and game-side list state stay consistent.
-- A query with no matches keeps the game's safe full-list fallback. The game emits a `mapSearch` event and the page shows “No maps match” over the list.
-- The Edit's committed characters and edit keys update the tracked query once, including when Backspace is delivered through both key and text-input paths.
+- A search box sits above map list `1363`, drawn by the game in its own frame and font.
+- Every word must occur in the map name, in any case. A number from 1 to 8 on its own is a player
+  count, matched against the name's "(2-4)". Thai (CP874) is matched as typed.
+- The game sees only the matching maps, so Use Map starts the map picked.
+- When nothing matches, the game shows the whole list and the page says "No maps match" over its
+  top right corner.
+- A screen opens unfiltered.
 
-## Verification
+## How the box's text is known
 
-- `cmake --build build-web-game --parallel 8` — passed.
-- `cmake --build build-web --parallel 8` — passed.
-- `npm run build` in `web` — passed (TypeScript, service worker, and Vite build).
-- Browser checks: `lake` showed three YR maps and two RA2 maps; `lake 4` showed “Lake Blitzen (2-4)” and “Lost Lake (2-4)” in YR, and “Lake Blitzen (2-4)” in RA2.
-- Final Yuri's Revenge browser check: `zzzz` showed the no-match label while retaining the selected map safely. Backspace followed by `lake 4` restored the two matching maps and hid the label; clearing the query restored the full list.
-- The check exposed keydown events reaching the dialog wrapper instead of the Edit child. The search tracker now follows clicks on the native Edit and accepts its committed characters plus relevant edit keys; clicks elsewhere stop search-key handling.
+The game covers the added Edit with a one-line control of its own and keeps the typed text inside
+it, out of user32's reach (`WM_GETTEXT` and the list messages return nothing). `map_search.c`
+follows that control's clicks and keys as the game takes them from its queue (pcrecomp's
+`hle_take_hook`), and `map_box.c` applies them as the game's box does. Checked against the game:
 
-## Out of scope
+| Input | The game's box | Followed |
+|---|---|---|
+| typing with the canvas focused (keys) | text | yes |
+| typing with TYPE on (characters) | text | yes |
+| Backspace, Delete | one character | yes |
+| Home, End, Left, Right | move the caret | yes |
+| Shift with those | no selection, only the caret | yes |
+| a click in the box | caret to the end | yes |
+| Tab | stays in the box, no text | yes |
+| over 255 characters | takes any length | counted; the label shows until the box is emptied |
 
-Linked maps loaded from a URL still require the game to rescan maps when Customize Battle opens. The scan is at `0x699980` in YR and currently runs once from Init_Game. The user previously said “Not now.”
+## Checks
 
-Do not push without the user's request.
+- `map_box_selftest`, `map_match_selftest`, `map_dialog_selftest`: ok.
+- pcrecomp `user32_take_selftest` and the other user32 selftests: ok.
+- Page: 769 Vitest tests, typecheck clean.
+- In the browser, Red Alert 2 (network map screen) and Yuri's Revenge (skirmish):
+  - "lake" narrowed the list;
+  - "lake 4" left Lake Blitzen;
+  - "lost" then Use Map started Lost Lake (2-4);
+  - "lakezz" showed the label, in sharp and in integer scaling;
+  - reopening the screen started unfiltered;
+  - the RA2 scrollbar sits against the moved list.
+
+## Left
+
+- Linked maps loaded from a URL: the game scans maps once, from Init_Game (`0x699980` in YR).
+  Not started.
+- The page's pointer mapping (`toGamePixels` in `input.ts`) ignores integer scaling, so clicks may
+  land off in that mode. It is separate from the map search.

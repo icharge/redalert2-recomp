@@ -251,6 +251,9 @@ instead of misreading events.
 Protocol 9 adds the `open` event for WOL-era links. It changes no shared
 memory word.
 
-Protocol 13 adds the `mapSearch` event for the native map picker status. The
-game keeps its safe list-filter fallback when a query matches no maps; the
-page displays the no-match status over the list rectangle.
+Protocol 13 replaces protocol 12's page-drawn map search with the game's own
+search box: the `ra2_map_search` export and the `mapList` event are gone, and
+the `mapSearch` event tells the page where the map list is and whether a
+search matched nothing (the game then shows the whole list, and the page says
+"No maps match" over it). A page from before 13 calls an export that no longer
+exists. It changes no shared memory word.

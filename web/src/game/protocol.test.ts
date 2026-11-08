@@ -68,6 +68,18 @@ describe("parseEventLine", () => {
     expect(parseEventLine("@ra2")).toBeNull();
   });
 
+  it("parses the map search's status: the list's place and whether nothing matched", () => {
+    expect(
+      parseEventLine(
+        '@ra2 {"e":"mapSearch","open":true,"noMatches":true,"x":332,"y":209,"w":177,"h":241}',
+      ),
+    ).toEqual({ e: "mapSearch", open: true, noMatches: true, x: 332, y: 209, w: 177, h: 241 });
+    expect(parseEventLine('@ra2 {"e":"mapSearch","open":true,"noMatches":false}')).toBeNull();
+    expect(
+      parseEventLine('@ra2 {"e":"mapSearch","open":1,"noMatches":false,"x":0,"y":0,"w":0,"h":0}'),
+    ).toBeNull();
+  });
+
   it("ignores a malformed event instead of throwing", () => {
     expect(parseEventLine("@ra2 {not json")).toBeNull();
     expect(parseEventLine("@ra2 42")).toBeNull();
