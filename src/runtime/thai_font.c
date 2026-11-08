@@ -487,6 +487,12 @@ void thai_font_set_enabled(int enabled) { g_enabled = enabled != 0; }
 
 void recomp_thai_call(uint32_t target, recomp_func_t original) {
     uint32_t caller = g_cur_func;
+    /* The TTF adapter goes first and owns a call it handles, so a string is
+     * never shaped by both paths. Declined calls continue below. */
+    if (recomp_ttf_call(target)) {
+        g_cur_func = caller;
+        return;
+    }
     if (!g_enabled || !original) {
         if (original) original();
         g_cur_func = caller;

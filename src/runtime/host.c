@@ -26,6 +26,7 @@
 #include "oracle.h"
 #include "present.h"
 #include "hdvox.h"
+#include "text_guest.h"
 #include "mods.h"
 #include "page_cursor.h"
 #include "startup_order.h"
@@ -1527,6 +1528,7 @@ int main(int argc, char** argv) {
             g_scale_mode = present_mode_from_name(argv[++i]);
         else if (!strcmp(argv[i], "--debuglog")) g_debuglog = 1;
         else if (!strcmp(argv[i], "--hd-voxels")) hdvox_configure(1, NULL);
+        else if (!strcmp(argv[i], "--ttf-text")) text_guest_set_enabled(1);
         else if (!strcmp(argv[i], "--mute")) CloseHandle(CreateThread(NULL, 0, mute_thread, NULL, 0, NULL));
         else if (!strcmp(argv[i], "--hd-voxels-dump") && i + 1 < argc) {
             static char dir[MAX_PATH];

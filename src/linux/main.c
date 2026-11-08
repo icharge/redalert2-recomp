@@ -91,6 +91,7 @@ void ra2_open_wol_page(uint32_t key_va) {
 /* HD voxels (src/runtime/hdvox.c): the lift's patches call it, and the
  * presenter shows its 2x picture. */
 #include "hdvox.h"
+#include "text_guest.h"
 #include "mods.h"
 #include "startup_order.h"
 
@@ -443,6 +444,7 @@ int main(int argc, char **argv) {
         }
         else if (!strcmp(argv[i], "--frames") && i + 1 < argc) g_record_frames = strtol(argv[++i], NULL, 0);
         else if (!strcmp(argv[i], "--hd-voxels")) hdvox_configure(1, NULL);
+        else if (!strcmp(argv[i], "--ttf-text")) text_guest_set_enabled(1);
         else if (!strcmp(argv[i], "--hd-voxels-dump") && i + 1 < argc) {
             static char dir[PATH_MAX];               /* absolute: the run chdirs into the game folder */
             const char *p = argv[++i];

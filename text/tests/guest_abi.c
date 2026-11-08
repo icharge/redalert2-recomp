@@ -238,7 +238,23 @@ int main(void) {
         free_fixture(&f);
     }
 
-    /* 10. Off again: the adapter stops handling calls. */
+    /* 10. Tab and CR/LF keep the original path's semantics: fall back, both
+     * for measurement and for drawing, so the two never disagree. */
+    {
+        Fixture f = make_fixture(160, 24, 160, 0xFFFF);
+        uint16_t tab[] = { 'A', 0x09, 'B', 0 };
+        uint16_t crlf[] = { 'A', 0x0D, 0x0A, 'B', 0 };
+        int32_t fx = -1, w = -1, h = -1;
+        assert(text_guest_label(va(f.font), va(tab), 0, 0, 0, 0, &fx) == 0);
+        assert(text_guest_measure(va(f.font), va(tab), 0, &w, &h) == 0);
+        assert(text_guest_label(va(f.font), va(crlf), 0, 0, 0, 0, &fx) == 0);
+        assert(text_guest_measure(va(f.font), va(crlf), 0, &w, &h) == 0);
+        int outside;
+        assert(changed_pixels(&f, 0, 0, 159, 23, &outside) == 0);
+        free_fixture(&f);
+    }
+
+    /* 11. Off again: the adapter stops handling calls. */
     text_guest_set_enabled(0);
     {
         Fixture f = make_fixture(64, 20, 64, 0xFFFF);

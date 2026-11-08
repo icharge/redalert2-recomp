@@ -181,18 +181,22 @@ class ThaiFontCallTests(unittest.TestCase):
         )
 
     def test_each_target_routes_only_its_font_calls(self):
-        yar = 'RECOMP_CALL(sub_00434120); RECOMP_CALL(sub_00434CD0); RECOMP_CALL(sub_00434500);'
-        ra2 = 'RECOMP_CALL(sub_004318E0); RECOMP_CALL(sub_00432490); RECOMP_CALL(sub_00431CC0);'
+        yar = ('RECOMP_CALL(sub_00434120); RECOMP_CALL(sub_00434CD0); RECOMP_CALL(sub_00434500); '
+               'RECOMP_CALL(sub_00433CF0);')
+        ra2 = ('RECOMP_CALL(sub_004318E0); RECOMP_CALL(sub_00432490); RECOMP_CALL(sub_00431CC0); '
+               'RECOMP_CALL(sub_004314B0);')
         self.assertEqual(
             thai_font_call_replacements(yar, 'gamemd'),
             'RECOMP_THAI_CALL(0x00434120u, sub_00434120); '
             'RECOMP_THAI_CALL(0x00434CD0u, sub_00434CD0); '
-            'RECOMP_THAI_CALL(0x00434500u, sub_00434500);',
+            'RECOMP_THAI_CALL(0x00434500u, sub_00434500); '
+            'RECOMP_THAI_CALL(0x00433CF0u, sub_00433CF0);',
         )
         self.assertEqual(thai_font_call_replacements(ra2, 'game'),
             'RECOMP_THAI_CALL(0x004318E0u, sub_004318E0); '
             'RECOMP_THAI_CALL(0x00432490u, sub_00432490); '
-            'RECOMP_THAI_CALL(0x00431CC0u, sub_00431CC0);')
+            'RECOMP_THAI_CALL(0x00431CC0u, sub_00431CC0); '
+            'RECOMP_THAI_CALL(0x004314B0u, sub_004314B0);')
         self.assertEqual(thai_font_call_replacements(yar, 'game'), yar)
 
 

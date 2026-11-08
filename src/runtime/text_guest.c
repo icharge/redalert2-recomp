@@ -88,6 +88,14 @@ static void cache_evict_one(void) {
     }
 }
 
+/* Tab and line breaks have layout meaning the original path owns, so the
+ * adapter declines them for both measuring and drawing. */
+static int has_layout_control(const uint16_t *units, uint32_t count) {
+    for (uint32_t i = 0; i < count; ++i)
+        if (units[i] == 0x09 || units[i] == 0x0D || units[i] == 0x0A) return 1;
+    return 0;
+}
+
 /* Find or build the one layout that measurement and drawing both use. The
  * cache copies the units; it never keeps a guest pointer. */
 static CacheEntry *layout_for(const uint16_t *units, uint32_t count, float line_height, float wrap) {
@@ -230,6 +238,7 @@ int text_guest_measure(uint32_t font_va, uint32_t text_va, int32_t wrap_px,
     uint16_t units[TEXT_MAX_UNITS];
     uint32_t count = 0;
     if (!read_units(text_va, 0, units, &count)) return 0;
+    if (has_layout_control(units, count)) return 0;
     if (!ensure_engine()) return 0;
     float line_height = (float)rd32(font_va + FONT_LINEHEIGHT);
     if (count == 0) {
@@ -270,6 +279,7 @@ int text_guest_label(uint32_t font_va, uint32_t text_va, int32_t x, int32_t y,
     uint16_t units[TEXT_MAX_UNITS];
     uint32_t count = 0;
     if (!read_units(text_va, max_units, units, &count)) return 0;
+    if (has_layout_control(units, count)) return 0;
 
     /* A positive reveal is plain TTF only after the highlight has passed. */
     if (reveal > 0 && (uint32_t)reveal < count + REVEAL_TAIL) return 0;

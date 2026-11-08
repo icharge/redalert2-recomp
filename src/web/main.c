@@ -157,6 +157,7 @@ void ra2_hook_debuglog(void) {
 /* HD voxels (src/runtime/hdvox.c): the lift's patches call it, and the
  * presenter shows its 2x picture. */
 #include "hdvox.h"
+#include "text_guest.h"
 #include "mods.h"
 #include "startup_order.h"
 static int compose_hd(const uint8_t *px16, int pitch, int w, int h, uint32_t *out) {
@@ -766,6 +767,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--heartbeat") && i + 1 < argc) g_heartbeat_s = (unsigned)strtoul(argv[++i], NULL, 0);
         else if (!strcmp(argv[i], "--trap") && i + 1 < argc) g_trap_after = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--hd-voxels")) hdvox_configure(1, NULL);
+        else if (!strcmp(argv[i], "--ttf-text")) text_guest_set_enabled(1);
         else if (!strcmp(argv[i], "--speedcontrol")) g_speed_control = 1;
         else if (!strcmp(argv[i], "--classic-latency")) g_classic_latency = 1;
         else if (!strcmp(argv[i], "--net-delay") && i + 1 < argc) g_net_delay_ms = atoi(argv[++i]);
@@ -783,7 +785,7 @@ int main(int argc, char **argv) {
             g_dump_dir = dir;                /* the run chdirs into the game folder */
         }
         else {
-            printf("usage: ra2 [--run] [--headless | --fullscreen] [--scale sharp|smooth|crt|nearest|integer] [--game DIR] [--mod NAME|none] [--thai-font-fix --thai-font-id ID] [--debuglog] [--mute] [--trace] [--heartbeat S] [--memfs] [--intro | --no-intro] [--trap N] [--dump-frames DIR] [--hd-voxels] [--hd-voxels-dump DIR] [--clockstats] [--speedcontrol] [--classic-latency] [--net-delay MS]\n"
+            printf("usage: ra2 [--run] [--headless | --fullscreen] [--scale sharp|smooth|crt|nearest|integer] [--game DIR] [--mod NAME|none] [--thai-font-fix --thai-font-id ID] [--ttf-text] [--debuglog] [--mute] [--trace] [--heartbeat S] [--memfs] [--intro | --no-intro] [--trap N] [--dump-frames DIR] [--hd-voxels] [--hd-voxels-dump DIR] [--clockstats] [--speedcontrol] [--classic-latency] [--net-delay MS]\n"
                    "           [--press DLG:CTRL@s] [--select DLG:CTRL=N@s] [--waitlog TEXT@s] [--move|--click x,y@s]\n"
                    "           [--key [c][s][a]+vk@s] [--wait VA@s] [--drag x1,y1,x2,y2@s]\n");
             return !strcmp(argv[i], "--help") || !strcmp(argv[i], "-h") ? 0 : 1;
