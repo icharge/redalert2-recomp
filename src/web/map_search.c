@@ -153,7 +153,9 @@ void web_map_search_pump(void) {
 #define MAP_COUNT_VA 0x00A8B8D8u
 #define MAP_SCAN_VA 0x00699980u     /* Session::scan_maps(), ecx = Session */
 #define MAP_NAME_OFFSET 0x58u
-#define MAP_REFILL_COMMAND ((1u << 16) | 0x6EBu) /* WM_COMMAND: LBN_SELCHANGE of the game type list 0x6EB */
+#define MAP_TYPE_LIST_ID 0x6EBu     /* the game type list (Battle, Free For All, ...) */
+#define MAP_TYPE_LAST_VA 0x008316FCu /* the game type the map list was last filled for */
+#define MAP_REFILL_COMMAND ((1u << 16) | MAP_TYPE_LIST_ID) /* WM_COMMAND: LBN_SELCHANGE of the game type list */
 
 extern uint32_t g_ecx;
 static volatile int g_rescan;       /* 0 none, 1 append, 2 truncate first */
@@ -189,7 +191,14 @@ static void maps_rescan_now(void) {
     /* A Customize Battle that is already open filled its list before the scan. Its proc rebuilds list 1363
      * from the vector when the game type list (0x6EB) reports a selection change (0x5E6B78); send it that, so
      * a new map shows with no reopen. (WM_COMMAND 0x583 is the Random Map button: not that.) */
-    if (screen_showing() && g_screen.dialog) hle_post_message(g_screen.dialog, 0x111u, MAP_REFILL_COMMAND, 0);
+    uint32_t types = screen_showing() ? hle_dialog_item(g_screen.dialog, MAP_TYPE_LIST_ID) : 0;
+    if (types) {
+        /* The proc does nothing when the picked game type is the one it last filled the list for (it keeps that in
+         * 0x8316FC). Forget it, or the list keeps the old map objects: the preview looks the picked item up in the
+         * vector, finds nothing, and stays as it was. */
+        MEM32(MAP_TYPE_LAST_VA) = 0xFFFFFFFFu;
+        hle_post_message(g_screen.dialog, 0x111u, MAP_REFILL_COMMAND, types);   /* lParam: the list, as Windows sends it */
+    }
 }
 #else
 static void maps_rescan_now(void) {}
