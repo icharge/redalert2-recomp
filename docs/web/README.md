@@ -35,6 +35,7 @@ See [deploy.md](deploy.md) for the hosting constraint.
 | [frontend.md](frontend.md) | The page: React, TypeScript and Radix; screens, state, styling, conventions |
 | [protocol.md](protocol.md) | What the page and the game say to each other: messages, exported C functions, events |
 | [map-search-status.md](map-search-status.md) | The map search in the games' map screens: how it works, what was checked, what is left |
+| [online-maps-research.md](online-maps-research.md) | Research: listing and downloading community maps from inside Customize Battle: the online sources, how the game builds its map list, where a file can go, multiplayer, and a recommended approach |
 | [cursor-layer.md](cursor-layer.md) | Plan and task breakdown: draw the in-match game cursor on a page layer so it moves at display refresh rate |
 | [storage.md](storage.md) | Importing the install, checking it, the OPFS layout, saves and settings |
 | [testing.md](testing.md) | Unit tests for the page, the playtest suite in a headless browser, the conformance milestones |
