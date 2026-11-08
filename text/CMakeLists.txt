@@ -1,0 +1,47 @@
+cmake_minimum_required(VERSION 3.20)
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+project(ra2_text_abi C)
+if(NOT CMAKE_SIZEOF_VOID_P EQUAL 4)
+  message(FATAL_ERROR "The game C ABI harness must use the 32-bit host toolchain")
+endif()
+set(RA2_TTF_TEXT ON CACHE BOOL "Build text engine" FORCE)
+include(../cmake/text.cmake)
+enable_testing()
+add_executable(text_c_abi tests/c_abi.c)
+# The harness deliberately checks actual C calls with assert, including Release.
+if(MSVC)
+  target_compile_options(text_c_abi PRIVATE /UNDEBUG)
+else()
+  target_compile_options(text_c_abi PRIVATE -UNDEBUG)
+endif()
+ra2_enable_ttf(text_c_abi)
+if(EMSCRIPTEN)
+  target_compile_options(text_c_abi PRIVATE -pthread -fwasm-exceptions)
+  target_link_options(text_c_abi PRIVATE -pthread -fwasm-exceptions
+    -sPROXY_TO_PTHREAD -sPTHREAD_POOL_SIZE=2 -sEXIT_RUNTIME=1
+    -sENVIRONMENT=node -sINITIAL_MEMORY=128MB -sALLOW_MEMORY_GROWTH)
+  find_program(NODE_EXECUTABLE node REQUIRED)
+  add_test(NAME text_c_abi COMMAND "${NODE_EXECUTABLE}" "$<TARGET_FILE:text_c_abi>")
+else()
+  add_test(NAME text_c_abi COMMAND text_c_abi)
+endif()
+
+# Guest adapter harness: real Rust engine, fake guest font objects in flat
+# 32-bit memory. Shares the adapter source with the game build.
+add_executable(text_guest_abi tests/guest_abi.c ../src/runtime/text_guest.c)
+target_include_directories(text_guest_abi PRIVATE ../src/runtime)
+if(MSVC)
+  target_compile_options(text_guest_abi PRIVATE /UNDEBUG)
+else()
+  target_compile_options(text_guest_abi PRIVATE -UNDEBUG)
+endif()
+ra2_enable_ttf(text_guest_abi)
+if(EMSCRIPTEN)
+  target_compile_options(text_guest_abi PRIVATE -pthread -fwasm-exceptions)
+  target_link_options(text_guest_abi PRIVATE -pthread -fwasm-exceptions
+    -sPROXY_TO_PTHREAD -sPTHREAD_POOL_SIZE=2 -sEXIT_RUNTIME=1
+    -sENVIRONMENT=node -sINITIAL_MEMORY=128MB -sALLOW_MEMORY_GROWTH)
+  add_test(NAME text_guest_abi COMMAND "${NODE_EXECUTABLE}" "$<TARGET_FILE:text_guest_abi>")
+else()
+  add_test(NAME text_guest_abi COMMAND text_guest_abi)
+endif()

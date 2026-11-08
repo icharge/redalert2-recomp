@@ -10,6 +10,7 @@ cmake_minimum_required(VERSION 3.20)
 # C++ redistributable (a clean test PC had none, and neither may a player).
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 project(ra2 C)
+include(cmake/text.cmake)
 
 if(NOT CMAKE_SIZEOF_VOID_P EQUAL 4)
   message(FATAL_ERROR "the host must be 32-bit: use build.cmd (vcvarsall x86), or on Linux build-linux.sh")
@@ -91,13 +92,14 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   set(HLE ${PCRECOMP}/runtime/win32hle)
   file(GLOB HLE_SOURCES CONFIGURE_DEPENDS "${HLE}/*.c")
   list(FILTER HLE_SOURCES EXCLUDE REGEX "_selftest\.c$")
-  add_executable(ra2 src/linux/main.c src/linux/launcher.c src/linux/blowfish.c src/linux/script.c src/linux/mods.c src/runtime/hdvox.c src/runtime/page_cursor.c src/runtime/queuefive.c src/runtime/startup_order.c src/runtime/thai_font.c src/runtime/woltext.c ${HLE_SOURCES} ${GEN_SOURCES})
+  add_executable(ra2 src/linux/main.c src/linux/launcher.c src/linux/blowfish.c src/linux/script.c src/linux/mods.c src/runtime/hdvox.c src/runtime/page_cursor.c src/runtime/queuefive.c src/runtime/startup_order.c src/runtime/thai_font.c src/runtime/text_guest.c src/runtime/woltext.c ${HLE_SOURCES} ${GEN_SOURCES})
   target_include_directories(ra2 PRIVATE src/linux src/runtime ${GEN_DIR} ${HLE} ${PCRECOMP}/runtime/recomp32)
   target_compile_definitions(ra2 PRIVATE RECOMP_RETADDR=0u RECOMP_FLAT_MEMORY RECOMP_LOCAL_REGS HLE_WITH_FFMPEG RA2_URL_HOST)
   set(GEN_OPT "-O2" CACHE STRING "optimisation for the generated C")
   set_source_files_properties(${GEN_SOURCES} PROPERTIES COMPILE_OPTIONS "-w;${GEN_OPT};-fno-strict-aliasing;-fwrapv")
   target_compile_options(ra2 PRIVATE -fno-strict-aliasing -fwrapv)
   target_link_libraries(ra2 PRIVATE PkgConfig::SDL2 PkgConfig::SDL2_TTF PkgConfig::FFMPEG pthread m)
+  ra2_enable_ttf(ra2)
   ra2_lift_check(${RA2_EDITIONS} ra2)
   return()
 endif()
@@ -113,7 +115,7 @@ if(EMSCRIPTEN)
     src/web/map_search.c src/web/map_match.c src/web/map_dialog.c src/web/map_box.c
     src/linux/launcher.c src/linux/blowfish.c src/linux/script.c src/linux/mods.c
     src/runtime/hdvox.c src/runtime/page_cursor.c src/runtime/queuefive.c src/runtime/startup_order.c
-    src/runtime/thai_font.c src/runtime/woltext.c)
+    src/runtime/thai_font.c src/runtime/text_guest.c src/runtime/woltext.c)
   # Movies: with FFmpeg's Bink decoder (tools/build-ffmpeg-web.sh configures FFmpeg in ../ffmpeg-src/build and lists
   # the files; -DFFMPEG_WEB_DIR names another), else empty and short, see pcrecomp bink.c
   set(FFMPEG_WEB_DIR "${CMAKE_SOURCE_DIR}/../ffmpeg-src/build" CACHE PATH "a configured FFmpeg build (tools/build-ffmpeg-web.sh); without it movies are skipped")
@@ -174,6 +176,7 @@ if(EMSCRIPTEN)
       message(FATAL_ERROR "${gen_dir} is empty -- run ./setup.sh (Setup.cmd on Windows) first: it lifts each game")
     endif()
     add_executable(${target} ${WEB_SOURCES} ${HLE_SOURCES} ${gen_sources})
+    ra2_enable_ttf(${target})
     ra2_lift_check(${edition} ${target})
     target_include_directories(${target} PRIVATE src/web src/linux src/runtime ${gen_dir} ${HLE} ${PCRECOMP}/runtime/recomp32)
     target_compile_definitions(${target} PRIVATE RECOMP_RETADDR=0u RECOMP_FLAT_MEMORY RECOMP_LOCAL_REGS)
@@ -254,6 +257,7 @@ add_executable(ra2
   src/runtime/queuefive.c
   src/runtime/startup_order.c
   src/runtime/thai_font.c
+  src/runtime/text_guest.c
   src/runtime/woltext.c
   ${PCRECOMP}/runtime/native32/native32.c
   ${PCRECOMP}/runtime/recomp32/image_loader.c
@@ -287,6 +291,7 @@ endif()
 set_source_files_properties(${GEN_SOURCES} PROPERTIES COMPILE_OPTIONS "/w;${GEN_OPT}")
 set_source_files_properties(src/runtime/host.c src/runtime/input.c src/runtime/mods.c src/runtime/oracle.c src/runtime/present.c src/runtime/hdvox.c src/runtime/queuefive.c PROPERTIES COMPILE_OPTIONS "/W3")
 target_link_libraries(ra2 PRIVATE user32 gdi32 kernel32 ole32 uuid ddraw dxguid winmm d3d11 dxgi shell32)
+ra2_enable_ttf(ra2)
 ra2_lift_check(${RA2_EDITIONS} ra2)
 
 option(RA2_TRACE "record a ring buffer of lifted function entries" OFF)
