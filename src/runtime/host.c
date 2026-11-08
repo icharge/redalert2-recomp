@@ -366,6 +366,71 @@ static void shim_focus_query(void) {    /* GetActiveWindow, GetForegroundWindow,
     g_esp += 4;
 }
 
+static DWORD g_last_dialog_size;
+
+static uint8_t *dialog_skip_field(uint8_t *p, const uint8_t *end) {
+    WORD first;
+    if (p + sizeof(first) > end) return NULL;
+    memcpy(&first, p, sizeof(first));
+    if (first == 0) return p + sizeof(WORD);
+    if (first == 0xFFFF) return p + 2 * sizeof(WORD) <= end ? p + 2 * sizeof(WORD) : NULL;
+    do {
+        if (p + sizeof(WORD) > end) return NULL;
+        memcpy(&first, p, sizeof(first));
+        p += sizeof(WORD);
+    } while (first != 0);
+    return p;
+}
+
+/* MapSeedClass creates the map-type combo from dialog 0x105. The retail
+ * template marks it CBS_SORT, so Windows caches alphabetical insertion even
+ * if the style is cleared after creation. VERA's offline list keeps the
+ * original four entries in order and appends Archipelago, so clear that bit
+ * on the template before CreateDialogIndirectParamA builds the control. */
+static uint32_t *rmg_map_type_style(uint8_t *t, DWORD size) {
+    const uint8_t *end = t + size;
+    uint32_t dialog_style;
+    WORD count;
+    if (size < 26 || *(WORD *)(t + 2) != 0xFFFF) return NULL;
+    memcpy(&dialog_style, t + 12, sizeof(dialog_style));
+    memcpy(&count, t + 16, sizeof(count));
+    if (count > 128) return NULL;
+
+    uint8_t *p = t + 26;
+    p = dialog_skip_field(p, end); /* menu */
+    if (!p) return NULL;
+    p = dialog_skip_field(p, end); /* class */
+    if (!p) return NULL;
+    p = dialog_skip_field(p, end); /* title */
+    if (!p) return NULL;
+    if (dialog_style & DS_SETFONT) {
+        if (p + 6 > end) return NULL;
+        p = dialog_skip_field(p + 6, end); /* point size, weight, italic, charset, face */
+        if (!p) return NULL;
+    }
+
+    for (WORD i = 0; i < count; ++i) {
+        size_t offset = (size_t)(p - t);
+        p = t + ((offset + 3u) & ~3u);
+        if (p + 24 > end) return NULL;
+        uint32_t id;
+        memcpy(&id, p + 20, sizeof(id));
+        uint32_t *style = (uint32_t *)(p + 8);
+        p += 24;
+        p = dialog_skip_field(p, end); /* control class */
+        if (!p) return NULL;
+        p = dialog_skip_field(p, end); /* title */
+        if (!p || p + sizeof(WORD) > end) return NULL;
+        WORD extra;
+        memcpy(&extra, p, sizeof(extra));
+        p += sizeof(extra);
+        if (p + extra > end) return NULL;
+        p += extra;
+        if (id == 0x405) return style;
+    }
+    return NULL;
+}
+
 /* Dialogs the same way: a top-level one is created hidden (WS_VISIBLE
  * cleared in the template for the call), made invisible, then shown. */
 static void shim_CreateDialogIndirectParamA(void) {
@@ -373,12 +438,16 @@ static void shim_CreateDialogIndirectParamA(void) {
     int ex = *(uint16_t*)(t + 2) == 0xFFFF;             /* DLGTEMPLATEEX */
     uint32_t* style = (uint32_t*)(t + (ex ? 12 : 0));
     uint32_t saved = *style;
+    uint32_t *map_type_style = g_last_dialog == 0x105 ? rmg_map_type_style(t, g_last_dialog_size) : NULL;
+    uint32_t map_type_saved = map_type_style ? *map_type_style : 0;
     int top = !(saved & WS_CHILD);
     HWND h;
     if (top) *style &= ~WS_VISIBLE;
+    if (map_type_style) *map_type_style &= ~0x0100u; /* CBS_SORT */
     h = CreateDialogIndirectParamA((HINSTANCE)(uintptr_t)GUEST_MODULE(ARG(0)), (LPCDLGTEMPLATEA)t,
                                    (HWND)(uintptr_t)ARG(2), (DLGPROC)(uintptr_t)ARG(3), (LPARAM)ARG(4));
     *style = saved;
+    if (map_type_style) *map_type_style = map_type_saved;
     if (h && top) {
         SetWindowLongA(h, GWL_EXSTYLE, GetWindowLongA(h, GWL_EXSTYLE) | HL_EXSTYLE);
         SetLayeredWindowAttributes(h, 0, 0, LWA_ALPHA);
@@ -1082,9 +1151,13 @@ static void shim_CoCreateInstance(void) {
  * menu returned at once as if Exit had been picked (bringup.md, 9). */
 
 static void shim_FindResourceA(void) {
-    if (ARG(2) == (uint32_t)(uintptr_t)RT_DIALOG) g_last_dialog = (int)ARG(1);
-    g_eax = (uint32_t)(uintptr_t)FindResourceA((HMODULE)(uintptr_t)GUEST_MODULE(ARG(0)),
-                                               (LPCSTR)(uintptr_t)ARG(1), (LPCSTR)(uintptr_t)ARG(2));
+    HMODULE module = (HMODULE)(uintptr_t)GUEST_MODULE(ARG(0));
+    HRSRC resource = FindResourceA(module, (LPCSTR)(uintptr_t)ARG(1), (LPCSTR)(uintptr_t)ARG(2));
+    if (ARG(2) == (uint32_t)(uintptr_t)RT_DIALOG) {
+        g_last_dialog = (int)ARG(1);
+        g_last_dialog_size = resource ? SizeofResource(module, resource) : 0;
+    }
+    g_eax = (uint32_t)(uintptr_t)resource;
     g_esp += 4 + 3 * 4;
 }
 

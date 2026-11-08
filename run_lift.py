@@ -121,6 +121,65 @@ def dropdown_frame_patches(code, cs):
     return out if len(out) == 1 else {}
 
 
+def yr_random_map_option_patches(code, cs):
+    """Expose the stock MapGen options the native dialog leaves out.
+
+    MapGen.cpp already has the Archipelago and Desert string-table keys and
+    the generator's theater-index mapping. Its dialog sorts map types by label,
+    unlike VERA's offline list order. Clear CBS_SORT before adding map types,
+    then append Archipelago after the original four; the native host also clears
+    that bit in the resource template because Windows caches creation styles.
+    Extend the climate list through Desert, before New Urban and Lunar.
+    """
+    sites = {
+        0x00597003: bytes.fromhex('bb38b08200'),  # mov ebx, 0x82B038
+        0x00597034: bytes.fromhex('81fb48b08200'),  # cmp ebx, 0x82B048
+        0x0059703A: bytes.fromhex('7ccc'),  # jl to first terrain item
+        0x00596FD4: bytes.fromhex('6a00'),  # push 0 before CB_RESETCONTENT
+        0x005970C9: bytes.fromhex('50'),  # push eax, resolved theater name
+        0x005970E2: bytes.fromhex('81fb681c7e00'),  # cmp ebx, Name:Urban
+        0x005970E8: bytes.fromhex('7ccc'),  # jl back to the theater-list body
+    }
+    for va, expected in sites.items():
+        offset = va - cs
+        if offset < 0 or code[offset:offset + len(expected)] != expected:
+            print('[*] yr_random_map_option_patches: site 0x%08X does not match; no random-map options' % va)
+            return {}
+
+    return {
+        # VERA preserves the engine's original order and appends Archipelago.
+        # The resource sets CBS_SORT on map types only; remove that bit before
+        # the dialog populates the combo so CB_ADDSTRING keeps insertion order.
+        0x00596FD4: (
+            '@replace:PUSH32(esp, 0xFFFFFFF0u); PUSH32(esp, edi); '
+            'RECOMP_THAI_ICALL(MEM32(0x7E1474)); RECOMP_FLAGS_IN(); '
+            'eax = eax & 0xFFFFFEFFu; PUSH32(esp, eax); '
+            'PUSH32(esp, 0xFFFFFFF0u); PUSH32(esp, edi); '
+            'RECOMP_THAI_ICALL(MEM32(0x7E1470)); RECOMP_FLAGS_IN(); '
+            'PUSH32(esp, 0); /* clear CBS_SORT before the map-type items are added */'),
+        # After the four stock entries, add the existing index-0 key at
+        # 0x82B034 as the fifth item, then leave the loop. This preserves the
+        # order VERA presents: Continent through Mountainous, then Archipelago.
+        0x0059703A: (
+            '@replace:if (ebx == 0x0082B048u && ebp == 5) { '
+            'ebx = 0x0082B034u; ebp = 0; goto L_00597008; '
+            '} else if (!(ebx == 0x0082B038u && ebp == 1) && '
+            'CMP_L(_flag_a, _flag_b)) goto L_00597008; '
+            '/* remaster: append Archipelago, run_lift.py yr_random_map_option_patches */'),
+        # A few installed language packs lack Name:Desert. Keep the game-owned
+        # missing-string object intact, but pass its existing "Desert" literal
+        # to the combo instead. Preserve a real localized entry when present.
+        0x005970C9: (
+            '@replace:if (ebx == 0x007E1CD8u) eax = 0x007E1CDDu; '
+            'PUSH32(esp, eax); /* remaster: Desert display fallback, run_lift.py yr_random_map_option_patches */'),
+        # The theater keys are contiguous at 0x70-byte strides: Temperate,
+        # Snow, Urban, Desert, New Urban, Lunar. Stop before New Urban.
+        0x005970E8: (
+            '@replace:if (ebx < 0x007E1D48u) goto L_005970B6; '
+            '/* remaster: include Urban and Desert, run_lift.py yr_random_map_option_patches */'),
+    }
+
+
 def sidebar_rows_patches(code, cs, lo=0x006A5000, hi=0x006AD000, globals_=(0x00886F9C, 0x00B0B4F8)):
     """The sidebar's cameo rows, capped at 30 so 4K fits its button array.
 
@@ -1558,7 +1617,8 @@ def targets():
         'gamemd': dict(exe=EXE, catalog=CATALOG, seeds=SEEDS, out=OUT, stats=STATS,
                        run_seeds=RUN_SEEDS, hooks=HOOKS, exe_name='gamemd.exe', ini_name='RA2MD.INI',
                        title="Yuri's Revenge", game_frame=0x00A8ED84, stamp=0x3BDF544E,
-                       patches=lambda code, cs: {**sidebar_rows_patches(code, cs), **dropdown_frame_patches(code, cs), **HD_VOXEL_PATCHES,
+                       patches=lambda code, cs: {**sidebar_rows_patches(code, cs), **dropdown_frame_patches(code, cs),
+                                                 **yr_random_map_option_patches(code, cs), **HD_VOXEL_PATCHES,
                                                  **modern_controls_patches('gamemd'), **queue_five_patches('gamemd'),
                                                  **theme_song_guard(code, cs, 'gamemd'),
                                                  **save_reference_fault_patch(code, cs, 'gamemd'),

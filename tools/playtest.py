@@ -221,6 +221,32 @@ case('sp-skirmish', SP().press(SINGLE, 'Skirmish', SKIRMISH))
 case('sp-campaign', SP().press(SINGLE, 'NewCampaign', CAMPAIGN))
 case('sp-load', SP().press(SINGLE, 'LoadSavedGame', LOADGAME))
 
+# The native dialog hides Archipelago (map-type item 4) and the Urban/Desert
+# climates (items 2/3). Verify both added dimensions through map generation and
+# gameplay; the generator can take longer than the ordinary case watchdog.
+rmg_desert_archipelago = (SP().press(SINGLE, 'Skirmish', SKIRMISH)
+                          .press(SKIRMISH, 'ChooseMap', 0x6B)
+                          .press(0x6B, 'CreateRandomMap', 0x105)
+                          .select(0x105, 0x405, 4)
+                          .select(0x105, 0x407, 3)
+                          .click(430, 430))
+rmg_desert_archipelago.t += 12  # allow the small map to finish generating
+rmg_desert_archipelago.press(0x105, 'UseMap', SKIRMISH).press(SKIRMISH, 'StartGame')
+rmg_desert_archipelago.waitlog('Capture_Mouse')
+case('rmg-desert-archipelago', rmg_desert_archipelago, 180, ingame=True)
+
+rmg_urban_continent = (SP().press(SINGLE, 'Skirmish', SKIRMISH)
+                       .press(SKIRMISH, 'ChooseMap', 0x6B)
+                       .press(0x6B, 'CreateRandomMap', 0x105)
+                       .select(0x105, 0x405, 0)
+                       .select(0x105, 0x407, 2)
+                       .click(430, 430))
+rmg_urban_continent.t += 12
+rmg_urban_continent.press(0x105, 'UseMap', SKIRMISH).press(SKIRMISH, 'StartGame')
+rmg_urban_continent.waitlog('Capture_Mouse')
+case('rmg-urban-continent', rmg_urban_continent, 180, ingame=True)
+
+
 # Options' sub-screens and the movie/credit players.
 case('options-keyboard', S().press(MAIN, 'Options', OPTIONS).press(OPTIONS, 'Keyboard', KEYBOARD))
 case('movies-credits', S().press(MAIN, 'MoviesAndCredits', MOVIES).press(MOVIES, 'ViewCredits'), 90)

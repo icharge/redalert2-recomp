@@ -84,6 +84,58 @@ class DropdownPatchTests(unittest.TestCase):
         self.assertFalse(dropdown_frame_patches(paint_epilogue(0x887308, 0x887308), 0x400000))
 
 
+class RandomMapOptionPatchTests(unittest.TestCase):
+    def test_archipelago_urban_and_desert_are_added_to_the_native_lists(self):
+        from run_lift import apply_patches, yr_random_map_option_patches
+
+        code = bytearray(0x00597100)
+        code[0x00596FFE:0x00597003] = bytes.fromhex('bd01000000')
+        code[0x00597003:0x00597008] = bytes.fromhex('bb38b08200')
+        code[0x00597034:0x0059703A] = bytes.fromhex('81fb48b08200')
+        code[0x0059703A:0x0059703C] = bytes.fromhex('7ccc')
+        code[0x00596FD4:0x00596FD6] = bytes.fromhex('6a00')
+        code[0x005970C9:0x005970CA] = bytes.fromhex('50')
+        code[0x005970E2:0x005970E8] = bytes.fromhex('81fb681c7e00')
+        code[0x005970E8:0x005970EA] = bytes.fromhex('7ccc')
+
+        patches = yr_random_map_option_patches(bytes(code), 0)
+        self.assertEqual(set(patches), {0x00596FD4, 0x0059703A, 0x005970C9, 0x005970E8})
+
+        body = (
+            '    ebx = 0x0082B038u; /* 0x00597003: mov ebx, 0x82b038 */\n'
+            '    PUSH32(esp, 0); /* 0x00596FD4: push 0 */\n'
+            '    if (CMP_L(_flag_a, _flag_b)) goto L_00597008; /* 0x0059703A: jl 0x597008 */\n'
+            '    PUSH32(esp, eax); /* 0x005970C9: push eax */\n'
+            '    if (CMP_L(_flag_a, _flag_b)) goto L_005970B6; /* 0x005970E8: jl 0x5970b6 */\n'
+        )
+        result = apply_patches(body, patches)
+        self.assertIn('ebx = 0x0082B034u; ebp = 0; goto L_00597008;', result)
+        self.assertIn('ebx == 0x0082B038u && ebp == 1', result)
+        self.assertIn('RECOMP_THAI_ICALL(MEM32(0x7E1474));', result)
+        self.assertIn('eax = eax & 0xFFFFFEFFu;', result)
+        self.assertIn('RECOMP_THAI_ICALL(MEM32(0x7E1470));', result)
+        self.assertIn('if (ebx == 0x007E1CD8u) eax = 0x007E1CDDu;', result)
+        self.assertIn(
+            'if (ebx == 0x007E1CD8u) eax = 0x007E1CDDu; PUSH32(esp, eax);', result)
+        self.assertIn('if (ebx < 0x007E1D48u) goto L_005970B6;', result)
+
+    def test_modified_native_sites_are_left_unpatched(self):
+        from run_lift import yr_random_map_option_patches
+
+        code = bytearray(0x00597100)
+        code[0x00596FFE:0x00597003] = bytes.fromhex('bd01000000')
+        code[0x00597003:0x00597008] = bytes.fromhex('bb38b08200')
+        code[0x00597034:0x0059703A] = bytes.fromhex('81fb48b08200')
+        code[0x0059703A:0x0059703C] = bytes.fromhex('7ccc')
+        code[0x00596FD4:0x00596FD6] = bytes.fromhex('6a00')
+        code[0x005970C9:0x005970CA] = bytes.fromhex('50')
+        code[0x005970E2:0x005970E8] = bytes.fromhex('81fb681c7e00')
+        code[0x005970E8:0x005970EA] = bytes.fromhex('7ccc')
+        code[0x00597003] ^= 0xFF
+
+        self.assertEqual(yr_random_map_option_patches(bytes(code), 0), {})
+
+
 class WebExitConfirmationPatchTests(unittest.TestCase):
     @staticmethod
     def call(helper, base=0x400000):
