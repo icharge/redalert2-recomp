@@ -353,6 +353,8 @@ export interface Ra2Exports {
   ra2_input_wheel?(delta: number, x: number, y: number): void;
   /** committed Unicode text; the game host converts supported characters to CP874 WM_CHAR messages */
   ra2_input_text(text: string): void;
+  /** Yuri's Revenge: scan the game's map folder again on the game thread; truncate 1 replaces the list, 0 appends */
+  ra2_maps_rescan(truncate: number): void;
   ra2_crash_report(why: string): void;
 }
 
@@ -377,5 +379,6 @@ export const EXPORT_SIGNATURES: {
   ra2_input_key: { returns: null, args: ["number", "number", "number"] },
   ra2_input_wheel: { returns: null, args: ["number", "number", "number"] },
   ra2_input_text: { returns: null, args: ["string"] },
+  ra2_maps_rescan: { returns: null, args: ["number"] },
   ra2_crash_report: { returns: null, args: ["string"] },
 };

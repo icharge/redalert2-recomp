@@ -24,6 +24,7 @@ import { GameAudio } from "../game/audio";
 import { attachInput } from "../game/input";
 import { PageCursor } from "../game/cursor-layer";
 import { LanPanel } from "../components/LanPanel";
+import { MapDownloadPanel } from "../components/MapDownloadPanel";
 import { FileExplorer } from "../components/FileExplorer";
 import { GameTray, trayItem } from "./GameTray";
 import { CrashDialog } from "./CrashDialog";
@@ -739,6 +740,9 @@ export function Play({ files }: { files: FileSource }) {
         onBlur={() => setTextInputOpen(false)}
       />
       <img ref={cursor} className={styles.cursor} alt="" aria-hidden="true" />
+      {presenter && handle.current && (
+        <MapDownloadPanel game={handle.current} visible={mapSearchStatus.open} />
+      )}
       <GameTray quiet={trayQuiet}>
         <button
           type="button"

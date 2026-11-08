@@ -1,5 +1,6 @@
 import { EXPORT_SIGNATURES, type Ra2Exports } from "./protocol";
 import { appPath } from "../paths";
+import { loadDownloadedMaps } from "../storage/downloaded-maps";
 import { type GameStore, gameStore } from "./store";
 import type { WasmMemory } from "./presenter";
 import { liveBytes, liveViews } from "./memory-views";
@@ -134,6 +135,16 @@ async function runtimeAsset(
   return bytes;
 }
 
+/** Yuri's Revenge lists loose maps once, at start-up: put the downloaded ones in /game first. */
+async function restoreDownloadedMaps(fs: EmscriptenFs, game: GameId): Promise<void> {
+  if (game !== "ra2md") return;
+  try {
+    for (const map of await loadDownloadedMaps()) fs.writeFile(`/game/${map.sha1}.yrm`, map.bytes);
+  } catch (error) {
+    console.warn("[maps] the downloaded maps could not be restored:", error);
+  }
+}
+
 /** Put the build-matched PE and Blowfish tables at the paths the host expects. */
 export async function stageRuntimeBundle(
   fs: EmscriptenFs,
@@ -194,6 +205,8 @@ export interface GameHandle {
   shared: number;
   /** a read-only view rooted at the live /game virtual filesystem */
   files: ReadOnlyFileSource;
+  /** writes a file into the running game's /game folder (the map download; not kept across a reload) */
+  writeGameFile: (name: string, bytes: Uint8Array) => void;
   /** keeps the game's writes (saves, settings) in OPFS; null when the files are not from the import */
   saves: SaveSync | null;
 }
@@ -576,6 +589,7 @@ function createHandle(module: Ra2Module, saves: SaveSync | null, game: GameId): 
     memory: () => liveViews(module),
     shared: ra2.ra2_shared(),
     files: liveGameFileSource(module.FS, game === "ra2" ? "Red Alert 2" : "Yuri's Revenge"),
+    writeGameFile: (name, bytes) => module.FS?.writeFile(`/game/${name}`, bytes),
     saves,
   };
 }
@@ -796,6 +810,7 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
         };
         loadFiles(fs)
           .then(() => stageRuntimeBundle(fs, game, runtimeGame))
+          .then(() => restoreDownloadedMaps(fs, game))
           .then(() =>
             applyCsfOverrides(csfFs, game, {
               thaiFontFixEnabled: thaiFontFix.enabled,

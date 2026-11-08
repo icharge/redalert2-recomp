@@ -60,7 +60,20 @@ export default defineConfig(({ mode }) => {
     ],
     // the archive import's worker bundles 7-Zip's ES module (src/storage/archive.worker.ts)
     worker: { format: "es" as const },
-    server: { headers: isolation, port: 5173 },
+    // Prototype relay for the online map list (docs/web/online-maps-research.md): MapDB 2 sends no CORS
+    // header, so the page asks its own origin and the dev server forwards. A release needs the same
+    // route on the real host (nginx.conf), with a cache and a size limit.
+    server: {
+      headers: isolation,
+      port: 5173,
+      proxy: {
+        "/maps-api": {
+          target: "https://mapdb2.cncnet.org",
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/maps-api/, ""),
+        },
+      },
+    },
     preview: { headers: isolation, port: 4173 },
     test: {
       environment: "jsdom",

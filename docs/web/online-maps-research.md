@@ -192,11 +192,46 @@ count to 0 and calls `0x699980` with ecx = Session. `web/e2e/maps-rescan.mjs` dr
 4. Customize Battle, opened after that, lists "ZZ Proto Download" (the search box finds it) and shows its
    preview. Use Map and Start Game load it and play it at 62 frames a second.
 
-So the truncate-and-rescan route works with no page-to-game buffer, and a `.yrm` that holds an INI map lists
-and starts. Not tried: a screen that is already open (the dialog fills its list when it opens, so a map
-added while it is up shows after the next fill), the 40-character `<sha1>.yrm` name, a `.map` from MapDB (the
-test file was already a `.yrm`), duplicate maps, two players. Truncating leaks the old 0x1BC-byte items; the
-add-one-entry route avoids that.
+### Second step: the whole path, in the page (8 to 9 November 2026)
+
+Branch `claude/online-maps`, checked in headless Chrome with a real MapDB map and the game folder served
+from the Yuri's Revenge install (`web/e2e/maps-download.mjs`; `?mute`).
+
+- **Relay.** `vite.config.ts` forwards `/maps-api/` to `https://mapdb2.cncnet.org` (`server.proxy`, dev server
+  only). Search (`/maps/search/?game_slug=yr&search=…`) and `/yr/<sha1>.zip` both answer 200 through it. A
+  release needs the same route on the real host (the `nginx.conf` `/emu/` block is the model), a cache, a size
+  limit on the body, and a decision on whether CnCNet is happy to be proxied; the better fix is CORS on their side.
+- **Panel.** `MapDownloadPanel` (a GET MAPS button over the stage, shown while the game's `mapSearch` event says
+  a map screen is open): search box, result list, DOWNLOAD. Results carry an UNREVIEWED tag when MapDB marks the
+  upload incomplete or temporary.
+- **Download.** `src/game/mapdb.ts` fetches the zip (stored or deflate, read by hand: it holds one file), checks
+  the file's SHA1 against the name in the URL, and refuses more than 8 MiB.
+- **MapDB data.** Every record the search returned was `incomplete_upload` and `is_temporary`, and none was
+  published or reviewed, but the legacy `/yr/<sha1>.zip` download works for them, and the zip's contents hash to
+  the name. The search's own file URLs are `http://` on the same host: the relay uses the `/yr/` route instead.
+- **Into the game.** The page writes `/game/<sha1>.yrm` (`GameHandle.writeGameFile`), calls
+  `ra2_maps_rescan(1)`, and the game thread rescans. "Dustbowl Battleground v2.0 (MNR) by Matty K" (a real map,
+  8 players) then lists under Battle, the search box in the game finds it, and the preview shows. Use Map and Start
+  Game start a match on it (the Yuri HUD and credits come up).
+- **A screen that is already open.** After the rescan the C side posts `WM_COMMAND` with `LBN_SELCHANGE` of the
+  game type list (id 0x6EB) to the dialog, which rebuilds list 1363 from the vector (`0x5E6B78`). The first try
+  sent id 0x583, which is the Random Map button, and opened the map generator: the id matters. The refill resets
+  the highlight to the first map.
+- **Kept across a reload.** `src/storage/downloaded-maps.ts` keeps each map in OPFS under
+  `downloaded-maps/yr/<sha1>.yrm`, and the loader writes them into `/game` before the game starts (before its one
+  scan). Checked: download in one run, close the browser, open a new page on the same profile, and the map is
+  listed with no download. They belong to the origin, not to an install.
+- **Search in the game.** The list shows the map's `[Basic] Name`, not MapDB's title, so "matty k" finds the map
+  above and "mattyk" does not.
+
+Not done or not checked: the match was seen starting (HUD, credits) but a screenshot 25 seconds in showed a black
+map area, so that the downloaded map draws is not confirmed; the 40-character file name works but name length
+at `+0x58` was not pushed further; duplicates by digest; multiplayer (a joiner needs the same file name and digest,
+which `<sha1>.yrm` gives only to players who both used the panel); Red Alert 2; deleting a kept map (the store has
+`removeDownloadedMap`, no UI); a release build (the relay, `nginx.conf`, the service worker, quota); and the
+list refill is a posted message, so it lands on the game's next message pump, not instantly. The unit tests for
+`mapdb.ts` pass; the page's other tests were not run here (`jsdom` was missing from this machine's
+`node_modules`).
 
 ## Open questions
 
