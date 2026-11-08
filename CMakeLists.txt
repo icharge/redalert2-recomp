@@ -59,6 +59,21 @@ function(ra2_gen_dir edition out_var)
   endif()
 endfunction()
 
+# Before each build, fail if an edition's lift is older than run_lift.py or the
+# pcrecomp lifter: a patch edited there reaches the game only through a re-lift
+# (cmake/lift_check.cmake). It runs before the target's compiles start.
+option(RA2_ALLOW_STALE_LIFT "warn instead of failing when the lifted C is older than run_lift.py" OFF)
+function(ra2_lift_check edition target)
+  ra2_gen_dir(${edition} gen_dir)
+  add_custom_target(${target}_lift_check
+    COMMAND ${CMAKE_COMMAND} -DGEN_DIR=${CMAKE_SOURCE_DIR}/${gen_dir} -DEDITION=${edition}
+            -DPCRECOMP=${PCRECOMP} -DRUN_LIFT=${CMAKE_SOURCE_DIR}/run_lift.py
+            -DALLOW_STALE=${RA2_ALLOW_STALE_LIFT} -P ${CMAKE_SOURCE_DIR}/cmake/lift_check.cmake
+    COMMENT "Checking ${gen_dir} against run_lift.py"
+    VERBATIM)
+  add_dependencies(${target} ${target}_lift_check)
+endfunction()
+
 if(NOT EMSCRIPTEN)
   ra2_gen_dir(${RA2_EDITIONS} GEN_DIR)
   file(GLOB GEN_SOURCES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/${GEN_DIR}/*.c")
@@ -83,6 +98,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   set_source_files_properties(${GEN_SOURCES} PROPERTIES COMPILE_OPTIONS "-w;${GEN_OPT};-fno-strict-aliasing;-fwrapv")
   target_compile_options(ra2 PRIVATE -fno-strict-aliasing -fwrapv)
   target_link_libraries(ra2 PRIVATE PkgConfig::SDL2 PkgConfig::SDL2_TTF PkgConfig::FFMPEG pthread m)
+  ra2_lift_check(${RA2_EDITIONS} ra2)
   return()
 endif()
 
@@ -158,6 +174,7 @@ if(EMSCRIPTEN)
       message(FATAL_ERROR "${gen_dir} is empty -- run ./setup.sh (Setup.cmd on Windows) first: it lifts each game")
     endif()
     add_executable(${target} ${WEB_SOURCES} ${HLE_SOURCES} ${gen_sources})
+    ra2_lift_check(${edition} ${target})
     target_include_directories(${target} PRIVATE src/web src/linux src/runtime ${gen_dir} ${HLE} ${PCRECOMP}/runtime/recomp32)
     target_compile_definitions(${target} PRIVATE RECOMP_RETADDR=0u RECOMP_FLAT_MEMORY RECOMP_LOCAL_REGS)
     if(TARGET ffmpeg_web)
@@ -270,6 +287,7 @@ endif()
 set_source_files_properties(${GEN_SOURCES} PROPERTIES COMPILE_OPTIONS "/w;${GEN_OPT}")
 set_source_files_properties(src/runtime/host.c src/runtime/input.c src/runtime/mods.c src/runtime/oracle.c src/runtime/present.c src/runtime/hdvox.c src/runtime/queuefive.c PROPERTIES COMPILE_OPTIONS "/W3")
 target_link_libraries(ra2 PRIVATE user32 gdi32 kernel32 ole32 uuid ddraw dxguid winmm d3d11 dxgi shell32)
+ra2_lift_check(${RA2_EDITIONS} ra2)
 
 option(RA2_TRACE "record a ring buffer of lifted function entries" OFF)
 if(RA2_TRACE)

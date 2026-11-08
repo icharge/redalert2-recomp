@@ -37,6 +37,16 @@ The lift is the same as for Windows and Linux. `src/recomp/gen/` from
 `run_lift.py --all` is what emcc compiles. `setup.sh` and `Setup.cmd` gain a
 `--web` step later, once the build works by hand.
 
+A build does not re-lift. A patch edited in `run_lift.py` (or a change to
+pcrecomp's `lift32.py` or `generate.py`) reaches the game only after
+`run_lift.py --target <edition> --all`. Every CMake build checks this before
+compiling: `cmake/lift_check.cmake` compares each edition's
+`lift_stamp.txt` with a hash of those three files and fails, naming the
+command, when they differ. Any edit to `run_lift.py`, even one meant for the
+other edition, makes both lifts stale; re-lift both or set `RA2_TARGET` to
+build one. `-DRA2_ALLOW_STALE_LIFT=ON` builds the old lift anyway, with a
+warning.
+
 ## Files
 
 | File                                                        | What it is                                                                                                                                                                                                                                                                         |
