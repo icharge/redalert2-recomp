@@ -16,7 +16,6 @@ browser needs from the player. The game draws and plays on its own thread
 | Styling | Radix Themes tokens. CSS Modules for our own components. No Tailwind, no CSS-in-JS |
 | Routing | React Router 7, BrowserRouter with the deployment basename |
 | State | React state and context. One external store for the game's events, read with `useSyncExternalStore` |
-| Routing | none: four screens, chosen by state |
 | Build | Vite, with `vite-plugin-pwa` for the service worker |
 | Package manager | pnpm, lockfile committed |
 | Lint and format | ESLint (typescript-eslint, react-hooks), Prettier. CI runs both; a pre-commit hook (`.githooks/`, set up by `pnpm install`) formats and lints the staged files with lint-staged |
@@ -93,20 +92,21 @@ the game isn't built.
 ## Screens
 
 The app uses clean routes under its deployment base: `/` (Play), `/mods`, `/manage` (Game) and
-`/settings/<tab>` are the launcher; `/import` installs a folder; `/game/:slot` launches an
-install, with `?edition=ra2` or `?edition=ra2md` naming the edition. `/settings` and an unknown tab
-go to `/settings/launcher`. Invalid or unfinished slots explain the problem and link back to the
+`/settings/<tab>` are the launcher; `/import` installs a folder; `/game` launches the active
+installation, with `?edition=ra2` or `?edition=ra2md` naming the edition. Old `/game/:slot` links
+select that installation and replace the URL with `/game`. `/settings` and an unknown tab go to
+`/settings/launcher`. Invalid or unfinished installations explain the problem and link back to the
 launcher or to Resume import. Game routes survive refreshes.
 
-**One install.** The browser holds one copy of the game. To install from another folder the player
-removes the game first: with a game installed, `/import` goes to the Game screen, and `runImport`
-refuses a new install too (a resume, `?resume=<slot>`, still works). Storage keeps its slot layout
-(`game/slot-1/`, `slot-1-ra2md` settings keys), so nothing moves. The launcher shows the *active
-install*: the slot remembered in `ra2-active-slot`, else the lowest slot with a complete game,
-else the lowest slot (`storage/active-install.ts`). Its editions are the tiles in the game rail,
-Red Alert 2 first; the chosen one is remembered per slot in `ra2-edition:<slot>` and defaults to
-Yuri's Revenge. Copies left from when several installs were allowed show on the Game screen as
-OLDER COPIES, with their size and DELETE THEM behind a confirm; nothing is deleted without it.
+**One install.** The browser holds one newly imported copy of the game. To install from another
+folder the player removes the game first: with a game installed, `/import` goes to the Game screen,
+and `runImport` refuses a new install too (a resume, `?resume=<slot>`, still works). RA2 and Yuri's
+Revenge are editions within the installation; matching files are shared. Storage keeps its slot
+layout (`game/slot-1/`, `slot-1-ra2md` settings keys), so existing data needs no migration. The
+launcher shows the *active install*: the remembered slot, else the lowest complete slot, else the
+lowest slot (`storage/active-install.ts`). Its editions are the tiles in the game rail, Red Alert 2
+first; the chosen one is remembered per slot and defaults to Yuri's Revenge. Older copies from
+versions that allowed several installs remain manageable on the Game screen.
 
 **All games.** A setting changed on the Settings screen is written to every edition of the active
 install, each into its own files (`storage/all-games.ts`): `RA2.INI` and `RA2MD.INI`, both

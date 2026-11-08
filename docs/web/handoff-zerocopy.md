@@ -55,7 +55,7 @@ spike's results are in "Background" and in [decisions.md](decisions.md), D11.
   then seed the install into OPFS through the app's importer from the page console (`prepareImport`
   and `runImport` from `/src/storage/importer.ts` over a source built from `/dev-game/index.json`,
   `Manifest.open()`, `opfsTarget()`, `loadBuildInfo()`; options `{movies:false, saves:true}`; run it on
-  `/?test=1`, not on a game page). Open `/game/<slot>?edition=ra2md`. Time the menu by polling
+  `/?test=1`, not on a game page). Open `/game?edition=ra2md`. Time the menu by polling
   `window.ra2Store.getLog()` for `"e":"menu"` and reading `performance.now()`. Keep the browser tab
   fronted: a hidden pane throttles the page, and the numbers stop meaning anything.
 - The in-app browser's OPFS was wiped once during this work (slot 1 came back empty with the manifest

@@ -50,7 +50,7 @@ if (software) {
 }
 await chooseEdition(page, "ra2md");
 await playButton(page).click();
-await page.waitForURL(/\/game\/1(?:\?|$)/, { timeout: 120_000 });
+await page.waitForURL(/\/game(?:\?|$)/, { timeout: 120_000 });
 console.log("[browser] the game was opened at", page.url());
 if (software) {
   // The URL carries the choice for this launch; leave the profile as it was.

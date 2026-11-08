@@ -9,5 +9,5 @@ export function slotFromPath(value: string | undefined): number | null {
   return Number.isSafeInteger(slot) ? slot : null;
 }
 
-export const gamePath = (slot: number, edition?: string) =>
-  `/game/${slot}${edition ? `?edition=${encodeURIComponent(edition)}` : ""}`;
+export const gamePath = (edition?: string) =>
+  `/game${edition ? `?edition=${encodeURIComponent(edition)}` : ""}`;

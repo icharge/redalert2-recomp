@@ -11,7 +11,7 @@ import { picture, startPage } from "./lib.mjs";
 /** The game's address for an installation's Yuri's Revenge, at a picture size (or the game's own). */
 export function gameUrl(base, video, stats = true) {
   const url = new URL(base.url);
-  url.pathname = `${url.pathname.replace(/\/?$/, "/")}game/1`;
+  url.pathname = `${url.pathname.replace(/\/?$/, "/")}game`;
   const edition = base.edition ?? "ra2md";
   if (edition !== "ra2" && edition !== "ra2md")
     throw new Error(`--edition ${edition}: use ra2 or ra2md`);

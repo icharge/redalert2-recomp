@@ -290,7 +290,7 @@ check(
 await openTab(page, "PLAY");
 await playButton(page).click();
 await running(page);
-check(new URL(page.url()).pathname.endsWith("/game/1"), "PLAY navigates to the installation route");
+check(new URL(page.url()).pathname.endsWith("/game"), "PLAY navigates to the game route");
 const direct = new URL("game/1?edition=ra2md&e2e=1", address);
 await page.goto(direct.toString());
 await running(page);

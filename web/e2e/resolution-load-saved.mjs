@@ -75,7 +75,7 @@ try {
   check(await play.isEnabled(), "the imported Red Alert 2 build is playable");
   await play.click();
   console.log("    clicked Play; current URL:", page.url());
-  await page.waitForURL(/\/game\/1(?:\?|$)/, { timeout: 30_000 });
+  await page.waitForURL(/\/game(?:\?|$)/, { timeout: 30_000 });
   const gameUrl = new URL(page.url());
   const gameArgs = [
     "--press",

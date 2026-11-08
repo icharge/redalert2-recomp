@@ -346,20 +346,21 @@ contract. Internet lobby/session support remains Stage 13.
 
 ## D14. The launcher shows one active install over the existing slots
 
-**Decided (2026-11-06, launcher redesign).** The manifest keeps its install slots, and an import can
-still make a second copy. The launcher shows one of them: the slot remembered in
-`ra2-active-slot`, else the lowest slot with a complete game, else the lowest slot. The others are
-listed on the Game screen with USE and remove; nothing is deleted to get to one install.
+**Decided (2026-11-06, launcher redesign; clarified 2026-11-08).** The manifest retains its
+installation slots for stored data and older copies, while the public game URL is `/game` with an
+optional edition query. A valid old `/game/:slot` URL selects that installation and redirects to the
+canonical URL. New imports are limited to one installation: `runImport` rejects another fresh copy
+until the current game is removed. RA2 and Yuri's Revenge are editions within that installation;
+matching files are shared.
 
-**Why.** The redesign is "one game install, separate mod slots". Changing the storage to one
-install would mean migrating every player's OPFS copy; picking an active slot gives the same screen
-with no migration, and players with several copies keep them.
+**Why.** The URL describes the game and edition, while internal slot IDs preserve existing IndexedDB
+and OPFS data without a migration. Keeping old route links useful avoids breaking bookmarks.
 
-**Costs.** Slots are still there under the surface, so a second copy is one click away and takes the
-full size again. Code that lists games has to choose the active install rather than all slots.
+**Costs.** Slot IDs remain in internal storage and interrupted-import resume URLs. Older browser
+data can still contain multiple installations, which the launcher must continue to select and manage.
 
-**Would change if.** Mod slots inside one install (mods are already per edition) cover every
-reason players keep a second copy; then a migration could fold the slots into one.
+**Would change if.** A later storage migration intentionally removes the installation-slot model and
+provides a supported path for existing imports and saves.
 
 ## D15. Settings are written to every edition ("All games")
 

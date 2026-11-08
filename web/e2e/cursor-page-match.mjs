@@ -42,7 +42,7 @@ if (!installed) console.log("[browser] importing the install into OPFS (once)…
 await installIfMissing(page, game);
 await chooseEdition(page, "ra2md");
 await playButton(page).click();
-await page.waitForURL(/\/game\/1(?:\?|$)/, { timeout: 120_000 });
+await page.waitForURL(/\/game(?:\?|$)/, { timeout: 120_000 });
 urlAtGame = page.url();
 
 const gameUrl = new URL(urlAtGame);

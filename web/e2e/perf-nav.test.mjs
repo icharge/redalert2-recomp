@@ -18,7 +18,7 @@ test("uses the requested game edition while preserving presenter query options",
   const base = { url: "http://127.0.0.1:5173/?presenter=2d", edition: "ra2" };
   const url = new URL(gameUrl(base, "1920x1080"));
 
-  assert.equal(url.pathname, "/game/1");
+  assert.equal(url.pathname, "/game");
   assert.equal(url.searchParams.get("edition"), "ra2");
   assert.equal(url.searchParams.get("video"), "1920x1080");
   assert.equal(url.searchParams.get("presenter"), "2d");

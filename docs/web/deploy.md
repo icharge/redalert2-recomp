@@ -25,10 +25,11 @@ and to any hosted page.
 
 ## Application context path and clean routes
 
-The launcher is `/`, installation slots launch at `/game/:slot`, and import
+The launcher is `/`, the active installation launches at `/game`, and import
 is `/import`. An optional `?edition=ra2` or `?edition=ra2md` selects the
-edition; a slot containing both defaults to Yuri's Revenge. Slot numbers
-identify imported folders, not fixed game editions.
+edition; otherwise the remembered edition is used, with Yuri's Revenge as the
+fallback. An old `/game/:slot` link selects that installation and redirects to
+`/game`. Slot numbers remain internal installation IDs, not fixed game editions.
 
 Build for a context path with Vite's base setting. For example, in PowerShell:
 
@@ -40,7 +41,8 @@ pnpm preview --host 127.0.0.1
 ```
 
 For development, `pnpm dev --base=/emu/` uses the same prefix. The resulting
-launcher is `/emu/`, and `/emu/game/1` is slot 1. Router basename, game
+launcher is `/emu/`, and `/emu/game?edition=ra2` launches Red Alert 2 from the
+active installation. Router basename, game
 script/WASM/data, file-browser assets, fonts, audio worklet, and service
 worker scope all use this base. OPFS and IndexedDB remain origin-wide;
 moving the app to a context path on the same origin retains its imports.
@@ -80,6 +82,17 @@ A production server must serve the application HTML for clean routes and
 preserve existing asset files. For nginx with the build mounted at `/emu/`:
 
 ```nginx
+location = /emu/game {
+    try_files /emu/index.html =404;
+    add_header Cross-Origin-Opener-Policy same-origin always;
+    add_header Cross-Origin-Embedder-Policy require-corp always;
+    expires -1;
+}
+
+location = /emu/game/ {
+    return 308 /emu/game$is_args$args;
+}
+
 location /emu/ {
     try_files $uri $uri/ /emu/index.html;
     add_header Cross-Origin-Opener-Policy same-origin always;
@@ -92,8 +105,9 @@ shell and the hashed assets, the service worker, and the precompressed sidecars
 — is [nginx.conf](nginx.conf); copy `web/dist/*` into its `root`'s `/emu/`
 directory and adjust `server_name`/`root`.
 
-Direct requests and refreshes of `/emu/game/1` must return that HTML. An
-initial deep link still requires this server rewrite before a service
+Direct requests and refreshes of `/emu/game` must return that HTML. Old
+`/emu/game/1` links must also return the app HTML so the client can redirect.
+An initial deep link still requires this server rewrite before a service
 worker has been installed. Once installed, the worker supplies a
 base-relative navigation fallback offline, caching build metadata and
 isolating its build-cache cleanup from other deployment bases.

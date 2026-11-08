@@ -113,7 +113,10 @@ function Main() {
   // also catches browser Back/Forward while a game has a pending startup.
   const leaving = !!window.ra2Session && runtimeRoute.current !== route;
   if (!window.ra2Session) runtimeRoute.current = route;
-  const launcherPage = !location.pathname.startsWith("/game/") && location.pathname !== "/import";
+  const launcherPage =
+    location.pathname !== "/game" &&
+    !location.pathname.startsWith("/game/") &&
+    location.pathname !== "/import";
 
   const refresh = useCallback(
     async (manifest: Manifest) => ({
@@ -268,7 +271,7 @@ function Main() {
     if (fullscreen.enabled && !fullscreen.onlyInGame && !document.fullscreenElement)
       void enterFullscreen(document.documentElement).catch(() => {});
     // Debugging switches given to the launcher follow the game they open.
-    const path = gamePath(game.slot, game.id);
+    const path = gamePath(game.id);
     const flags = new URLSearchParams();
     if (query.get("show-cursor") === "1") flags.set("show-cursor", "1");
     // The page layer draws the cursor unless this install chose the
@@ -418,15 +421,21 @@ function Main() {
         }
       />
       <Route
-        path="/game/:slot"
+        path="/game"
         element={
           <InstallationGame
+            slot={slot}
+            defaultEdition={edition}
             games={games}
             installations={installations}
             manifest={manifest}
             target={target}
           />
         }
+      />
+      <Route
+        path="/game/:slot"
+        element={<LegacyGameRedirect installations={installations} onSelectSlot={switchInstall} />}
       />
       <Route path="*" element={<RouteError message="That page was not found." />} />
     </Routes>
@@ -459,26 +468,55 @@ function OneInstall({ installed, children }: { installed: boolean; children: Rea
   return blocked ? <Navigate to="/manage" replace /> : children;
 }
 
+function LegacyGameRedirect({
+  installations,
+  onSelectSlot,
+}: {
+  installations: InstallationRecord[];
+  onSelectSlot(slot: number): void;
+}) {
+  const { slot: value } = useParams();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const slot = slotFromPath(value);
+  const installation = installations.find((entry) => entry.slot === slot);
+  const redirected = useRef(false);
+
+  useEffect(() => {
+    if (!installation || slot === null || redirected.current) return;
+    redirected.current = true;
+    onSelectSlot(slot);
+    navigate(`/game${location.search}${location.hash}`, { replace: true });
+  }, [installation, location.hash, location.search, navigate, onSelectSlot, slot]);
+
+  if (!installation) return <RouteError message="That installation was not found." />;
+  return <Centered>Opening game…</Centered>;
+}
+
 function InstallationGame({
+  slot,
+  defaultEdition,
   games,
   installations,
   manifest,
   target,
 }: {
+  slot: number | null;
+  defaultEdition: GameRecord | null;
   games: GameRecord[];
   installations: InstallationRecord[];
   manifest: Manifest;
   target: CopyTarget;
 }) {
-  const { slot: value } = useParams();
   const location = useLocation();
-  const slot = slotFromPath(value);
   const query = new URLSearchParams(location.search);
   const choices = games.filter((game) => game.slot === slot);
-  const installation = installations.find((entry) => entry.slot === slot);
+  const installation =
+    slot === null ? undefined : installations.find((entry) => entry.slot === slot);
   const planned = installation?.editions ?? choices.map((game) => game.id);
-  const edition = query.get("edition") ?? (planned.includes("ra2md") ? "ra2md" : "ra2");
-  const selected = choices.find((game) => game.id === edition);
+  const editionId =
+    query.get("edition") ?? defaultEdition?.id ?? (planned.includes("ra2md") ? "ra2md" : "ra2");
+  const selected = choices.find((game) => game.id === editionId);
   const files = useMemo<FileSource | null>(
     () =>
       selected
@@ -517,7 +555,7 @@ function InstallationGame({
   // Only this record's answer counts: a switch of edition checks again rather than starting blind.
   const missing = checked && checked.record === selected ? checked.names : null;
   if (!slot || !installation) return <RouteError message="That installation was not found." />;
-  if (!choices.length || (!selected && planned.some((id) => id === edition)))
+  if (!choices.length || (!selected && planned.some((id) => id === editionId)))
     return <RouteError message="This installation's import did not finish." resume={slot} />;
   if (!selected)
     return <RouteError message="That edition is not available in this installation." />;
@@ -526,7 +564,7 @@ function InstallationGame({
   if (missing === null) return <Centered>Checking the game&apos;s files…</Centered>;
   if (missing.length)
     return <RouteError message={missingFilesMessage(missing)} resume={selected.slot} />;
-  return files && <Play key={`${slot}:${edition}`} files={files} />;
+  return files && <Play key={`${slot}:${editionId}`} files={files} />;
 }
 
 /** What to say when the browser's copy no longer has files the installation lists. */

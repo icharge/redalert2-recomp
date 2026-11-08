@@ -215,6 +215,8 @@ describe("App", () => {
     );
     render(<App />);
     expect(await screen.findByText(/RA2_TARGET=game/)).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/emu/game");
+    expect(window.location.search).toBe("?edition=ra2");
     m.close();
   });
 
@@ -367,13 +369,13 @@ describe("Launcher routes", () => {
     m.close();
   });
 
-  it("Play navigates to /game/<slot>?edition=<id>", async () => {
+  it("Play navigates to /game?edition=<id>", async () => {
     const m = await installed();
     render(<App />);
     const play = await screen.findByRole("button", { name: "PLAY" });
     await waitFor(() => expect(play).toBeEnabled());
     await userEvent.setup().click(play);
-    await waitFor(() => expect(window.location.pathname).toBe("/game/1"));
+    await waitFor(() => expect(window.location.pathname).toBe("/game"));
     expect(window.location.search).toBe("?edition=ra2md");
     m.close();
   });

@@ -78,7 +78,7 @@ try {
     await installIfMissing(page, game);
     await chooseEdition(page, config.target === "game" ? "ra2" : "ra2md");
     await playButton(page).click();
-    await page.waitForURL(/\/game\/1(?:\?|$)/, { timeout: 30_000 });
+    await page.waitForURL(/\/game(?:\?|$)/, { timeout: 30_000 });
     url = new URL(page.url());
     // page flags from --web-url (cursor=page, ...) survive the import flow's own URL
     for (const [key, value] of new URL(config.url).searchParams)
