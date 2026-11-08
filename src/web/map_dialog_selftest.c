@@ -85,6 +85,28 @@ int main(void) {
     tmpl[0] = 0;                                                             /* not a DLGTEMPLATEEX */
     assert(ra2_map_dialog(tmpl, n, out, sizeof out, 1363, 0x7FFEu, 12) == 0);
 
+    /* a button like Use Map's, below it: the same style, size and column, the new id and text */
+    n = game_template();                                                 /* (the test above broke the first one) */
+    size_t k =ra2_map_dialog_button(tmpl, n, out, sizeof out, 1733, 0x7FFDu, "Find Maps", 4);
+    assert(k > n);
+    assert(controls(out, c) == 4 && r16(out + 16) == 4);
+    assert(c[2][0] == 1733 && c[2][3] == 122);                           /* the game's controls as they were */
+    assert(c[3][0] == 0x7FFDu && c[3][1] == 0x80 && c[3][6] == 0x5000000Bu);
+    assert(c[3][2] == 318 && c[3][3] == 122 + 23 + 4 && c[3][4] == 108 && c[3][5] == 23);
+    for (int i = 0; i < 9; i++) assert(r16(out + k - 2 - 20 + 2 * i) == (uint16_t)"Find Maps"[i]);
+    assert(r16(out + k - 4) == 0 && r16(out + k - 2) == 0);              /* the title ends; no creation data */
+    assert(r16(tmpl + 16) == 3);                                         /* the game's template is not touched */
+    /* the search box and the button, one after the other, as map_search.c puts them */
+    uint8_t both[2048];
+    size_t b1 = ra2_map_dialog(tmpl, n, out, sizeof out, 1363, 0x7FFEu, 12);
+    size_t b2 = ra2_map_dialog_button(out, b1, both, sizeof both, 1733, 0x7FFDu, "Find Maps", 4);
+    assert(b2 > b1 && controls(both, c) == 5 && c[3][0] == 0x7FFDu && c[4][0] == 0x7FFEu);   /* the button follows its model */
+
+    assert(ra2_map_dialog_button(tmpl, n, out, sizeof out, 9999, 0x7FFDu, "Find Maps", 4) == 0);   /* no such control */
+    assert(ra2_map_dialog_button(tmpl, n, out, n, 1733, 0x7FFDu, "Find Maps", 4) == 0);             /* no room */
+    tmpl[0] = 0;
+    assert(ra2_map_dialog_button(tmpl, n, out, sizeof out, 1733, 0x7FFDu, "Find Maps", 4) == 0);    /* not a DLGTEMPLATEEX */
+
     puts("map_dialog_selftest: ok");
     return 0;
 }

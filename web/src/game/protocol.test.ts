@@ -80,6 +80,10 @@ describe("parseEventLine", () => {
     ).toBeNull();
   });
 
+  it("parses the Find Maps button's press", () => {
+    expect(parseEventLine('@ra2 {"e":"mapFinder"}')).toEqual({ e: "mapFinder" });
+  });
+
   it("ignores a malformed event instead of throwing", () => {
     expect(parseEventLine("@ra2 {not json")).toBeNull();
     expect(parseEventLine("@ra2 42")).toBeNull();

@@ -48,6 +48,15 @@ describe("GameStore", () => {
     expect(store.getSnapshot().mapSearchStatus.open).toBe(false);
   });
 
+  it("counts each press of the game's Find Maps button", () => {
+    const store = new GameStore();
+    expect(store.getSnapshot().mapFinderRequests).toBe(0);
+    store.line('@ra2 {"e":"mapFinder"}');
+    expect(store.getSnapshot().mapFinderRequests).toBe(1);
+    store.line('@ra2 {"e":"mapFinder"}');
+    expect(store.getSnapshot().mapFinderRequests).toBe(2);
+  });
+
   it("keeps the copy's progress until the game boots", () => {
     const store = new GameStore();
     store.begin();

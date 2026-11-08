@@ -33,6 +33,7 @@
 void web_presenter_dialog_created(uint32_t hwnd, uint32_t resource_id);
 void web_map_search_dialog(uint32_t hwnd, uint32_t resource_id);   /* src/web/map_search.c */
 void web_map_search_start(void);
+void web_map_search_message(uint32_t hwnd, uint32_t message, uint32_t wParam, uint32_t lParam);   /* src/web/map_search.c */
 #include "web_api.h"
 void ra2_setting(int key, int value, int extra);  /* src/web/presenter.c */
 #endif
@@ -241,6 +242,9 @@ static void rclick(uint32_t h, uint32_t lp) {
 static volatile uint32_t g_watch_btn;
 static volatile int g_watch_ctrl, g_watch_up, g_watch_cmd;
 static void watch(uint32_t h, uint32_t m, uint32_t w, uint32_t l) {
+#ifdef __EMSCRIPTEN__
+    web_map_search_message(h, m, w, l);                  /* the Find Maps button */
+#endif
     if (!g_watch_btn) return;
     if (m == WM_LBUTTONUP && h == g_watch_btn) g_watch_up++;
     if (m == WM_COMMAND && l == g_watch_btn && (int)(w & 0xFFFF) == g_watch_ctrl && (w >> 16) == 0) g_watch_cmd++;

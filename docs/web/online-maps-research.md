@@ -201,9 +201,8 @@ from the Yuri's Revenge install (`web/e2e/maps-download.mjs`; `?mute`).
   only). Search (`/maps/search/?game_slug=yr&search=…`) and `/yr/<sha1>.zip` both answer 200 through it. A
   release needs the same route on the real host (the `nginx.conf` `/emu/` block is the model), a cache, a size
   limit on the body, and a decision on whether CnCNet is happy to be proxied; the better fix is CORS on their side.
-- **Panel.** `MapDownloadPanel` (a GET MAPS button over the stage, shown while the game's `mapSearch` event says
-  a map screen is open): search box, result list, DOWNLOAD. Results carry an UNREVIEWED tag when MapDB marks the
-  upload incomplete or temporary.
+- **Panel.** `MapDownloadPanel`: search box, result list, DOWNLOAD. Results carry an UNREVIEWED tag when MapDB
+  marks the upload incomplete or temporary. It opens from the game's own Find Maps button (third step below).
 - **Download.** `src/game/mapdb.ts` fetches the zip (stored or deflate, read by hand: it holds one file), checks
   the file's SHA1 against the name in the URL, and refuses more than 8 MiB.
 - **MapDB data.** Every record the search returned was `incomplete_upload` and `is_temporary`, and none was
@@ -216,7 +215,7 @@ from the Yuri's Revenge install (`web/e2e/maps-download.mjs`; `?mute`).
 - **A screen that is already open.** After the rescan the C side posts `WM_COMMAND` with `LBN_SELCHANGE` of the
   game type list (id 0x6EB) to the dialog, which rebuilds list 1363 from the vector (`0x5E6B78`). The first try
   sent id 0x583, which is the Random Map button, and opened the map generator: the id matters. The refill resets
-  the highlight to the first map.
+  the highlight to the first map. That refill worked once only: see the third step.
 - **Kept across a reload.** `src/storage/downloaded-maps.ts` keeps each map in OPFS under
   `downloaded-maps/yr/<sha1>.yrm`, and the loader writes them into `/game` before the game starts (before its one
   scan). Checked: download in one run, close the browser, open a new page on the same profile, and the map is
@@ -224,14 +223,46 @@ from the Yuri's Revenge install (`web/e2e/maps-download.mjs`; `?mute`).
 - **Search in the game.** The list shows the map's `[Basic] Name`, not MapDB's title, so "matty k" finds the map
   above and "mattyk" does not.
 
-Not done or not checked: the match was seen starting (HUD, credits) but a screenshot 25 seconds in showed a black
-map area, so that the downloaded map draws is not confirmed; the 40-character file name works but name length
+Not done or not checked: the 40-character file name works but name length
 at `+0x58` was not pushed further; duplicates by digest; multiplayer (a joiner needs the same file name and digest,
 which `<sha1>.yrm` gives only to players who both used the panel); Red Alert 2; deleting a kept map (the store has
 `removeDownloadedMap`, no UI); a release build (the relay, `nginx.conf`, the service worker, quota); and the
 list refill is a posted message, so it lands on the game's next message pump, not instantly. The unit tests for
 `mapdb.ts` pass; the page's other tests were not run here (`jsdom` was missing from this machine's
 `node_modules`).
+
+### Third step: the preview freeze, and a button in the game (9 November 2026)
+
+The match on a downloaded map draws it: a screenshot 25 seconds in shows terrain, units and buildings (the black is shroud),
+which settles the doubt left by the second step.
+
+- **The freeze.** After a second download, clicking maps moved the highlight but the preview picture stayed on
+  the old map, until the player left and re-entered Customize Battle. Cause: the game type handler (`0x5E6B78`)
+  returns at once when the picked game type is the one it last filled the list for (the global `0x8316FC`). The
+  first refill ran only because that global differed; every later one did nothing, so list 1363 kept item pointers
+  to the scan before. The map-changed routine (`0x5E66F0`) looks the picked item up in the vector, finds nothing,
+  and skips the preview without a sound. Fix: set `0x8316FC` to -1 before posting the refill (and pass the game
+  type list as `lParam`, as Windows does). `web/e2e/maps-freeze.mjs` rescans twice and downloads two maps, then
+  checks that the picture changes with the picked map. Before the fix it fails after two rescans.
+- **The button.** Customize Battle (`0x6B`, Yuri's Revenge only) gets a copy of the Random Map button (id
+  `0x583`, owner-drawn) with id `0x7FFD` one row below it, on the next empty plate (`ra2_map_dialog_button` in
+  `src/web/map_dialog.c`, added by the same template swap as the search box). The game draws it as one of its own
+  buttons, but on a flat grey plate, not the red one: the game's owner-draw routine (`0x6213A0`) draws only the
+  buttons it made objects for, found by window handle in a table at `0xAC1B00`, and it made none for ours (the
+  button's place in the template did not change it). Making one means calling the game's button constructor with
+  the new handle; not done. Its text is the game's own label `GUI:Find` ("Find", in the player's language): a label the table does
+  not have shows as `MISSING:'…'`. A press reaches the dialog as `WM_COMMAND`; `map_search.c` sees it through the
+  proc hook (script.c's `watch`) and sends the page `mapFinder`, which opens the panel. The hook sees a message at
+  every procedure that passes it along, so one press arrives four times: the C side takes the first and ignores
+  repeats for 300 ms. `web/e2e/maps-button.mjs` checks one press is one event.
+- **A screen of the game's own.** Not done, and not possible from the host alone. A game screen is a dialog template
+  plus the game's own procedure, which is lifted code. The host can edit a template or swap it for a screen the game
+  already opens, and watch or send messages, but it has no way to add a procedure, so there is nothing to run a new
+  screen. What can be done in the game: (a) keep this panel but dress it as a game screen (the link dialogs'
+  `GameDialogChrome` art); (b) turn Customize Battle's own list and search box into the finder while it is on
+  (list rows and Download from the host, the way `hle_list_filter` already changes what the list shows). The map
+  preview and Use Map would not apply to a map that is not on disk yet, and the game's paint code for the list was
+  not read for what it does with a row it did not make.
 
 ## Open questions
 

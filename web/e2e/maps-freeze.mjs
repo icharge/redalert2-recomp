@@ -18,7 +18,7 @@ await t.clickGame(720, 305); // Customize Battle
 await sleep(4000);
 
 if (!process.env.SKIP_DOWNLOAD) {
-  await t.page.getByRole("button", { name: "GET MAPS" }).click();
+  await t.clickGame(719, 305); // the game's Find Maps button, under Random Map
   await t.page.getByLabel("Search maps").fill(query);
   await t.page.getByLabel("Search maps").press("Enter");
   const rows = t.page.getByRole("list", { name: "Maps found" }).getByRole("listitem");

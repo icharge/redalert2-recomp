@@ -20,14 +20,15 @@ await t.clickGame(720, 305); // Skirmish
 await sleep(4000);
 await t.clickGame(720, 305); // Customize Battle
 await sleep(4000);
+await t.moveGame(400, 520); // off the Find Maps button, which sits where Customize Battle was
+await sleep(800);
 await t.shot("dl-1-customize-battle");
 
 // SKIP_DOWNLOAD=1: a map kept from an earlier run (same --profile) must already be listed
 if (!process.env.SKIP_DOWNLOAD) {
-  // the page learns the screen is open from the game's mapSearch event
-  const button = t.page.getByRole("button", { name: "GET MAPS" });
-  await button.waitFor({ timeout: 10_000 });
-  await button.click();
+  // the game's own Find Maps button, under Random Map; the page opens its finder on the game's mapFinder event
+  await t.clickGame(719, 305);
+  await t.page.getByLabel("Search maps").waitFor({ timeout: 10_000 });
   await t.page.getByLabel("Search maps").fill(query);
   await t.page.getByLabel("Search maps").press("Enter");
   const rows = t.page.getByRole("list", { name: "Maps found" }).getByRole("listitem");

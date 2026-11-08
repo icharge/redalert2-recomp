@@ -1,11 +1,4 @@
-/* "Get maps" over Customize Battle (MapDownloadPanel.tsx). The look follows LanPanel. */
-.trigger {
-  position: absolute;
-  top: var(--space-2);
-  left: var(--space-2);
-  z-index: 2;
-}
-
+/* "Find maps" over Customize Battle (MapDownloadPanel.tsx). The look follows LanPanel. */
 .panel {
   width: 620px !important;
   max-width: calc(100vw - 32px) !important;

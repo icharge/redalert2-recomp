@@ -8,12 +8,24 @@ import styles from "./MapDownloadPanel.module.css";
 type Progress = Record<string, "busy" | "done" | string>;
 
 /**
- * "Get maps": search CnCNet's map database and download a Yuri's Revenge map into the game
- * (src/game/mapdb.ts). Shown while a map screen is open (the game's mapSearch event); the new
- * map is then in the list at once. Prototype: maps are not kept across a reload.
+ * "Find maps": search CnCNet's map database and download a Yuri's Revenge map into the game
+ * (src/game/mapdb.ts). The game's own Find Maps button, under Random Map on Customize Battle, opens
+ * it (the mapFinder event, counted in `openRequest`); the new map is then in the list at once and
+ * kept in this browser.
  */
-export function MapDownloadPanel({ game, visible }: { game: GameHandle; visible: boolean }) {
+export function MapDownloadPanel({
+  game,
+  visible,
+  openRequest,
+}: {
+  game: GameHandle;
+  /** a map screen is open */
+  visible: boolean;
+  /** how many times the game's Find Maps button was pressed */
+  openRequest: number;
+}) {
   const [open, setOpen] = useState(false);
+  const handled = useRef(openRequest);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<MapResult[] | null>(null);
   const [searching, setSearching] = useState(false);
@@ -25,6 +37,12 @@ export function MapDownloadPanel({ game, visible }: { game: GameHandle; visible:
   useEffect(() => {
     if (!visible) setOpen(false);
   }, [visible]);
+  // each press of the game's button opens the panel; a press from before this mounted does not
+  useEffect(() => {
+    if (openRequest === handled.current) return;
+    handled.current = openRequest;
+    if (visible) setOpen(true);
+  }, [openRequest, visible]);
   // maps kept from an earlier visit show as added
   useEffect(() => {
     void loadDownloadedMaps().then((kept) =>
@@ -63,16 +81,11 @@ export function MapDownloadPanel({ game, visible }: { game: GameHandle; visible:
 
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
-      <Dialog.Trigger>
-        <button type="button" className={styles.trigger}>
-          GET MAPS
-        </button>
-      </Dialog.Trigger>
       <Dialog.Content className={styles.panel} aria-describedby={undefined}>
-        <Dialog.Title className={styles.title}>Get maps</Dialog.Title>
+        <Dialog.Title className={styles.title}>Find maps</Dialog.Title>
         <p className={styles.note}>
-          Yuri&apos;s Revenge maps from CnCNet&apos;s map database. Unreviewed fan-made files; a
-          downloaded maps are kept in this browser and listed every time you play.
+          Yuri&apos;s Revenge maps from CnCNet&apos;s map database. Unreviewed fan-made files.
+          Downloaded maps are kept in this browser and listed every time you play.
         </p>
         <form
           className={styles.search}

@@ -46,6 +46,8 @@ export type GameEvent =
       w: number;
       h: number;
     }
+  /** the player pressed the game's Find Maps button (src/web/map_search.c) */
+  | { e: "mapFinder" }
   | { e: "fps"; fps: number; ms: number; pacing: Pacing | null }
   | { e: "exit"; code: number }
   | { e: "exitConfirm"; request: number }
@@ -150,6 +152,8 @@ export function parseEventLine(line: string): GameEvent | null {
             h: value.h,
           }
         : null;
+    case "mapFinder":
+      return { e: "mapFinder" };
     case "fps":
       return typeof value.fps === "number" && typeof value.ms === "number"
         ? { e: "fps", fps: value.fps, ms: value.ms, pacing: pacingOf(value) }

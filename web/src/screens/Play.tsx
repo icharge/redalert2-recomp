@@ -141,6 +141,7 @@ export function Play({ files }: { files: FileSource }) {
   const saveReferencePrompt = useGameState((s) => s.saveReferencePrompt);
   const openLink = useGameState((s) => s.openLink);
   const mapSearchStatus = useGameState((s) => s.mapSearchStatus);
+  const mapFinderRequests = useGameState((s) => s.mapFinderRequests);
   const linkDialogTarget = useMemo(
     () => (openLink ? linkTarget(openLink.url, undefined, openLink.page) : null),
     [openLink],
@@ -741,7 +742,11 @@ export function Play({ files }: { files: FileSource }) {
       />
       <img ref={cursor} className={styles.cursor} alt="" aria-hidden="true" />
       {presenter && handle.current && (
-        <MapDownloadPanel game={handle.current} visible={mapSearchStatus.open} />
+        <MapDownloadPanel
+          game={handle.current}
+          visible={mapSearchStatus.open}
+          openRequest={mapFinderRequests}
+        />
       )}
       <GameTray quiet={trayQuiet}>
         <button

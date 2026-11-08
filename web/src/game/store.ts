@@ -50,6 +50,8 @@ export interface GameState {
   /** a WOL-era link: the page shows our dialog instead of the system browser */
   openLink: OpenLink | null;
   mapSearchStatus: MapSearchStatus;
+  /** how many times the game's Find Maps button was pressed: the map finder opens on each */
+  mapFinderRequests: number;
   settings: HostSettings | null;
   restart: { mod: string } | null;
 }
@@ -69,6 +71,7 @@ const INITIAL: GameState = {
   saveReferencePrompt: null,
   openLink: null,
   mapSearchStatus: { open: false, noMatches: false, x: 0, y: 0, w: 0, h: 0 },
+  mapFinderRequests: 0,
   settings: null,
   restart: null,
 };
@@ -170,6 +173,9 @@ export class GameStore {
             h: event.h,
           },
         });
+        return;
+      case "mapFinder":
+        this.set({ mapFinderRequests: this.state.mapFinderRequests + 1 });
         return;
       case "fps":
         this.set({ fps: event.fps, ms: event.ms, pacing: event.pacing });

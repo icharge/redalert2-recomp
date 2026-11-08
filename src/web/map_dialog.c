@@ -17,13 +17,21 @@ static size_t skip_name(const uint8_t *t, size_t p, size_t size) {
     return p + 2 <= size ? p + 2 : 0;
 }
 
-size_t ra2_map_dialog(const uint8_t *tmpl, size_t size, uint8_t *out, size_t cap, uint32_t list_id,
-                      uint32_t edit_id, int edit_h) {
+/* Where the first control starts: past the header, the menu, class and title, and the font. 0 when
+ * this is not a DLGTEMPLATEEX or it runs past `size`. */
+static size_t first_control(const uint8_t *tmpl, size_t size) {
     if (size < 26 || r16(tmpl) != 1 || r16(tmpl + 2) != 0xFFFFu) return 0;
-    unsigned count = r16(tmpl + 16);
     size_t p = 26;
     for (int k = 0; k < 3 && p; k++) p = skip_name(tmpl, p, size);   /* menu, class, title */
     if (p && (r32(tmpl + 12) & 0x40u)) p = skip_name(tmpl, p + 6, size);   /* DS_SETFONT */
+    return p;
+}
+
+size_t ra2_map_dialog(const uint8_t *tmpl, size_t size, uint8_t *out, size_t cap, uint32_t list_id,
+                      uint32_t edit_id, int edit_h) {
+    size_t p = first_control(tmpl, size);
+    if (!p) return 0;
+    unsigned count = r16(tmpl + 16);
     size_t list = 0;
     for (unsigned i = 0; i < count && p; i++) {
         p = (p + 3) & ~(size_t)3;
@@ -56,4 +64,60 @@ size_t ra2_map_dialog(const uint8_t *tmpl, size_t size, uint8_t *out, size_t cap
     w16(b + 28, 0);                                     /* no title */
     w16(b + 30, 0);                                     /* no creation data */
     return end + item;
+}
+
+size_t ra2_map_dialog_button(const uint8_t *tmpl, size_t size, uint8_t *out, size_t cap, uint32_t like_id,
+                             uint32_t button_id, const char *title, int gap) {
+    size_t p = first_control(tmpl, size);
+    if (!p) return 0;
+    unsigned count = r16(tmpl + 16);
+    enum { MAX_CONTROLS = 64 };
+    size_t start[MAX_CONTROLS], end[MAX_CONTROLS], class_end = 0, class_at = 0;
+    int like = -1;
+    if (count > MAX_CONTROLS) return 0;
+    size_t first = p;
+    for (unsigned i = 0; i < count && p; i++) {
+        p = (p + 3) & ~(size_t)3;
+        if (p + 24 > size) return 0;
+        start[i] = p;
+        p += 24;
+        size_t c = p;
+        p = skip_name(tmpl, p, size);                     /* class */
+        size_t ce = p;
+        if (p) p = skip_name(tmpl, p, size);              /* title */
+        if (p && p + 2 <= size) p += 2 + r16(tmpl + p);   /* creation data */
+        else p = 0;
+        end[i] = p;
+        if (p && r32(tmpl + start[i] + 20) == like_id) like = (int)i, class_at = c, class_end = ce;
+    }
+    if (!p || p > size || like < 0) return 0;
+
+    /* The button goes right after its model, not at the end, so the Tab key reaches it in screen order. */
+    size_t len = strlen(title);
+    size_t item = 24 + (class_end - class_at) + 2 * (len + 1) + 2;   /* fixed part, class, title, data */
+    size_t o = first;                                     /* where the next control goes in `out` */
+    if (first > cap) return 0;
+    memcpy(out, tmpl, first);
+    for (unsigned i = 0; i < count; i++) {
+        size_t at = (o + 3) & ~(size_t)3, n = end[i] - start[i];
+        if (at + n > cap) return 0;
+        memset(out + o, 0, at - o);
+        memcpy(out + at, tmpl + start[i], n);
+        o = at + n;
+        if ((int)i != like) continue;
+        at = (o + 3) & ~(size_t)3;
+        if (at + item > cap) return 0;
+        memset(out + o, 0, at - o);
+        uint8_t *b = out + at;
+        memcpy(b, tmpl + start[i], 24);                   /* the same style, size and place... */
+        w16(b + 14, (uint16_t)((int16_t)r16(tmpl + start[i] + 14) + (int16_t)r16(tmpl + start[i] + 18) + gap));   /* ...below it */
+        w32(b + 20, button_id);
+        memcpy(b + 24, tmpl + start[i] + 24, class_end - class_at);
+        uint8_t *t = b + 24 + (class_end - class_at);
+        for (size_t k = 0; k <= len; k++) w16(t + 2 * k, (uint16_t)(unsigned char)title[k]);
+        w16(t + 2 * (len + 1), 0);                        /* no creation data */
+        o = at + item;
+    }
+    w16(out + 16, (uint16_t)(count + 1));
+    return o;
 }

@@ -21,6 +21,12 @@
 #define SEARCH_HEIGHT 12            /* dialog units */
 #define TEMPLATE_BYTES 4096         /* room for a map screen's template, with the box */
 #define WS_VISIBLE 0x10000000u
+#define RANDOM_MAP_ID 0x583u        /* Customize Battle's Random Map button... */
+#define FIND_BUTTON_ID 0x7FFDu      /* ...and ours under it: Find Maps (the page's map finder) */
+#define FIND_BUTTON_TITLE "GUI:Find"    /* the game's own "Find", in the player's language */
+#define FIND_PRESS_QUIET_MS 300   /* repeats of one press that arrive within this are the same press */
+#define FIND_BUTTON_GAP 4           /* dialog units under Random Map */
+#define WM_COMMAND 0x0111u
 
 static int is_map_screen(uint32_t id) { return id == 0x6Bu || id == 0xCDu; }
 
@@ -54,8 +60,21 @@ static int keep_none(const char *text, uint32_t data, void *ctx) {
 static uint32_t with_search_box(uint32_t id, uint32_t tmpl) {
     if (!is_map_screen(id)) return 0;
     uint8_t *out = g_templates[id == 0xCDu];
-    size_t n = ra2_map_dialog((const uint8_t *)(uintptr_t)tmpl, TEMPLATE_BYTES, out, sizeof g_templates[0],
-                              MAP_LIST_ID, SEARCH_ID, SEARCH_HEIGHT);
+    const uint8_t *game = (const uint8_t *)(uintptr_t)tmpl;
+#ifndef RA2_TARGET_GAME
+    if (id == 0x6Bu) {
+        /* Yuri's Revenge: the Find Maps button under Random Map, in the same plate */
+        static uint8_t stage[TEMPLATE_BYTES];
+        size_t m = ra2_map_dialog(game, TEMPLATE_BYTES, stage, sizeof stage, MAP_LIST_ID, SEARCH_ID, SEARCH_HEIGHT);
+        if (!m) return 0;
+        size_t n = ra2_map_dialog_button(stage, m, out, sizeof g_templates[0], RANDOM_MAP_ID, FIND_BUTTON_ID,
+                                         FIND_BUTTON_TITLE, FIND_BUTTON_GAP);
+        if (!n) memcpy(out, stage, m), n = m;
+        return (uint32_t)(uintptr_t)out;
+    }
+#endif
+    size_t n = ra2_map_dialog(game, TEMPLATE_BYTES, out, sizeof g_templates[0], MAP_LIST_ID, SEARCH_ID,
+                              SEARCH_HEIGHT);
     return n ? (uint32_t)(uintptr_t)out : 0;
 }
 
@@ -91,6 +110,22 @@ void web_map_search_dialog(uint32_t hwnd, uint32_t id) {
     if (!is_map_screen(id)) return;
     memset(&g_screen, 0, sizeof g_screen);
     g_screen.dialog = hwnd;
+}
+
+/* user32's proc hook, through script.c: a message delivered to a window. The Find Maps button is
+ * clicked when the screen gets its WM_COMMAND (BN_CLICKED); the game knows nothing of the id and
+ * ignores it, so the page is told and opens the map finder. */
+void web_map_search_message(uint32_t hwnd, uint32_t message, uint32_t wParam, uint32_t lParam) {
+    (void)lParam;
+    if (message != WM_COMMAND || !g_screen.dialog || hwnd != g_screen.dialog) return;
+    if ((wParam & 0xFFFFu) != FIND_BUTTON_ID || (wParam >> 16) != 0) return;
+    /* The hook sees a message at each procedure that passes it along, so one press arrives as several
+     * (four, here): take the first, and none again for a moment. */
+    static uint32_t last_ms;
+    uint32_t now = hle_ticks_ms();
+    if (last_ms && now - last_ms < FIND_PRESS_QUIET_MS) return;
+    last_ms = now;
+    web_event_json("{\"e\":\"mapFinder\"}");
 }
 
 /* Filter the list by the box's text. A box holding more than the search can read shows no maps
