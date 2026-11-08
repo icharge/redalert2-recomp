@@ -177,12 +177,33 @@ is a separate, smaller job with no database behind it.
   game type does not match will not show.
 - **Digest.** Maps without `[Digest]` are listed as "No Digest" and cannot match a host's (section 4).
 
+## Prototype result
+
+Tried on 8 November 2026 in a separate worktree (branch `claude/online-maps-prototype`, Yuri's Revenge, a
+fast `-O1` build). `src/web/map_search.c` got `ra2_maps_rescan(truncate)` and `ra2_maps_dump()`: the first
+sets a flag that the presenter's pump takes on the game thread, which then (optionally) sets the vector's
+count to 0 and calls `0x699980` with ecx = Session. `web/e2e/maps-rescan.mjs` drives it in headless Chrome:
+
+1. The skirmish setup screen is open with 162 maps in the vector (`testmap.yrm`, a FinalAlert map the folder
+   already held, is the last and does list).
+2. From the page's main thread, `Module.FS.writeFile("/game/protodl.yrm", ...)` writes a copy of that map
+   with a new `Name=`. The write works while the game runs.
+3. `ra2_maps_rescan(1)` takes the vector from 162 to 163 maps; the new file is the last entry.
+4. Customize Battle, opened after that, lists "ZZ Proto Download" (the search box finds it) and shows its
+   preview. Use Map and Start Game load it and play it at 62 frames a second.
+
+So the truncate-and-rescan route works with no page-to-game buffer, and a `.yrm` that holds an INI map lists
+and starts. Not tried: a screen that is already open (the dialog fills its list when it opens, so a map
+added while it is up shows after the next fill), the 40-character `<sha1>.yrm` name, a `.map` from MapDB (the
+test file was already a `.yrm`), duplicate maps, two players. Truncating leaks the old 0x1BC-byte items; the
+add-one-entry route avoids that.
+
 ## Open questions
 
-- Does a `.map` renamed to `.yrm` list and start in the game? (Run it with the sample `<sha1>.map` and `testmap.yrm`.)
+- Does a MapDB `.map` renamed to `.yrm` list and start? (`testmap.yrm` does; run the sample `<sha1>.map`.)
 - The scan reads the keys `MinPlayers` and `MaxPlayers`; the sample map has `MinPlayer` and `MaxPlayer`. What
   shows in the list when they differ?
-- Can the page write a file into `/game` while the game runs, or must it go through the exported buffer?
+- Does a write into `/game` from the page reach the scan when the file is large? A small one does (see Prototype result).
 - Is the file name buffer at `+0x58` long enough for `<40 hex>.yrm`?
 - Will CnCNet add CORS to `mapdb2.cncnet.org`, and allow third-party pages to use it?
 - Does the lobby recheck the joiner's map after a late download, or must the player leave and rejoin?
