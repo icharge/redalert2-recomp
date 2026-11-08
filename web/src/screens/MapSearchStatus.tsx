@@ -33,7 +33,7 @@ export function labelPosition(
 
 /**
  * "No maps match" over the game's map list, when its search box hides every map
- * (src/web/map_search.c). The game itself then shows the whole list.
+ * (src/web/map_search.c). The game's list is then empty.
  */
 export function MapSearchStatus({
   status,

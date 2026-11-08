@@ -254,6 +254,6 @@ memory word.
 Protocol 13 replaces protocol 12's page-drawn map search with the game's own
 search box: the `ra2_map_search` export and the `mapList` event are gone, and
 the `mapSearch` event tells the page where the map list is and whether a
-search matched nothing (the game then shows the whole list, and the page says
+search matched nothing (the list is then drawn empty, and the page says
 "No maps match" over it). A page from before 13 calls an export that no longer
 exists. It changes no shared memory word.

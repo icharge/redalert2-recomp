@@ -30,7 +30,7 @@ static uint8_t g_templates[2][TEMPLATE_BYTES];
 static struct {
     uint32_t dialog, edit, box;     /* box: the game's control over the Edit */
     ra2_map_box text;
-    int changed, no_matches;
+    int changed, searching;         /* searching: the box's text filters the list */
 } g_screen;
 
 /* What the page was last told: the list's place, and whether the search left it empty. */
@@ -93,14 +93,18 @@ void web_map_search_dialog(uint32_t hwnd, uint32_t id) {
     g_screen.dialog = hwnd;
 }
 
-/* Filter the list by the box's text. Returns whether that hides every map (the list then shows
- * them all, hle_list_filter's fallback); so does a box holding more than the search can read. */
-static int apply_search(uint32_t list) {
-    if (g_screen.text.overflow) return hle_list_filter(list, keep_none, NULL), 1;
+/* Filter the list by the box's text. A box holding more than the search can read shows no maps
+ * (the list then shows none, while the game keeps the player's pick). */
+static void apply_search(uint32_t list) {
+    if (g_screen.text.overflow) {
+        hle_list_filter(list, keep_none, NULL);
+        g_screen.searching = 1;
+        return;
+    }
     ra2_map_query(g_query, sizeof g_query, g_screen.text.text);
     g_players = ra2_map_players(g_query);
-    int active = g_query[0] || g_players;
-    return hle_list_filter(list, active ? keep : NULL, NULL) == 0 && active;
+    g_screen.searching = g_query[0] || g_players;
+    hle_list_filter(list, g_screen.searching ? keep : NULL, NULL);
 }
 
 static void tell(search_status now) {
@@ -122,8 +126,12 @@ void web_map_search_pump(void) {
         tell(now);
         return;
     }
-    if (g_screen.changed) g_screen.changed = 0, g_screen.no_matches = apply_search(list);
-    now.open = 1, now.no_matches = g_screen.no_matches;
+    if (g_screen.changed) g_screen.changed = 0, apply_search(list);
+    /* user32 applies the search at the game's next message, and again when the game fills the
+     * list for another game type: count what it shows now. */
+    int shown = 0;
+    hle_list_counts(list, &shown, NULL);
+    now.open = 1, now.no_matches = g_screen.searching && shown == 0;
     now.x = l, now.y = t, now.w = r - l, now.h = b - t;
     tell(now);
 }
