@@ -251,8 +251,8 @@ to the retail installer's registry URL (`src/web/wol_pages.h`), so the event
 carries the real Westwood URL. An unknown key has `url: ""` and the key in
 `page`, and the dialog names the page.
 
-**The map search.** Customize Battle and the network game's map screen have a search box above the
-map list: an Edit added to the screen's template (`src/web/map_dialog.c`), which the game covers
+**The map search.** Customize Battle (dialog `0x6B`: skirmish, LAN and WOL hosts) and `0xCD`, the
+only other dialog with the map list, have a search box above the map list: an Edit added to the screen's template (`src/web/map_dialog.c`), which the game covers
 with a control of its own, drawn in its own frame and font. The game keeps the typed text inside
 that control, so `src/web/map_search.c` follows it from the clicks and keys the game takes from its
 queue for it (win32hle's `hle_take_hook`; the editing rules are `src/web/map_box.c`). That works

@@ -1,7 +1,9 @@
 # Map search status (2026-11-08)
 
-The map search works in both games' map screens: Customize Battle (dialog `0x6B`) and the network
-game's map screen (`0xCD`). How it works is in [frontend.md](frontend.md), "The map search".
+The map search works in both games' Customize Battle (dialog `0x6B`), which skirmish, LAN and WOL
+hosts all open. The search also covers `0xCD`, the only other dialog with the map list (a smaller
+picker with just the list and Use Map), which no tested screen opened. How it works is in
+[frontend.md](frontend.md), "The map search".
 
 ## What it does
 
@@ -49,9 +51,11 @@ sees no items, so the list looks empty.
 - pcrecomp `user32_listfilter_selftest` (with a list that keeps its own pick, as the game's does),
   `user32_take_selftest` and the other user32 selftests: ok.
 - Page: 774 Vitest tests, typecheck clean.
+- WOL (local RA2Web, a test account, Red Alert 2 Custom Match host): "lake" filtered, Free For All
+  kept the search, and Use Map started Lake Blitzen (2-4).
 - Changing the game type while searching, in both games: the search applies to the new list, the
   picked map stays picked, and nothing stops. "zzz" then another type: empty list and the label.
-- In the browser, Red Alert 2 (network map screen) and Yuri's Revenge (skirmish):
+- In the browser, Red Alert 2 (LAN host) and Yuri's Revenge (skirmish):
   - "lake" narrowed the list;
   - "lake 4" left Lake Blitzen;
   - "lost" then Use Map started Lost Lake (2-4);

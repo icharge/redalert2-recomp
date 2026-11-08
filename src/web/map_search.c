@@ -1,7 +1,7 @@
 /* The map search: a search box in the game's own map screens.
  *
- * Customize Battle (dialog 0x6B) and the network game's map screen (0xCD) list maps in list box
- * 1363. Their templates get one more control, an Edit at the top of the list (map_dialog.c). The
+ * Customize Battle (dialog 0x6B: skirmish, LAN and WOL hosts) and 0xCD (a smaller map picker) list
+ * maps in list box 1363. Their templates get one more control, an Edit at the top of the list (map_dialog.c). The
  * game lays its own one-line control over that Edit, draws it, and keeps the typed text inside
  * itself, where user32 can't read it. So the search follows what reaches that control (map_box.c):
  * each click and key the game takes from its queue for it (hle_take_hook), whichever way the page
