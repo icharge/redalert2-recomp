@@ -250,7 +250,9 @@ which settles the doubt left by the second step.
   buttons, but on a flat grey plate, not the red one: the game's owner-draw routine (`0x6213A0`) draws only the
   buttons it made objects for, found by window handle in a table at `0xAC1B00`, and it made none for ours (the
   button's place in the template did not change it). Making one means calling the game's button constructor with
-  the new handle; not done. Its text is the game's own label `GUI:Find` ("Find", in the player's language): a label the table does
+  the new handle; not done. Pointing the game's own resource entry (`0x6B`, found by `hle_find_resource`; its data entry's
+  offset and size) at the enlarged template, so the game sees the button wherever it reads the resource, grew it
+  from 636 to 716 bytes and changed nothing: the plate stayed grey. Its text is the game's own label `GUI:Find` ("Find", in the player's language): a label the table does
   not have shows as `MISSING:'…'`. A press reaches the dialog as `WM_COMMAND`; `map_search.c` sees it through the
   proc hook (script.c's `watch`) and sends the page `mapFinder`, which opens the panel. The hook sees a message at
   every procedure that passes it along, so one press arrives four times: the C side takes the first and ignores
