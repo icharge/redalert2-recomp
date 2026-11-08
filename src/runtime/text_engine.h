@@ -34,11 +34,13 @@ typedef struct RA2TextMetrics {
 /* All handles are created/destroyed on the same thread. The engine owns registered font data.
    Inputs are capped at 16,384 UTF-16 code units and 128 MiB per font. Font size is 1..512 px;
    wrap width is 0..16,384 px. Layout masks are capped at 16,384 px per dimension and 16M pixels.
-   Reuse a layout for repeated drawing; there is no per-frame font registration or layout cache. */
+   Reuse a layout for repeated drawing; there is no per-frame font registration or layout cache.
+   Panic-to-error conversion works only in unwind builds; builds using panic=abort terminate on panic. */
 RA2TextEngine *ra2_text_engine_create(void);
 void ra2_text_engine_destroy(RA2TextEngine *engine);
 
-/* Register a TTF/OTF byte buffer. The bytes are copied before this call returns.
+/* Register a TTF/OTF byte buffer with scalable outlines. Fonts without scalable outlines are
+   rejected; embedded bitmap-only glyphs are skipped during rendering. The bytes are copied.
    Returns a stable positive id in out_font_id, or an RA2_TEXT_* error. */
 int32_t ra2_text_engine_add_font(RA2TextEngine *engine,
                                 const uint8_t *font_bytes,
@@ -71,9 +73,11 @@ int32_t ra2_text_layout_utf16_ex(RA2TextEngine *engine,
 
 int32_t ra2_text_layout_get_metrics(const RA2TextLayout *layout, RA2TextMetrics *out_metrics);
 
-/* Writes A8 glyph coverage into a caller-owned buffer. origin_x/origin_y place the logical
-   layout top-left in dst (negative ink bearings are retained). Pixels outside the destination
-   are clipped; row_pitch is in bytes and must be at least dst_width. */
+/* Writes A8 glyph coverage into a caller-owned, initialized buffer. origin_x/origin_y place the
+   logical layout top-left in dst (negative ink bearings are retained). Pixels outside the
+   destination are clipped; row_pitch is in bytes and must be at least dst_width. For nonzero
+   dimensions, dst must address at least (dst_height - 1) * row_pitch + dst_width bytes.
+   Coverage is max-composited with existing bytes, so clear the target first for a fresh mask. */
 int32_t ra2_text_layout_render_mask(const RA2TextLayout *layout,
                                     uint8_t *dst,
                                     uint32_t dst_width,

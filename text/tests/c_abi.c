@@ -35,6 +35,20 @@ int main(void) {
     assert(ra2_text_layout_render_mask(layout, pixels, width, height, pitch, -200, -200) == RA2_TEXT_OK);
     for (uint32_t i = 0; i < height * pitch; ++i) assert(pixels[i] == 0);
 
+    /* A pitched surface view needs only its visible last row, not its trailing padding. */
+    size_t minimal_size = (height - 1) * pitch + width;
+    uint8_t *minimal = (uint8_t *)malloc(minimal_size);
+    assert(minimal != NULL);
+    memset(minimal, 0x40, minimal_size);
+    assert(ra2_text_layout_render_mask(layout, minimal, width, height, pitch, 3, 2) == RA2_TEXT_OK);
+    int increased_coverage = 0;
+    for (size_t i = 0; i < minimal_size; ++i) {
+        assert(minimal[i] >= 0x40);
+        increased_coverage |= minimal[i] > 0x40;
+    }
+    assert(increased_coverage);
+    free(minimal);
+
     free(pixels);
     ra2_text_layout_destroy(layout);
     ra2_text_engine_destroy(engine);

@@ -4,14 +4,14 @@ use std::{
     sync::Arc,
 };
 
-use fontique::{Blob, Collection, CollectionOptions, SourceCache};
+use fontique::{Blob, Collection, CollectionOptions, FontInfoOverride, SourceCache};
 use parley::{
     Alignment, AlignmentOptions, FontContext, FontFamilyName, FontWeight, FontWidth, Layout,
     LayoutContext, LineHeight, PositionedLayoutItem, StyleProperty,
 };
 use swash::{
     FontRef,
-    scale::{image::Content, *},
+    scale::{image::Content, outline::Outline, *},
     zeno::Format,
 };
 
@@ -19,6 +19,11 @@ const MAX_TEXT_UNITS: usize = 16 * 1024;
 const MAX_FONT_BYTES: usize = 128 * 1024 * 1024;
 const MAX_DIMENSION: u32 = 16 * 1024;
 const MAX_MASK_PIXELS: usize = 16 * 1024 * 1024;
+
+#[cfg(test)]
+thread_local! {
+    static RASTER_GLYPH_CALLS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
 
 #[repr(C)]
 pub struct RA2TextEngine {
@@ -53,7 +58,7 @@ pub struct RA2TextMetrics {
 }
 
 #[repr(i32)]
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Status {
     Ok = 0,
     InvalidArgument = 1,
@@ -76,7 +81,7 @@ impl RA2TextEngine {
         let mut families = HashMap::new();
         let mut id = 1;
         for bytes in [FONT_LATIN, FONT_THAI, FONT_ARABIC, FONT_CJK] {
-            if let Some(name) = register_font(&mut collection, bytes) {
+            if let Some(name) = register_font(&mut collection, bytes, None) {
                 families.insert(id, name);
                 id += 1;
             }
@@ -93,9 +98,26 @@ impl RA2TextEngine {
     }
 }
 
-fn register_font(collection: &mut Collection, bytes: &[u8]) -> Option<String> {
+fn register_font(
+    collection: &mut Collection,
+    bytes: &[u8],
+    family_override: Option<&str>,
+) -> Option<String> {
+    let font_ref = FontRef::from_index(bytes, 0)?;
+    if !ScaleContext::new()
+        .builder(font_ref)
+        .size(16.0)
+        .build()
+        .has_outlines()
+    {
+        return None;
+    }
     let copied = Arc::new(bytes.to_vec());
-    let registrations = collection.register_fonts(Blob::new(copied), None);
+    let info_override = family_override.map(|name| FontInfoOverride {
+        family_name: Some(name),
+        ..FontInfoOverride::default()
+    });
+    let registrations = collection.register_fonts(Blob::new(copied), info_override);
     let family_id = registrations.first()?.0;
     collection.family_name(family_id).map(str::to_owned)
 }
@@ -254,8 +276,37 @@ fn render_glyph(
     glyph_id: u16,
     image: &mut swash::scale::image::Image,
 ) -> bool {
+    #[cfg(test)]
+    RASTER_GLYPH_CALLS.with(|calls| calls.set(calls.get() + 1));
     image.clear();
     renderer.render_into(scaler, glyph_id, image)
+}
+
+fn preflight_outline_bounds(
+    bounds: swash::zeno::Bounds,
+    remaining_pixels: usize,
+) -> Result<usize, Status> {
+    if bounds.is_empty() {
+        return Ok(0);
+    }
+    let coords = [bounds.min.x, bounds.min.y, bounds.max.x, bounds.max.y];
+    if !coords.iter().all(|coord| coord.is_finite()) {
+        return Err(Status::LimitExceeded);
+    }
+    // This matches Zeno's floor(min)/ceil(max) mask bounds. The outline bounds
+    // enclose every path point, so this is a safe upper bound for raster output.
+    let width = (bounds.max.x.ceil() - bounds.min.x.floor()).max(0.0);
+    let height = (bounds.max.y.ceil() - bounds.min.y.floor()).max(0.0);
+    if width > MAX_DIMENSION as f32 || height > MAX_DIMENSION as f32 {
+        return Err(Status::LimitExceeded);
+    }
+    let pixels = (width as usize)
+        .checked_mul(height as usize)
+        .ok_or(Status::LimitExceeded)?;
+    if pixels > remaining_pixels {
+        return Err(Status::LimitExceeded);
+    }
+    Ok(pixels)
 }
 
 fn raster_layout(
@@ -289,10 +340,20 @@ fn raster_layout(
                     scaler_builder.normalized_coords(coords.iter().map(|c| c.to_bits()));
             }
             let mut scaler = scaler_builder.build();
-            let mut renderer = Render::new(&[Source::Outline, Source::Bitmap(StrikeWith::BestFit)]);
+            let mut outline = Outline::new();
+            // Bitmap-only glyphs are unsupported: the Outline-only source keeps
+            // all raster allocations preceded by the bounds preflight below.
+            let mut renderer = Render::new(&[Source::Outline]);
             renderer.format(Format::Alpha);
             for glyph in run.positioned_glyphs() {
-                if !render_glyph(&renderer, &mut scaler, glyph.id as u16, &mut image)
+                let glyph_id = glyph.id as u16;
+                if !scaler.scale_outline_into(glyph_id, &mut outline) {
+                    continue;
+                }
+                let remaining_pixels = MAX_MASK_PIXELS.saturating_sub(glyph_pixel_count);
+                let max_glyph_pixels =
+                    preflight_outline_bounds(outline.bounds(), remaining_pixels)?;
+                if !render_glyph(&renderer, &mut scaler, glyph_id, &mut image)
                     || image.content != Content::Mask
                 {
                     continue;
@@ -310,7 +371,7 @@ fn raster_layout(
                 if image.data.len() < glyph_pixels {
                     return Err(Status::InternalError);
                 }
-                if total_glyph_pixels > MAX_MASK_PIXELS {
+                if glyph_pixels > max_glyph_pixels || total_glyph_pixels > MAX_MASK_PIXELS {
                     return Err(Status::LimitExceeded);
                 }
                 glyph_pixel_count = total_glyph_pixels;
@@ -400,10 +461,14 @@ pub unsafe extern "C" fn ra2_text_engine_add_font(
         }
         let engine = unsafe { &mut *engine };
         let bytes = unsafe { std::slice::from_raw_parts(font_bytes, font_byte_len) };
-        let Some(family) = register_font(&mut engine.fonts.collection, bytes) else {
+        let font_id = engine.next_font_id;
+        let family_override = format!("RA2 Caller Font {font_id}");
+        let Some(family) =
+            register_font(&mut engine.fonts.collection, bytes, Some(&family_override))
+        else {
             return Status::InvalidFont as i32;
         };
-        let id = engine.next_font_id;
+        let id = font_id;
         engine.next_font_id = engine.next_font_id.wrapping_add(1).max(1);
         engine.families.insert(id, family);
         unsafe {
@@ -525,17 +590,23 @@ pub unsafe extern "C" fn ra2_text_layout_render_mask(
         {
             return Status::InvalidArgument as i32;
         }
-        let Some(total) = row_pitch.checked_mul(dst_height as usize) else {
-            return Status::LimitExceeded as i32;
-        };
-        if total > MAX_MASK_PIXELS * 4 {
-            return Status::LimitExceeded as i32;
-        }
         if dst_width == 0 || dst_height == 0 {
             return Status::Ok as i32;
         }
+        let Some(rows_before_last) = (dst_height as usize).checked_sub(1) else {
+            return Status::InvalidArgument as i32;
+        };
+        let Some(prefix_bytes) = rows_before_last.checked_mul(row_pitch) else {
+            return Status::LimitExceeded as i32;
+        };
+        let Some(required_bytes) = prefix_bytes.checked_add(dst_width as usize) else {
+            return Status::LimitExceeded as i32;
+        };
+        if required_bytes > MAX_MASK_PIXELS * 4 {
+            return Status::LimitExceeded as i32;
+        }
         let layout = unsafe { &*layout };
-        let out = unsafe { std::slice::from_raw_parts_mut(dst, total) };
+        let out = unsafe { std::slice::from_raw_parts_mut(dst, required_bytes) };
         let mask_x = origin_x as i64 + layout.mask_origin_x as i64;
         let mask_y = origin_y as i64 + layout.mask_origin_y as i64;
         let left = mask_x.max(0);
@@ -575,6 +646,33 @@ pub unsafe extern "C" fn ra2_text_layout_destroy(layout: *mut RA2TextLayout) {
 mod tests {
     use super::*;
 
+    fn shaped_glyph_ids(text: &str) -> Vec<u32> {
+        let mut engine = RA2TextEngine::new();
+        let family_names = [
+            FontFamilyName::named("Noto Sans"),
+            FontFamilyName::named("Noto Sans Thai"),
+            FontFamilyName::named("Noto Sans Arabic UI"),
+            FontFamilyName::named("Noto Sans CJK SC"),
+        ];
+        let mut builder = engine
+            .layout_cx
+            .ranged_builder(&mut engine.fonts, text, 1.0, true);
+        builder.push_default(family_names.as_slice());
+        builder.push_default(StyleProperty::FontSize(24.0));
+        let mut layout: Layout<()> = builder.build(text);
+        layout.break_all_lines(None);
+        layout.align(Alignment::Left, AlignmentOptions::default());
+        let mut glyph_ids = Vec::new();
+        for line in layout.lines() {
+            for item in line.items() {
+                if let PositionedLayoutItem::GlyphRun(run) = item {
+                    glyph_ids.extend(run.glyphs().map(|glyph| glyph.id));
+                }
+            }
+        }
+        glyph_ids
+    }
+
     #[test]
     fn reusing_image_does_not_carry_coverage_from_a_previous_glyph() {
         let font = FontRef::from_index(FONT_LATIN, 0).unwrap();
@@ -597,5 +695,65 @@ mod tests {
         assert_eq!(reused_glyph_w.placement.width, fresh.placement.width);
         assert_eq!(reused_glyph_w.placement.height, fresh.placement.height);
         assert_eq!(reused_glyph_w.data, fresh.data);
+    }
+
+    #[test]
+    fn oversized_fixture_outline_fails_raster_preflight_with_small_advance() {
+        let bytes = include_bytes!("../tests/fixtures/oversized_outline.ttf");
+        let font = FontRef::from_index(bytes, 0).unwrap();
+        let glyph = font.charmap().map('A');
+        let mut context = ScaleContext::new();
+        let mut scaler = context.builder(font).size(512.0).hint(true).build();
+        let mut outline = Outline::new();
+        assert!(scaler.scale_outline_into(glyph, &mut outline));
+        assert!(outline.bounds().width() < 16_384.0);
+        assert!(outline.bounds().height() < 16_384.0);
+        assert_eq!(
+            preflight_outline_bounds(outline.bounds(), MAX_MASK_PIXELS),
+            Err(Status::LimitExceeded)
+        );
+    }
+
+    #[test]
+    fn oversized_public_layout_is_rejected_before_renderer_invocation() {
+        RASTER_GLYPH_CALLS.with(|calls| calls.set(0));
+        let engine = ra2_text_engine_create();
+        let bytes = include_bytes!("../tests/fixtures/oversized_outline.ttf");
+        let mut font_id = 0;
+        assert_eq!(
+            unsafe { ra2_text_engine_add_font(engine, bytes.as_ptr(), bytes.len(), &mut font_id) },
+            Status::Ok as i32
+        );
+        let text = [b'A' as u16];
+        let mut layout = std::ptr::null_mut();
+        assert_eq!(
+            unsafe {
+                ra2_text_layout_utf16(
+                    engine,
+                    font_id,
+                    text.as_ptr(),
+                    text.len(),
+                    512.0,
+                    0.0,
+                    &mut layout,
+                )
+            },
+            Status::LimitExceeded as i32
+        );
+        assert!(layout.is_null());
+        RASTER_GLYPH_CALLS.with(|calls| assert_eq!(calls.get(), 0));
+        unsafe { ra2_text_engine_destroy(engine) };
+    }
+
+    #[test]
+    fn mixed_script_shaping_does_not_emit_missing_glyph_zero() {
+        for text in ["A", "กิ", "漢", "Aกิ漢", "سلام"] {
+            let glyph_ids = shaped_glyph_ids(text);
+            assert!(!glyph_ids.is_empty(), "no glyphs shaped for {text}");
+            assert!(
+                glyph_ids.iter().all(|&glyph_id| glyph_id != 0),
+                "missing glyph ID in {text}: {glyph_ids:?}"
+            );
+        }
     }
 }
