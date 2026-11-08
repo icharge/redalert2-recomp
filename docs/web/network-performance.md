@@ -101,6 +101,52 @@ tool for browser↔native matches: one WebSocket, one connected UDP socket per
 client, one message per unchanged datagram, drops instead of retries. It does
 not help browser↔browser, where the far end is another WebSocket.
 
+## Prior art: vera20k's relay
+
+vera20k (a separate Rust reimplementation, `C:\Users\Norrapat\projects\vera20k`)
+runs online matches through a relay that owns the match clock and one immutable
+command stream: clients submit command batches, the relay seals frames, and a
+per-link adaptation layer decides how much redundancy each hop gets. That
+ordering model cannot be copied into a recompiled game, but its measurement and
+adaptation layers sit outside the simulation and map onto what we control.
+
+| Mechanism | vera20k | Numbers |
+|---|---|---|
+| Link estimate | `services/relay-protocol/src/link/measure.rs` | srtt, rttvar, reorder window, loss with hysteresis: lossy at ≥5‰, severe at ≥150‰, exit at 2‰ or 20 s quiet |
+| Retransmit timers | same | RTO 48–1000 ms, PTO 50–1000 ms |
+| Adaptive redundancy | `link/uplink.rs` | lossy link: 16 ms uplink copies, 8 ms downlink repeats; none when congested; probe only when silent |
+| Adaptive playout | `src/app/match_runtime/frame_pacer.rs` | reserve at most 20 ms or one frame; an early receipt moves the origin earlier |
+| One-human match | `docs/Networking.md` | no lead-time buffer at all |
+| Reconnect | relay journal | identity kept, replay from sequence 1, 10-minute silence limit |
+| Slow player | relay | seal at ≤90 % of the slowest player's rate, never below 30 fps, at least 5 s between changes |
+| Quality report | `match-ended` event | `command_round_trip_ms`, `max_jitter_reserve_ms`, `underruns`, `gaps`, `reconnects` |
+
+**Adoptable here** (outside the simulation):
+
+1. The link estimate drives `MaxAhead`: srtt + rttvar, loss with hysteresis,
+   inter-arrival jitter measured at `ra2_udp_push`. Size the buffer to a p99
+   instead of the fixed `+1`, and keep the late-packet ladder as the backstop.
+2. Adaptive redundancy: when the measured loss crosses the lossy band, send
+   each game datagram twice 16 ms apart (the game already tolerates duplicate
+   UDP datagrams); stop when the link is clean.
+3. A bounded journal in our relay so a suspended tab or a dropped WebSocket
+   reads from its last sequence and rejoins, instead of dying. Their relay
+   keeps one; ours is stateless today.
+4. The one-human rule: a WOL match with one human (co-op against AI) has no
+   peer to wait for, so it can run at `MaxAhead` 1–2.
+5. Their quality-report fields in our `?udptrace`/log.
+
+**Not adoptable** without replacing the netcode:
+
+- Relay-ordered command stream. The game expects peer frame packets and orders
+  them itself; we would have to synthesize every peer's stream in the HLE.
+- Deterministic catch-up/rollback. The game exposes no per-frame snapshot and
+  restore, so a client cannot replay to catch up mid-match.
+- Relay-driven speed control. Changing the seal rate changes the game speed
+  players see; the retail game already slows to its slowest player.
+- The 13-byte envelope and per-hop HMAC. Our game packets are already small
+  and the relay is trusted.
+
 ## Instrumentation
 
 Before changing the buffer, measure the split. `?udptrace` already logs the
@@ -121,11 +167,14 @@ measured decision about the buffer size.
 ## Roadmap
 
 1. `FrameSendRate` 1 and a 3-frame start (immediate, ~16 ms).
-2. Jitter-aware `MaxAhead` in `net_tuning.c`.
+2. Jitter-aware `MaxAhead` in `net_tuning.c`, driven by the srtt/rttvar/loss
+   estimate described above.
 3. Peer-path RTT from the server's per-client pings.
-4. Datagram duplication at the HLE/relay.
-5. WebRTC DataChannel behind the existing `UdpRelay` interface, with the
+4. Datagram duplication at the HLE/relay while the link is lossy.
+5. A bounded relay journal and reconnect/catch-up for suspended tabs.
+6. The one-human no-buffer rule.
+7. WebRTC DataChannel behind the existing `UdpRelay` interface, with the
    WebSocket relay as fallback; a WS↔UDP gateway only for native interop.
 
-Steps 1–4 improve any transport; step 5 removes the browser-leg hop and the
+Steps 1–6 improve any transport; step 7 removes the browser-leg hop and the
 TCP loss penalty.
