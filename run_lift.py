@@ -542,27 +542,40 @@ def theme_song_guard(code, cs, target):
 
 
 def save_reference_fault_patch(code, cs, target):
-    """Offer to skip an unmatched entry at Yuri's zero-divide assertion.
+    """Offer to skip an unmatched entry at either game's zero-divide assertion.
 
-    The merge loop at 0x006CF3DD deliberately divides by zero when a saved
-    reference cannot be matched. The lifter's generic div fallback used to
-    substitute zero for #DE, after which the loop never made progress. Ask the
-    page whether to skip this entry or stop the load. Other divide instructions
-    keep the generic fallback because some rendering paths intentionally divide
-    by zero.
+    The merge loops at RA2 0x0069FCBD / Yuri 0x006CF3DD deliberately divide by
+    zero when a saved reference cannot be matched. The lifter's generic div
+    fallback substitutes zero for #DE, after which the loop never makes
+    progress. Ask the page whether to skip this entry or stop the load. Other
+    divide instructions keep the generic fallback because some rendering paths
+    intentionally divide by zero.
+
+    Both lists are sorted. The inner loop steps through the known pointers
+    while the request is larger, with no end check (ebx counts down unused), so
+    a request above every known pointer walked ecx off the array. The step now
+    sends that request to the same prompt once ebx says no entry is left.
     """
-    if target != 'gamemd':
+    # (assertion idiv, next request, known-pointer step, unresolved branch)
+    sites = {'game': (0x0069FCBD, 0x0069FCC5, 0x0069FCA0, 0x0069FCAF),
+             'gamemd': (0x006CF3DD, 0x006CF3E5, 0x006CF3C0, 0x006CF3CF)}
+    if target not in sites:
         return {}
-    va = 0x006CF3DD
-    if code[va - cs:va - cs + 4] != bytes.fromhex('f77c2410'):
+    va, next_entry, step, unresolved = sites[target]
+    if (code[va - cs:va - cs + 4] != bytes.fromhex('f77c2410')
+            or code[step - cs:step - cs + 3] != bytes.fromhex('8b5108')):
         print('[*] save_reference_fault_patch: swizzler assertion does not match; no skip prompt')
         return {}
-    return {va: ('@replace:{ int64_t _dividend = 0; int32_t _dv = 0; '
+    walk_guard = (f'@replace:if ((int32_t)ebx <= 1) goto L_{unresolved:08X}; '
+                  'edx = MEM32(ecx + 0x8); '
+                  '/* remaster: stop at the last known pointer, run_lift.py save_reference_fault_patch */')
+    return {step: walk_guard,
+            va: ('@replace:{ int64_t _dividend = 0; int32_t _dv = 0; '
                  'extern int ra2_web_save_reference_prompt(void); '
                  'if (ra2_web_save_reference_prompt()) { '
                  'fprintf(stderr, "[save] ignored unresolved object reference and continued loading\\n"); '
                  'uint32_t missing_ref = MEM32(edi + 4); if (missing_ref) MEM32(missing_ref) = 0; '
-                 'edi += 8; ebp -= 1; goto L_006CF3E5; '
+                 f'edi += 8; ebp -= 1; goto L_{next_entry:08X}; '
                  '} '
                  'fprintf(stderr, "[save] unresolved object reference; load cancelled\\n"); abort(); '
                  '/* remaster: let the player ignore an unresolved saved reference, '
@@ -1663,6 +1676,7 @@ def targets():
                                                **page_cursor_patches(code, cs, 'game'),
                                                **page_cursor_palette_patches(code, cs, 'game'),
                                                **web_exit_confirmation_patches(code, cs, 'game'),
+                                               **save_reference_fault_patch(code, cs, 'game'),
                                                **ra2_shell_patches(code, cs), **ra2_hires_patches(code, cs),
                                                **ra2_online_patches(code, cs), **ra2_startup_order_patches(code, cs),
                                                **ra2_confirm_patches(code, cs),

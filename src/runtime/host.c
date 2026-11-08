@@ -34,6 +34,13 @@
 
 extern const uint32_t ra2_entry_va;    /* recomp_dispatch.c */
 
+#ifndef __EMSCRIPTEN__
+/* The generated save-reference patch calls the browser prompt entry point.
+ * Native builds have no dialog transport; false keeps unresolved references
+ * fatal, as in the original game. The web host defines the interactive version. */
+int ra2_web_save_reference_prompt(void) { return 0; }
+#endif
+
 #define RA2_IMAGE_BASE 0x00400000u
 /* A NULL module is the process exe, which is the host; mean the guest. */
 #define GUEST_MODULE(h) ((h) ? (h) : RA2_IMAGE_BASE)

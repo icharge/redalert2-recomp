@@ -733,28 +733,53 @@ class ThemeSongGuardTests(unittest.TestCase):
 class SaveReferenceFaultPatchTests(unittest.TestCase):
     """Turn the save swizzler's impossible divide into an optional skip prompt."""
 
-    def test_only_the_expected_yuri_swizzler_instruction_becomes_a_skip_prompt(self):
-        va = 0x006CF3DD
-        image = bytearray(va + 4)
-        image[va:va + 4] = bytes.fromhex('f77c2410')
-        patches = save_reference_fault_patch(image, 0, 'gamemd')
-        self.assertEqual(set(patches), {va})
-        self.assertIn('ra2_web_save_reference_prompt()', patches[va])
-        self.assertIn('edi += 8; ebp -= 1; goto L_006CF3E5;', patches[va])
-        self.assertIn('abort();', patches[va])
+    # (assertion idiv, next request, known-pointer step, unresolved branch) per exe
+    SITES = {'game': (0x0069FCBD, 0x0069FCC5, 0x0069FCA0, 0x0069FCAF),
+             'gamemd': (0x006CF3DD, 0x006CF3E5, 0x006CF3C0, 0x006CF3CF)}
 
-        body = '    eax = 0; /* 0x006CF3DD: idiv dword ptr [esp + 0x10] */\n'
-        result = apply_patches(body, patches)
-        self.assertIn('abort();', result)
-        self.assertNotIn('eax = 0;', result)
+    @classmethod
+    def image(cls, target, corrupt=None):
+        va, _, step, _ = cls.SITES[target]
+        code = bytearray(va + 4)
+        code[va:va + 4] = bytes.fromhex('f77c2410')       # idiv dword ptr [esp+0x10]
+        code[step:step + 3] = bytes.fromhex('8b5108')     # mov edx, [ecx+8]
+        if corrupt is not None:
+            code[corrupt] ^= 0xFF
+        return bytes(code)
 
-    def test_other_targets_and_different_binaries_are_not_patched(self):
-        va = 0x006CF3DD
-        image = bytearray(va + 4)
-        image[va:va + 4] = bytes.fromhex('f77c2410')
-        self.assertEqual(save_reference_fault_patch(image, 0, 'game'), {})
-        image[va] ^= 0xFF
-        self.assertEqual(save_reference_fault_patch(image, 0, 'gamemd'), {})
+    def test_both_swizzlers_clear_and_advance_past_an_unresolved_reference(self):
+        for target, (va, next_entry, step, _) in self.SITES.items():
+            with self.subTest(target=target):
+                patches = save_reference_fault_patch(self.image(target), 0, target)
+                self.assertEqual(set(patches), {va, step})
+                self.assertIn('ra2_web_save_reference_prompt()', patches[va])
+                self.assertIn('if (missing_ref) MEM32(missing_ref) = 0;', patches[va])
+                self.assertIn('edi += 8; ebp -= 1; goto L_%08X;' % next_entry, patches[va])
+                self.assertIn('abort();', patches[va])
+
+                body = '    eax = 0; /* 0x%08X: idiv dword ptr [esp + 0x10] */\n' % va
+                result = apply_patches(body, patches)
+                self.assertIn('goto L_%08X;' % next_entry, result)
+                self.assertNotIn('eax = 0;', result)
+
+    def test_the_known_pointer_walk_stops_at_the_last_entry(self):
+        # A request above every known pointer used to walk ecx off the array.
+        for target, (_, _, step, unresolved) in self.SITES.items():
+            with self.subTest(target=target):
+                patches = save_reference_fault_patch(self.image(target), 0, target)
+                body = '    edx = MEM32(ecx + 0x8); /* 0x%08X: mov edx, dword ptr [ecx + 8] */\n' % step
+                result = apply_patches(body, patches)
+                guard = 'if ((int32_t)ebx <= 1) goto L_%08X;' % unresolved
+                self.assertIn(guard, result)
+                self.assertLess(result.index(guard), result.index('edx = MEM32(ecx + 0x8);'))
+
+    def test_unknown_targets_and_different_binaries_are_not_patched(self):
+        self.assertEqual(save_reference_fault_patch(b'', 0, 'other'), {})
+        for target, (va, _, step, _) in self.SITES.items():
+            for corrupt in (va, step):
+                with self.subTest(target=target, corrupt=hex(corrupt)):
+                    self.assertEqual(
+                        save_reference_fault_patch(self.image(target, corrupt), 0, target), {})
 
 
 class WebUrlPatchTests(unittest.TestCase):
