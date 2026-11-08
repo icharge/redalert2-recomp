@@ -72,8 +72,6 @@ describe("browserVideoSize", () => {
   });
 });
 
-const DEFAULT = { w: 1920, h: 1080 };
-
 describe("video preferences", () => {
   it("remembers a size the launcher offered, including a native size outside the catalog", () => {
     const storage = memoryStorage();
@@ -81,8 +79,12 @@ describe("video preferences", () => {
     expect(readVideoPreference("slot-1-ra2md", storage)).toEqual({ w: 2880, h: 1800 });
   });
 
-  it("defaults to 1920×1080 when nothing is saved", () => {
-    expect(readVideoPreference("slot-1-ra2md", memoryStorage())).toEqual(DEFAULT);
+  it("defaults to Match browser size when nothing is saved", () => {
+    expect(readVideoChoice("slot-1-ra2md", memoryStorage())).toBe(BROWSER_VIDEO_SIZE);
+    expect(readVideoPreference("slot-1-ra2md", memoryStorage(), { w: 1280, h: 720 })).toEqual({
+      w: 1280,
+      h: 720,
+    });
   });
 
   it("keeps the game's own setting when that was chosen", () => {
@@ -91,12 +93,12 @@ describe("video preferences", () => {
     expect(readVideoPreference("slot-1-ra2md", storage)).toBeNull();
   });
 
-  it("falls back to 1920×1080 for sizes the game could not use", () => {
+  it("falls back to Match browser size for sizes the game could not use", () => {
     const storage = memoryStorage();
     storage.setItem("ra2.video.slot-1-ra2md", JSON.stringify({ w: 10, h: 10 }));
-    expect(readVideoPreference("slot-1-ra2md", storage)).toEqual(DEFAULT);
+    expect(readVideoChoice("slot-1-ra2md", storage)).toBe(BROWSER_VIDEO_SIZE);
     storage.setItem("ra2.video.slot-1-ra2md", "not json");
-    expect(readVideoPreference("slot-1-ra2md", storage)).toEqual(DEFAULT);
+    expect(readVideoChoice("slot-1-ra2md", storage)).toBe(BROWSER_VIDEO_SIZE);
   });
 
   it("remembers Match browser size and resolves it to the window", () => {

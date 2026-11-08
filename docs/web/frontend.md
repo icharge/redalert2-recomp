@@ -172,14 +172,15 @@ bar, Play's footer stacks, and the Settings sections become a row.
 
 Game settings stay in the game's own files, so each setting has one copy. The launcher's Settings
 screen edits them for every edition of the install (All games, above): its Launcher tab has Skip
-intro, the host presentation settings (scaling, menu bars, cursor, HD vehicles, FPS counter) and
+intro, the host presentation settings (scaling, menu bars, cursor, HD vehicles, FPS counter; HD vehicles
+is off and disabled for now, as it makes the game lag, and the host ignores a saved `hdvox=1`) and
 the Thai font, and its Gameplay,
 Audio, Video and Keyboard tabs read and write the per-edition
 `RA2.INI`/`RA2MD.INI` and `KEYBOARD.INI`/`KEYBOARDMD.INI` in
 `save/<storage>/`. The host settings live in `.host/<edition>.ini`; a fresh
 profile starts at smooth scaling. The Video tab also holds the launcher's resolution override (it
-defaults to 1920×1080; the list also marks the desktop's own size as "(Native)" and offers "Match
-browser size") and the browser
+defaults to "Match browser size", the page's own pixel size; the fixed list also marks the desktop's own
+size as "(Native)") and the browser
 fullscreen preference: fullscreen on start, or game match only, where the launcher and the game's
 menus stay windowed, the game page enters fullscreen at the match's loading screen and gives the
 window back after the score screen. Escape in fullscreen opens the game's pause

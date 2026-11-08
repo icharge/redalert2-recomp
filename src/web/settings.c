@@ -118,7 +118,7 @@ void web_settings_start(const char *override_scale) {
         if (strcasecmp(section, "present")) continue;
         if (!strcasecmp(key, "scale")) for (int i = 0; i < 5; i++) if (!strcmp(value, scales[i])) scale_mode = i;
         if (!strcasecmp(key, "bars")) blur_bars = strcasecmp(value, "black") != 0;
-        if (!strcasecmp(key, "hdvox")) hdvox_configure(atoi(value) != 0, NULL);
+        /* hdvox: HD vehicles stay off for now, whatever was saved (they make the game lag). */
         if (!strcasecmp(key, "controls")) modern = !strcasecmp(value, "modern");
         if (!strcasecmp(key, "startup")) {
             ra2_startup_set_logo_first(!strcasecmp(value, "logo-first"));
@@ -178,7 +178,7 @@ void web_settings_command(int key, int value, int extra) {
     switch (key) {
     case RA2_SETTING_SCALE: if (value < 0 || value >= 5) return; scale_mode = value; break;
     case RA2_SETTING_BARS: blur_bars = value != 0; break;
-    case RA2_SETTING_HD: hdvox_configure(value != 0, NULL); break;
+    case RA2_SETTING_HD: (void)value; break;            /* HD vehicles: off for now (they lag) */
     case RA2_SETTING_MODERN: modern = value != 0; web_modern_configure(modern); break;
     case RA2_SETTING_RESOLUTION: {
         if (!web_video_size_allowed(value, extra)) return;

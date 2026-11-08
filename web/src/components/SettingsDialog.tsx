@@ -126,9 +126,11 @@ export function SettingsDialog({
               checked={settings.bars}
               onChange={(on) => command(Setting.Bars, Number(on))}
             />
+            {/* Off for now: HD vehicles make the game lag. */}
             <Toggle
-              label="HD vehicles"
-              checked={settings.hd}
+              label="HD vehicles (experimental, causes lag)"
+              checked={false}
+              disabled
               onChange={(on) => command(Setting.Hd, Number(on))}
             />
           </Group>

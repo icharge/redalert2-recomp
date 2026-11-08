@@ -328,8 +328,9 @@ describe("SettingsScreen", () => {
     );
     await userEvent.click(screen.getByRole("radio", { name: "Black" }));
     await waitFor(() => expect(written.at(-1)?.text).toContain("bars=black"));
-    await userEvent.click(screen.getByRole("switch", { name: "HD vehicles" }));
-    await waitFor(() => expect(written.at(-1)?.text).toContain("hdvox=1"));
+    const hd = screen.getByRole("switch", { name: "HD vehicles (experimental, causes lag)" });
+    expect(hd).toBeDisabled();
+    expect(hd).toHaveAttribute("aria-checked", "false");
     expect(written.at(-1)?.text).toContain("scale=crt");
     expect(written.at(-1)?.text).toContain("bars=black");
   });
@@ -493,7 +494,11 @@ describe("SettingsScreen", () => {
   it("stores Match browser as the launcher's resolution choice", async () => {
     setup();
     await open("VIDEO");
-    expect(screen.getByRole("radio", { name: "Fixed" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("radio", { name: "Match browser" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    await userEvent.click(screen.getByRole("radio", { name: "Fixed" }));
     expect(screen.getByRole("combobox", { name: "Size" })).toHaveDisplayValue("1920 × 1080");
     await userEvent.click(screen.getByRole("radio", { name: "Match browser" }));
     expect(localStorage.getItem("ra2.video.slot-1-ra2md")).toBe('"browser"');

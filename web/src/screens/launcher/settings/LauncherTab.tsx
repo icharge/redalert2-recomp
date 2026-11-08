@@ -96,9 +96,11 @@ export function LauncherTab({ editions, edition, settings }: TabProps) {
             forEachEdition(editions, (game) => writeCursorPreference(game.storage, value));
           }}
         />
+        {/* Off for now: HD vehicles make the game lag. */}
         <Toggle
-          label="HD vehicles"
-          checked={settings.hostValue("present", "hdvox", "0") === "1"}
+          label="HD vehicles (experimental, causes lag)"
+          checked={false}
+          disabled
           onChange={(on) => saveHost("hdvox", on ? "1" : "0", "the HD vehicles setting")}
         />
         <Toggle

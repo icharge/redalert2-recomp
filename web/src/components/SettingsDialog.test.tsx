@@ -100,10 +100,15 @@ describe("SettingsDialog", () => {
     expect(onVideoChange).toHaveBeenCalledWith({ w: 1920, h: 1080 });
   });
 
+  it("keeps HD vehicles off and disabled, marked experimental", () => {
+    setup();
+    const hd = screen.getByRole("switch", { name: "HD vehicles (experimental, causes lag)" });
+    expect(hd).toBeDisabled();
+    expect(hd).toHaveAttribute("aria-checked", "false");
+  });
+
   it("sends the display and control switches to the host", async () => {
     const { command } = setup();
-    await userEvent.click(screen.getByRole("switch", { name: "HD vehicles" }));
-    expect(command).toHaveBeenCalledWith(Setting.Hd, 1);
     await userEvent.click(screen.getByRole("switch", { name: "MOBA style" }));
     expect(command).toHaveBeenCalledWith(Setting.Modern, 1);
   });

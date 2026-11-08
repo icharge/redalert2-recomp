@@ -101,36 +101,36 @@ export function launcherVideoOptions(
   return options;
 }
 
-/** The launcher's size when the player has not chosen one. */
+/** The size the launcher's size list starts at, before a fixed size is chosen. */
 export const DEFAULT_VIDEO_SIZE: VideoPreference = { w: 1920, h: 1080 };
 
 /** The launcher's saved choice for a game, without resolving it: a fixed size,
- * "browser" for "Match browser size", or null for "Use game setting" (and an
- * unreadable value falls back to the default size). */
+ * "browser" for "Match browser size", or null for "Use game setting". Nothing
+ * saved, or an unreadable value, is "Match browser size". */
 export function readVideoChoice(
   game: string,
   storage: Pick<Storage, "getItem"> | null = safeLocalStorage(),
 ): VideoChoice {
   try {
     const raw = storage?.getItem(`${PREFERENCE_PREFIX}${game}`);
-    if (raw === null || raw === undefined) return { ...DEFAULT_VIDEO_SIZE };
+    if (raw === null || raw === undefined) return BROWSER_VIDEO_SIZE;
     const value: unknown = JSON.parse(raw);
     if (value === GAME_SETTING) return null;
     if (value === BROWSER_VIDEO_SIZE) return BROWSER_VIDEO_SIZE;
-    if (typeof value !== "object" || value === null) return { ...DEFAULT_VIDEO_SIZE };
+    if (typeof value !== "object" || value === null) return BROWSER_VIDEO_SIZE;
     const size = value as Partial<VideoPreference>;
-    if (!Number.isInteger(size.w) || !Number.isInteger(size.h)) return { ...DEFAULT_VIDEO_SIZE };
+    if (!Number.isInteger(size.w) || !Number.isInteger(size.h)) return BROWSER_VIDEO_SIZE;
     const { w, h } = size as VideoPreference;
     // The launcher adds the desktop's own size, which need not be in the catalog.
-    if (w < 320 || h < 200 || w > 16384 || h > 16384) return { ...DEFAULT_VIDEO_SIZE };
+    if (w < 320 || h < 200 || w > 16384 || h > 16384) return BROWSER_VIDEO_SIZE;
     return { w, h };
   } catch {
-    return { ...DEFAULT_VIDEO_SIZE };
+    return BROWSER_VIDEO_SIZE;
   }
 }
 
 /** The launcher's size for a game: the fixed choice, the browser's size for
- * "Match browser size", the default 1920×1080 when nothing was saved, or null
+ * "Match browser size" (also when nothing was saved), or null
  * when "Use game setting" was chosen. The desktop's own size stays in the list
  * as "(Native)" for the player to choose. */
 export function readVideoPreference(
