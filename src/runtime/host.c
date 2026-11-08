@@ -40,6 +40,11 @@ extern const uint32_t ra2_entry_va;    /* recomp_dispatch.c */
  * Native builds have no dialog transport; false keeps unresolved references
  * fatal, as in the original game. The web host defines the interactive version. */
 int ra2_web_save_reference_prompt(void) { return 0; }
+
+/* The generated WOL icon patch (run_lift.py wol_icon_surface_patches) calls
+ * this for both builds. Only the browser host has WOL PCX surfaces to attach,
+ * so the native host ignores the call. */
+void web_wol_icon_surface(uint32_t hwnd, uint32_t surface) { (void)hwnd; (void)surface; }
 #endif
 
 #define RA2_IMAGE_BASE 0x00400000u
