@@ -752,6 +752,20 @@ def apply_patches(body, patches):
     return body
 
 
+WOL_ICON_ATTACH_SITE = (0x00603D97, '897814')   # mov dword ptr [eax+0x14], edi
+
+
+def wol_icon_surface_patches(code, cs):
+    """Keep PCX surfaces visible in the browser's WOL legend compositor."""
+    va, shape = WOL_ICON_ATTACH_SITE
+    if code[va - cs:va - cs + len(bytes.fromhex(shape))] != bytes.fromhex(shape):
+        print('[*] wol_icon_surface_patches: surface attachment site differs; no WOL icon hook')
+        return {}
+    return {va: ('{ extern void web_wol_icon_surface(uint32_t, uint32_t); '
+                 'web_wol_icon_surface(esi, edi); } '
+                 '/* browser WOL PCX surfaces, run_lift.py wol_icon_surface_patches */')}
+
+
 # Red Alert 2 itself (game.exe, the same install) is a second target: its own
 # catalog in work/game, its lift in src/recomp/gen_game, its own seeds, hooks
 # and patches. Everything address-bound the host needs comes to it through
@@ -1629,7 +1643,8 @@ def targets():
                                                  **live_resize_patches(code, cs, 'gamemd'),
                                                  **live_resize_menu_patches(code, cs),
                                                  **web_exit_confirmation_patches(code, cs, 'gamemd'),
-                                                 **web_url_patches(code, cs, 'gamemd')}),
+                                                 **web_url_patches(code, cs, 'gamemd'),
+                                                 **wol_icon_surface_patches(code, cs)}),
         'game': dict(exe=os.path.join(_HERE, 'game', 'game.exe'),
                      catalog=os.path.join(_HERE, 'work', 'game', 'functions.json'),
                      seeds=os.path.join(_HERE, 'work', 'game', 'rtti_seeds.json'),

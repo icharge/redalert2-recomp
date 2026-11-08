@@ -132,7 +132,66 @@ static unsigned g_pub_n, g_late, g_frame_seen;
 static frame_bufs_t g_frames = { .newest = -1 };         /* the picture's three buffers (frame_buffers.h) */
 static uint32_t g_palette[256];                          /* raw PAL8: the palette palette_ptr names */
 static uint32_t g_pause_dialog;
+static uint32_t g_wol_legend_dialog;
+static struct { uint32_t hwnd, surface; } g_wol_icon_surfaces[256];
 static void present_now(void);
+
+void web_wol_icon_surface(uint32_t hwnd, uint32_t surface) {
+    if (!hwnd || !surface) return;
+    for (size_t i = 0; i < sizeof g_wol_icon_surfaces / sizeof g_wol_icon_surfaces[0]; i++) {
+        if (g_wol_icon_surfaces[i].hwnd == hwnd || !g_wol_icon_surfaces[i].hwnd) {
+            g_wol_icon_surfaces[i].hwnd = hwnd;
+            g_wol_icon_surfaces[i].surface = surface;
+            return;
+        }
+    }
+}
+
+/* WOL's legend stores PCX-backed BSurface objects on Static child windows.
+ * The game's Win32 paint path updates those controls, but the browser presents
+ * only the DirectDraw primary surface. Composite their transparent pixels into
+ * that published frame so the controls appear over the game-rendered dialog. */
+static void composite_wol_legend(uint8_t *frame, int w, int h, uint32_t row,
+                                 int game_w, int game_h, int scale, int raw, int bpp) {
+    const uint32_t dlg = g_wol_legend_dialog;
+    if (!dlg || !hle_is_window(dlg) || !(hle_window_style(dlg) & 0x10000000u)) return;
+    if (raw && bpp != 16) return;
+    if (bpp != 16 || (w != game_w * scale) || (h != game_h * scale)) return;
+
+    for (uint32_t child = hle_window_first_child(dlg); child; child = hle_window_next_sibling(child)) {
+        if (strcmp(hle_window_class(child), "Static") != 0 || !(hle_window_style(child) & 0x10000000u)) continue;
+        uint32_t surface = 0;
+        for (size_t i = 0; i < sizeof g_wol_icon_surfaces / sizeof g_wol_icon_surfaces[0]; i++)
+            if (g_wol_icon_surfaces[i].hwnd == child) { surface = g_wol_icon_surfaces[i].surface; break; }
+        if (!surface || MEM32(surface) != 0x007E2070u) continue;
+        int sw = (int)MEM32(surface + 4), sh = (int)MEM32(surface + 8);
+        uint32_t pixels = MEM32(surface + 0x14), bytes = MEM32(surface + 0x18);
+        if (sw <= 0 || sh <= 0 || sw > 128 || sh > 128 || !pixels || bytes < (uint32_t)(sw * sh * 2)) continue;
+        int left, top, right, bottom;
+        if (!hle_window_screen_rect(child, &left, &top, &right, &bottom)) continue;
+        int draw_w = right - left < sw ? right - left : sw;
+        int draw_h = bottom - top < sh ? bottom - top : sh;
+        if (draw_w <= 0 || draw_h <= 0) continue;
+        const uint16_t *src = (const uint16_t *)(uintptr_t)pixels;
+        for (int sy = 0; sy < draw_h; sy++) for (int sx = 0; sx < draw_w; sx++) {
+            uint16_t color = src[sy * sw + sx];
+            if (color == 0xF81Fu) continue;               /* PCX magenta transparency key */
+            for (int dy = 0; dy < scale; dy++) for (int dx = 0; dx < scale; dx++) {
+                int x = (left + sx) * scale + dx, y = (top + sy) * scale + dy;
+                if (x < 0 || y < 0 || x >= w || y >= h || x >= game_w * scale || y >= game_h * scale) continue;
+                uint8_t *dst = frame + (size_t)y * row + (size_t)x * (raw ? 2u : 4u);
+                if (raw) {
+                    *(uint16_t *)dst = color;
+                } else {
+                    uint32_t r = ((color >> 11) & 31u) * 255u / 31u;
+                    uint32_t g = ((color >> 5) & 63u) * 255u / 63u;
+                    uint32_t b = (color & 31u) * 255u / 31u;
+                    *(uint32_t *)dst = 0xFF000000u | (b << 16) | (g << 8) | r;
+                }
+            }
+        }
+    }
+}
 
 EMSCRIPTEN_KEEPALIVE ra2_shared_t *ra2_shared(void) { return &g_sh; }
 
@@ -197,6 +256,7 @@ static void publish(const uint8_t *px, int w, int h, int pitch, int bpp, const u
             }
         }
     }
+    composite_wol_legend(out, (int)w, (int)h, row, game_w, game_h, hd ? 2 : 1, raw, bpp);
     /* The seqlock went odd before the pixel write, so the page rejects any read that overlaps it. */
     if (raw && bpp == 8) {
         memcpy(g_palette, pal, sizeof g_palette);
@@ -263,6 +323,7 @@ static int menu_screen(uint32_t resource_id) {
 void web_presenter_dialog_created(uint32_t hwnd, uint32_t resource_id) {
     if (resource_id == 0xB5u) g_pause_dialog = hwnd;
     else if (menu_screen(resource_id)) web_presenter_scenario_start(0);
+    if (resource_id == 0x10Eu) g_wol_legend_dialog = hwnd;
 }
 
 static int pause_dialog_visible(void) {
