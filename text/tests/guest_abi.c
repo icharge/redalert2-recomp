@@ -106,6 +106,30 @@ static uint16_t units_of(const char *ascii, uint16_t *out) {
     return n;
 }
 
+typedef struct { int setups, releases; uint8_t *surface; } FakeCalls;
+
+/* Stand-ins for 004348F0 / 00434990: setup fills the font's surface fields
+ * from the surface (full clip), release zeroes them, as the assembly does. */
+static void fake_setup(uint32_t font_va, uint32_t surface_va, void *ctx) {
+    FakeCalls *c = ctx;
+    c->setups++;
+    uint8_t *font = (uint8_t *)(uintptr_t)font_va;
+    put32(font, OFF_PIXELS, surface_va);
+    put32(font, OFF_PITCH, 176);
+    put_clip(font, 0, 0, 159, 39);
+    put8(font, OFF_CLIP_ENABLED, 1);
+    (void)c->surface;
+}
+
+static void fake_release(uint32_t font_va, uint32_t surface_va, void *ctx) {
+    (void)surface_va;
+    FakeCalls *c = ctx;
+    c->releases++;
+    uint8_t *font = (uint8_t *)(uintptr_t)font_va;
+    put32(font, OFF_PIXELS, 0);
+    put32(font, OFF_PITCH, 0);
+}
+
 static void set_565(void) {
     TextGuestPixelFormat fmt = { 11, 5, 5, 6, 0, 5 };
     text_guest_set_pixel_format(&fmt);
@@ -262,6 +286,46 @@ int main(void) {
         units_of("RA2", text);
         int32_t fx = -1;
         assert(text_guest_label(va(f.font), va(text), 4, 2, 0, 0, &fx) == 0);
+        free_fixture(&f);
+    }
+
+    text_guest_set_enabled(1); /* the earlier "off again" case turned it off */
+
+    /* 12. Paragraph: setup and release run once each around the draw; the
+     * surface is written only inside the clip; the wrapped layout is aligned. */
+    {
+        Fixture f = make_fixture(160, 40, 176, 0xFFFF);
+        uint16_t text[] = { 'R', 'A', ' ', 'T', 'T', 'F', ' ', 'W', 'R', 'A', 'P', ' ', 'L', 'O', 'N', 'G', ' ',
+                            'T', 'E', 'X', 'T', 'H', 'E', 'R', 'E', 0 };
+        struct { int setups, releases; uint8_t *surface; } calls = { 0, 0, f.pixels };
+        int outside;
+        int32_t dummy = 0;
+        (void)dummy;
+        assert(text_guest_paragraph(va(f.font), va(f.pixels), va(text), 4, 2, 150, 0, 0, 0, 0,
+                                    fake_setup, fake_release, &calls) == 1);
+        assert(calls.setups == 1 && calls.releases == 1);
+        assert(changed_pixels(&f, 0, 0, 159, 39, &outside) > 0);
+        assert(outside == 0);
+        assert(guards_intact(&f));
+        free_fixture(&f);
+    }
+
+    /* 13. Paragraph fallbacks leave the surface and the callbacks untouched:
+     * a control character, a layout taller than maxHeight, and an active reveal. */
+    {
+        Fixture f = make_fixture(160, 40, 176, 0xFFFF);
+        uint16_t lf[] = { 'A', 0x0A, 'B', 0 };
+        uint16_t text[] = { 'R', 'A', ' ', 'T', 'T', 'F', ' ', 'W', 'R', 'A', 'P', ' ', 'L', 'O', 'N', 'G', 0 };
+        struct { int setups, releases; uint8_t *surface; } calls = { 0, 0, f.pixels };
+        assert(text_guest_paragraph(va(f.font), va(f.pixels), va(lf), 0, 0, 0, 0, 0, 0, 0,
+                                    fake_setup, fake_release, &calls) == 0);
+        assert(text_guest_paragraph(va(f.font), va(f.pixels), va(text), 0, 0, 40, 4, 0, 0, 0,
+                                    fake_setup, fake_release, &calls) == 0);
+        assert(text_guest_paragraph(va(f.font), va(f.pixels), va(text), 0, 0, 0, 0, 0, 5, 0,
+                                    fake_setup, fake_release, &calls) == 0);
+        assert(calls.setups == 0 && calls.releases == 0);
+        int outside;
+        assert(changed_pixels(&f, 0, 0, 159, 39, &outside) == 0);
         free_fixture(&f);
     }
 

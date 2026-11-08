@@ -25,6 +25,9 @@
 #ifdef RA2_TARGET_GAME
 #define TTF_MEASURE_VA 0x004314B0u
 #define TTF_LABEL_VA   0x00431CC0u
+#define TTF_PARA_VA    0x00432490u
+#define TTF_SETUP_VA   0x004320B0u
+#define TTF_RELEASE_VA 0x00432150u
 #define TTF_FMT_R_SRC 0x00852FB8u
 #define TTF_FMT_R_UP  0x00852FBCu
 #define TTF_FMT_G_SRC 0x00852FC8u
@@ -34,6 +37,9 @@
 #else
 #define TTF_MEASURE_VA 0x00433CF0u
 #define TTF_LABEL_VA   0x00434500u
+#define TTF_PARA_VA    0x00434CD0u
+#define TTF_SETUP_VA   0x004348F0u
+#define TTF_RELEASE_VA 0x00434990u
 #define TTF_FMT_R_SRC 0x008A0DD0u
 #define TTF_FMT_R_UP  0x008A0DD4u
 #define TTF_FMT_G_SRC 0x008A0DE0u
@@ -66,10 +72,66 @@ static int sync_format(void) {
     return 1;
 }
 
+/* Call a guest function that takes ECX = font and one stack argument and
+ * returns with ret 4, as the surface setup and release do. The callee pops
+ * its own argument and return address, so both are pushed here. */
+static void call_surface(uint32_t va, uint32_t font, uint32_t surface) {
+    recomp_func_t fn = recomp_lookup_manual(va);
+    if (!fn) fn = recomp_lookup(va);
+    uint32_t saved_ecx = g_ecx, saved_func = g_cur_func;
+    g_ecx = font;
+    g_esp -= 4;
+    MEM32(g_esp) = surface;
+    g_esp -= 4;
+    MEM32(g_esp) = RECOMP_RETADDR;
+    fn();
+    g_ecx = saved_ecx;
+    g_cur_func = saved_func;
+}
+
+struct SurfaceCalls {
+    uint32_t setup, release;
+};
+
+static void setup_surface(uint32_t font, uint32_t surface, void *ctx) {
+    call_surface(((struct SurfaceCalls *)ctx)->setup, font, surface);
+}
+
+static void release_surface(uint32_t font, uint32_t surface, void *ctx) {
+    call_surface(((struct SurfaceCalls *)ctx)->release, font, surface);
+}
+
+static int function_present(uint32_t va) {
+    return recomp_lookup_manual(va) != NULL || recomp_lookup(va) != NULL;
+}
+
 int recomp_ttf_call(uint32_t target) {
-    if (target != TTF_MEASURE_VA && target != TTF_LABEL_VA) return 0;
+    if (target != TTF_MEASURE_VA && target != TTF_LABEL_VA && target != TTF_PARA_VA) return 0;
     if (!text_guest_enabled()) return 0;
     if (!sync_format()) return 0;
+
+    if (target == TTF_PARA_VA) {
+        /* Stack: font +4, surface +8, text +12, x +16, y +20, wrap +24,
+         * max height +28, align flags +32, reveal +36, reveal range +40. */
+        if (!function_present(TTF_SETUP_VA) || !function_present(TTF_RELEASE_VA)) return 0;
+        struct SurfaceCalls calls = { TTF_SETUP_VA, TTF_RELEASE_VA };
+        uint32_t font = MEM32(g_esp + 4);
+        uint32_t surface = MEM32(g_esp + 8);
+        uint32_t text = MEM32(g_esp + 12);
+        int32_t x = (int32_t)MEM32(g_esp + 16);
+        int32_t y = (int32_t)MEM32(g_esp + 20);
+        int32_t wrap = (int32_t)MEM32(g_esp + 24);
+        int32_t max_height = (int32_t)MEM32(g_esp + 28);
+        uint32_t align = MEM32(g_esp + 32);
+        int32_t reveal = (int32_t)MEM32(g_esp + 36);
+        int32_t reveal_range = (int32_t)MEM32(g_esp + 40);
+        if (!text_guest_paragraph(font, surface, text, x, y, wrap, max_height, align, reveal,
+                                  reveal_range, setup_surface, release_surface, &calls))
+            return 0;
+        g_eax = 1; /* bool true, low byte in AL */
+        g_esp += 4 + 40;
+        return 1;
+    }
 
     if (target == TTF_MEASURE_VA) {
         uint32_t font = g_ecx;

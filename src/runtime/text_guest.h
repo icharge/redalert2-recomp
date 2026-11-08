@@ -50,6 +50,20 @@ int text_guest_measure(uint32_t font_va, uint32_t text_va, int32_t wrap_px,
 int text_guest_label(uint32_t font_va, uint32_t text_va, int32_t x, int32_t y,
                      uint32_t max_units, int32_t reveal, int32_t *final_x);
 
+/* Surface setup or release at the proven addresses (004348F0/00434990 in YR).
+ * The adapter calls setup before it reads the font's pixel, pitch and clip,
+ * and release after drawing. The lifted layer supplies these. */
+typedef void (*TextGuestSurfaceFn)(uint32_t font_va, uint32_t surface_va, void *ctx);
+
+/* Paragraph draw. Wraps at wrap_px (0 = none), aligns by align_flags (bit 1
+ * centre, bit 2 right), and draws at (x, y). Falls back (returns 0) for
+ * control characters, a layout taller than max_height (0 = no limit), and an
+ * active reveal. setup and release are called only once the call is handled. */
+int text_guest_paragraph(uint32_t font_va, uint32_t surface_va, uint32_t text_va,
+                         int32_t x, int32_t y, int32_t wrap_px, int32_t max_height,
+                         uint32_t align_flags, int32_t reveal, int32_t reveal_range,
+                         TextGuestSurfaceFn setup, TextGuestSurfaceFn release, void *ctx);
+
 #ifdef __cplusplus
 }
 #endif
