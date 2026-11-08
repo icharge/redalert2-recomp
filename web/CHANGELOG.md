@@ -9,6 +9,48 @@ The native releases (v0.1.0 to v0.1.3) are in the repository's
 [CHANGELOG.md](../CHANGELOG.md); none of them include the browser build. The
 commit after each entry is where to read more.
 
+## [0.2.0] - 2026-11-09
+
+Changes since 0.1.0.
+
+### Added
+
+- **Map search**: the game's map lists have a search box that filters as you
+  type, says when nothing matches, and keeps working when the game type
+  changes. (602587ac, 36ae4765, e45ad846, 276fbdc0, 5a351c96)
+- **Yuri's random maps**: the random map offers Archipelago, Urban and Desert.
+  (aa95f18a)
+- **Install from an archive or installer**: an archive or the game's installer
+  can be installed directly, and is read in the background. (a0e065f7)
+- **Mouse wheel**: the wheel scrolls the game's lists and the sidebar.
+  (e31ee61f)
+- **Crash log**: the crash dialog's log has a COPY button. (30e519da)
+- **Unresolved saves**: a save that refers to something missing can be
+  ignored. (743a4e75)
+- **Westwood Online legend**: the legend shows its icons. (30042e5c)
+
+### Changed
+
+- The game opens at `/game`; old `/game/:slot` links still open the
+  installation. (42283dea)
+- One installation at a time; a new folder comes after REMOVE GAME.
+  (c778790b)
+- The import sorts the folder into game, movies, mods, maps, saves and
+  settings; its mod count opens each mod's game, size and files.
+  (6a7101eb, dd1ee1ad)
+- Resolution defaults to the match browser's size; HD vehicles are off for
+  now. (a03ce677)
+- The main menu's version shows the launcher's, then the game's. (84e67449)
+- The menus and the pause menu show the game's own arrow. (56c4a4f5)
+- About has two columns, credits the web port to THAI RA2, and drops the copy
+  and update-check buttons. (05acc4a3, 8ccd062a, 28637991, 63e6c589)
+
+### Fixed
+
+- REMOVE GAME deletes the game's files before its record. (4fd72466)
+- An install for a removed installation installs instead of failing.
+  (a13c62ba)
+
 ## [0.1.0] - 2026-11-07
 
 The first browser release: everything since the port started on 2026-10-17.
@@ -37,16 +79,15 @@ The first browser release: everything since the port started on 2026-10-17.
 - **Updates**: the page works offline once loaded and offers a new version
   when one is ready. (da0b2e5f)
 - **Settings from the launcher**: the game's own settings (gameplay, audio,
-  video, keys) and the page's (scaling, menu bars, cursor, FPS counter, Thai
-  text) are set from the launcher, and a change applies to every edition.
+  video, keys) and the page's (scaling, menu bars, FPS counter) are set
+  from the launcher, and a change applies to every edition.
   (b7f17da6, d15d6142, 82d990c7)
 - **Display**: 1920 × 1080 by default, with your screen's own size detected
   and offered. Full screen on launch, or only during matches. The in-game
   settings choose the next match's resolution, and a running match follows a
   window resize. (7b822850, ad958de3, 0a579073, a25c765b, 5df76ade)
 - **Smooth cursor**: the page draws the game's cursor at your display's rate,
-  in matches and menus alike. The Cursor setting's Classic brings back the
-  game's own. (1021b410, 7423a002, bbe4bf81, 60e3d64a)
+  in matches and menus alike. (1021b410, 7423a002, bbe4bf81, 60e3d64a)
 - **Web links**: links from the game's old online menus open in a dialog
   drawn with the game's art, which asks before opening them. (563692ce,
   b5e19462, 48456423, 9f6d1bd3)
@@ -66,7 +107,6 @@ The first browser release: everything since the port started on 2026-10-17.
 
 ### Changed
 
-- The Thai font fix is off by default until it draws correctly. (0bfab6e8)
 - Settings is a screen of its own; picking a game there returns to its Play
   screen. (42e4b848)
 

@@ -238,7 +238,8 @@ JSON, an unrepresentable character, or no base table leaves the game unchanged.
 The game writes its saved games beside its exe (`SAVE%04lX.%3s`, so `SAVE0001.sav`), not in a
 folder. `saves.ts` copies what the game writes into `save/<edition-storage>/` in OPFS and lays it
 back over the imported files at every start. A save that came with the import is a plain
-imported file in the slot instead.
+imported file in the slot instead. What is inside a `.sav` (its title, which game wrote it) and
+how to read it without loading it: [../savegame-format.md](../savegame-format.md).
 
 The save watcher starts after the matching runtime bundle is staged. It ignores the bundle's
 executables and DLLs. At launch, restore also removes any such files left in the save store by
