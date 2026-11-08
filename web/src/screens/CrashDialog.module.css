@@ -43,6 +43,21 @@
   overflow-wrap: anywhere;
 }
 
+.logHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 12px;
+  background: #050608;
+  border: 1px solid var(--line);
+  font-family: var(--font-label);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+}
+
 .log {
   margin: 0;
   max-height: 40vh;
@@ -50,6 +65,7 @@
   padding: 12px;
   background: #050608;
   border: 1px solid var(--line);
+  border-top: 0;
   font-size: 12px;
   line-height: 1.5;
   color: var(--muted);
@@ -85,6 +101,22 @@
 }
 .secondary[aria-expanded="true"] {
   border-color: var(--muted);
+}
+.copy {
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid #3a3b40;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-label);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+}
+.copied {
+  border-color: var(--green);
+  color: var(--green);
 }
 
 .card :focus-visible {
