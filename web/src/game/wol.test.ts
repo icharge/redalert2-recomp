@@ -79,7 +79,11 @@ describe("WolClient", () => {
     let status = 200;
     let accepted = true;
     let stalled = false;
-    const fetcher: typeof fetch = async (input, init) => {
+    // The browser's fetch rejects any `this` but the window: called as a method of
+    // the client it threw "Illegal invocation", and no match result was stored.
+    const fetcher = async function (this: unknown, input: RequestInfo | URL, init?: RequestInit) {
+      if (this !== undefined && this !== globalThis)
+        throw new TypeError("Failed to execute 'fetch' on 'Window': Illegal invocation");
       calls.push({ url: String(input), init });
       if (stalled)
         return new Promise<Response>((_resolve, reject) => {

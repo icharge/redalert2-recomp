@@ -47,6 +47,34 @@ Realistic targets:
 | 40 ms | 3–4 | 50–66 ms |
 | 100 ms | 6–7 | 100–117 ms |
 
+## The lockstep rule for any tuning
+
+`Session.MaxAhead` and `Session.FrameSendRate` are part of the lockstep
+state. When a TIMING event executes (on the same frame for every player), its
+handler (RA2 `0x004B7856`) compares the event's values with the live ones.
+If they differ, it opens a window, and any order later queued for a frame
+inside it is moved to the window's end ("DoList: Moving event from frame A to
+frame B"). A player whose live values differ from another's for even one frame
+moves orders the other does not, and the match ends out of sync (`SYNC0.TXT`,
+dialog `0xCE`, the reconnection screen).
+
+So a change to either value must travel **in the host's timing event**, never
+be written into one player's memory. `net_tuning.c` follows this since
+2026-11-09: `run_lift.py net_timing_event_patches` puts the profile into the
+precalculated event and every `Generate_Real_Timing_Event`, and the module
+writes no live value. An earlier version held the live values from each
+player's frame pump; two browser tabs with `--play` orders reproduced the
+desync within ten seconds, and `--classic-latency` (stock 30 frames) did not.
+The same rule applies to every item below that changes the delay or the send
+rate: the host decides, and its timing event carries the decision.
+
+A second rule: MaxAhead must be a **multiple of FrameSendRate**.
+`Generate_Real_Timing_Event` rounds its own value up to one (RA2
+`0x00624296`). A tuned MaxAhead of 5 with a send every 2 frames desynchronised
+a two-tab match at frame ~256 with no orders given; 4 and 6 do not.
+`ra2_net_tuning_choose` rounds up (5 -> 6 frames, 100 ms), and the late-packet
+ladder steps by the send rate.
+
 ## Improvements to the game's own transport
 
 Ranked by impact per unit of risk. None changes the simulation.

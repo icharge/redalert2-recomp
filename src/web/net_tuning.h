@@ -7,9 +7,11 @@
  * 60 fps). For a relay match on a nearby server much of that is unnecessary.
  *
  * This module picks a smaller profile from the measured path round trip and
- * holds Session.MaxAhead / Session.FrameSendRate there for the match, raising
- * MaxAhead one frame at a time if the game reports late packets. It never runs
- * outside a WOL match and is disabled by --classic-latency.
+ * has the host's timing events carry it (MaxAhead and FrameSendRate), raising
+ * MaxAhead one frame at a time if the game reports late packets or stalls. The
+ * live Session values change only when such an event executes, on the same
+ * frame for every player. It never runs outside a WOL match and is disabled by
+ * --classic-latency.
  */
 #pragma once
 #include <stdint.h>
@@ -34,12 +36,26 @@ void ra2_net_tuning_init(const ra2_net_tuning_addrs *addrs, int enabled, int del
  * the value actually in effect. */
 int ra2_net_tuning_on_debuglog(uint32_t fmt, uint32_t esp, int match_active);
 
-/* Called once per frame with whether a WOL match is live. Holds the profile. */
+/* Called once per frame with whether a WOL match is live; disarms after it.
+ * It writes nothing: the live values are the game's own (see above). */
 void ra2_net_tuning_frame(int match_active);
 
 /* Pure profile choice, exposed for the selftest. `original` is the game's own
  * MaxAhead; the result is never above it. */
 int ra2_net_tuning_choose(int original, int path_ping_ms, int fps, int delay_ms);
+
+/* The host's timing events (Generate_Real_Timing_Event and the precalculated
+ * one, run_lift.py net_timing_event_patches): the MaxAhead / FrameSendRate the
+ * event will carry. Every player executes that event on the same frame, so this
+ * is the only lockstep-safe way to change them. Returns `stock` when no tuned
+ * WOL match is armed. */
+uint32_t ra2_net_tuning_timing_max_ahead(uint32_t stock);
+uint32_t ra2_net_tuning_timing_send_rate(uint32_t stock);
+
+/* The send rate that goes with a MaxAhead: 2 frames for an even MaxAhead of 4 or
+ * more, else 1. MaxAhead is always a multiple of it, as the game's own timing
+ * events make it (Generate_Real_Timing_Event rounds up to the send rate). */
+int ra2_net_tuning_send_rate_for(int max_ahead);
 
 /* The profile currently held (0 before a match arms it). */
 int ra2_net_tuning_max_ahead(void);

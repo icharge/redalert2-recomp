@@ -6,9 +6,17 @@
  * relay (own server round trip + the peer's), so one way is about half of it.
  * A command waits up to FrameSendRate frames for the next packet and then
  * MaxAhead - FrameSendRate frames of network margin. The profile starts at the
- * smallest of "what the measurement needs" and the requested delay, and the
- * frame hook holds it: the game's own timing events keep recomputing the
- * stock online floor (30 frames) and would otherwise undo it within a second.
+ * smallest of "what the measurement needs" and the requested delay.
+ *
+ * The match is lockstep, so MaxAhead and FrameSendRate may change only through
+ * the host's timing events: every player executes such an event on the same
+ * frame, and its handler compares the event's values with the live ones to
+ * decide which orders to move to a later frame. This module therefore never
+ * writes the live values. It puts the profile into the timing events the host
+ * builds (run_lift.py net_timing_event_patches) and into PrecalcMaxAhead, which
+ * the first of them carries. Writing the live values from each player's frame
+ * pump, as an earlier version did, let the players disagree for a frame or two,
+ * and an order given in that window desynchronised the match.
  */
 #include <stdint.h>
 #include <stdio.h>
@@ -35,7 +43,13 @@ static int game_fps(void) {
     return fps >= 20 && fps <= 120 ? fps : 60;
 }
 
-static int send_rate_for(int max_ahead) { return max_ahead >= 4 ? SEND_RATE_FAST : 1; }
+/* MaxAhead must be a multiple of the send rate: the game's own timing events
+ * round it up to one (Generate_Real_Timing_Event), and 5 frames with a send
+ * every 2 desynchronised a match at its first sync check. */
+int ra2_net_tuning_send_rate_for(int max_ahead) {
+    return max_ahead >= 4 && max_ahead % SEND_RATE_FAST == 0 ? SEND_RATE_FAST : 1;
+}
+static int send_rate_for(int max_ahead) { return ra2_net_tuning_send_rate_for(max_ahead); }
 
 static int ceiling_for(int fps, int delay_ms) {
     int frames = (fps * delay_ms) / 1000;
@@ -61,7 +75,7 @@ int ra2_net_tuning_choose(int original, int path_ping_ms, int fps, int delay_ms)
     int ceiling = ceiling_for(fps, delay_ms);
     if (original > 0 && ceiling > original) ceiling = original;
 
-    int send = send_rate_for(ceiling);
+    int send = ceiling >= 4 ? SEND_RATE_FAST : 1; /* the rate the result is planned for */
     int tuned;
     if (path_ping_ms > 0 && path_ping_ms < 1000) {
         /* ceil(ping / 2 ms * fps / 1000) frames of one-way travel. */
@@ -75,6 +89,10 @@ int ra2_net_tuning_choose(int original, int path_ping_ms, int fps, int delay_ms)
     if (floor > ceiling) floor = ceiling;
     if (tuned < floor) tuned = floor;
     if (tuned < 2) tuned = 2;
+    /* Up to the 2-frame send rate's multiple (5 -> 6 frames: 100 ms at 60 fps),
+     * unless that passes the game's own value; an odd value is then sent every
+     * frame (send_rate_for). */
+    if (tuned >= 4 && tuned % SEND_RATE_FAST) tuned += SEND_RATE_FAST - tuned % SEND_RATE_FAST;
     if (original > 0 && tuned > original) tuned = original;
     return tuned;
 }
@@ -98,7 +116,10 @@ static void bump(const char *what) {
     if (frame < WARMUP_FRAMES) return;
     if (g_last_bump_frame && frame - g_last_bump_frame < BUMP_COOLDOWN_FRAMES) return;
     int old = g_max_ahead;
-    g_max_ahead++;
+    /* One send interval, so MaxAhead stays a multiple of the send rate. */
+    g_max_ahead += g_send_rate > 0 ? g_send_rate : 1;
+    if (g_max_ahead > MAX_AHEAD_LIMIT) g_max_ahead = MAX_AHEAD_LIMIT;
+    g_send_rate = send_rate_for(g_max_ahead);
     g_last_bump_frame = frame;
     g_bumps++;
     fprintf(stderr, "[net] %s at frame %u: MaxAhead %d -> %d frames (%d ms)\n",
@@ -123,8 +144,8 @@ int ra2_net_tuning_on_debuglog(uint32_t fmt, uint32_t esp, int match_active) {
         g_last_bump_frame = 0;
         g_bumps = 0;
         g_armed = 1;
-        MEM32(g_addrs->max_ahead) = (uint32_t)tuned;
-        MEM32(g_addrs->frame_send_rate) = (uint32_t)g_send_rate;
+        /* Only the host's precalculated timing event reads this; the live
+         * values follow when that event executes on every player. */
         MEM32(g_addrs->precalc_max_ahead) = (uint32_t)tuned;
         fprintf(stderr,
                 "[net] WOL command delay: max ping %d ms, MaxAhead %d -> %d frames "
@@ -135,18 +156,21 @@ int ra2_net_tuning_on_debuglog(uint32_t fmt, uint32_t esp, int match_active) {
     }
 
     if (!g_armed || !match_active) return -1;
+    /* "DoList: Moving event" is not counted: the game moves orders when a
+     * timing event changes MaxAhead, which is this module's own doing. */
     if (!strncmp(f, "Packet received too late", 24)) bump("late packet");
     else if (!strncmp(f, "Waiting for player", 17)) bump("waiting for a player");
-    else if (!strncmp(f, "DoList: Moving event", 20)) bump("late event moved");
     return -1;
 }
 
 void ra2_net_tuning_frame(int match_active) {
-    if (!g_enabled || !g_armed) return;
-    if (!match_active) {
-        g_armed = 0;
-        return;
-    }
-    MEM32(g_addrs->max_ahead) = (uint32_t)g_max_ahead;
-    MEM32(g_addrs->frame_send_rate) = (uint32_t)g_send_rate;
+    if (g_armed && !match_active) g_armed = 0;
+}
+
+uint32_t ra2_net_tuning_timing_max_ahead(uint32_t stock) {
+    return g_enabled && g_armed && g_max_ahead > 0 ? (uint32_t)g_max_ahead : stock;
+}
+
+uint32_t ra2_net_tuning_timing_send_rate(uint32_t stock) {
+    return g_enabled && g_armed && g_send_rate > 0 ? (uint32_t)g_send_rate : stock;
 }

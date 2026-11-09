@@ -36,6 +36,8 @@ from run_lift import (
     intro_patches,
     RECONNECT_LEAVE,
     reconnect_patches,
+    NET_TIMING_EVENT_SITES,
+    net_timing_event_patches,
     LIVE_RESIZE,
     live_resize_patches,
     ra2_shell_patches,
@@ -1017,6 +1019,50 @@ class IntroPatchTests(unittest.TestCase):
                 patched[site - cs] ^= 0xFF
                 self.assertEqual(intro_patches(bytes(patched), cs, target), {})
 
+
+
+class NetTimingEventPatchTests(unittest.TestCase):
+    """The tuned WOL delay travels in the host's timing events, never per player."""
+
+    @staticmethod
+    def image(target, corrupt=None):
+        sites = NET_TIMING_EVENT_SITES[target]
+        code = bytearray(max(va for va, _ in sites) + 8)
+        for va, shape in sites:
+            raw = bytes.fromhex(shape)
+            code[va:va + len(raw)] = raw
+        if corrupt is not None:
+            code[corrupt] ^= 0xFF
+        return bytes(code)
+
+    def test_both_editions_rewrite_the_events_send_rate_and_max_ahead(self):
+        for target in ('game', 'gamemd'):
+            with self.subTest(target=target):
+                (real_rate, real_ahead, pre_ahead, pre_rate) = (
+                    va for va, _ in NET_TIMING_EVENT_SITES[target])
+                patches = net_timing_event_patches(self.image(target), 0, target)
+                self.assertEqual(set(patches), {real_rate, real_ahead, pre_ahead, pre_rate})
+                for va in (real_rate, pre_rate):
+                    self.assertIn('MEM8(esp + 0x37) = (uint8_t)ra2_net_tuning_timing_send_rate('
+                                  'MEM8(esp + 0x37));', patches[va])
+                # The 10-frame fudge already in edx is kept; only esi's part is replaced.
+                self.assertIn('edx = edx - esi + ra2_net_tuning_timing_max_ahead(esi);',
+                              patches[real_ahead])
+                self.assertIn('MEM16(esp + 0x35) = (uint16_t)ra2_net_tuning_timing_max_ahead('
+                              'MEM16(esp + 0x35));', patches[pre_ahead])
+
+                body = '    edx = edx + esi; /* 0x%08X: add edx, esi */\n    _flag_k = FK_ADD;\n' % real_ahead
+                result = apply_patches(body, patches)
+                self.assertLess(result.index('edx = edx + esi;'),
+                                result.index('ra2_net_tuning_timing_max_ahead(esi)'))
+
+    def test_a_different_build_gets_no_patch(self):
+        self.assertEqual(net_timing_event_patches(b'', 0, 'other'), {})
+        for target in ('game', 'gamemd'):
+            for va, _ in NET_TIMING_EVENT_SITES[target]:
+                with self.subTest(target=target, site=hex(va)):
+                    self.assertEqual(
+                        net_timing_event_patches(self.image(target, corrupt=va), 0, target), {})
 
 
 if __name__ == '__main__':

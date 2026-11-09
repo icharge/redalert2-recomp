@@ -255,16 +255,16 @@ export class WolClient {
     const server = typeof this.server === "string" ? this.server : this.server.httpUrl;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+    // Called as a plain function: the browser's fetch throws "Illegal invocation"
+    // when its `this` is this client rather than the window.
+    const fetcher = this.fetcher;
     try {
-      const response = await this.fetcher(
-        new URL(`native-results/${gameId}`, ensureSlash(server)),
-        {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/octet-stream" },
-          body: new Uint8Array(packet),
-          signal: controller.signal,
-        },
-      );
+      const response = await fetcher(new URL(`native-results/${gameId}`, ensureSlash(server)), {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/octet-stream" },
+        body: new Uint8Array(packet),
+        signal: controller.signal,
+      });
       if (!response.ok) throw new Error(`Native result submission failed (${response.status}).`);
       const accepted = (await response.json()) as {
         stored?: boolean;

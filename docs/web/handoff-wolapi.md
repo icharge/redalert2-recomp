@@ -199,7 +199,21 @@ RA2's wait loop at 0x750B99 validates that UDP packet against the host identity
 in the WOL user array (0xB2A730), which those callbacks had removed.
 
 The bridge now ignores peer PART and NAMES updates for the committed STARTG room
-until its own leave or a new room/lobby request. Own PART still completes; a new
+until its own leave or a new room/lobby request.
+
+The same race has a second form (found 2026-11-09 with two tabs of one
+browser). Once the host leaves the started room, RA2Web parts **everyone**
+from it, the guest included. When that own PART reached the guest while its
+game still waited for NET_GO, the bridge completed it, the game logged
+"Local user leaving channel after game start", abandoned the start
+(`Negotiate_Scenario_Transfer failed`) and went back to the lobby. It happened
+only when the host was quicker than the guest: in passing runs the guest had
+already logged "Got NET_GO from host". The bridge now holds an own PART of the
+started room that the game did not ask for (`[wol] holding the server's PART of
+#room until the game leaves it`). When the game leaves by itself
+(RequestChannelLeave), the held PART completes from the next pump, and no second
+`part` goes to the server. A leave the game asked for completes at once, as
+before. Selftest: the STARTG block in `wolapi_selftest.c`. Own PART still completes; a new
 Join/Create clears the prior session so fresh rosters are accepted and gameplay
 patches stop applying. PART/NAMES for unrelated rooms are also ignored. Both COM
 selftest editions passed the new ordering regression after it failed before

@@ -232,6 +232,27 @@ a2.ini`.
 
 ### Fixed
 
+- Internet (WOL) matches no longer end in an out-of-sync/reconnection error
+  as soon as players give orders. The low-latency command delay was written
+  into each player's game separately, from its own frame pump, so for a frame
+  or two after each of the host's timing events the players disagreed on it,
+  and the game moved an order on one side only. The host's timing events now
+  carry the tuned delay, and every player applies it on the same frame.
+  A tuned delay that was not a multiple of the send rate (5 frames, sent
+  every 2) also desynchronised; it is rounded up as the game's own timing
+  does (6 frames, 100 ms).
+  (`src/web/net_tuning.c`, `run_lift.py` `net_timing_event_patches`, both
+  editions)
+- An Internet match no longer sometimes fails to start
+  (`Negotiate_Scenario_Transfer failed`, back to the lobby). When the host
+  left the started room first, the server's PART of the guest reached the
+  guest's game while it still waited for the host's "go", and the game took
+  that as leaving the match. The bridge holds that PART until the game leaves
+  the room by itself. (`src/web/wolapi.c`)
+- Internet match results are stored again. The page called the browser's
+  `fetch` as a method of its WOL client, which Chrome rejects ("Illegal
+  invocation"), so every report after a match failed.
+  (`web/src/game/wol.ts`)
 - Escape in fullscreen now opens the game's pause menu instead of leaving
   fullscreen with no menu. The keyboard lock asked for the function keys but
   not Escape, so Chromium treated the press as its fullscreen exit before the

@@ -87,6 +87,9 @@ static uint32_t g_channel_list_lobby;
 static uint32_t g_lobby_users;
 static uint32_t g_pending_server_list;
 static uint32_t g_pending_logout;
+/* The started room's own PART (see the PART handler): held until the game
+ * leaves by itself, then delivered from the next pump. Reset at each STARTG. */
+static uint32_t g_match_leave_requested, g_match_part_held, g_pending_match_part;
 static uint32_t g_creating_channel;
 static uint32_t g_joining_channel;
 static uint32_t g_starting_game, g_connected, g_connection_pending;
@@ -584,6 +587,16 @@ static void disconnected(void) {
     event_call(16, 1, status); /* IChatEvent::OnNetStatus: connection closed */
 }
 
+static void complete_channel_leave(wol_user *user) {
+    wol_channel *channel = current_channel();
+    char leaving[48];
+    copy_text(leaving, sizeof leaving, g_current_channel);
+    uint32_t values[] = { S_OK, (uint32_t)(uintptr_t)channel, (uint32_t)(uintptr_t)user };
+    event_call(8, 3, values); /* IChatEvent::OnChannelLeave */
+    if (user && (user->flags & 0x8000u) && strcmp(leaving, g_current_channel) == 0)
+        g_current_channel[0] = '\0';
+}
+
 static void receive_chat(const char *line) {
     char sender[10], target[48], command[16];
     if (sscanf(line, ":%9[^! ]%*s %15s %47s", sender, command, target) != 3 || strcmp(command, "PRIVMSG")) return;
@@ -685,15 +698,18 @@ static void handle_line(const char *line) {
         size_t nick_length = strlen(g_nick);
         int own = line[0] == ':' && !strncmp(line + 1, g_nick, nick_length) &&
             (line[nick_length + 1] == '!' || line[nick_length + 1] == ' ');
-        if (!own && g_session.game_id[0] && !strcmp(g_session.channel, g_current_channel)) return;
-        wol_channel *channel = current_channel();
-        wol_user *user = sender_user(line);
-        char leaving[48];
-        copy_text(leaving, sizeof leaving, g_current_channel);
-        uint32_t values[] = { S_OK, (uint32_t)(uintptr_t)channel, (uint32_t)(uintptr_t)user };
-        event_call(8, 3, values); /* IChatEvent::OnChannelLeave */
-        if (user && (user->flags & 0x8000u) && strcmp(leaving, g_current_channel) == 0)
-            g_current_channel[0] = '\0';
+        int match_room = g_session.game_id[0] && !strcmp(g_session.channel, g_current_channel);
+        if (!own && match_room) return;
+        /* RA2Web parts everyone from a started room once its host leaves. A guest
+         * can still be waiting for NET_GO then, and RA2 takes leaving the room in
+         * that wait as abandoning the start (Negotiate_Scenario_Transfer failed).
+         * Only a leave the game asked for completes now; this one waits for it. */
+        if (own && match_room && !g_match_leave_requested) {
+            g_match_part_held = 1;
+            fprintf(stderr, "[wol] holding the server's PART of %s until the game leaves it\n", g_current_channel);
+            return;
+        }
+        complete_channel_leave(sender_user(line));
         return;
     }
     if (strstr(line, " JOINGAME ")) {
@@ -776,6 +792,7 @@ static void handle_line(const char *line) {
         session.timestamp = (uint32_t)time;
         invalidate_reports();
         g_session = session;
+        g_match_leave_requested = g_match_part_held = g_pending_match_part = 0;
         log_users("startg");
         g_starting_game = 0;
         wol_channel *channel = current_channel();
@@ -830,6 +847,11 @@ static void pump_lines(void) {
         g_lobby_users = 0;
         g_channel_list_lobby = 0;
         g_motd_ready = 0;
+    }
+    if (g_pending_match_part) {
+        g_pending_match_part = 0;
+        if (g_session.game_id[0] && !strcmp(g_session.channel, g_current_channel))
+            complete_channel_leave(user_for_name(g_nick));
     }
     uint32_t read = __atomic_load_n(&g_line_read, __ATOMIC_RELAXED);
     /* Callbacks can synchronously enqueue another send failure. Process only
@@ -1072,6 +1094,16 @@ static void m_chat_request_channel_join(void) {
 }
 static void m_chat_request_channel_leave(void) {
     char line[80];
+    int match_room = g_session.game_id[0] && g_current_channel[0] &&
+        !strcmp(g_session.channel, g_current_channel);
+    if (match_room && g_match_part_held) {
+        /* The server already parted us (the PART handler held it): complete
+         * the leave from the next pump instead of sending a second part. */
+        g_match_part_held = 0;
+        g_pending_match_part = 1;
+        RET(S_OK, 1);
+    }
+    if (match_room) g_match_leave_requested = 1;
     if (g_current_channel[0]) {
         snprintf(line, sizeof line, "part %s", g_current_channel);
         browser_send(line);

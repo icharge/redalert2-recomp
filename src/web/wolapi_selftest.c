@@ -458,9 +458,19 @@ int main(void) {
     ra2_wolapi_receive_line(":wol 353 testuser = #unrelated :outsider,0,1,1");
     assert(invoke(g_chat.chat, 3, 0, NULL) == S_OK);
     assert(test_event_count == match_events && g_user_count == match_users);
+    /* RA2Web parts everyone from a started room once its host leaves. The guest's
+     * own PART can arrive while its game still waits for NET_GO, and RA2 treats
+     * leaving the room there as abandoning the start (Negotiate_Scenario_Transfer
+     * failed, back to the lobby). Hold it until the game leaves by itself. */
     ra2_wolapi_receive_line(":testuser!local PART #testuser");
     assert(invoke(g_chat.chat, 3, 0, NULL) == S_OK);
-    assert(test_event_count == match_events + 1 && !g_current_channel[0]);
+    assert(test_event_count == match_events && strcmp(g_current_channel, "#testuser") == 0);
+    EM_ASM({ Module.testWolLine = ""; });
+    assert(invoke(g_chat.chat, 9, 0, NULL) == S_OK); /* RequestChannelLeave, after the start */
+    assert(EM_ASM_INT({ return Module.testWolLine === ""; })); /* already out: no second part */
+    assert(invoke(g_chat.chat, 3, 0, NULL) == S_OK);
+    assert(test_event_count == match_events + 1 && test_event_method[match_events] == 0x1000b);
+    assert(!g_current_channel[0]);
     assert(g_session.game_id[0]); /* Keep the gameplay patches running after leaving WOL. */
     assert(invoke(g_chat.chat, 8, 1, selected_join) == S_OK);
     assert(!g_session.game_id[0]); /* A new lobby/room ends the previous match's roster lock. */

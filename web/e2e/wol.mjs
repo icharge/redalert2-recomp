@@ -229,14 +229,16 @@ async function open(name, username) {
     window.WebSocket = class extends Socket {
       constructor(url, protocols) {
         super(url, protocols);
-        if (String(url).includes("/wol")) window.wolTestSocket = this;
+        if (String(url).includes(wolHost) && !String(url).includes("/gserv"))
+          window.wolTestSocket = this;
         if (String(url).endsWith("/gserv/native")) window.wolTestRelaySocket = this;
       }
     };
   }, wolHost);
   run.wire = [];
   run.page.on("websocket", (ws) => {
-    if (!ws.url().includes("/wol")) return;
+    // The chat socket: /wol behind a proxy, the server root locally. Not the game relay.
+    if (!ws.url().includes(wolHost) || ws.url().includes("/gserv")) return;
     ws.on("framesent", (f) => run.wire.push("> " + wirePayload(f.payload)));
     ws.on("framereceived", (f) => run.wire.push("< " + wirePayload(f.payload)));
     ws.on("close", () => run.wire.push("[closed]"));
@@ -536,6 +538,9 @@ try {
           await guest.page.evaluate((room) => {
             window.Module.ra2WolReceiveLine(`:woltst1!local PART ${room}`);
             window.Module.ra2WolReceiveLine(`:wol-ra2web 353 woltst2 = ${room} :woltst2,0,1,1`);
+            // RA2Web then parts the guest too. Arriving before NET_GO, this used to
+            // abandon the start (Negotiate_Scenario_Transfer failed).
+            window.Module.ra2WolReceiveLine(`:woltst2!local PART ${room}`);
           }, room);
         }
         const handoff = (run) =>

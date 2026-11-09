@@ -408,11 +408,21 @@ The measured delay budget, the lockstep floor and the transport options are in
 
 `src/web/net_tuning.c` lowers the lockstep command delay (MaxAhead) of a WOL
 match from the stock online floor of 30 frames (500 ms at 60 fps). It picks a
-profile from the measured path ping and holds `Session.MaxAhead` and
-`Session.FrameSendRate` for the match, because the game's own timing events
-recompute the stock floor within about a second. Late-packet and wait-loop
-lines raise the profile one frame at a time, so a slow link degrades instead of
-desyncing. The default target is 90 ms; `--net-delay MS` changes it, and
+profile from the measured path ping and has the host's timing events carry it
+(`run_lift.py net_timing_event_patches`): the precalculated event at the start
+and every `Generate_Real_Timing_Event` after it put the profile's MaxAhead and
+FrameSendRate in place of the stock values. The match is lockstep, so the live
+`Session.MaxAhead`/`FrameSendRate` change only when such an event executes, on
+the same frame for every player. An earlier version wrote the live values from
+each player's frame pump instead; the players then disagreed for a frame or two
+after each timing event, the event handler moved an order on one side only,
+and the first orders of a match ended in an out-of-sync/reconnection error.
+Late-packet and wait-loop lines raise the host's profile one send interval
+(2 frames) at a time, and the next timing event carries it, so a slow link
+degrades instead of stalling. MaxAhead is always a multiple of the send rate,
+as the game's own timing events make it: 5 frames with a send every 2
+desynchronised a match at its first sync check, so the 90 ms target becomes
+6 frames (100 ms) when the path needs more than 4. The default target is 90 ms; `--net-delay MS` changes it, and
 `--classic-latency` disables the module.
 
 The start of every tuned match logs one line:
@@ -422,7 +432,7 @@ The start of every tuned match logs one line:
 ```
 
 The game then logs `MaxAhead is 4` (not 40/30). A match that needs more room
-logs `[net] late packet at frame N: MaxAhead 4 -> 5 frames (83 ms)`, at most once
+logs `[net] late packet at frame N: MaxAhead 4 -> 6 frames (100 ms)`, at most once
 per 1.5 s. Under 100 ms needs a path ping of roughly 80 ms or less; a slower
 link climbs above the target rather than stalling.
 
@@ -445,9 +455,27 @@ node e2e/wol.mjs --url 'http://localhost:5173/' --build ../build-web-wol `
 ```
 
 Expected: both logs show the `[net] WOL command delay` line, `MaxAhead is 4`
-or `5`, no `Packet received too late` after the first four seconds, and `--play`
+or `6`, no `Packet received too late` after the first four seconds, and `--play`
 still reaches its frame target. Remove the delay for the normal loopback run;
 `--classic-latency` must produce `MaxAhead is 40` and then `30` as before.
+
+Two tabs of one browser (`E2E_SHARED_TABS=1 ... --headed --play --hold 40`)
+is the case that found the desync: `--play` gives orders, and before the fix
+both logs showed `DoList: Moving event`, `Writing sync data to file SYNC0.TXT`
+and `[dialog] open 0xCE` within seconds of the first order. Neither line may
+appear now, and `game frame` must keep growing through the hold.
+
+The match after a reconnection screen (checked by hand with `--interactive`,
+RA2, two tabs): once `--play` passes, send
+`{"client":"guest","eval":"window.wolTestRelaySocket.close(), 1","wait":15000}`.
+Both players then show the reconnection screen (`[dialog] open 0xEA`). Press its
+Quit Game, `{"client":"host","click":[1193,914]}` and the same for the guest
+(1280x960 match). Both return to the WOL lobby. Then create the game again
+(host `[720,220]`, `[283,377]`), join it (guest `[150,47]`, `[720,263]`),
+accept (guest `[720,263]`) and start it (host `[720,263]`). The second match
+must reach FRAMESYNC and keep advancing, with no `Writing sync data`. Checked
+2026-11-09: 3,300 frames, and the guest's held PART (`[wol] holding the
+server's PART`) still came before its NET_GO.
 
 Automated result checks (no game launch): `bun test test/nativeResults.test.ts
 test/nativeRelay.test.ts test/wgameres.test.ts test/ladderService.test.ts` in the

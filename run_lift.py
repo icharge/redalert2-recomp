@@ -765,6 +765,53 @@ def apply_patches(body, patches):
     return body
 
 
+# The host's TIMING events (Queue.CPP: Generate_Real_Timing_Event and the
+# "precalculated network timings" one), built at [esp+0x2c]: MaxAhead is the
+# word at +9 ([esp+0x35]) and FrameSendRate the byte at +0xB ([esp+0x37]).
+# (va, bytes): real-path send rate store, real-path MaxAhead add (edx is the
+# 10-frame fudge, esi the computed value), precalc MaxAhead store, precalc send
+# rate store. Identical code in both games.
+NET_TIMING_EVENT_SITES = {
+    'game': ((0x006242F9, '88442437'), (0x00624305, '03d6'),
+             (0x006243BF, '66894c2435'), (0x006243D3, '88442437')),
+    'gamemd': ((0x00647DE9, '88442437'), (0x00647DF5, '03d6'),
+               (0x00647EAF, '66894c2435'), (0x00647EC3, '88442437')),
+}
+
+
+def net_timing_event_patches(code, cs, target):
+    """Carry the browser's WOL command delay in the host's timing events.
+
+    A lockstep match may change MaxAhead and FrameSendRate only through a
+    TIMING event: every player executes it on the same frame, and its handler
+    compares the event with the live values to decide which orders to move.
+    src/web/net_tuning.c supplies the tuned values here, on the host, instead of
+    writing the live values on each player (which desynchronised matches as
+    soon as an order was given). Outside a tuned WOL match the hooks return the
+    stock value.
+    """
+    sites = NET_TIMING_EVENT_SITES.get(target)
+    if not sites:
+        return {}
+    for va, shape in sites:
+        raw = bytes.fromhex(shape)
+        if code[va - cs:va - cs + len(raw)] != raw:
+            print('[*] net_timing_event_patches: a timing event site differs; no tuned delay')
+            return {}
+    (real_rate, real_ahead, pre_ahead, pre_rate) = (va for va, _ in sites)
+    tag = '/* browser WOL command delay, run_lift.py net_timing_event_patches */'
+    rate = ('{ extern uint32_t ra2_net_tuning_timing_send_rate(uint32_t); '
+            'MEM8(esp + 0x37) = (uint8_t)ra2_net_tuning_timing_send_rate(MEM8(esp + 0x37)); } ' + tag)
+    return {
+        real_rate: rate,
+        real_ahead: ('{ extern uint32_t ra2_net_tuning_timing_max_ahead(uint32_t); '
+                     'edx = edx - esi + ra2_net_tuning_timing_max_ahead(esi); } ' + tag),
+        pre_ahead: ('{ extern uint32_t ra2_net_tuning_timing_max_ahead(uint32_t); '
+                    'MEM16(esp + 0x35) = (uint16_t)ra2_net_tuning_timing_max_ahead(MEM16(esp + 0x35)); } ' + tag),
+        pre_rate: rate,
+    }
+
+
 WOL_ICON_ATTACH_SITE = (0x00603D97, '897814')   # mov dword ptr [eax+0x14], edi
 
 
@@ -1657,7 +1704,8 @@ def targets():
                                                  **live_resize_menu_patches(code, cs),
                                                  **web_exit_confirmation_patches(code, cs, 'gamemd'),
                                                  **web_url_patches(code, cs, 'gamemd'),
-                                                 **wol_icon_surface_patches(code, cs)}),
+                                                 **wol_icon_surface_patches(code, cs),
+                                                 **net_timing_event_patches(code, cs, 'gamemd')}),
         'game': dict(exe=os.path.join(_HERE, 'game', 'game.exe'),
                      catalog=os.path.join(_HERE, 'work', 'game', 'functions.json'),
                      seeds=os.path.join(_HERE, 'work', 'game', 'rtti_seeds.json'),
@@ -1685,7 +1733,8 @@ def targets():
                                                **ra2_tab_patches(code, cs),
                                                **reconnect_patches(code, cs, 'game'),
                                                **live_resize_patches(code, cs, 'game'),
-                                               **web_url_patches(code, cs, 'game')}),
+                                               **web_url_patches(code, cs, 'game'),
+                                               **net_timing_event_patches(code, cs, 'game')}),
     }
 
 
