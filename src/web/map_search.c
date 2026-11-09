@@ -35,6 +35,7 @@ static uint8_t g_templates[2][TEMPLATE_BYTES];
 /* The open map screen. */
 static struct {
     uint32_t dialog, edit, box;     /* box: the game's control over the Edit */
+    uint32_t find;                  /* the Find Maps button, once settled */
     ra2_map_box text;
     int changed, searching;         /* searching: the box's text filters the list */
 } g_screen;
@@ -67,7 +68,7 @@ static uint32_t with_search_box(uint32_t id, uint32_t tmpl) {
         static uint8_t stage[TEMPLATE_BYTES];
         size_t m = ra2_map_dialog(game, TEMPLATE_BYTES, stage, sizeof stage, MAP_LIST_ID, SEARCH_ID, SEARCH_HEIGHT);
         if (!m) return 0;
-        size_t n = ra2_map_dialog_button(stage, m, out, sizeof g_templates[0], RANDOM_MAP_ID, FIND_BUTTON_ID,
+        size_t n = ra2_map_dialog_button(stage, m, out, sizeof g_templates[0], RANDOM_MAP_ID, RANDOM_MAP_ID,
                                          FIND_BUTTON_TITLE, FIND_BUTTON_GAP);
         if (!n) memcpy(out, stage, m), n = m;
         return (uint32_t)(uintptr_t)out;
@@ -154,10 +155,12 @@ static void tell(search_status now) {
 
 static void maps_rescan_now(void);
 static int maps_rescan_pending(void);
+static void find_button_settle(void);
 
 /* The presenter's pump, on the game's thread. */
 void web_map_search_pump(void) {
     if (maps_rescan_pending()) maps_rescan_now();
+    find_button_settle();
     search_status now = { 0 };
     uint32_t list = screen_showing() ? hle_dialog_item(g_screen.dialog, MAP_LIST_ID) : 0;
     int l, t, r, b;
@@ -212,6 +215,24 @@ EMSCRIPTEN_KEEPALIVE void ra2_maps_dump(void) { g_rescan = 3; }
 
 static int maps_rescan_pending(void) { return g_rescan; }
 
+/* The red plate. The game gives a button its plate, and lays it out, only if the screen's id table knows it
+ * (0x608CD0: for Customize Battle, Random Map 0x583 and Use Map 0x6C5); any other control is laid out as a
+ * plain one and drawn on a grey plate. So the template makes the Find Maps button with Random Map's id, the game
+ * treats it as one of its buttons while it makes the screen, and here, once that is done, it is given its own id
+ * (the game reads a control's id when it is pressed, not before) and put under Random Map. */
+static void find_button_settle(void) {
+    if (!screen_showing() || g_screen.find) return;
+    uint32_t find = hle_dialog_item_nth(g_screen.dialog, RANDOM_MAP_ID, 1), rnd = hle_dialog_item(g_screen.dialog, RANDOM_MAP_ID);
+    int dl, dt, dr, db, rl, rt, rr, rb;
+    if (!find || !rnd || !hle_window_screen_rect(g_screen.dialog, &dl, &dt, &dr, &db) ||
+        !hle_window_screen_rect(rnd, &rl, &rt, &rr, &rb))
+        return;
+    hle_set_control_id(find, FIND_BUTTON_ID);
+    hle_move_window(find, rl - dl, rb - dt, rr - rl, rb - rt);
+    g_screen.find = find;
+    fprintf(stderr, "[maps] Find Maps button %x settled under Random Map\n", find);
+}
+
 static void maps_rescan_now(void) {
     int how = g_rescan;
     g_rescan = 0;
@@ -236,6 +257,7 @@ static void maps_rescan_now(void) {
     }
 }
 #else
+static void find_button_settle(void) {}
 static void maps_rescan_now(void) {}
 static int maps_rescan_pending(void) { return 0; }
 #endif

@@ -247,20 +247,23 @@ which settles the doubt left by the second step.
 - **The button.** Customize Battle (`0x6B`, Yuri's Revenge only) gets a copy of the Random Map button (id
   `0x583`, owner-drawn) with id `0x7FFD` one row below it, on the next empty plate (`ra2_map_dialog_button` in
   `src/web/map_dialog.c`, added by the same template swap as the search box). The game draws it as one of its own
-  buttons, but on a flat grey plate, not the red one. What was tried, and ruled out:
-  the button's place in the template; pointing the game's own resource entry (`0x6B`, found by `hle_find_resource`;
-  its data entry's offset and size) at the enlarged template (636 to 716 bytes); the game's owner-draw
-  registration (`0x60F9A0`, the `EnumChildWindows` callback `0x60F4B0` runs over a dialog's children) and its
-  window-keyed tables, since the game *does* make both records for the button: it is in the table at `0xAC1B48`
-  (the draw procedure's lookup, `0x612B70`) with the same value as Use Map and Random Map, and has an object in
-  the table at `0xAC1B00` (what `0x6213A0` finds by window, objects `0x208` bytes, next at `+0x204`). Dumping the
-  three objects side by side, only `+0xB4` (1 for Use Map and Random Map, 0 for ours) and per-button pointers
-  differ; setting `+0xB4` changed nothing. The game also resizes its own buttons after making the screen (156x42,
-  at x=644, flush with the right edge; ours kept the template's 164x39 at x=637): moving ours to Random Map's
-  column and size changed nothing either. The plate image's name is `b<u|d><e>_li<n>.pcx`, its letters from the
-  draw state, so the choice is in the draw path (`0x613240` on), not in any setup found. Not solved. (vera20k, a
-  Rust rewrite, draws the same shell from the game's own art with its own code; its notes on these addresses
-  were what pointed at the tables.) Its text is the game's own label `GUI:Find` ("Find", in the player's language): a label the table does
+  buttons, and on the red plate, though that took finding what decides it. The game lays a screen out in `0x60C0C0`,
+  one control at a time, and asks `0x608CD0` whether the screen's id table knows it. The table is code: per screen,
+  a list of control ids (Customize Battle, `0x6B`: Random Map `0x583` and Use Map `0x6C5`). A known control goes to
+  the button layout (`0x60B000`: 156x42, at x=644, flush with the screen's right edge, and its plate object); any
+  other goes to the generic layout and is drawn on a flat grey plate. So the template makes the Find Maps button
+  with Random Map's id (`0x583`, the second control with it); once the game has made the screen, the pump
+  (`find_button_settle` in `map_search.c`) gives it its own id (`0x7FFD`; the game reads a control's id when it
+  is pressed, not before, so a press reaches the dialog as `0x7FFD` and not as Random Map) and puts it under
+  Random Map. That needs three small calls in pcrecomp's user32: `hle_dialog_item_nth`, `hle_set_control_id`,
+  `hle_move_window`. What did not change the plate, and was reverted: the button's place in the template;
+  enlarging the game's own resource entry for `0x6B` (636 to 716 bytes); the game's window-keyed tables, which
+  already held the button (`0xAC1B48`, read by the draw procedure `0x612B70`, and the button objects at `0xAC1B00`,
+  `0x208` bytes with the next at `+0x204`; the object differs from Use Map's only in `+0xB4` and per-button
+  pointers, and setting `+0xB4` did nothing); and giving the button Random Map's size and column by hand after
+  the layout. (vera20k, a Rust rewrite, draws this shell from the game's own art with its own code; its notes on
+  these addresses were what pointed at the tables.) `web/e2e/maps-button.mjs` checks the press, and the screen
+  was checked reopened. Its text is the game's own label `GUI:Find` ("Find", in the player's language): a label the table does
   not have shows as `MISSING:'…'`. A press reaches the dialog as `WM_COMMAND`; `map_search.c` sees it through the
   proc hook (script.c's `watch`) and sends the page `mapFinder`, which opens the panel. The hook sees a message at
   every procedure that passes it along, so one press arrives four times: the C side takes the first and ignores
