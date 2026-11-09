@@ -17,13 +17,21 @@ Ledger: `.superpowers/sdd/2026-11-09-manage-game-and-saves/progress.md`.
 
 ## Task 3 checks
 
-- `install-parts.test.ts`: 9 tests, written first and failing on the missing
+- `install-parts.test.ts`: 11 tests, written first and failing on the missing
   module, then passing. Six are the brief's: measuring a two-edition install;
   removing only the ticked parts; game removal leaving the saves and settings in
   `save/<storage>/` alone; game removal last; a file that will not delete gives
-  an "in use" error while the rest is removed; the reinstall preparation. Three
+  an "in use" error while the rest is removed; the reinstall preparation. Five
   more: a settings file the game wrote is counted and removed with the import's
-  copy; a map both editions read is deleted once and forgotten from both records.
+  copy; a map both editions read is deleted once and forgotten from both records;
+  removing only the game deletes just its files and keeps the other parts;
+  removing every part removes the installation.
+- Ruling R6: removing the game when not every part is ticked deletes only the
+  game's own files and marks them not copied. The installation stays listed,
+  with its saves, settings, maps and mods, and Resume import copies the game back.
+  With every part ticked, the whole installation goes. `deleteRecordedFiles`
+  (save-library.ts) is the delete-then-record step shared by saves, maps,
+  settings and the game.
 - `prepareReinstall` marks each edition's game files not copied, so the install
   is incomplete and Resume import copies them again. The brief's resume check
   holds: `/import?resume=<slot>` → `runImport(slot)` → `beginImport` takes a
@@ -64,8 +72,7 @@ Ledger: `.superpowers/sdd/2026-11-09-manage-game-and-saves/progress.md`.
 
 ## Left
 
-- Tasks 1, 4 to 6.
-- Task 5 ticks: removing the game alone also drops the import's saves and settings
-  records (`removeInstall`'s whole-installation rule). Decide before the dialog ships.
+- Tasks 1, 4 to 6. Removing the game (ruling R6) leaves the install resumable with its
+  saves, settings, maps and mods; the Manage panel wires the parts in Task 6.
 - Task 1 replaces the injected `readInfo` with the real save parser.
 - Fix or wait on the 3 failing tests above.

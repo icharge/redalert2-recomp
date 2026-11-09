@@ -2,6 +2,7 @@ import { IDBFactory } from "fake-indexeddb";
 import { describe, expect, it } from "vitest";
 import { pickActiveInstall, type ActiveInstall } from "./active-install";
 import { measureParts, prepareReinstall, removeParts } from "./install-parts";
+import { listMods } from "./mods";
 import type { GameId } from "./install";
 import { Manifest, type PlannedFile } from "./manifest";
 import { gamePath, type CopyTarget } from "./opfs";
@@ -140,6 +141,42 @@ describe("removeParts", () => {
     expect(after).toMatchObject({ maps: 0, mods: 0, saves: 9, settings: 4 });
   });
 
+  it("removing only the game deletes the game's files and keeps the install's other parts", async () => {
+    const { deps, manifest, slot, home, removed } = await setup();
+    await removeParts(deps, await activeOf(manifest, slot), ["game"]);
+    // only the game content: no map, save, settings or mod file
+    expect(removed.sort()).toEqual([gamePath(home, "a.mix"), gamePath(home, "b.mix")].sort());
+    const install = await activeOf(manifest, slot);
+    expect(install.editions.map((game) => [game.id, game.storage])).toEqual([
+      ["ra2", `${home}-ra2`],
+      ["ra2md", `${home}-ra2md`],
+    ]);
+    expect((await manifest.getGame("ra2md", slot))?.files["a.mix"]?.done).toBe(false);
+    expect((await manifest.getGame("ra2", slot))?.files["b.mix"]?.done).toBe(false);
+    expect(await listMods(manifest, `${home}-ra2md`)).toHaveLength(1);
+    expect(await measureParts(deps, install)).toEqual({
+      game: 0,
+      mods: 140,
+      maps: 18,
+      saves: 9,
+      settings: 4,
+    });
+  });
+
+  it("removing every part removes the installation", async () => {
+    const { deps, manifest, slot } = await setup();
+    await removeParts(deps, await activeOf(manifest, slot), [
+      "settings",
+      "saves",
+      "maps",
+      "mods",
+      "game",
+    ]);
+    expect(await manifest.getGame("ra2", slot)).toBeUndefined();
+    expect(await manifest.getGame("ra2md", slot)).toBeUndefined();
+    expect(await manifest.listInstallations()).toEqual([]);
+  });
+
   it("removing game content keeps saves and settings in save/<storage>/", async () => {
     const { deps, manifest, slot, removed } = await setup({
       written: [
@@ -164,10 +201,21 @@ describe("removeParts", () => {
 
   it("reports a file it could not remove and leaves the rest removed", async () => {
     const { deps, manifest, slot, home, failOn } = await setup();
+    // a second map that deletes fine, beside the one that will not
+    await manifest.putFiles(slot, [
+      {
+        id: "ra2md",
+        name: "c.yrm",
+        entry: { size: 2, lastModified: 1, done: true, needs: ["ra2md"], home },
+      },
+    ]);
     failOn(gamePath(home, "a.yrm"), new DOMException("held", "NoModificationAllowedError"));
     await expect(
       removeParts(deps, await activeOf(manifest, slot), ["maps", "mods"]),
     ).rejects.toThrow(/in use/);
+    const yr = await manifest.getGame("ra2md", slot);
+    expect(yr?.files["c.yrm"]).toBeUndefined();
+    expect(yr?.files["a.yrm"]?.done).toBe(true);
     const after = await measureParts(deps, await activeOf(manifest, slot));
     expect(after).toMatchObject({ mods: 0, maps: 18 });
   });

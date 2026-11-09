@@ -136,28 +136,54 @@ export async function collectSaveRemovals(
   // stays listed, so it can be tried again.
   if (imported.length) {
     const read = await pathsReadElsewhere(deps.manifest, [game]);
-    const forget: string[] = [];
-    for (const { key, entry } of imported) {
-      if (!read.has(`${entry.home}/${key}`)) {
-        try {
-          await deps.target.remove(gamePath(entry.home, key));
-        } catch (error) {
-          failed.push(error);
-          continue;
-        }
-      }
-      forget.push(key);
-    }
-    if (forget.length) {
+    const { gone, failed: stuck } = await deleteRecordedFiles(
+      deps.target,
+      imported.map(({ key, entry }) => ({ name: key, home: entry.home })),
+      read,
+    );
+    failed.push(...stuck);
+    if (gone.length) {
       try {
         // the files are already gone, so the paths it returns are not removed again
-        await deps.manifest.deleteFiles(game.slot, game.id, forget);
+        await deps.manifest.deleteFiles(game.slot, game.id, gone);
       } catch (error) {
         failed.push(error);
       }
     }
   }
   return failed;
+}
+
+/**
+ * Deletes recorded files from OPFS, each path once. A path in `keep` is another record's still: it is
+ * not deleted, but counts as gone. `outcome` remembers each path across calls, so a file two editions
+ * list is deleted once. Returns the names no longer in OPFS, and the errors of those that would not go.
+ */
+export async function deleteRecordedFiles(
+  target: CopyTarget,
+  files: { name: string; home: string }[],
+  keep: ReadonlySet<string>,
+  outcome = new Map<string, boolean>(),
+): Promise<{ gone: string[]; failed: unknown[] }> {
+  const gone: string[] = [];
+  const failed: unknown[] = [];
+  for (const { name, home } of files) {
+    const path = `${home}/${name}`;
+    if (!outcome.has(path)) {
+      if (keep.has(path)) outcome.set(path, true);
+      else {
+        try {
+          await target.remove(gamePath(home, name));
+          outcome.set(path, true);
+        } catch (error) {
+          outcome.set(path, false);
+          failed.push(error);
+        }
+      }
+    }
+    if (outcome.get(path)) gone.push(name);
+  }
+  return { gone, failed };
 }
 
 /**

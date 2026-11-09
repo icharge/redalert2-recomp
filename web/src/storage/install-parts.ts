@@ -1,16 +1,17 @@
 // The parts of one installation the Manage panel measures and removes: settings, saves, maps, mods and
-// the game. Settings, saves and maps go file by file, the OPFS file before its record (R5); the game goes
-// last, with the installation's records.
+// the game. Settings, saves and maps go file by file, the OPFS file before its record (R5). The game
+// goes last: alone or with some parts, its own files go and the installation stays resumable (R6); with
+// every part, the whole installation goes.
 
 import type { ActiveInstall } from "./active-install";
 import { classify } from "./install";
 import type { GameRecord, Manifest } from "./manifest";
 import { listMods, removeMod } from "./mods";
 import { deleteInstallFiles, notRemoved } from "./remove-install";
-import { gamePath } from "./opfs";
 import { isSettingsPath } from "./settings-files";
 import {
   collectSaveRemovals,
+  deleteRecordedFiles,
   listSaves,
   pathsReadElsewhere,
   type SaveLibraryDeps,
@@ -20,6 +21,8 @@ export type InstallPart = "game" | "mods" | "maps" | "saves" | "settings";
 /** bytes */
 export type PartSizes = Record<InstallPart, number>;
 
+const ALL_PARTS: InstallPart[] = ["game", "mods", "maps", "saves", "settings"];
+
 const kindOf = (name: string) => classify(name)?.kind;
 
 /** The names of an edition's recorded files of one kind, as classify sorts them. */
@@ -27,7 +30,10 @@ function namesOf(game: GameRecord, kind: string): string[] {
   return Object.keys(game.files).filter((name) => kindOf(name) === kind);
 }
 
-/** How much of each part the installation holds, across every edition. */
+/**
+ * How much of each part the installation holds, across every edition. A game file that is not copied
+ * (marked missing) is not on the disk, so it is not counted.
+ */
 export async function measureParts(
   deps: SaveLibraryDeps,
   install: ActiveInstall,
@@ -37,7 +43,7 @@ export async function measureParts(
     for (const [name, entry] of Object.entries(game.files)) {
       const kind = kindOf(name);
       // a save is measured with the saves below, from the same list the dialog shows
-      if (kind === "save") continue;
+      if (kind === "save" || !entry.done) continue;
       if (kind === "map") sizes.maps += entry.size;
       else if (kind === "settings") sizes.settings += entry.size;
       else sizes.game += entry.size;
@@ -99,11 +105,15 @@ export async function removeParts(
     }
   }
   if (wanted.has("game")) {
-    // the same as removeInstall, but its failures join the others in one Error
-    const slot = install.installation.slot;
-    const stuck = await deleteInstallFiles(manifest, target, slot);
-    if (stuck.length) failed.push(...stuck);
-    else await manifest.removeInstallation(slot);
+    if (ALL_PARTS.every((part) => wanted.has(part))) {
+      // every part: the whole installation goes, its records with it. Its failures join the others.
+      const slot = install.installation.slot;
+      const stuck = await deleteInstallFiles(manifest, target, slot);
+      if (stuck.length) failed.push(...stuck);
+      else await manifest.removeInstallation(slot);
+    } else {
+      await removeGameContent(deps, install, failed);
+    }
   }
   if (failed.length) throw new Error(notRemoved(failed));
 }
@@ -119,27 +129,55 @@ async function removeRecorded(
   failed: unknown[],
 ): Promise<void> {
   if (!names.length) return;
-  const { manifest, target } = deps;
-  const readElsewhere = await pathsReadElsewhere(manifest, [game]);
-  const forget: string[] = [];
-  for (const name of names) {
+  const files = names.flatMap((name) => {
     const entry = game.files[name];
-    if (!entry) continue;
-    if (!readElsewhere.has(`${entry.home}/${name}`)) {
-      try {
-        await target.remove(gamePath(entry.home, name));
-      } catch (error) {
-        failed.push(error);
-        continue;
-      }
-    }
-    forget.push(name);
-  }
-  if (forget.length) {
+    return entry ? [{ name, home: entry.home }] : [];
+  });
+  const { gone, failed: stuck } = await deleteRecordedFiles(
+    deps.target,
+    files,
+    await pathsReadElsewhere(deps.manifest, [game]),
+  );
+  failed.push(...stuck);
+  if (gone.length) {
     try {
-      await manifest.deleteFiles(game.slot, game.id, forget);
+      await deps.manifest.deleteFiles(game.slot, game.id, gone);
     } catch (error) {
       failed.push(error);
+    }
+  }
+}
+
+/**
+ * Removes the game's own files (everything but maps, saves, settings) from every edition, and marks
+ * them not copied. The installation stays listed, with its other parts, and Resume import copies the
+ * game back. A file another installation's record reads stays in OPFS, but is marked here too.
+ */
+async function removeGameContent(
+  deps: SaveLibraryDeps,
+  install: ActiveInstall,
+  failed: unknown[],
+): Promise<void> {
+  const { manifest, target } = deps;
+  const slot = install.installation.slot;
+  // every edition of this installation is being removed, so a file they share is deleted once
+  const keep = await pathsReadElsewhere(manifest, install.editions);
+  const outcome = new Map<string, boolean>();
+  for (const game of install.editions) {
+    const files = Object.entries(game.files)
+      .filter(([name]) => {
+        const kind = kindOf(name);
+        return kind !== "map" && kind !== "save" && kind !== "settings";
+      })
+      .map(([name, entry]) => ({ name, home: entry.home }));
+    const { gone, failed: stuck } = await deleteRecordedFiles(target, files, keep, outcome);
+    failed.push(...stuck);
+    if (gone.length) {
+      try {
+        await manifest.markFilesMissing(game.id, gone, slot);
+      } catch (error) {
+        failed.push(error);
+      }
     }
   }
 }
