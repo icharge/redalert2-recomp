@@ -8,7 +8,7 @@ Ledger: `.superpowers/sdd/2026-11-09-manage-game-and-saves/progress.md`.
 | # | Task | State |
 |---|------|-------|
 | 1 | Read a save's title and details | not started (waits on the user saving a game in each edition) |
-| 2 | List, read and remove single saves | not started |
+| 2 | List, read and remove single saves | done (tests only; `readInfo` is injected until Task 1) |
 | 3 | Measure and remove the parts of an install, and reinstall | not started |
 | 4 | The SAVED GAMES dialog | not started |
 | 5 | The REMOVE... dialog | not started |
@@ -25,7 +25,24 @@ Ledger: `.superpowers/sdd/2026-11-09-manage-game-and-saves/progress.md`.
   `SettingsScreen.test.tsx`, which belong to the other session's uncommitted work.
 - Not checked in a browser yet.
 
+## Task 2 checks
+
+- `save-library.test.ts`: 7 tests, written first and failing on the missing
+  module, then passing (7 of 7). They cover listing written and imported saves
+  once each, newest first; leaving out non-saves; a save that cannot be read
+  still listed with `info: null`; reading the written copy over the imported
+  one; reading an imported-only save; removing both copies; removing an
+  imported-only save.
+- `SaveInfo` is defined in `save-library.ts`. `listSaves` takes `readInfo` as a
+  dependency, so it does not depend on Task 1's parser.
+- `pnpm --dir web test`: 78 of 81 files pass. The 3 failing files are the same
+  ones as before, outside this change: `cursor-preferences.test.ts`,
+  `changelog.test.ts` and `SettingsScreen.test.tsx`.
+- `pnpm --dir web typecheck`: passes.
+- Not checked in a browser yet.
+
 ## Left
 
-- Tasks 1 to 6.
+- Tasks 1, 3 to 6.
+- Task 1 replaces the injected `readInfo` with the real save parser.
 - Fix or wait on the 3 failing tests above.
