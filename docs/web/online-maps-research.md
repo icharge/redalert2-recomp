@@ -247,12 +247,20 @@ which settles the doubt left by the second step.
 - **The button.** Customize Battle (`0x6B`, Yuri's Revenge only) gets a copy of the Random Map button (id
   `0x583`, owner-drawn) with id `0x7FFD` one row below it, on the next empty plate (`ra2_map_dialog_button` in
   `src/web/map_dialog.c`, added by the same template swap as the search box). The game draws it as one of its own
-  buttons, but on a flat grey plate, not the red one: the game's owner-draw routine (`0x6213A0`) draws only the
-  buttons it made objects for, found by window handle in a table at `0xAC1B00`, and it made none for ours (the
-  button's place in the template did not change it). Making one means calling the game's button constructor with
-  the new handle; not done. Pointing the game's own resource entry (`0x6B`, found by `hle_find_resource`; its data entry's
-  offset and size) at the enlarged template, so the game sees the button wherever it reads the resource, grew it
-  from 636 to 716 bytes and changed nothing: the plate stayed grey. Its text is the game's own label `GUI:Find` ("Find", in the player's language): a label the table does
+  buttons, but on a flat grey plate, not the red one. What was tried, and ruled out:
+  the button's place in the template; pointing the game's own resource entry (`0x6B`, found by `hle_find_resource`;
+  its data entry's offset and size) at the enlarged template (636 to 716 bytes); the game's owner-draw
+  registration (`0x60F9A0`, the `EnumChildWindows` callback `0x60F4B0` runs over a dialog's children) and its
+  window-keyed tables, since the game *does* make both records for the button: it is in the table at `0xAC1B48`
+  (the draw procedure's lookup, `0x612B70`) with the same value as Use Map and Random Map, and has an object in
+  the table at `0xAC1B00` (what `0x6213A0` finds by window, objects `0x208` bytes, next at `+0x204`). Dumping the
+  three objects side by side, only `+0xB4` (1 for Use Map and Random Map, 0 for ours) and per-button pointers
+  differ; setting `+0xB4` changed nothing. The game also resizes its own buttons after making the screen (156x42,
+  at x=644, flush with the right edge; ours kept the template's 164x39 at x=637): moving ours to Random Map's
+  column and size changed nothing either. The plate image's name is `b<u|d><e>_li<n>.pcx`, its letters from the
+  draw state, so the choice is in the draw path (`0x613240` on), not in any setup found. Not solved. (vera20k, a
+  Rust rewrite, draws the same shell from the game's own art with its own code; its notes on these addresses
+  were what pointed at the tables.) Its text is the game's own label `GUI:Find` ("Find", in the player's language): a label the table does
   not have shows as `MISSING:'…'`. A press reaches the dialog as `WM_COMMAND`; `map_search.c` sees it through the
   proc hook (script.c's `watch`) and sends the page `mapFinder`, which opens the panel. The hook sees a message at
   every procedure that passes it along, so one press arrives four times: the C side takes the first and ignores
