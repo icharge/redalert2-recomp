@@ -314,7 +314,7 @@ describe("Import", () => {
     expect(screen.getByText(/^Patched is left out: it patches the game/)).toBeInTheDocument();
   });
 
-  it("opens the mods to show each one's game, size and files", async () => {
+  it("opens the mods in a dialog to show each one's game, size and files", async () => {
     const { user } = await setup(
       sorted(
         file("Mods/Lite/expandmd90.mix", 9),
@@ -324,22 +324,21 @@ describe("Import", () => {
     );
     await user.click(screen.getByRole("button", { name: "CHOOSE FOLDER" }));
     const toggle = await screen.findByRole("button", { name: "1 mod" });
-    expect(toggle).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByRole("list", { name: "Mods in the folder" })).toBeNull();
+    expect(toggle).toHaveAttribute("aria-haspopup", "dialog");
+    expect(screen.queryByRole("dialog")).toBeNull();
     await user.click(toggle);
-    expect(toggle).toHaveAttribute("aria-expanded", "true");
-    // opening the list does not untick the mods
-    expect(screen.getByRole("checkbox", { name: "Mods" })).toBeChecked();
-    const list = screen.getByRole("list", { name: "Mods in the folder" });
-    const lite = within(list).getByRole("listitem", { name: "Lite" });
+    const dialog = await screen.findByRole("dialog", { name: "MODS IN THE FOLDER" });
+    const lite = within(dialog).getByRole("listitem", { name: "Lite" });
     expect(lite).toHaveTextContent("Yuri’s Revenge");
     expect(within(lite).getByText("rulesmd.ini")).toBeInTheDocument();
     expect(within(lite).getByText("expandmd90.mix")).toBeInTheDocument();
-    expect(within(list).getByRole("listitem", { name: "Patched" })).toHaveTextContent(
+    expect(within(dialog).getByRole("listitem", { name: "Patched" })).toHaveTextContent(
       "Left out: patches the game",
     );
-    await user.click(toggle);
-    expect(screen.queryByRole("list", { name: "Mods in the folder" })).toBeNull();
+    await user.click(within(dialog).getByRole("button", { name: "DONE" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    // closing the dialog does not untick the mods
+    expect(screen.getByRole("checkbox", { name: "Mods" })).toBeChecked();
   });
 
   it("brings the real movie archive when asked", async () => {

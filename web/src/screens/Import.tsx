@@ -1,3 +1,5 @@
+import { Cross2Icon } from "@radix-ui/react-icons";
+import { Dialog, Flex } from "@radix-ui/themes";
 import { Fragment, useEffect, useRef, useState, type DragEvent } from "react";
 import { BrandImage } from "../components/BrandImage";
 import { EDITION_BRAND, LOGO_SRC } from "../components/brand";
@@ -428,10 +430,10 @@ const GROUPS: { id: Choosable; label: string; hint: string; unit: [string, strin
 const counted = (count: number, [one, many]: [string, string]) =>
   count === 0 ? "None" : `${count} ${count === 1 ? one : many}`;
 
-/** The folder's mods, opened from the Mods row: each one's game, size and files. */
+/** The folder's mods, in the mods dialog: each one's game, size and files. */
 function ModList({ mods }: { mods: FoundMod[] }) {
   return (
-    <ul id="import-mods" aria-label="Mods in the folder" className={styles.mods}>
+    <ul aria-label="Mods in the folder" className={styles.mods}>
       {mods.map((mod) => (
         <li key={mod.name} aria-label={mod.name}>
           <div className={styles.modHead}>
@@ -564,8 +566,7 @@ function Review({
                   <button
                     type="button"
                     className={styles.expand}
-                    aria-expanded={modsOpen}
-                    aria-controls="import-mods"
+                    aria-haspopup="dialog"
                     onClick={(event) => {
                       // a click inside the label would also tick the checkbox
                       event.preventDefault();
@@ -582,7 +583,7 @@ function Review({
                       strokeWidth="1.8"
                       aria-hidden="true"
                     >
-                      <path d="M4 6l4 4 4-4" />
+                      <path d="M6 4l4 4-4 4" />
                     </svg>
                   </button>
                 ) : (
@@ -590,7 +591,32 @@ function Review({
                 )}
                 <span className={styles.size}>{count > 0 ? formatBytes(bytes) : ""}</span>
               </label>
-              {expandable && modsOpen && <ModList mods={plan.mods} />}
+              {expandable && (
+                <Dialog.Root open={modsOpen} onOpenChange={setModsOpen}>
+                  <Dialog.Content maxWidth="520px" className={styles.modsDialog}>
+                    <Flex align="start" justify="between" gap="3">
+                      <Dialog.Title className={styles.dialogTitle}>MODS IN THE FOLDER</Dialog.Title>
+                      <Dialog.Close>
+                        <button type="button" className={styles.dialogClose} aria-label="Close">
+                          <Cross2Icon />
+                        </button>
+                      </Dialog.Close>
+                    </Flex>
+                    <Dialog.Description size="2">
+                      Each folder in Mods becomes a mod on the MODS tab.{" "}
+                      {counted(count, group.unit)} · {formatBytes(bytes)}
+                    </Dialog.Description>
+                    <ModList mods={plan.mods} />
+                    <div className={styles.dialogActions}>
+                      <Dialog.Close>
+                        <button type="button" className={styles.primary}>
+                          DONE
+                        </button>
+                      </Dialog.Close>
+                    </div>
+                  </Dialog.Content>
+                </Dialog.Root>
+              )}
             </Fragment>
           );
         })}
