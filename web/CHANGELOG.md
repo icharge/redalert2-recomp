@@ -9,6 +9,17 @@ The native releases (v0.1.0 to v0.1.3) are in the repository's
 [CHANGELOG.md](../CHANGELOG.md); none of them include the browser build. The
 commit after each entry is where to read more.
 
+## [0.2.1] - 2026-11-09
+
+### Fixed
+
+- Internet matches reconnect reliably, including games with three or more
+  players, and rematches can start after a reconnection screen.
+- Custom Match rooms now use the selected map's playable player capacity.
+- Westwood Online map icons render correctly.
+- The browser repairs a joined WOL port and `[Options]` line in the game INI,
+  and terminates the port line before the game appends settings.
+
 ## [0.2.0] - 2026-11-09
 
 Changes since 0.1.0.

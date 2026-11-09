@@ -72,6 +72,7 @@ import { statsWanted, writeStatsPreference } from "../storage/stats-preferences"
 import { introArguments } from "../storage/intro-preferences";
 import { speedControlArguments } from "../storage/speed-control-preferences";
 
+const FORCE_EXIT_TIMEOUT_MS = 5_000;
 const runtimeLive = () => !["exited", "crashed"].includes(gameStore.getSnapshot().phase);
 
 /** ?show-cursor=1: the debug mode that keeps the browser cursor visible. */
@@ -157,7 +158,14 @@ export function Play({ files }: { files: FileSource }) {
   const leaving = useRef(false);
   const fastExit = useRef(false);
   const exitFlushing = useRef(false);
+  const exitFallbackTimer = useRef<number | null>(null);
+  const clearExitFallback = useCallback(() => {
+    if (exitFallbackTimer.current === null) return;
+    window.clearTimeout(exitFallbackTimer.current);
+    exitFallbackTimer.current = null;
+  }, []);
   const returnToLauncher = useCallback(() => {
+    clearExitFallback();
     if (leaving.current) return;
     leaving.current = true;
     setExitError(null);
@@ -167,7 +175,9 @@ export function Play({ files }: { files: FileSource }) {
         setExitError(`Could not save before leaving: ${String(reason)}`);
       },
     );
-  }, []);
+  }, [clearExitFallback]);
+
+  useEffect(() => () => clearExitFallback(), [clearExitFallback]);
 
   useEffect(() => {
     if (phase === "exited" && exitCode === 0) returnToLauncher();
@@ -231,14 +241,25 @@ export function Play({ files }: { files: FileSource }) {
       gameStore.resolveExitConfirmation(pending.request);
     };
     if (!exitGame) {
+      clearExitFallback();
       reply();
       return;
     }
     if (exitFlushing.current) return;
     exitFlushing.current = true;
+    exitFallbackTimer.current = window.setTimeout(() => {
+      exitFallbackTimer.current = null;
+      fastExit.current = true;
+      returnToLauncher();
+    }, FORCE_EXIT_TIMEOUT_MS);
     const flush = game.saves ? game.saves.flush() : Promise.resolve(0);
     void flush
       .then(() => {
+        if (
+          leaving.current ||
+          gameStore.getSnapshot().exitConfirmation?.request !== pending.request
+        )
+          return;
         fastExit.current = true;
         reply();
       })

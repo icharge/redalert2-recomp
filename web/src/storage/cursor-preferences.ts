@@ -55,11 +55,16 @@ export function writeCursorPreference(
  */
 export function cursorChoice(
   search: string,
-  game: string,
-  storage?: Pick<Storage, "getItem"> | null,
+  _game: string,
+  _storage?: Pick<Storage, "getItem"> | null,
 ): CursorChoice {
+  void _game;
+  void _storage;
   const requested = new URLSearchParams(search).get("cursor");
   if (requested === "page") return "page";
   if (requested === "game" || requested === "software" || requested === "off") return "game";
-  return readCursorPreference(game, storage);
+  // The launcher no longer exposes the classic cursor preference. Keep an
+  // explicit query override for diagnostics, but default every installation
+  // to the smooth page cursor even if it has an older saved preference.
+  return "page";
 }
