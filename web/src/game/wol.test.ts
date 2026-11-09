@@ -24,6 +24,16 @@ describe("browser WOL settings", () => {
     const fixed = bytes("[MultiPlayer]\nPortNumberOverride=2345\n");
     expect(withBrowserWolPort(fixed)).toEqual(fixed);
   });
+  it("keeps a new section on its own line when the game appends settings", () => {
+    const staged = text(withBrowserWolPort(bytes("[Video]\nScreenWidth=1920")));
+    expect(`${staged}[Options]\nGameSpeed=5\n`).toContain("PortNumberOverride=1234\n[Options]\n");
+  });
+  it("repairs a previously joined port and Options section", () => {
+    const ini = "[MultiPlayer]\nPortNumberOverride=1234[Options]\nGameSpeed=5\n";
+    expect(text(withBrowserWolPort(bytes(ini)))).toBe(
+      "[MultiPlayer]\nPortNumberOverride=1234\n[Options]\nGameSpeed=5\n",
+    );
+  });
 });
 
 describe("WOL wire helpers", () => {
