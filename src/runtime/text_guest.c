@@ -364,8 +364,9 @@ int text_guest_paragraph(uint32_t font_va, uint32_t surface_va, uint32_t text_va
     if (reveal > 0 && (uint32_t)reveal < count + (uint32_t)reveal_range + 1u) return 0;
     if (!ensure_engine()) return 0;
 
-    /* Centre (bit 1) and right (bit 2) alignment; right wins if both are set. */
-    int alignment = (align_flags & 4u) ? 2 : (align_flags & 2u) ? 1 : 0;
+    /* The original paragraph (0x00434CD0) tests bit 0x1 for centre first, then
+     * bit 0x2 for right; neither is left. */
+    int alignment = (align_flags & 1u) ? 1 : (align_flags & 2u) ? 2 : 0;
     float line_height = (float)rd32(font_va + FONT_LINEHEIGHT);
     CacheEntry *e = layout_for(units, count, line_height, (float)wrap_px, alignment);
     if (!e) return 0;

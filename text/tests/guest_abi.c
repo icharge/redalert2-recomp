@@ -329,6 +329,34 @@ int main(void) {
         free_fixture(&f);
     }
 
+    /* 14. Alignment bits follow the original paragraph (0x00434CD0): bit 0x1
+     * centres, bit 0x2 right-aligns, neither is left. A centred or right
+     * paragraph must move its ink right inside the wrap width. */
+    {
+        Fixture f = make_fixture(160, 24, 176, 0xFFFF);
+        uint16_t text[8];
+        units_of("RA", text);
+        FakeCalls calls = { 0, 0, f.pixels };
+        int leftmost[3];
+        const uint32_t flags[3] = { 0, 1, 2 };
+        for (int k = 0; k < 3; ++k) {
+            memset(f.pixels, 0, f.bytes);
+            assert(text_guest_paragraph(va(f.font), va(f.pixels), va(text), 0, 0, 150, 0, flags[k], 0, 0,
+                                        fake_setup, fake_release, &calls) == 1);
+            leftmost[k] = -1;
+            for (int x = 0; x < 160 && leftmost[k] < 0; ++x)
+                for (int y = 0; y < 24; ++y) {
+                    uint16_t px;
+                    memcpy(&px, f.pixels + (y * f.pitch + x) * 2, 2);
+                    if (px) { leftmost[k] = x; break; }
+                }
+            assert(leftmost[k] >= 0);
+        }
+        assert(leftmost[1] > leftmost[0] + 20); /* centred: about half the free width */
+        assert(leftmost[2] > leftmost[1] + 20); /* right: the whole free width */
+        free_fixture(&f);
+    }
+
     puts("guest ABI text harness: pass");
     return 0;
 }

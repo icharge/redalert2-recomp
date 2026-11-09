@@ -55,8 +55,8 @@ int text_guest_label(uint32_t font_va, uint32_t text_va, int32_t x, int32_t y,
  * and release after drawing. The lifted layer supplies these. */
 typedef void (*TextGuestSurfaceFn)(uint32_t font_va, uint32_t surface_va, void *ctx);
 
-/* Paragraph draw. Wraps at wrap_px (0 = none), aligns by align_flags (bit 1
- * centre, bit 2 right), and draws at (x, y). Falls back (returns 0) for
+/* Paragraph draw. Wraps at wrap_px (0 = none), aligns by align_flags (0x1
+ * centre, 0x2 right), and draws at (x, y). Falls back (returns 0) for
  * control characters, a layout taller than max_height (0 = no limit), and an
  * active reveal. setup and release are called only once the call is handled. */
 int text_guest_paragraph(uint32_t font_va, uint32_t surface_va, uint32_t text_va,
