@@ -98,6 +98,9 @@ static uint32_t search_box(void) {
 /* user32's take hook: a posted message, as the game takes it from its queue. */
 static void taken(uint32_t hwnd, uint32_t message, uint32_t wParam, uint32_t lParam) {
     (void)lParam;
+#ifndef RA2_TARGET_GAME
+    web_finder_screen_take(hwnd, message, wParam);
+#endif
     if (!screen_showing() || hwnd != search_box()) return;
     if (ra2_map_box_take(&g_screen.text, message, wParam)) g_screen.changed = 1;
 }

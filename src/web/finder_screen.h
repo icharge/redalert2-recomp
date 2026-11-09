@@ -7,6 +7,8 @@
 void web_finder_screen_open(void);
 /* The presenter's pump, on the game's thread. */
 void web_finder_screen_pump(void);
+/* A message the game took from its queue (map_search.c's take hook): the keys that reach the search Edit. */
+void web_finder_screen_take(uint32_t hwnd, uint32_t message, uint32_t wParam);
 /* The screen the finder opens over (the open Customize Battle), 0 when there is none. */
 uint32_t web_finder_screen_owner(void);
 

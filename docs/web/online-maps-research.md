@@ -283,14 +283,27 @@ which settles the doubt left by the second step.
   the list; Back (the host proc sees the `WM_COMMAND`) destroys the screen, shows Customize Battle again and
   puts the game's current-screen global (`0xAC48A8`) back, and Customize Battle comes back whole.
   `web/e2e/finder-screen.mjs` checks it. Texts must be existing labels (`GUI:Search`, `GUI:Add`, `GUI:Back`,
-  `GUI:ChooseMap`, `GUI:GameMap`): any other shows as `MISSING:'...'`. What did not work: the **list's rows**. The
-  game's list handler (`0x618D40`) answers `LB_ADDSTRING` on the screen's list with `-1` without calling the
-  original list (an import trace shows only window-rect calls), and rows put in the host's list directly
-  (`hle_list_add`, before or after the set-up, with strings or with map-shaped data objects) are not drawn.
-  What a screen's own procedure gives its lists, which makes the handler take rows, is not found; the next place
-  to look is the first message the real procedures answer for a list (Customize Battle's `0x5E6920`, Generate
-  Map's `0x596300`). Also not done: the search box's text, the buttons' actions beyond Back, and the page's
-  results. The default build is unchanged: Find opens the page's panel.
+  `GUI:ChooseMap`, `GUI:GameMap`): any other shows as `MISSING:'...'`, so a result's text goes in the list, not a
+  label. **The list's rows** took the longest. `LB_ADDSTRING` sent to the game's list answers `-1`, and rows put in
+  the host's list directly (`hle_list_add`) are never drawn. A log of every message Customize Battle sends its
+  ListBox windows (a temporary hook in `web_map_search_message`) shows what its own code does: the list's handler
+  (`0x618D40`) has custom messages `0x4C5..0x4CF`, and a row is added with `0x4CD` (wParam 0, lParam a UTF-16
+  string; it converts to a byte string in a rotating buffer at `0xB0FE94 + n * 0x400`, sends `LB_ADDSTRING` itself,
+  allocates a 12-byte record `{next, data, text}` and sets it as the row's item data), followed by
+  `LB_SETITEMDATA` with the row's own data, which the handler keeps in that record (it also answers
+  `LB_GETITEMDATA` from it). `LB_RESETCONTENT` (`0x184`), `LB_GETCURSEL` and `LB_SETCURSEL` go through as usual.
+  Rows then draw in the game's own font.
+  With that the screen is a working finder, `web/e2e/finder-native.mjs`: the game's own search box (its text is
+  followed from the keys that reach it, the same `map_box.c` technique as the Customize Battle search; the box is the
+  window at the Edit's centre), Search sends the page `mapFinderSearch {q}`, the page (`NativeMapFinder.tsx`, no
+  UI) asks MapDB and answers through three exports (`ra2_finder_results` as `sha1 TAB flags TAB name` lines,
+  `ra2_finder_note` for one non-map line such as "Searching...", `ra2_finder_added`), Add (or a double click on a
+  row) sends `mapFinderAdd {sha1}`, the page downloads and installs it (`installMap`, which rescans so Customize
+  Battle lists it) and the row reads "- added". Back returns to Customize Battle. The page's results arrive from
+  another thread, so a spin lock guards the three buffers and the game's thread takes them in the presenter pump.
+  The default build is unchanged (`RA2_FINDER_NATIVE` off): Find opens the page's panel. What is not settled: the
+  status line is a static with a fixed label, so messages go in the list; the screen borrows Customize Battle's ids
+  and layout; and `RA2_FINDER_NATIVE` is still opt-in.
 - **Restyled.** The panel is inside `GameDialogChrome` (the link dialogs' frame, title strip and red plates), with a
   dark list well and yellow text like the game's lists. It is still a page panel, not a game screen.
 - **A screen of the game's own.** Not done, and not possible from the host alone. A game screen is a dialog template

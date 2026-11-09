@@ -16,14 +16,18 @@
  * the game's list keeps in that record. (LB_ADDSTRING sent to the game's list answers -1: its handler wants the custom
  * message; the host's own add, hle_list_add, leaves rows the game does not draw.)
  *
- * Not done: the Edit's text, the buttons' actions (Back closes the screen; the others do nothing) and the page's results. */
+ * The page does the finding: the screen reads what the player typed (the game keeps it inside its own one-line control, so it
+ * is followed from the keys that reach it, as map_search.c does), tells the page what to search (mapFinderSearch) or add
+ * (mapFinderAdd), and shows what the page answers (ra2_finder_results, ra2_finder_note, ra2_finder_added). */
 #ifndef RA2_TARGET_GAME
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
 #include "finder_screen.h"
+#include "map_box.h"
 #include "recomp_types.h"
+#include "web_api.h"
 #include "win32hle.h"
 
 #define SCREEN_SETUP_VA 0x00622820u   /* ecx = the dialog, edx = its resource id */
@@ -43,7 +47,7 @@ enum { SEARCH_ID = 0x7FF0, LIST_ID = 1363, FIND_ID = 0x6C5, DOWNLOAD_ID = 0x583,
 static uint8_t g_tmpl[2048];
 static size_t g_at;
 static uint32_t g_screen, g_previous, g_owner;
-static volatile int g_open_request, g_close_request;
+static volatile int g_open_request, g_close_request, g_search_request, g_add_request;
 
 static void w16(uint16_t v) { memcpy(g_tmpl + g_at, &v, 2), g_at += 2; }
 static void w32(uint32_t v) { memcpy(g_tmpl + g_at, &v, 4), g_at += 4; }
@@ -87,7 +91,13 @@ static void finder_proc(void) {
         g_ecx = keep_ecx, g_edx = keep_edx;
     }
     if (message == WM_INITDIALOG) result = 1;
-    else if (message == WM_COMMAND && (wParam >> 16) == 0 && (wParam & 0xFFFFu) == CLOSE_ID) g_close_request = 1, result = 1;
+    else if (message == WM_COMMAND) {
+        uint32_t id = wParam & 0xFFFFu, code = wParam >> 16;
+        if (code == 0 && id == CLOSE_ID) g_close_request = 1, result = 1;
+        else if (code == 0 && id == FIND_ID) g_search_request = 1, result = 1;
+        else if (code == 0 && id == DOWNLOAD_ID) g_add_request = 1, result = 1;
+        else if (code == 2 && id == LIST_ID) g_add_request = 1, result = 1;   /* LBN_DBLCLK */
+    }
     RET(result, 4);
 }
 
@@ -95,34 +105,197 @@ static const win32hle_shim g_shims[] = { { "ra2_finder_screen_proc", finder_proc
 
 void web_finder_screen_open(void) { g_open_request = 1; }
 
-/* The game's own list takes a row as a message (0x4CD, wParam 0, lParam a UTF-16 string): it makes the row's record, adds the
- * string to the list and sets the record as the row's data; the data we want (a number here) is then set with LB_SETITEMDATA,
- * which the game's list keeps in that record. */
+/* ---- the rows ------------------------------------------------------------------------------------------------------
+ * The game's own list takes a row as a message (0x4CD, wParam 0, lParam a UTF-16 string): it makes the row's record, adds the
+ * string to the list and sets the record as the row's data; the data we want is then set with LB_SETITEMDATA, which the
+ * game's list keeps in that record. */
+#define LB_RESETCONTENT 0x0184u
+#define LB_SETCURSEL 0x0186u
+#define LB_GETCURSEL 0x0188u
 #define LB_SETITEMDATA 0x019Au
 #define LB_GETITEMDATA 0x0199u
-#define LB_GETCOUNT 0x018Bu
-#define LB_GETTEXT 0x0189u
-#define LB_GETTEXTLEN 0x018Au
 #define GAME_LIST_ADD 0x04CDu
-static int list_add(uint32_t list, const char *text, uint32_t data) {
-    static uint16_t wide[256];
+
+/* UTF-8 to UTF-16; a byte that is not UTF-8 stands for itself. */
+static size_t widen(const char *s, uint16_t *out, size_t cap) {
     size_t n = 0;
-    for (; text[n] && n < 255; n++) wide[n] = (uint16_t)(unsigned char)text[n];
-    wide[n] = 0;
+    while (*s && n + 3 < cap) {
+        unsigned char c = (unsigned char)*s;
+        uint32_t cp = c;
+        int more = c >= 0xF0 && c < 0xF8 ? 3 : c >= 0xE0 && c < 0xF0 ? 2 : c >= 0xC0 && c < 0xE0 ? 1 : 0;
+        if (more) {
+            uint32_t v = c & (0x3Fu >> more);
+            int k = 1;
+            for (; k <= more && ((unsigned char)s[k] & 0xC0) == 0x80; k++) v = (v << 6) | ((unsigned char)s[k] & 0x3Fu);
+            if (k > more) cp = v, s += more;
+        }
+        s++;
+        if (cp >= 0x10000) {
+            out[n++] = (uint16_t)(0xD800 + ((cp - 0x10000) >> 10));
+            out[n++] = (uint16_t)(0xDC00 + ((cp - 0x10000) & 0x3FF));
+        } else out[n++] = (uint16_t)cp;
+    }
+    out[n] = 0;
+    return n;
+}
+
+static int list_add(uint32_t list, const char *text, uint32_t data) {
+    static uint16_t wide[512];
+    widen(text, wide, sizeof wide / sizeof wide[0]);
     uint32_t at = hle_send(list, GAME_LIST_ADD, 0, (uint32_t)(uintptr_t)wide);
     if ((int)at >= 0) hle_send(list, LB_SETITEMDATA, at, data);
     return (int)at;
 }
 
-static void fill_list(uint32_t list) {
-    static const char *rows[] = { "Alpha (2)", "Bravo (4)", "Charlie (6)", "Delta (8)" };
-    for (int i = 0; list && i < 4; i++) {
-        int at = list_add(list, rows[i], (uint32_t)(i + 1));
-        static char tb[256];
-        memset(tb, 0, sizeof tb);
-        hle_send(list, LB_GETTEXT, (uint32_t)at, (uint32_t)(uintptr_t)tb);
-        fprintf(stderr, "[finder] row %d -> %d count %d text '%s' data %u\n", i, at, (int)hle_send(list, LB_GETCOUNT, 0, 0), tb, (unsigned)hle_send(list, LB_GETITEMDATA, (uint32_t)at, 0));
+/* The finder's rows: the page's search results, and a note ("Searching...") that is not a map. A map row's list data is its
+ * number + 1; a note's is 0. */
+#define MAX_ROWS 64
+#define SHA1_CHARS 40
+typedef struct { char sha1[SHA1_CHARS + 1], name[96]; int unreviewed, state; } row_t;   /* state: 0 none, 1 busy, 2 added */
+static row_t g_rows[MAX_ROWS];
+static int g_nrows;
+static char g_note[96];
+
+static void show_rows(void) {
+    uint32_t list = g_screen ? hle_dialog_item(g_screen, LIST_ID) : 0;
+    if (!list) return;
+    hle_send(list, LB_RESETCONTENT, 0, 0);
+    if (g_note[0]) list_add(list, g_note, 0);
+    for (int i = 0; i < g_nrows; i++) {
+        char text[160];
+        snprintf(text, sizeof text, "%s%s%s", g_rows[i].name, g_rows[i].unreviewed ? " [unreviewed]" : "",
+                 g_rows[i].state == 2 ? " - added" : g_rows[i].state == 1 ? " ..." : "");
+        list_add(list, text, (uint32_t)(i + 1));
     }
+}
+
+/* ---- from the page (any thread): what it sends waits for the pump ---------------------------------------------------- */
+static char g_in_results[MAX_ROWS * 160], g_in_note[96], g_in_added[SHA1_CHARS + 1];
+static volatile int g_in_flags;   /* 1 results, 2 note, 4 added, 8 add failed; the page writes, the pump takes */
+static volatile int g_in_lock;
+
+static void lock(void) { while (__atomic_exchange_n(&g_in_lock, 1, __ATOMIC_ACQUIRE)) {} }
+static void unlock(void) { __atomic_store_n(&g_in_lock, 0, __ATOMIC_RELEASE); }
+
+#include <emscripten.h>
+/* Lines of "sha1 TAB flags TAB name" (flags: u unreviewed, a already added); replaces the rows. */
+EMSCRIPTEN_KEEPALIVE void ra2_finder_results(const char *tsv) {
+    lock();
+    snprintf(g_in_results, sizeof g_in_results, "%s", tsv ? tsv : "");
+    g_in_flags |= 1;
+    unlock();
+}
+/* One line shown in the list that is no map ("No maps found"); "" clears it. */
+EMSCRIPTEN_KEEPALIVE void ra2_finder_note(const char *text) {
+    lock();
+    snprintf(g_in_note, sizeof g_in_note, "%s", text ? text : "");
+    g_in_flags |= 2;
+    unlock();
+}
+/* An add ended: the map is in (added 1), or is not. */
+EMSCRIPTEN_KEEPALIVE void ra2_finder_added(const char *sha1, int added) {
+    lock();
+    snprintf(g_in_added, sizeof g_in_added, "%s", sha1 ? sha1 : "");
+    g_in_flags |= added ? 4 : 8;
+    unlock();
+}
+
+static void take_results(const char *tsv) {
+    g_nrows = 0;
+    for (const char *p = tsv; *p && g_nrows < MAX_ROWS;) {
+        const char *eol = strchr(p, '\n');
+        size_t len = eol ? (size_t)(eol - p) : strlen(p);
+        const char *t1 = memchr(p, '\t', len);
+        const char *t2 = t1 ? memchr(t1 + 1, '\t', len - (size_t)(t1 + 1 - p)) : NULL;
+        if (t1 && t2 && t1 - p == SHA1_CHARS) {
+            row_t *r = &g_rows[g_nrows++];
+            memset(r, 0, sizeof *r);
+            memcpy(r->sha1, p, SHA1_CHARS);
+            for (const char *f = t1 + 1; f < t2; f++) {
+                if (*f == 'u') r->unreviewed = 1;
+                if (*f == 'a') r->state = 2;
+            }
+            size_t nl = len - (size_t)(t2 + 1 - p);
+            memcpy(r->name, t2 + 1, nl < sizeof r->name - 1 ? nl : sizeof r->name - 1);
+        }
+        p += len + (eol ? 1 : 0);
+    }
+}
+
+static void take_from_page(void) {
+    if (!__atomic_load_n(&g_in_flags, __ATOMIC_ACQUIRE)) return;
+    static char results[sizeof g_in_results];
+    char note[sizeof g_in_note], added[sizeof g_in_added];
+    lock();
+    int flags = g_in_flags;
+    g_in_flags = 0;
+    memcpy(results, g_in_results, sizeof results);
+    memcpy(note, g_in_note, sizeof note);
+    memcpy(added, g_in_added, sizeof added);
+    unlock();
+    if (flags & 1) take_results(results);
+    if (flags & 2) snprintf(g_note, sizeof g_note, "%s", note);
+    if (flags & (4 | 8))
+        for (int i = 0; i < g_nrows; i++)
+            if (!strcmp(g_rows[i].sha1, added)) g_rows[i].state = flags & 4 ? 2 : 0;
+    show_rows();
+}
+
+/* ---- to the page ------------------------------------------------------------------------------------------------------- */
+static void send_event(const char *kind, const char *key, const char *value) {
+    char event[600], esc[400];
+    size_t n = 0;
+    for (const unsigned char *s = (const unsigned char *)value; *s && n + 8 < sizeof esc; s++) {
+        if (*s == '"' || *s == '\\') esc[n++] = '\\', esc[n++] = (char)*s;
+        else if (*s < 0x20 || *s >= 0x7F) n += (size_t)snprintf(esc + n, 8, "\\u%04x", *s);
+        else esc[n++] = (char)*s;
+    }
+    esc[n] = 0;
+    snprintf(event, sizeof event, "{\"e\":\"%s\",\"%s\":\"%s\"}", kind, key, esc);
+    web_event_json(event);
+}
+
+/* ---- the search text: what the game's own Edit holds (the same following of its keys as map_search.c) ------------------- */
+static ra2_map_box g_text;
+static uint32_t g_box;
+
+static uint32_t search_box(void) {
+    if (g_box && hle_is_window(g_box)) return g_box;
+    uint32_t edit = hle_dialog_item(g_screen, SEARCH_ID);
+    int l, t, r, b;
+    if (!edit || !hle_window_screen_rect(edit, &l, &t, &r, &b)) return 0;
+    uint32_t h = hle_window_at((l + r) / 2, (t + b) / 2, NULL, NULL);
+    g_box = h && hle_window_parent(h) == g_screen ? h : 0;
+    return g_box;
+}
+
+/* map_search.c's take hook passes on what the game takes from its queue. */
+void web_finder_screen_take(uint32_t hwnd, uint32_t message, uint32_t wParam) {
+    if (!g_screen || !hle_is_window(g_screen) || hwnd != search_box()) return;
+    ra2_map_box_take(&g_text, message, wParam);
+}
+
+/* ---- the buttons ------------------------------------------------------------------------------------------------------- */
+static void press_search(void) {
+    if (g_text.overflow) return;
+    snprintf(g_note, sizeof g_note, "Searching...");
+    g_nrows = 0;
+    show_rows();
+    send_event("mapFinderSearch", "q", g_text.text);
+}
+
+static void press_add(void) {
+    uint32_t list = hle_dialog_item(g_screen, LIST_ID);
+    int at = (int)hle_send(list, LB_GETCURSEL, 0, 0);
+    if (at < 0) return;
+    uint32_t data = hle_send(list, LB_GETITEMDATA, (uint32_t)at, 0);
+    if (!data || data > (uint32_t)g_nrows) return;
+    row_t *r = &g_rows[data - 1];
+    if (r->state) return;
+    r->state = 1;
+    show_rows();
+    hle_send(list, LB_SETCURSEL, (uint32_t)at, 0);   /* the same row stays picked */
+    send_event("mapFinderAdd", "sha1", r->sha1);
 }
 
 static void open_now(void) {
@@ -138,15 +311,17 @@ static void open_now(void) {
     if (!h) return;
     g_screen = h, g_owner = owner;
     g_previous = MEM32(SHELL_CURRENT_VA);
-    uint32_t list = hle_dialog_item(h, LIST_ID);
+    memset(&g_text, 0, sizeof g_text);
+    g_box = 0, g_nrows = 0;
     uint32_t keep_ecx = g_ecx, keep_edx = g_edx;
     g_ecx = h, g_edx = LAYOUT_ID;
     hle_call_guest(SCREEN_SETUP_VA, 0, NULL);
     g_ecx = keep_ecx, g_edx = keep_edx;
-    fill_list(list);
     uint32_t zero = 0;
     hle_call_guest(hle_resolve("ShowWindow"), 2, (uint32_t[]){ owner, zero });   /* ours covers the screen: hide the one under it */
     hle_send(h, 0x04A9u, 0, 1);   /* what the game's own screen loop sends a screen as it starts */
+    snprintf(g_note, sizeof g_note, "Type a map name, then press Search");
+    show_rows();
 }
 
 static void close_now(void) {
@@ -160,6 +335,11 @@ static void close_now(void) {
 
 void web_finder_screen_pump(void) {
     if (g_open_request) g_open_request = 0, open_now();
-    if (g_close_request) close_now();
+    if (!g_screen) return;
+    if (!hle_is_window(g_screen)) { g_screen = 0; return; }
+    if (g_close_request) { close_now(); return; }
+    take_from_page();
+    if (g_search_request) g_search_request = 0, press_search();
+    if (g_add_request) g_add_request = 0, press_add();
 }
 #endif

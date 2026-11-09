@@ -25,6 +25,7 @@ import { attachInput } from "../game/input";
 import { PageCursor } from "../game/cursor-layer";
 import { LanPanel } from "../components/LanPanel";
 import { MapDownloadPanel } from "../components/MapDownloadPanel";
+import { NativeMapFinder } from "../components/NativeMapFinder";
 import { FileExplorer } from "../components/FileExplorer";
 import { GameTray, trayItem } from "./GameTray";
 import { CrashDialog } from "./CrashDialog";
@@ -142,6 +143,7 @@ export function Play({ files }: { files: FileSource }) {
   const openLink = useGameState((s) => s.openLink);
   const mapSearchStatus = useGameState((s) => s.mapSearchStatus);
   const mapFinderRequests = useGameState((s) => s.mapFinderRequests);
+  const mapFinderCommand = useGameState((s) => s.mapFinderCommand);
   const linkDialogTarget = useMemo(
     () => (openLink ? linkTarget(openLink.url, undefined, openLink.page) : null),
     [openLink],
@@ -747,6 +749,9 @@ export function Play({ files }: { files: FileSource }) {
           visible={mapSearchStatus.open}
           openRequest={mapFinderRequests}
         />
+      )}
+      {presenter && handle.current && (
+        <NativeMapFinder game={handle.current} command={mapFinderCommand} />
       )}
       <GameTray quiet={trayQuiet}>
         <button

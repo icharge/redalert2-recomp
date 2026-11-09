@@ -48,6 +48,9 @@ export type GameEvent =
     }
   /** the player pressed the game's Find Maps button (src/web/map_search.c) */
   | { e: "mapFinder" }
+  /** the native finder screen (src/web/finder_screen.c): the player pressed Search, or Add on a result */
+  | { e: "mapFinderSearch"; q: string }
+  | { e: "mapFinderAdd"; sha1: string }
   | { e: "fps"; fps: number; ms: number; pacing: Pacing | null }
   | { e: "exit"; code: number }
   | { e: "exitConfirm"; request: number }
@@ -154,6 +157,10 @@ export function parseEventLine(line: string): GameEvent | null {
         : null;
     case "mapFinder":
       return { e: "mapFinder" };
+    case "mapFinderSearch":
+      return typeof value.q === "string" ? { e: "mapFinderSearch", q: value.q } : null;
+    case "mapFinderAdd":
+      return typeof value.sha1 === "string" ? { e: "mapFinderAdd", sha1: value.sha1 } : null;
     case "fps":
       return typeof value.fps === "number" && typeof value.ms === "number"
         ? { e: "fps", fps: value.fps, ms: value.ms, pacing: pacingOf(value) }
@@ -359,6 +366,12 @@ export interface Ra2Exports {
   ra2_input_text(text: string): void;
   /** Yuri's Revenge: scan the game's map folder again on the game thread; truncate 1 replaces the list, 0 appends */
   ra2_maps_rescan(truncate: number): void;
+  /** the native finder screen: lines of "sha1 TAB flags TAB name" (flags: u unreviewed, a already added) replace its rows */
+  ra2_finder_results(tsv: string): void;
+  /** one line in its list that is no map; "" clears it */
+  ra2_finder_note(text: string): void;
+  /** an add ended: the map is in (1) or is not (0) */
+  ra2_finder_added(sha1: string, added: number): void;
   ra2_crash_report(why: string): void;
 }
 
@@ -384,5 +397,8 @@ export const EXPORT_SIGNATURES: {
   ra2_input_wheel: { returns: null, args: ["number", "number", "number"] },
   ra2_input_text: { returns: null, args: ["string"] },
   ra2_maps_rescan: { returns: null, args: ["number"] },
+  ra2_finder_results: { returns: null, args: ["string"] },
+  ra2_finder_note: { returns: null, args: ["string"] },
+  ra2_finder_added: { returns: null, args: ["string", "number"] },
   ra2_crash_report: { returns: null, args: ["string"] },
 };

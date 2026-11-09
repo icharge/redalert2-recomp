@@ -55,6 +55,10 @@ describe("GameStore", () => {
     expect(store.getSnapshot().mapFinderRequests).toBe(1);
     store.line('@ra2 {"e":"mapFinder"}');
     expect(store.getSnapshot().mapFinderRequests).toBe(2);
+    store.line('@ra2 {"e":"mapFinderSearch","q":"dust"}');
+    expect(store.getSnapshot().mapFinderCommand).toEqual({ seq: 1, search: "dust" });
+    store.line('@ra2 {"e":"mapFinderAdd","sha1":"ab"}');
+    expect(store.getSnapshot().mapFinderCommand).toEqual({ seq: 2, add: "ab" });
   });
 
   it("keeps the copy's progress until the game boots", () => {

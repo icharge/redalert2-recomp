@@ -82,6 +82,15 @@ describe("parseEventLine", () => {
 
   it("parses the Find Maps button's press", () => {
     expect(parseEventLine('@ra2 {"e":"mapFinder"}')).toEqual({ e: "mapFinder" });
+    expect(parseEventLine('@ra2 {"e":"mapFinderSearch","q":"dust"}')).toEqual({
+      e: "mapFinderSearch",
+      q: "dust",
+    });
+    expect(parseEventLine('@ra2 {"e":"mapFinderAdd","sha1":"ab"}')).toEqual({
+      e: "mapFinderAdd",
+      sha1: "ab",
+    });
+    expect(parseEventLine('@ra2 {"e":"mapFinderSearch"}')).toBeNull();
   });
 
   it("ignores a malformed event instead of throwing", () => {
