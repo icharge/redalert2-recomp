@@ -133,7 +133,14 @@ static frame_bufs_t g_frames = { .newest = -1 };         /* the picture's three 
 static uint32_t g_palette[256];                          /* raw PAL8: the palette palette_ptr names */
 static uint32_t g_pause_dialog;
 static uint32_t g_wol_legend_dialog;
+static double g_wol_legend_ready_at;
 static struct { uint32_t hwnd, surface; } g_wol_icon_surfaces[256];
+#if defined(RA2_TARGET_GAME)
+/* game.exe's RTTI names BSurface at this vtable; Yuri's Revenge differs. */
+#define WOL_BSURFACE_VTABLE 0x0079AEF8u
+#else
+#define WOL_BSURFACE_VTABLE 0x007E2070u
+#endif
 static void present_now(void);
 
 void web_wol_icon_surface(uint32_t hwnd, uint32_t surface) {
@@ -155,6 +162,9 @@ static void composite_wol_legend(uint8_t *frame, int w, int h, uint32_t row,
                                  int game_w, int game_h, int scale, int raw, int bpp) {
     const uint32_t dlg = g_wol_legend_dialog;
     if (!dlg || !hle_is_window(dlg) || !(hle_window_style(dlg) & 0x10000000u)) return;
+    /* The shell animates the online page after CreateDialog returns. Wait for
+     * that transition before painting PCX controls over the game surface. */
+    if (emscripten_get_now() < g_wol_legend_ready_at) return;
     if (raw && bpp != 16) return;
     if (bpp != 16 || (w != game_w * scale) || (h != game_h * scale)) return;
 
@@ -163,7 +173,7 @@ static void composite_wol_legend(uint8_t *frame, int w, int h, uint32_t row,
         uint32_t surface = 0;
         for (size_t i = 0; i < sizeof g_wol_icon_surfaces / sizeof g_wol_icon_surfaces[0]; i++)
             if (g_wol_icon_surfaces[i].hwnd == child) { surface = g_wol_icon_surfaces[i].surface; break; }
-        if (!surface || MEM32(surface) != 0x007E2070u) continue;
+        if (!surface || MEM32(surface) != WOL_BSURFACE_VTABLE) continue;
         int sw = (int)MEM32(surface + 4), sh = (int)MEM32(surface + 8);
         uint32_t pixels = MEM32(surface + 0x14), bytes = MEM32(surface + 0x18);
         if (sw <= 0 || sh <= 0 || sw > 128 || sh > 128 || !pixels || bytes < (uint32_t)(sw * sh * 2)) continue;
@@ -322,8 +332,19 @@ static int menu_screen(uint32_t resource_id) {
 /* Resource 0xB5 is the in-game pause menu. */
 void web_presenter_dialog_created(uint32_t hwnd, uint32_t resource_id) {
     if (resource_id == 0xB5u) g_pause_dialog = hwnd;
-    else if (menu_screen(resource_id)) web_presenter_scenario_start(0);
-    if (resource_id == 0x10Eu) g_wol_legend_dialog = hwnd;
+    else if (menu_screen(resource_id)) {
+        web_presenter_scenario_start(0);
+        if (resource_id == 0x10Eu) {
+            g_wol_legend_dialog = hwnd;
+            g_wol_legend_ready_at = emscripten_get_now() + 700.0;
+        } else {
+            /* HWNDs are recycled between shell pages. Drop both the old dialog
+             * and its child-surface map so another page cannot composite them. */
+            g_wol_legend_dialog = 0;
+            g_wol_legend_ready_at = 0;
+            memset(g_wol_icon_surfaces, 0, sizeof g_wol_icon_surfaces);
+        }
+    }
 }
 
 static int pause_dialog_visible(void) {

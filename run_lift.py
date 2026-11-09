@@ -812,12 +812,15 @@ def net_timing_event_patches(code, cs, target):
     }
 
 
-WOL_ICON_ATTACH_SITE = (0x00603D97, '897814')   # mov dword ptr [eax+0x14], edi
+WOL_ICON_ATTACH_SITES = {
+    'gamemd': (0x00603D97, '897814'),           # sub_00603D30
+    'game': (0x005E1F97, '897814'),             # sub_005E1F30
+}
 
 
-def wol_icon_surface_patches(code, cs):
-    """Keep PCX surfaces visible in the browser's WOL legend compositor."""
-    va, shape = WOL_ICON_ATTACH_SITE
+def wol_icon_surface_patches(code, cs, target):
+    """Keep RA2/YR PCX surfaces visible in the browser's WOL legend compositor."""
+    va, shape = WOL_ICON_ATTACH_SITES[target]
     if code[va - cs:va - cs + len(bytes.fromhex(shape))] != bytes.fromhex(shape):
         print('[*] wol_icon_surface_patches: surface attachment site differs; no WOL icon hook')
         return {}
@@ -1704,7 +1707,7 @@ def targets():
                                                  **live_resize_menu_patches(code, cs),
                                                  **web_exit_confirmation_patches(code, cs, 'gamemd'),
                                                  **web_url_patches(code, cs, 'gamemd'),
-                                                 **wol_icon_surface_patches(code, cs),
+                                                 **wol_icon_surface_patches(code, cs, 'gamemd'),
                                                  **net_timing_event_patches(code, cs, 'gamemd')}),
         'game': dict(exe=os.path.join(_HERE, 'game', 'game.exe'),
                      catalog=os.path.join(_HERE, 'work', 'game', 'functions.json'),
@@ -1734,6 +1737,7 @@ def targets():
                                                **reconnect_patches(code, cs, 'game'),
                                                **live_resize_patches(code, cs, 'game'),
                                                **web_url_patches(code, cs, 'game'),
+                                               **wol_icon_surface_patches(code, cs, 'game'),
                                                **net_timing_event_patches(code, cs, 'game')}),
     }
 
