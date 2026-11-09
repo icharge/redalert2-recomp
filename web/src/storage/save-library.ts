@@ -109,6 +109,16 @@ export async function removeSaves(
   game: GameRecord,
   saves: SaveEntry[],
 ): Promise<void> {
+  const failed = await collectSaveRemovals(deps, game, saves);
+  if (failed.length) throw new Error(notRemoved(failed));
+}
+
+/** As removeSaves, but returns the errors of the files that would not go, for a caller that reports them with others. */
+export async function collectSaveRemovals(
+  deps: SaveLibraryDeps,
+  game: GameRecord,
+  saves: SaveEntry[],
+): Promise<unknown[]> {
   const failed: unknown[] = [];
   const imported: { key: string; entry: FileEntry }[] = [];
   for (const save of saves) {
@@ -125,7 +135,7 @@ export async function removeSaves(
   // Files go before the records that name them, as removeInstall does: a file that will not delete
   // stays listed, so it can be tried again.
   if (imported.length) {
-    const read = await pathsOfOtherRecords(deps, game);
+    const read = await pathsReadElsewhere(deps.manifest, [game]);
     const forget: string[] = [];
     for (const { key, entry } of imported) {
       if (!read.has(`${entry.home}/${key}`)) {
@@ -147,14 +157,20 @@ export async function removeSaves(
       }
     }
   }
-  if (failed.length) throw new Error(notRemoved(failed));
+  return failed;
 }
 
-/** Every `home/name` any other game's record reads, in any installation. */
-async function pathsOfOtherRecords(deps: SaveLibraryDeps, game: GameRecord): Promise<Set<string>> {
+/**
+ * Every `home/name` a record outside `exclude` reads, in any installation. A file in that set is still
+ * another game's, so it stays in OPFS when `exclude` forgets it.
+ */
+export async function pathsReadElsewhere(
+  manifest: Manifest,
+  exclude: GameRecord[],
+): Promise<Set<string>> {
   const paths = new Set<string>();
-  for (const record of await deps.manifest.listGames()) {
-    if (record.slot === game.slot && record.id === game.id) continue;
+  for (const record of await manifest.listGames()) {
+    if (exclude.some((game) => game.slot === record.slot && game.id === record.id)) continue;
     for (const [name, entry] of Object.entries(record.files)) paths.add(`${entry.home}/${name}`);
   }
   return paths;

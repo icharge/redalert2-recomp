@@ -14,6 +14,20 @@ export async function removeInstall(
   target: CopyTarget,
   slot: number,
 ): Promise<void> {
+  const failed = await deleteInstallFiles(manifest, target, slot);
+  if (failed.length) throw new Error(notRemoved(failed));
+  await manifest.removeInstallation(slot);
+}
+
+/**
+ * Deletes every file the installation alone has in OPFS, and keeps the records. Returns the errors of
+ * the files that would not go, for a caller that reports them with others.
+ */
+export async function deleteInstallFiles(
+  manifest: Manifest,
+  target: CopyTarget,
+  slot: number,
+): Promise<unknown[]> {
   const failed: unknown[] = [];
   for (const file of await manifest.installationFiles(slot)) {
     try {
@@ -22,11 +36,10 @@ export async function removeInstall(
       failed.push(error);
     }
   }
-  if (failed.length) throw new Error(notRemoved(failed));
-  await manifest.removeInstallation(slot);
+  return failed;
 }
 
-function notRemoved(errors: unknown[]): string {
+export function notRemoved(errors: unknown[]): string {
   const count = errors.length === 1 ? "A file" : `${errors.length} files`;
   // Chromium's error for a file another tab has open
   if (

@@ -9,11 +9,31 @@ Ledger: `.superpowers/sdd/2026-11-09-manage-game-and-saves/progress.md`.
 |---|------|-------|
 | 1 | Read a save's title and details | not started (waits on the user saving a game in each edition) |
 | 2 | List, read and remove single saves | done (tests only; `readInfo` is injected until Task 1) |
-| 3 | Measure and remove the parts of an install, and reinstall | not started |
+| 3 | Measure and remove the parts of an install, and reinstall | done (tests only; the Manage panel wires it in Task 6) |
 | 4 | The SAVED GAMES dialog | not started |
 | 5 | The REMOVE... dialog | not started |
 | 6 | The MANAGE GAME panel, wired in | not started |
 | 7 | The Install screen's mods list as a dialog | done |
+
+## Task 3 checks
+
+- `install-parts.test.ts`: 9 tests, written first and failing on the missing
+  module, then passing. Six are the brief's: measuring a two-edition install;
+  removing only the ticked parts; game removal leaving the saves and settings in
+  `save/<storage>/` alone; game removal last; a file that will not delete gives
+  an "in use" error while the rest is removed; the reinstall preparation. Three
+  more: a settings file the game wrote is counted and removed with the import's
+  copy; a map both editions read is deleted once and forgotten from both records.
+- `prepareReinstall` marks each edition's game files not copied, so the install
+  is incomplete and Resume import copies them again. The brief's resume check
+  holds: `/import?resume=<slot>` → `runImport(slot)` → `beginImport` takes a
+  file marked not done as to copy, and `needsResume` is true while a record is
+  incomplete. Import.tsx and App.tsx are unchanged.
+- `save-library.ts` exports `pathsReadElsewhere` and `collectSaveRemovals`;
+  `remove-install.ts` exports `notRemoved` and `deleteInstallFiles`. `removeSaves`
+  and `removeInstall` behave as before (`save-library.test.ts`,
+  `remove-install.test.ts` pass).
+- Not checked in a browser yet.
 
 ## Task 7 checks
 
@@ -44,6 +64,8 @@ Ledger: `.superpowers/sdd/2026-11-09-manage-game-and-saves/progress.md`.
 
 ## Left
 
-- Tasks 1, 3 to 6.
+- Tasks 1, 4 to 6.
+- Task 5 ticks: removing the game alone also drops the import's saves and settings
+  records (`removeInstall`'s whole-installation rule). Decide before the dialog ships.
 - Task 1 replaces the injected `readInfo` with the real save parser.
 - Fix or wait on the 3 failing tests above.
