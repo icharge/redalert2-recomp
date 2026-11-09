@@ -149,4 +149,42 @@ describe("removeSaves", () => {
     expect(removed).toEqual([gamePath("slot-1", "SAVE0001.SAV")]);
     expect((await manifest.getGame("ra2md"))?.files["SAVE0001.SAV"]).toBeUndefined();
   });
+
+  it("keeps an imported save listed when its file will not delete, so it can be tried again", async () => {
+    const { deps, game, manifest } = await setup();
+    const save = (await listSaves(deps, game)).find((s) => s.name === "SAVE0001.SAV")!;
+    const stuck = gamePath("slot-1", "SAVE0001.SAV");
+    deps.target = {
+      ...deps.target,
+      async remove(path) {
+        if (path === stuck) throw new Error("in use");
+      },
+    };
+    await expect(removeSaves(deps, game, [save])).rejects.toThrow(/could not be deleted/);
+    expect((await manifest.getGame("ra2md"))?.files["SAVE0001.SAV"]).toBeDefined();
+    expect((await listSaves(deps, game)).map((s) => s.name)).toContain("SAVE0001.SAV");
+  });
+
+  it("keeps a file another edition still reads, and forgets only this edition's record", async () => {
+    const { deps, game, manifest, removed } = await setup();
+    await manifest.beginImport("ra2", "Red Alert 2", 2, [
+      { name: "SAVE0001.SAV", size: 20, lastModified: 100, needs: ["ra2" as const] },
+    ]);
+    const save = (await listSaves(deps, game)).find((s) => s.name === "SAVE0001.SAV")!;
+    await removeSaves(deps, game, [save]);
+    expect(removed).not.toContain(gamePath("slot-1", "SAVE0001.SAV"));
+    expect((await manifest.getGame("ra2md"))?.files["SAVE0001.SAV"]).toBeUndefined();
+    expect((await manifest.getGame("ra2"))?.files["SAVE0001.SAV"]).toBeDefined();
+  });
+});
+
+describe("listSaves: names", () => {
+  it("lists a written save and its imported copy once when the names differ only in case", async () => {
+    const { deps, game } = await setup({
+      "save0002.sav": { text: "DESC written two", modified: 200 },
+    });
+    const saves = await listSaves(deps, game);
+    expect(saves.filter((s) => s.name.toLowerCase() === "save0002.sav")).toHaveLength(1);
+    expect(saves[0]).toMatchObject({ name: "save0002.sav", written: true, imported: true });
+  });
 });

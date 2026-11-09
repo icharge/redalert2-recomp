@@ -2,7 +2,7 @@
 // the import (`save/<storage>/`) and what came with the import (the game's own folder). A save both have
 // is one entry, read from the written copy.
 
-import type { GameRecord, Manifest } from "./manifest";
+import type { FileEntry, GameRecord, Manifest } from "./manifest";
 import { gamePath, type CopyTarget } from "./opfs";
 import { isSavePath, type SaveStore } from "./saves";
 
@@ -110,7 +110,7 @@ export async function removeSaves(
   saves: SaveEntry[],
 ): Promise<void> {
   const failed: unknown[] = [];
-  const imported: string[] = [];
+  const imported: { key: string; entry: FileEntry }[] = [];
   for (const save of saves) {
     if (save.written) {
       try {
@@ -120,22 +120,44 @@ export async function removeSaves(
       }
     }
     const record = importedSave(game, save.name);
-    if (record) imported.push(record.key);
+    if (record) imported.push(record);
   }
+  // Files go before the records that name them, as removeInstall does: a file that will not delete
+  // stays listed, so it can be tried again.
   if (imported.length) {
-    try {
-      for (const file of await deps.manifest.deleteFiles(game.slot, game.id, imported)) {
+    const read = await pathsOfOtherRecords(deps, game);
+    const forget: string[] = [];
+    for (const { key, entry } of imported) {
+      if (!read.has(`${entry.home}/${key}`)) {
         try {
-          await deps.target.remove(gamePath(file.home, file.name));
+          await deps.target.remove(gamePath(entry.home, key));
         } catch (error) {
           failed.push(error);
+          continue;
         }
       }
-    } catch (error) {
-      failed.push(error);
+      forget.push(key);
+    }
+    if (forget.length) {
+      try {
+        // the files are already gone, so the paths it returns are not removed again
+        await deps.manifest.deleteFiles(game.slot, game.id, forget);
+      } catch (error) {
+        failed.push(error);
+      }
     }
   }
   if (failed.length) throw new Error(notRemoved(failed));
+}
+
+/** Every `home/name` any other game's record reads, in any installation. */
+async function pathsOfOtherRecords(deps: SaveLibraryDeps, game: GameRecord): Promise<Set<string>> {
+  const paths = new Set<string>();
+  for (const record of await deps.manifest.listGames()) {
+    if (record.slot === game.slot && record.id === game.id) continue;
+    for (const [name, entry] of Object.entries(record.files)) paths.add(`${entry.home}/${name}`);
+  }
+  return paths;
 }
 
 function notRemoved(errors: unknown[]): string {

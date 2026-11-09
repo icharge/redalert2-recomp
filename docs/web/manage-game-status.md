@@ -27,8 +27,9 @@ Ledger: `.superpowers/sdd/2026-11-09-manage-game-and-saves/progress.md`.
 
 ## Task 2 checks
 
-- `save-library.test.ts`: 7 tests, written first and failing on the missing
-  module, then passing (7 of 7). They cover listing written and imported saves
+- `save-library.test.ts`: 10 tests, written first and failing on the missing
+  module, then passing (10 of 10). Review fix: a file that will not delete stays
+  listed, and a file another edition still reads is not deleted. They cover listing written and imported saves
   once each, newest first; leaving out non-saves; a save that cannot be read
   still listed with `info: null`; reading the written copy over the imported
   one; reading an imported-only save; removing both copies; removing an
