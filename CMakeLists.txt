@@ -63,6 +63,7 @@ endfunction()
 # pcrecomp lifter: a patch edited there reaches the game only through a re-lift
 # (cmake/lift_check.cmake). It runs before the target's compiles start.
 option(RA2_ALLOW_STALE_LIFT "warn instead of failing when the lifted C is older than run_lift.py" OFF)
+option(RA2_FINDER_NATIVE "web, Yuri's Revenge: the Find Maps button opens a screen drawn by the game (src/web/finder_screen.c, a prototype) instead of the page's panel" OFF)
 function(ra2_lift_check edition target)
   ra2_gen_dir(${edition} gen_dir)
   add_custom_target(${target}_lift_check
@@ -110,7 +111,7 @@ if(EMSCRIPTEN)
   set(WEB_SOURCES
     src/web/main.c src/web/read_cache.c src/web/wolapi.c src/web/presenter.c
     src/web/frame_buffers.c src/web/settings.c src/web/modern.c src/web/net_tuning.c
-    src/web/map_search.c src/web/map_match.c src/web/map_dialog.c src/web/map_box.c
+    src/web/map_search.c src/web/map_match.c src/web/map_dialog.c src/web/map_box.c src/web/finder_screen.c
     src/linux/launcher.c src/linux/blowfish.c src/linux/script.c src/linux/mods.c
     src/runtime/hdvox.c src/runtime/page_cursor.c src/runtime/queuefive.c src/runtime/startup_order.c
     src/runtime/thai_font.c src/runtime/woltext.c)
@@ -183,6 +184,9 @@ if(EMSCRIPTEN)
     endif()
     set_source_files_properties(${gen_sources} PROPERTIES COMPILE_OPTIONS "-w;${GEN_OPT};-fno-strict-aliasing;-fwrapv;${WEB_COMPILE}")
     target_compile_options(${target} PRIVATE -fno-strict-aliasing -fwrapv ${WEB_COMPILE})
+    if(RA2_FINDER_NATIVE)
+      target_compile_definitions(${target} PRIVATE RA2_FINDER_NATIVE)
+    endif()
     target_link_options(${target} PRIVATE ${WEB_LINK_FLAGS})
     if(WEB_LINK_OPT)
       target_link_options(${target} PRIVATE ${WEB_LINK_OPT})

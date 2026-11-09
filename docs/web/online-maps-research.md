@@ -268,6 +268,29 @@ which settles the doubt left by the second step.
   proc hook (script.c's `watch`) and sends the page `mapFinder`, which opens the panel. The hook sees a message at
   every procedure that passes it along, so one press arrives four times: the C side takes the first and ignores
   repeats for 300 ms. `web/e2e/maps-button.mjs` checks one press is one event.
+- **A screen of the game's own (prototype, `-DRA2_FINDER_NATIVE=ON`; `src/web/finder_screen.c`).** The Find
+  button can open a whole new screen that the game draws as one of its own. The game builds a shell screen in
+  steps: a dialog from a resource (`0x775700`), then the screen set-up `0x622820` (ecx = the dialog, edx = its
+  resource id), which registers the dialog and its controls for the game's drawing, loads the screen's
+  background, lays the controls out (`0x60C0C0`, with the per-screen id table above) and gives its buttons their
+  plates. The screen's procedure hands every message to the shell's common handler `0x622B50` first, and the
+  game's screen loop (`0x7759E0`) sends it `0x4A9` as it starts. The prototype does the same from the host: a
+  template built in C (533 x 369 units, like the map screens'), a dialog procedure that is a host function (a
+  user32 shim registered with `win32hle_register`, called as a guest procedure is), `CreateDialogIndirectParamA`,
+  then `0x622820` with Customize Battle's id (`0x6B`) and its control ids (Use Map `0x6C5`, Random Map `0x583`,
+  Cancel `0x5C0`, the map list `1363`), every message through `0x622B50`, and `0x4A9`. The game then draws the
+  screen's background, its header title, red plates on Search, Add and Back, and frames on the search box and
+  the list; Back (the host proc sees the `WM_COMMAND`) destroys the screen, shows Customize Battle again and
+  puts the game's current-screen global (`0xAC48A8`) back, and Customize Battle comes back whole.
+  `web/e2e/finder-screen.mjs` checks it. Texts must be existing labels (`GUI:Search`, `GUI:Add`, `GUI:Back`,
+  `GUI:ChooseMap`, `GUI:GameMap`): any other shows as `MISSING:'...'`. What did not work: the **list's rows**. The
+  game's list handler (`0x618D40`) answers `LB_ADDSTRING` on the screen's list with `-1` without calling the
+  original list (an import trace shows only window-rect calls), and rows put in the host's list directly
+  (`hle_list_add`, before or after the set-up, with strings or with map-shaped data objects) are not drawn.
+  What a screen's own procedure gives its lists, which makes the handler take rows, is not found; the next place
+  to look is the first message the real procedures answer for a list (Customize Battle's `0x5E6920`, Generate
+  Map's `0x596300`). Also not done: the search box's text, the buttons' actions beyond Back, and the page's
+  results. The default build is unchanged: Find opens the page's panel.
 - **Restyled.** The panel is inside `GameDialogChrome` (the link dialogs' frame, title strip and red plates), with a
   dark list well and yellow text like the game's lists. It is still a page panel, not a game screen.
 - **A screen of the game's own.** Not done, and not possible from the host alone. A game screen is a dialog template

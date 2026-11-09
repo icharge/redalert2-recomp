@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "finder_screen.h"
 #include "map_box.h"
 #include "map_dialog.h"
 #include "map_match.h"
@@ -126,7 +127,11 @@ void web_map_search_message(uint32_t hwnd, uint32_t message, uint32_t wParam, ui
     uint32_t now = hle_ticks_ms();
     if (last_ms && now - last_ms < FIND_PRESS_QUIET_MS) return;
     last_ms = now;
+#if defined(RA2_FINDER_NATIVE) && !defined(RA2_TARGET_GAME)
+    web_finder_screen_open();   /* prototype: a screen of the game's own instead of the page's panel */
+#else
     web_event_json("{\"e\":\"mapFinder\"}");
+#endif
 }
 
 /* Filter the list by the box's text. A box holding more than the search can read shows no maps
@@ -157,10 +162,16 @@ static void maps_rescan_now(void);
 static int maps_rescan_pending(void);
 static void find_button_settle(void);
 
+/* The screen the finder opens over. */
+uint32_t web_finder_screen_owner(void) { return screen_showing() ? g_screen.dialog : 0; }
+
 /* The presenter's pump, on the game's thread. */
 void web_map_search_pump(void) {
     if (maps_rescan_pending()) maps_rescan_now();
     find_button_settle();
+#ifndef RA2_TARGET_GAME
+    web_finder_screen_pump();
+#endif
     search_status now = { 0 };
     uint32_t list = screen_showing() ? hle_dialog_item(g_screen.dialog, MAP_LIST_ID) : 0;
     int l, t, r, b;
