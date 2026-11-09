@@ -143,3 +143,14 @@ One fix pass after the final code review; each was written as a failing test fir
   saves, settings, maps and mods; the Manage panel wires the parts in Task 6.
 - Task 1 replaces the injected `readInfo` with the real save parser.
 - Fix or wait on the 3 failing tests above.
+
+## Browser check (2026-11-09)
+
+Checked on the dev server at `/?mute` with a fake two-edition install (seeded through the manifest, then removed):
+- **Manage panel:** sizes are counted once.
+- **Saved games:** a folder save is listed once. Inline remove and the REMOVE ALL strip ("Remove 1 save?") work, there is no sideways scroll, and DOWNLOAD .ZIP is disabled for an empty group.
+- **Remove dialog:** rows, disabled empty parts and warnings show correctly.
+- **Removing only the game:** leaves "Install not finished" with RESUME INSTALL and keeps the maps, save and settings. The INSTALLED header counts only files on disk.
+- **REMOVE EVERYTHING:** leaves no records and no files.
+
+Not checked: the Install screen's mods dialog (needs a real folder). Left: Task 1 (save titles), which needs one real save per edition.
