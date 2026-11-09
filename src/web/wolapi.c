@@ -267,7 +267,7 @@ static void emit_server_list(void) {
     g_server.chattype = (int32_t)g_channel_type;
     copy_text(g_server.name, sizeof g_server.name, "-1:Automatic");
     copy_text(g_server.connlabel, sizeof g_server.connlabel, "IRC");
-    copy_text(g_server.conndata, sizeof g_server.conndata, "TCP;127.0.0.1;19090");
+    copy_text(g_server.conndata, sizeof g_server.conndata, "TCP;127.0.0.1;9090");
     /* Both games reserve directory index zero; selectable servers start at one. */
     g_server_entry = g_server;
     /* The prefix before ':' is a WOL locale, used for automatic selection. */

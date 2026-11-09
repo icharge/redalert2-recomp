@@ -302,16 +302,16 @@ describe("startGame", () => {
       try {
         module.ra2WolStart!("test", "password");
         await vi.waitFor(() => expect(receive).toHaveBeenCalledWith("@wolapi connected"));
-        sockets[0]!.receive(":wol STARTG #room :ws://127.0.0.1:19090/gserv :g1-old 1 ticket");
+        sockets[0]!.receive(":wol STARTG #room :ws://127.0.0.1:9090/gserv :g1-old 1 ticket");
         module.ra2WolSend!("part #room");
         module.ra2WolSend!("join #Lob_41_0 zotclot9");
         const packet = new Uint8Array([0, 255, 128]);
         module.ra2WolReport!(41, 1, packet);
         packet.fill(0);
-        expect(sentUrl).toBe("http://127.0.0.1:19090/native-results/g1-old");
+        expect(sentUrl).toBe("http://127.0.0.1:9090/native-results/g1-old");
         expect(sentPacket).toEqual(new Uint8Array([0, 255, 128]));
         if (next === "next-match")
-          sockets[0]!.receive(":wol STARTG #next :ws://127.0.0.1:19090/gserv :g2-new 2 ticket");
+          sockets[0]!.receive(":wol STARTG #next :ws://127.0.0.1:9090/gserv :g2-new 2 ticket");
         if (next === "new-login") module.ra2WolStart!("other", "password");
         finish(
           new Response(JSON.stringify({ stored: true, gameId: "g1-old", ranked: false }), {
@@ -472,7 +472,7 @@ describe("startGame", () => {
         module.ra2WolStart!("test", "password123");
         await vi.waitFor(() => expect(sockets[0]?.sent).toContain("session token"));
         const wol = sockets[0]!;
-        wol.receive(":wol STARTG #room :ws://127.0.0.1:19090/gserv :g1-local 1 ticket");
+        wol.receive(":wol STARTG #room :ws://127.0.0.1:9090/gserv :g1-local 1 ticket");
         await vi.waitFor(() => expect(sockets[1]?.sent).toContain("ticket ticket"));
         const relay = sockets[1]!;
         module.ra2WolSend!("part #room");

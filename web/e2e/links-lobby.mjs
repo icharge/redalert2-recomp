@@ -1,10 +1,8 @@
 // The server-dependent link buttons: log in to the local RA2Web (127.0.0.1:9090)
 // and press the tournament/news controls in the real lobby.
 //
-// Start the WOL server, then Vite with
-//   VITE_WOL_HTTP_URL=http://127.0.0.1:9090
-//   VITE_WOL_SOCKET_URL=ws://127.0.0.1:9090/wol
-// and run with the imported-game profile:
+// Start the WOL server (pnpm wol-server) and Vite, then run with the imported-game
+// profile:
 //   node e2e/links-lobby.mjs --url 'http://127.0.0.1:5173/' --edition ra2md --profile <dir>
 //   node e2e/links-lobby.mjs --url 'http://127.0.0.1:5173/' --edition ra2 --profile <dir>
 import assert from "node:assert/strict";
@@ -15,7 +13,9 @@ import { openGame } from "./perf-nav.mjs";
 
 const opts = options(process.argv.slice(2));
 if (!opts.profile && !opts.testGame)
-  throw new Error("Pass --profile <an imported-game Chrome profile> or --game <local game folder>.");
+  throw new Error(
+    "Pass --profile <an imported-game Chrome profile> or --game <local game folder>.",
+  );
 const ra2 = opts.edition === "ra2";
 opts.pageArgs.push("--mute", "--debuglog");
 // Each press waits for its dialog, so the order matters, not the seconds.

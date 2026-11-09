@@ -124,7 +124,7 @@ int main(void) {
     assert(strcmp(g_server.connlabel, "IRC") == 0);
     assert(g_server.next != 0); /* native menu reserves directory row zero */
     assert(strstr(((wol_server *)(uintptr_t)g_server.next)->name, ":RA2Web") != NULL);
-    assert(strcmp(g_server.conndata, "TCP;127.0.0.1;19090") == 0);
+    assert(strcmp(g_server.conndata, "TCP;127.0.0.1;9090") == 0);
     wol_server login_server = { 0 };
     strcpy(login_server.login, "testuser");
     strcpy(login_server.password, "testpass");
@@ -437,17 +437,17 @@ int main(void) {
     ra2_wolapi_receive_line(":testuser!local JOINGAME 0 0 0 0 0 1 0 :#testuser");
     assert(invoke(g_chat.chat, 3, 0, NULL) == S_OK);
     uint32_t events_before_start = test_event_count;
-    ra2_wolapi_receive_line(":wol STARTG #testuser :ws://127.0.0.1:19090/gserv :g42-example 1792844361 test-ticket");
+    ra2_wolapi_receive_line(":wol STARTG #testuser :ws://127.0.0.1:9090/gserv :g42-example 1792844361 test-ticket");
     assert(invoke(g_chat.chat, 3, 0, NULL) == S_OK);
     assert(test_event_count == events_before_start + 1);
     assert(test_event_method[events_before_start] == 0x10017);
     assert(test_event_args[events_before_start][4] == 42); /* server's instance counter, not a fixed 1 */
     const ra2_wolapi_session *session = ra2_wolapi_current_session();
     assert(session && strcmp(session->game_id, "g42-example") == 0);
-    assert(strcmp(session->gserv_url, "ws://127.0.0.1:19090/gserv") == 0);
+    assert(strcmp(session->gserv_url, "ws://127.0.0.1:9090/gserv") == 0);
     assert(strcmp(session->ticket, "test-ticket") == 0 && session->timestamp == 1792844361u);
-    ra2_wolapi_receive_line(":wol STARTG #other :ws://127.0.0.1:19090/gserv :g43-example 1792844361 wrong-room");
-    ra2_wolapi_receive_line(":wol STARTG #testuser :ws://127.0.0.1:19090/gserv :broken");
+    ra2_wolapi_receive_line(":wol STARTG #other :ws://127.0.0.1:9090/gserv :g43-example 1792844361 wrong-room");
+    ra2_wolapi_receive_line(":wol STARTG #testuser :ws://127.0.0.1:9090/gserv :broken");
     assert(invoke(g_chat.chat, 3, 0, NULL) == S_OK);
     assert(test_event_count == events_before_start + 1);
     /* The host leaves WOL while the guest still waits for NET_GO over UDP.

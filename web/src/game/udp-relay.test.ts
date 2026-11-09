@@ -61,11 +61,11 @@ describe("parseStartHandoff", () => {
   it("reads the gserv url and ticket from a STARTG line", () => {
     expect(
       parseStartHandoff(
-        ":srv STARTG #woltst1's_game :ws://127.0.0.1:19090/gserv :g12-abc 1700000000 deadbeef\r\n",
+        ":srv STARTG #woltst1's_game :ws://127.0.0.1:9090/gserv :g12-abc 1700000000 deadbeef\r\n",
       ),
     ).toEqual({
       channel: "#woltst1's_game",
-      gservUrl: "ws://127.0.0.1:19090/gserv",
+      gservUrl: "ws://127.0.0.1:9090/gserv",
       gameId: "g12-abc",
       ticket: "deadbeef",
     });

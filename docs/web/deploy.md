@@ -187,7 +187,7 @@ the project policy requires.
 ## WOL server endpoints
 
 The native Internet / Custom Match bridge defaults to the local RA2Web server
-at `http://127.0.0.1:19090`. An operator can select a trusted server using Vite
+at `http://127.0.0.1:9090`. An operator can select a trusted server using Vite
 environment variables before starting development or building the frontend:
 
 ```powershell

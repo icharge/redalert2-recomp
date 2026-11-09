@@ -50,7 +50,7 @@ describe("WOL wire helpers", () => {
 
   it("converts the configured HTTP endpoint to its WebSocket endpoint", () => {
     expect(toWolSocketUrl("https://wol.example/emu/")).toBe("wss://wol.example/emu/");
-    expect(toWolSocketUrl("http://127.0.0.1:19090/")).toBe("ws://127.0.0.1:19090/");
+    expect(toWolSocketUrl("http://127.0.0.1:9090/")).toBe("ws://127.0.0.1:9090/");
   });
 
   it("rejects malformed LIST rows", () => {

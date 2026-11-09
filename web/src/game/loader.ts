@@ -635,7 +635,7 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
     let latestResultGame = "";
     // Only the operator's build settings choose where game credentials go.
     // HTTP auth and the WOL socket can live at different paths behind a proxy.
-    const wolHttpUrl = import.meta.env.VITE_WOL_HTTP_URL ?? "http://127.0.0.1:19090";
+    const wolHttpUrl = import.meta.env.VITE_WOL_HTTP_URL ?? "http://127.0.0.1:9090";
     const wolServer = {
       httpUrl: wolHttpUrl,
       socketUrl: import.meta.env.VITE_WOL_SOCKET_URL ?? toWolSocketUrl(wolHttpUrl),

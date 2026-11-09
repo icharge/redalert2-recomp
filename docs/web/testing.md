@@ -104,20 +104,11 @@ and checks that the page receives `open` with the original URL, that the host
 logged `[url] <url>`, that `TXT_NOBROWSER` never appears, and that Cancel
 closes the dialog while the game keeps running.
 
-The server-only lobby controls need the local RA2Web (`../ra2web/server`,
-`bun run dev`, port 9090) and Vite started with
-`VITE_WOL_HTTP_URL=http://127.0.0.1:9090` and
-`VITE_WOL_SOCKET_URL=ws://127.0.0.1:9090/wol`. Start the server for this page
-origin too: its `.env` lists only the production page under
-`CORS_ALLOWED_ORIGINS`, so the browser otherwise rejects `/login` before the
-game can ask for a URL:
-
-```powershell
-cd ../ra2web/server
-$env:CORS_ALLOWED_ORIGINS='http://127.0.0.1:5173'
-$env:EXTERNAL_URL='ws://127.0.0.1:9090'
-bun run dev
-```
+The server-only lobby controls need the local RA2Web server. Start it from
+`web/` with `pnpm wol-server` (port 9090, the page's default, so Vite needs no
+`VITE_WOL_*` settings). Plain `bun run dev` in `../ra2web/server` takes the
+live deployment's address, `/wol` socket path and CORS from that server's
+`.env`; the script overrides those three.
 
 ```powershell
 # profile: an imported game in OPFS at the same 127.0.0.1:5173 origin
@@ -449,7 +440,7 @@ Two-client check, with the local RA2Web server delaying every relay datagram by
 40 ms to stand in for a nearby but not loopback link:
 
 ```powershell
-# server: SERVER_PORT=19090 EXTERNAL_URL=ws://127.0.0.1:19090 NATIVE_RELAY_TEST_DELAY_MS=40
+# server: $env:NATIVE_RELAY_TEST_DELAY_MS=40; pnpm wol-server
 node e2e/wol.mjs --url 'http://localhost:5173/' --build ../build-web-wol `
   --shots ../work/wol-latency-slow --arg --intro --play --hold 30
 ```
@@ -545,7 +536,8 @@ allowlist aligned with the resolutions used by the benchmark:
 node work/t11/video-modes-selftest.js   # video modes selftest: ok
 ```
 
-With Vite on `http://localhost:5173`, local RA2Web on `127.0.0.1:19090`, and the
+With Vite on `http://localhost:5173`, local RA2Web on `127.0.0.1:9090`
+(`pnpm wol-server`), and the
 game modules built, run the original menu smoke check from `web/`:
 
 ```powershell

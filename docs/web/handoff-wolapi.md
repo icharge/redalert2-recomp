@@ -440,7 +440,7 @@ Local only; no public probes. Rebuilt `build-web-udp` (RA2) and
 - Relay hardening: server-side game-instance expiry after all native players leave,
   reconnect after a dropped
   relay socket (the page currently only reports it), per-player rate limits, TLS
-  deployments (`wss://`). The loader defaults to `http://127.0.0.1:19090` unless
+  deployments (`wss://`). The loader defaults to `http://127.0.0.1:9090` unless
   the operator sets its trusted build configuration.
 - Ranked results and ladder trust are out of scope for this POC.
 - Commit plan when resumed: the three repositories separately; in

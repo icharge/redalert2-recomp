@@ -15,6 +15,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
+    "wol-server": "node e2e/wol-server.mjs",
     "prepare": "git config core.hooksPath .githooks || exit 0"
   },
   "lint-staged": {

@@ -1,4 +1,5 @@
-// Original in-game WOL Custom Match smoke check, against local RA2Web on :19090.
+// Original in-game WOL Custom Match smoke check, against local RA2Web on :9090
+// (start it with `pnpm wol-server`).
 // Run from web/: node e2e/wol.mjs --url 'http://localhost:5173/?target=game'
 // Add --two for a second native client, --start for the handoff, or --interactive.
 import assert from "node:assert/strict";
@@ -385,8 +386,8 @@ async function open(name, username) {
   const run = await startPage({ ...opts, shots: `${opts.shots}/${name}` });
   clients[name] = run;
   // The WOL server under test; override for a private port
-  // (WOL_TEST_HOST=127.0.0.1:19091).
-  const wolHost = process.env.WOL_TEST_HOST ?? "127.0.0.1:19090";
+  // (WOL_TEST_HOST=127.0.0.1:9091).
+  const wolHost = process.env.WOL_TEST_HOST ?? "127.0.0.1:9090";
   await run.page.evaluate((wolHost) => {
     const Socket = window.WebSocket;
     window.WebSocket = class extends Socket {
