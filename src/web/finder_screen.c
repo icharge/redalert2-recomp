@@ -11,10 +11,12 @@
  * (0x6B) and its control ids, and the common handler and 0x4A9 as above. The game then draws it as its own: its
  * background, its title, red plates on its buttons, frames on the Edit and the list.
  *
- * Not done: the list's rows. The game's list handler (0x618D40) answers LB_ADDSTRING on this screen's list with -1
- * and does not draw rows put in the host's list (hle_list_add), with strings or with map-shaped objects as data;
- * what it needs from a screen's procedure to take rows is not found. Nor the Edit's text, the buttons' actions
- * (Back closes the screen; the others do nothing) and the page's results. */
+ * The list's rows are the game's own too, added the way its own screens add them (list_add below): its custom message
+ * 0x4CD with a UTF-16 string, which makes the row's record and puts the text in the host's list, then LB_SETITEMDATA, which
+ * the game's list keeps in that record. (LB_ADDSTRING sent to the game's list answers -1: its handler wants the custom
+ * message; the host's own add, hle_list_add, leaves rows the game does not draw.)
+ *
+ * Not done: the Edit's text, the buttons' actions (Back closes the screen; the others do nothing) and the page's results. */
 #ifndef RA2_TARGET_GAME
 #include <stdint.h>
 #include <stdio.h>
@@ -93,15 +95,33 @@ static const win32hle_shim g_shims[] = { { "ra2_finder_screen_proc", finder_proc
 
 void web_finder_screen_open(void) { g_open_request = 1; }
 
-#define MAP_ITEM_BYTES 0x1BC   /* the game's map list rows are pointers to its 0x1BC-byte map objects, the name at +0x58 */
-#define MAP_ITEM_NAME 0x58
+/* The game's own list takes a row as a message (0x4CD, wParam 0, lParam a UTF-16 string): it makes the row's record, adds the
+ * string to the list and sets the record as the row's data; the data we want (a number here) is then set with LB_SETITEMDATA,
+ * which the game's list keeps in that record. */
+#define LB_SETITEMDATA 0x019Au
+#define LB_GETITEMDATA 0x0199u
+#define LB_GETCOUNT 0x018Bu
+#define LB_GETTEXT 0x0189u
+#define LB_GETTEXTLEN 0x018Au
+#define GAME_LIST_ADD 0x04CDu
+static int list_add(uint32_t list, const char *text, uint32_t data) {
+    static uint16_t wide[256];
+    size_t n = 0;
+    for (; text[n] && n < 255; n++) wide[n] = (uint16_t)(unsigned char)text[n];
+    wide[n] = 0;
+    uint32_t at = hle_send(list, GAME_LIST_ADD, 0, (uint32_t)(uintptr_t)wide);
+    if ((int)at >= 0) hle_send(list, LB_SETITEMDATA, at, data);
+    return (int)at;
+}
+
 static void fill_list(uint32_t list) {
     static const char *rows[] = { "Alpha (2)", "Bravo (4)", "Charlie (6)", "Delta (8)" };
-    static uint8_t items[4][MAP_ITEM_BYTES];
     for (int i = 0; list && i < 4; i++) {
-        memset(items[i], 0, MAP_ITEM_BYTES);
-        strcpy((char *)items[i] + MAP_ITEM_NAME, rows[i]);
-        hle_list_add(list, rows[i], (uint32_t)(uintptr_t)items[i]);
+        int at = list_add(list, rows[i], (uint32_t)(i + 1));
+        static char tb[256];
+        memset(tb, 0, sizeof tb);
+        hle_send(list, LB_GETTEXT, (uint32_t)at, (uint32_t)(uintptr_t)tb);
+        fprintf(stderr, "[finder] row %d -> %d count %d text '%s' data %u\n", i, at, (int)hle_send(list, LB_GETCOUNT, 0, 0), tb, (unsigned)hle_send(list, LB_GETITEMDATA, (uint32_t)at, 0));
     }
 }
 
@@ -118,12 +138,12 @@ static void open_now(void) {
     if (!h) return;
     g_screen = h, g_owner = owner;
     g_previous = MEM32(SHELL_CURRENT_VA);
-    /* The game fills a screen's lists before its set-up gives them their own drawing and handling. */
-    fill_list(hle_dialog_item(h, LIST_ID));
+    uint32_t list = hle_dialog_item(h, LIST_ID);
     uint32_t keep_ecx = g_ecx, keep_edx = g_edx;
     g_ecx = h, g_edx = LAYOUT_ID;
     hle_call_guest(SCREEN_SETUP_VA, 0, NULL);
     g_ecx = keep_ecx, g_edx = keep_edx;
+    fill_list(list);
     uint32_t zero = 0;
     hle_call_guest(hle_resolve("ShowWindow"), 2, (uint32_t[]){ owner, zero });   /* ours covers the screen: hide the one under it */
     hle_send(h, 0x04A9u, 0, 1);   /* what the game's own screen loop sends a screen as it starts */
