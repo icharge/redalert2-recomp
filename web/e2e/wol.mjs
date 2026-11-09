@@ -16,6 +16,7 @@ const abortStart = process.argv.includes("--abort");
 const partRace = process.argv.includes("--part-race");
 const finish = process.argv.includes("--finish");
 const rematch = process.argv.includes("--rematch");
+const three = process.argv.includes("--three");
 const play = process.argv.includes("--play") || partRace || finish || rematch;
 const roomPassword = process.argv.includes("--password") || wrongPassword ? "pocpass" : null;
 const clients = {};
@@ -51,22 +52,21 @@ function simulationFrame(run) {
   return Number(/^\[game\] Frame (\d+),/.exec(game ?? "")?.[1] ?? 0);
 }
 
-async function verifyPlaying(host, guest) {
+async function verifyPlaying(players) {
+  const host = players[0];
+  const names = Object.keys(clients);
   const deadline = Date.now() + 120000;
-  while ([host, guest].some((run) => simulationFrame(run) < 300)) {
+  while (players.some((run) => simulationFrame(run) < 300)) {
     assert.ok(
-      ![host, guest].some((run) =>
+      !players.some((run) =>
         run.all.some((line) => line.includes("Negotiate_Scenario_Transfer failed")),
       ),
       "native scenario negotiation must succeed",
     );
     if (Date.now() >= deadline) {
-      for (const [name, run] of [
-        ["host", host],
-        ["guest", guest],
-      ])
+      for (const [index, run] of players.entries())
         console.log(
-          name + " tail:",
+          names[index] + " tail:",
           run.all
             .filter((l) => l.startsWith("[game]") || l.includes("[record]"))
             .slice(-25)
@@ -79,9 +79,9 @@ async function verifyPlaying(host, guest) {
     );
     await host.page.waitForTimeout(250);
   }
-  const before = [host, guest].map(simulationFrame);
+  const before = players.map(simulationFrame);
   await host.page.waitForTimeout(5000);
-  for (const [index, run] of [host, guest].entries()) {
+  for (const [index, run] of players.entries()) {
     assert.ok(
       simulationFrame(run) > before[index] + 60,
       "simulation keeps advancing with its remote peer",
@@ -91,13 +91,8 @@ async function verifyPlaying(host, guest) {
       "native connection receives frame synchronization",
     );
   }
-  const sizes = (await Promise.all([host, guest].map((run) => run.state()))).map(
-    (state) => state?.size,
-  );
-  console.log(
-    "PLAYING",
-    JSON.stringify({ before, after: [host, guest].map(simulationFrame), sizes }),
-  );
+  const sizes = (await Promise.all(players.map((run) => run.state()))).map((state) => state?.size);
+  console.log("PLAYING", JSON.stringify({ before, after: players.map(simulationFrame), sizes }));
   // --expect-size 1920x1080: the online resolution clamp (docs/ra2-resolution-plan.md, step 3)
   const expectAt = process.argv.indexOf("--expect-size");
   if (expectAt > 0) {
@@ -108,12 +103,61 @@ async function verifyPlaying(host, guest) {
     });
     assert.deepEqual(
       sizes,
-      wanted.length === 1 ? [wanted[0], wanted[0]] : wanted,
+      wanted.length === 1 ? players.map(() => wanted[0]) : wanted,
       `clients play at ${process.argv[expectAt + 1]}`,
     );
   }
-  await dump("host", "playing");
-  await dump("guest", "playing");
+  for (const name of names) await dump(name, "playing");
+}
+
+// --three: the default room map holds two players; pick one with room for more.
+async function pickBiggerMap(host) {
+  const after = host.all.length;
+  await host.clickGame(720, 304); // Customize Battle
+  await waitNative(host, "[dialog] open 0x6B", after);
+  await host.page.waitForTimeout(800);
+  if (ra2)
+    await host.clickGame(375, 389); // South Pacific (2-4)
+  else {
+    // YR lists its 2-player maps first: page to the end of the list.
+    for (let i = 0; i < 5; i++) {
+      await host.clickGame(524, 437);
+      await host.page.waitForTimeout(200);
+    }
+    await host.clickGame(375, 158); // Kalifornia (2-6)
+  }
+  await host.page.waitForTimeout(500);
+  await host.clickGame(720, 221); // Use Map
+  const map = ra2 ? "MP01T4.MAP" : "XKaliforn.MAP";
+  await waitWire(
+    host,
+    (l) => l.startsWith("> topic ") && l.includes(map),
+    "a map for three players",
+  );
+  await host.page.waitForTimeout(500);
+}
+
+// Join the host's room from the lobby list (the only room, so the first row).
+async function joinRoom(run, username) {
+  await waitWire(
+    run,
+    (l) => l.includes(" 322 ") && l.includes("#woltst1's_game"),
+    "host room listing",
+  );
+  await run.page.waitForTimeout(300);
+  await run.clickGame(150, ra2 ? 47 : 65);
+  await run.clickGame(720, 263);
+  await waitWire(run, (l) => l.startsWith("> joingame "), "native room join");
+  await waitWire(
+    run,
+    (l) => l.includes(`:${username}!`) && l.includes(" JOINGAME "),
+    "native join acknowledgement",
+  );
+  await waitWire(
+    run,
+    (l) => l.includes(":woltst1!") && l.includes(" GAMEOPT "),
+    "host setup options",
+  );
 }
 
 async function finishYuriMatch(host, guest) {
@@ -291,10 +335,11 @@ async function rematchAfterReconnect(host, guest) {
 
 async function dump(name, shot) {
   const run = clients[name];
-  await run.shot(shot);
+  // Logs first: a hung page can't take its screenshot.
   writeFileSync(`${opts.shots}/${name}/game.log`, run.all.join("\n"));
   writeFileSync(`${opts.shots}/${name}/wire.log`, run.wire.join("\n"));
   writeFileSync(`${opts.shots}/${name}/browser.log`, run.lines.join("\n"));
+  await run.shot(shot);
   console.log(name, shot, JSON.stringify(await run.state()), run.wire.slice(-3));
 }
 
@@ -435,6 +480,7 @@ try {
     await dump("host", "disconnected");
   } else if (
     process.argv.includes("--two") ||
+    three ||
     process.argv.includes("--start") ||
     play ||
     abortStart ||
@@ -453,6 +499,7 @@ try {
     await host.clickGame(283, ra2 ? 377 : 357);
     await waitWire(host, (l) => l.startsWith("> joingame "), "native room creation");
     await host.page.waitForTimeout(1500);
+    if (three) await pickBiggerMap(host);
     await dump("host", "created");
     assert.ok(
       host.wire.some((l) => l.startsWith("> joingame ")),
@@ -536,8 +583,10 @@ try {
       guest.wire.some((l) => l.includes(":woltst1!") && l.includes(" GAMEOPT ")),
       "second player receives host game options",
     );
+    // The room as the guest's list showed it when joining. The host republishes a
+    // lower capacity once the room fills, which the joined channel doesn't follow.
     const metadata = /WOLAPI2:(\d+),(\d+),(\d+),(\d+);/.exec(
-      host.wire.filter((l) => l.includes("WOLAPI2:")).at(-1),
+      guest.wire.filter((l) => l.includes(" 322 ") && l.includes("#woltst1's_game")).at(-1),
     );
     assert.ok(metadata, "host publishes native channel metadata");
     const nativeChannel = await guest.page.evaluate(
@@ -568,6 +617,13 @@ try {
     }
     await dump("guest", "join-result");
     await dump("host", "two-players");
+    const players = [host, guest];
+    if (three) {
+      players.push(await open("guest3", "woltst3"));
+      await joinRoom(players[2], "woltst3");
+      await players[2].page.waitForTimeout(2500);
+      for (const name of Object.keys(clients)) await dump(name, "three-players");
+    }
     if (process.argv.includes("--chat")) {
       for (const [sender, receiver, text] of [
         [host, guest, "hello from host"],
@@ -608,12 +664,16 @@ try {
           "guest option sync",
         );
       await dump("guest", "options-synced");
-      await guest.clickGame(720, 263); // Accept
-      await waitWire(
-        host,
-        (l) => l.includes(":woltst2!") && l.includes(" GAMEOPT ") && l.includes(" :A1"),
-        "guest acceptance",
-      );
+      for (const [index, run] of players.entries()) {
+        if (index === 0) continue;
+        await run.clickGame(720, 263); // Accept
+        await waitWire(
+          host,
+          (l) =>
+            l.includes(`:woltst${index + 1}!`) && l.includes(" GAMEOPT ") && l.includes(" :A1"),
+          "guest acceptance",
+        );
+      }
       if (abortStart)
         await host.page.evaluate(() => {
           const send = window.Module.ra2WolSend;
@@ -643,7 +703,7 @@ try {
         await host.page.waitForTimeout(1000);
         await dump("host", "start-aborted");
       } else {
-        for (const run of [host, guest]) {
+        for (const run of players) {
           await waitWire(run, (l) => l.includes(" STARTG "), "player start ticket");
           await waitNative(run, "OnGameStart");
         }
@@ -665,11 +725,12 @@ try {
           / STARTG (\S+) :(\S+) :(\S+) (\d+)/
             .exec(run.wire.find((l) => l.includes(" STARTG ")))
             .slice(1);
-        assert.deepEqual(
-          handoff(host),
-          handoff(guest),
-          "players receive the same room, gserv, game ID and timestamp",
-        );
+        for (const run of players.slice(1))
+          assert.deepEqual(
+            handoff(host),
+            handoff(run),
+            "players receive the same room, gserv, game ID and timestamp",
+          );
         const requested = host.wire
           .find((l) => l.startsWith("> startg "))
           .trim()
@@ -678,11 +739,11 @@ try {
           .sort();
         assert.deepEqual(
           requested,
-          ["woltst1", "woltst2"],
-          "native start includes both players in the game-supplied order",
+          players.map((_, index) => `woltst${index + 1}`),
+          "native start includes every player in the game-supplied order",
         );
         const expectedId = Number(/^g(\d+)-/.exec(handoff(host)[2])[1]);
-        for (const run of [host, guest]) {
+        for (const run of players) {
           // OnGameStart stores its game-ID argument here in the supported binaries.
           const nativeId = await run.page.evaluate(
             (at) => window.Module.HEAPU32[at / 4],
@@ -719,9 +780,8 @@ try {
             "full authenticated handoff survives in game memory",
           );
         }
-        await dump("host", "start-handoff");
-        await dump("guest", "start-handoff");
-        if (play) await verifyPlaying(host, guest);
+        for (const name of Object.keys(clients)) await dump(name, "start-handoff");
+        if (play) await verifyPlaying(players);
         if (finish) await finishYuriMatch(host, guest);
         if (rematch) await rematchAfterReconnect(host, guest);
         // --hold <seconds> keeps both clients running after the handoff, to watch the match load and play.
@@ -730,8 +790,7 @@ try {
           const hold = Number(process.argv[holdAt + 1]) || 30;
           for (let waited = 0; waited < hold; waited += 10) {
             await host.page.waitForTimeout(Math.min(10, hold - waited) * 1000);
-            await dump("host", `hold-${waited + 10}`);
-            await dump("guest", `hold-${waited + 10}`);
+            for (const name of Object.keys(clients)) await dump(name, `hold-${waited + 10}`);
           }
         }
       }

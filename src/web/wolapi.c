@@ -92,6 +92,13 @@ static uint32_t g_pending_logout;
 static uint32_t g_match_leave_requested, g_match_part_held, g_pending_match_part;
 static uint32_t g_creating_channel;
 static uint32_t g_joining_channel;
+/* The game is owed a roster (OnUserList): after its own join, or after it asked
+ * for one. RA2Web also sends every member the room's NAMES after anyone joins or
+ * leaves; a stock server doesn't, and the game is told of those through
+ * OnChannelJoin/OnChannelLeave. A guest's game adds each OnUserList entry to its
+ * session players, so an extra roster there doubles them, and with three or more
+ * players the guests' connection plans stop matching (the start fails). */
+static uint32_t g_roster_wanted;
 static uint32_t g_starting_game, g_connected, g_connection_pending;
 static char g_login[64], g_password[64], g_nick[32], g_current_channel[48];
 static struct { char nick[10], password[10]; } g_saved_nicks[11];
@@ -352,6 +359,11 @@ static void emit_user_list(void) {
         if (g_current_channel[0] == '#' && strncmp(g_current_channel + 1, "Lob_", 4) == 0)
             g_lobby_users = g_user_count;
     }
+    if (!g_roster_wanted) {
+        log_users("refresh"); /* Addresses and pings only; the game already knows. */
+        return;
+    }
+    g_roster_wanted = 0;
     uint32_t values[] = { S_OK, (uint32_t)(uintptr_t)channel,
         g_user_count ? (uint32_t)(uintptr_t)&g_users[0] : 0 };
     event_call(12, 3, values); /* IChatEvent::OnUserList */
@@ -719,6 +731,7 @@ static void handle_line(const char *line) {
         if (name && user && (user->flags & 0x8000u)) {
             copy_text(g_current_channel, sizeof g_current_channel, name + 1);
             g_joining_channel = 0;
+            g_roster_wanted = 1;
             if (strncmp(name + 1, "#Lob_", 5) != 0)
                 fprintf(stderr, "[wol] own join of game channel %s\n", name + 1);
         }
@@ -749,7 +762,10 @@ static void handle_line(const char *line) {
             const char *metadata = strstr(line, " JOIN ") + 6;
             g_user_ping[user - g_users] = parse_ping(metadata + (*metadata == ':'), ',', 1);
         }
-        if (user && (user->flags & 0x8000u)) g_joining_channel = 0;
+        if (user && (user->flags & 0x8000u)) {
+            g_joining_channel = 0;
+            g_roster_wanted = 1;
+        }
         uint32_t values[] = { S_OK, (uint32_t)(uintptr_t)channel, (uint32_t)(uintptr_t)user };
         event_call(7, 3, values); /* IChatEvent::OnChannelJoin */
         return;
@@ -1112,7 +1128,11 @@ static void m_chat_request_channel_leave(void) {
 }
 static void m_chat_request_user_list(void) {
     char line[80];
-    if (g_current_channel[0]) { snprintf(line, sizeof line, "names %s", g_current_channel); browser_send(line); }
+    if (g_current_channel[0]) {
+        snprintf(line, sizeof line, "names %s", g_current_channel);
+        browser_send(line);
+        g_roster_wanted = 1;
+    }
     RET(S_OK, 1);
 }
 static uint32_t send_chat(const wol_user *user, const void *message, int wide, int private) {

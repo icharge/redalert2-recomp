@@ -232,6 +232,13 @@ a2.ini`.
 
 ### Fixed
 
+- Internet (WOL) matches with three or more players start. The first guest
+  counted the players twice after a third player joined, so its connection
+  plan didn't match the others' and the start failed. RA2Web sends every room
+  member a fresh roster after each join, and the bridge passed it to the game,
+  which adds a roster's players to the ones it has. The bridge now passes a
+  roster only after the player's own join or when the game asks for one.
+  (`src/web/wolapi.c`, `web/e2e/wol.mjs --three`)
 - Internet (WOL) matches no longer end in an out-of-sync/reconnection error
   as soon as players give orders. The low-latency command delay was written
   into each player's game separately, from its own frame pump, so for a frame

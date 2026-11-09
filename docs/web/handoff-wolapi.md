@@ -226,6 +226,26 @@ test browsers closed after verification; Vite and local RA2Web remain listening.
 Fresh checks: 259 frontend tests, both COM editions, six server relay tests,
 TypeScript and scoped ESLint passed. The private RA2 module rebuilt successfully.
 
+### Three or more players: one roster per join (2026-11-09)
+
+RA2Web sends every member a room's NAMES list after anyone joins or leaves. A
+stock WOL server sends it only to the player who joined, and the game expects
+OnUserList only then, or after its own RequestUserList. A guest's game adds each
+OnUserList entry to its session players (`0xA3FA80`, count `0xA3FA8C`) without
+clearing them. With three players the first guest saw guest 3's JOINGAME
+(OnChannelJoin) and then a full roster, and its count went 2 -> 5 while the host
+and guest 3 had 3. At the start `User_List_To_Session_Players` (0x74D7D0) built
+10 connection pairs instead of 3, its third pair (woltst2 & woltst1) did not
+match the others' (woltst3 & woltst1), and it probed the host until
+`Negotiate_Scenario_Transfer failed`. Two-player rooms never showed it: the only
+guest never sees another join.
+
+The bridge now hands the game a NAMES list only when it is owed one (after its
+own JOIN/JOINGAME, or after RequestUserList). Any other list still refreshes the
+bridge's user table, so addresses and pings stay current, and logs
+`[wol] users(refresh)`. Selftest: `third_join_sends_no_roster` in
+`wolapi_selftest.c`. End to end: `e2e/wol.mjs --three --play` (testing.md).
+
 ### Packet router (already handled)
 
 For internet games the host spawns Westwood's `mph.exe` "packet router" and tells

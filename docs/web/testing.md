@@ -480,6 +480,23 @@ node e2e/wol.mjs --url 'http://localhost:5173/?target=game' --headed `
 
 It prints `REMATCH [host frame, guest frame]` for the second match.
 
+Three players: `--three` (either edition) has the host pick a bigger map in
+Customize Battle first (RA2 South Pacific, YR Kalifornia; the default room maps
+take two), then a third tab logs in as `woltst3` (created on first login) and
+joins. Both guests accept, and with `--play` all three simulations must reach
+frame 300. Each client's logs are saved after the third join
+(`three-players`). This is the case that needs both guests to connect to each
+other, not only to the host. Three YR tabs on one PC can run at a few frames a
+second (the slowest tab sets the pace), so `--play` sometimes fails "simulation
+keeps advancing" with all three still in step: 1 run in 6 did on 2026-11-09.
+Check that the clients' last `Frame N` lines match before blaming the network.
+
+```powershell
+$env:E2E_SHARED_TABS = '1'
+node e2e/wol.mjs --url 'http://localhost:5173/?target=game' `
+  --shots ../work/wol3-ra2 --arg --intro --three --play
+```
+
 Automated result checks (no game launch): `bun test test/nativeResults.test.ts
 test/nativeRelay.test.ts test/wgameres.test.ts test/ladderService.test.ts` in the
 server, focused `wol.test.ts`/`loader.test.ts` in the frontend, and both editions

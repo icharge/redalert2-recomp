@@ -478,6 +478,21 @@ int main(void) {
     ra2_wolapi_receive_line(":wol 353 testuser = #testuser :@testuser,0,1,1 other,0,1,1");
     assert(invoke(g_chat.chat, 3, 0, NULL) == S_OK);
     assert(g_user_count == 2 && test_event_count == match_events + 3);
+    {   /* third_join_sends_no_roster: RA2Web follows a third player's JOINGAME with
+         * the room's NAMES to everyone. The game hears of the join from OnChannelJoin
+         * alone; a second roster would add its players again (a guest's game appends). */
+        uint32_t before_join = test_event_count;
+        ra2_wolapi_receive_line(":third!local JOINGAME 0 0 0 0 0 1 0 :#testuser");
+        ra2_wolapi_receive_line(":wol 353 testuser = #testuser :@testuser,0,1,1 other,0,1,1 third,0,1,1");
+        assert(invoke(g_chat.chat, 3, 0, NULL) == S_OK);
+        assert(test_event_count == before_join + 1 && test_event_method[before_join] == 0x1000a);
+        assert(g_user_count == 3 && strcmp(g_users[2].name, "third") == 0);
+        /* A roster the game asks for still arrives. */
+        assert(invoke(g_chat.chat, 10, 0, NULL) == S_OK); /* RequestUserList */
+        ra2_wolapi_receive_line(":wol 353 testuser = #testuser :@testuser,0,1,1 other,0,1,1 third,0,1,1");
+        assert(invoke(g_chat.chat, 3, 0, NULL) == S_OK);
+        assert(test_event_count == before_join + 2 && test_event_method[before_join + 1] == 0x1000f);
+    }
     {   /* request_ping_completes_on_pump: NetUtil RequestPing answers on NetUtil's own
          * PumpMessages through INetUtilEvent::OnPing(hr, time, ip, handle), slot 3. */
         receive_pumped(":wol 353 testuser = #testuser :@testuser,0,40,1 other,0,35,1");
