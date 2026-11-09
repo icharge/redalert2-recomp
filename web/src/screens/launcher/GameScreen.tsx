@@ -8,7 +8,7 @@ import type { ActiveInstall } from "../../storage/active-install";
 import { importedFileSource, type ReadOnlyFileSource } from "../../storage/file-browser";
 import type { BuildInfo } from "../../storage/install";
 import type { PartCounts, PartSizes, InstallPart } from "../../storage/install-parts";
-import type { GameRecord, InstallationRecord } from "../../storage/manifest";
+import type { FileEntry, GameRecord, InstallationRecord } from "../../storage/manifest";
 import type { SaveEntry } from "../../storage/save-library";
 import { editionReadiness, needsResume, playStatus } from "./readiness";
 import { EditionIcon, type Estimate } from "./Shell";
@@ -179,8 +179,15 @@ export function GameScreen({
 
   const { installation, editions } = install;
   const slot = installation.slot;
-  const bytes = editions.reduce((sum, game) => sum + game.bytes, 0);
-  const fileCount = editions.reduce((sum, game) => sum + Object.keys(game.files).length, 0);
+  // the files still copied, each once: a file two editions share is listed by both, with the same home
+  const copied = new Map<string, FileEntry>();
+  for (const game of editions) {
+    for (const [name, entry] of Object.entries(game.files)) {
+      if (entry.done) copied.set(`${entry.home}/${name}`, entry);
+    }
+  }
+  const bytes = [...copied.values()].reduce((sum, file) => sum + file.size, 0);
+  const fileCount = copied.size;
   const moviesMissing = editions.some(
     (game) => game.complete && editionReadiness(game, build)?.moviesMissing,
   );

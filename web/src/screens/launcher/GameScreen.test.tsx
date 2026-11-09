@@ -6,7 +6,7 @@ import { formatBytes } from "../../components/format";
 import type { ActiveInstall } from "../../storage/active-install";
 import type { BuildInfo } from "../../storage/install";
 import type { PartCounts, PartSizes } from "../../storage/install-parts";
-import type { GameRecord } from "../../storage/manifest";
+import type { FileEntry, GameRecord } from "../../storage/manifest";
 import type { SaveEntry } from "../../storage/save-library";
 import { GameScreen } from "./GameScreen";
 
@@ -96,12 +96,64 @@ const fullBuild: BuildInfo = {
 
 describe("GameScreen", () => {
   it("lists each edition with its readiness and the install's size", () => {
-    show({ install: install([ra2(), game()]) });
+    // each edition copies one 1 GB file of its own, so the header sums to 2 GB over 2 files
+    const ra2Files = {
+      "ra2.mix": {
+        size: GB,
+        lastModified: 1,
+        done: true,
+        needs: ["ra2" as const],
+        home: "slot-1-ra2",
+      },
+    };
+    const yrFiles = {
+      "ra2md.mix": {
+        size: GB,
+        lastModified: 1,
+        done: true,
+        needs: ["ra2md" as const],
+        home: "ra2md",
+      },
+    };
+    show({ install: install([ra2({ files: ra2Files }), game({ files: yrFiles })]) });
     const installed = screen.getByRole("region", { name: "INSTALLED" });
     expect(within(installed).getByText("Red Alert 2")).toBeInTheDocument();
     expect(within(installed).getByText("Yuri’s Revenge")).toBeInTheDocument();
     expect(installed).toHaveTextContent("2.00 GB · 2 files");
     expect(within(installed).getAllByText("Ready")).toHaveLength(2);
+  });
+
+  it("counts only the files still copied, and a file two editions share once", () => {
+    const shared: FileEntry = {
+      size: 2 * MB,
+      lastModified: 1,
+      done: true,
+      needs: ["ra2", "ra2md"],
+      home: "ra2md",
+    };
+    const gone: FileEntry = {
+      size: 3 * MB,
+      lastModified: 1,
+      done: false,
+      needs: ["ra2"],
+      home: "ra2",
+    };
+    const own: FileEntry = {
+      size: MB,
+      lastModified: 1,
+      done: true,
+      needs: ["ra2md"],
+      home: "ra2md",
+    };
+    show({
+      install: install([
+        ra2({ files: { "shared.mix": shared, "gone.mix": gone } }),
+        game({ files: { "shared.mix": shared, "own.mix": own } }),
+      ]),
+    });
+    expect(screen.getByRole("region", { name: "INSTALLED" })).toHaveTextContent(
+      "3.00 MB · 2 files",
+    );
   });
 
   it("reports missing content for the build", () => {
@@ -183,7 +235,11 @@ describe("GameScreen", () => {
   it("downloads the saves of the chosen edition, and brings some in from a zip", async () => {
     const yr = game();
     const red = ra2();
-    const { props, user } = show({ install: install([red, yr]), edition: red });
+    // Red Alert 2 has a save, so its DOWNLOAD .ZIP is enabled
+    const listSaves = vi.fn(async (g: GameRecord) =>
+      g.id === "ra2" ? [save("SAVE0001.SAV")] : [],
+    );
+    const { props, user } = show({ install: install([red, yr]), edition: red, listSaves });
     await user.click(await screen.findByRole("button", { name: /SAVED GAMES…/ }));
     const dialog = await screen.findByRole("dialog");
     const redSaves = within(dialog).getByRole("region", { name: "Red Alert 2 saves" });

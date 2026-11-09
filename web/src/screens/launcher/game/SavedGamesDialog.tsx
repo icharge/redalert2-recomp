@@ -167,7 +167,7 @@ export function SavedGamesDialog({
                     <button
                       type="button"
                       className={pageStyles.quiet}
-                      disabled={busy}
+                      disabled={busy || saves.length === 0}
                       onClick={() => void downloadZip(group)}
                     >
                       DOWNLOAD .ZIP
@@ -276,7 +276,7 @@ export function SavedGamesDialog({
             <div role="group" aria-label="Confirm remove all" className={styles.allAsk}>
               <span className={styles.allText}>
                 <span className={styles.allQuestion}>
-                  {`Remove all ${total} ${total === 1 ? "save" : "saves"}?`}
+                  {total === 1 ? "Remove 1 save?" : `Remove all ${total} saves?`}
                 </span>
                 <span className={styles.allHint}>
                   They can't be brought back. Download them first to keep them.

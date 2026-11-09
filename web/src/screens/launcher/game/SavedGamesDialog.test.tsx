@@ -171,6 +171,47 @@ describe("SavedGamesDialog", () => {
     expect(handlers.onRemove).toHaveBeenCalledWith(yr, [timeShift]);
   });
 
+  it("says Remove 1 save? when one save is left to remove", async () => {
+    const user = userEvent.setup();
+    render(
+      <Theme>
+        <SavedGamesDialog
+          open
+          onOpenChange={vi.fn()}
+          groups={[{ game: ra2, saves: [chrono] }]}
+          onDownload={vi.fn()}
+          onRemove={vi.fn()}
+          onDownloadZip={vi.fn()}
+          onImportZip={vi.fn()}
+        />
+      </Theme>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "REMOVE ALL" }));
+    const strip = within(screen.getByRole("group", { name: "Confirm remove all" }));
+    expect(strip.getByText("Remove 1 save?")).toBeInTheDocument();
+  });
+
+  it("disables DOWNLOAD .ZIP for a group with no saves, and keeps IMPORT .ZIP", () => {
+    render(
+      <Theme>
+        <SavedGamesDialog
+          open
+          onOpenChange={vi.fn()}
+          groups={[{ game: ra2, saves: [] }]}
+          onDownload={vi.fn()}
+          onRemove={vi.fn()}
+          onDownloadZip={vi.fn()}
+          onImportZip={vi.fn()}
+        />
+      </Theme>,
+    );
+
+    const group = within(screen.getByRole("region", { name: "Red Alert 2 saves" }));
+    expect(group.getByRole("button", { name: "DOWNLOAD .ZIP" })).toBeDisabled();
+    expect(group.getByRole("button", { name: "IMPORT .ZIP" })).toBeEnabled();
+  });
+
   it("downloads one save", async () => {
     const user = userEvent.setup();
     const { handlers } = setup();

@@ -55,11 +55,14 @@
   min-height: 0;
   max-height: calc(100vh - 160px);
   overflow-y: auto;
+  /* a backstop only: nothing in the list should be wider than it */
+  overflow-x: hidden;
 }
 
 .group {
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
 .groupHead {
@@ -79,7 +82,9 @@
 
 .groupName {
   margin: 0;
-  flex: 1;
+  flex: 1 1 120px;
+  min-width: 0;
+  overflow-wrap: anywhere;
   font-family: var(--font-label);
   font-size: 16px;
   font-weight: 700;
@@ -91,10 +96,12 @@
   color: var(--muted);
 }
 
+/* inset so the rows' -8px side margins stay inside the scroller instead of overflowing it */
 .list {
-  margin: 0;
+  margin: 0 8px;
   padding: 0;
   list-style: none;
+  min-width: 0;
 }
 
 .row,
@@ -103,6 +110,7 @@
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
+  min-width: 0;
   margin: 0 -8px;
   padding: 10px 8px;
   border-bottom: 1px solid #2a2b30;
@@ -121,11 +129,13 @@
 .rowTitle {
   font-size: 16px;
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .details {
   font-size: 13px;
   color: var(--muted);
+  overflow-wrap: anywhere;
 }
 
 .file {
@@ -139,6 +149,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 
 .size {
@@ -176,6 +187,7 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
+  min-width: 0;
 }
 
 .question {
