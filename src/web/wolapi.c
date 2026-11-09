@@ -80,6 +80,10 @@ static wol_user g_users[32];
 static int32_t g_user_ping[32];
 static wol_user g_locale_user;
 static uint32_t g_channel_count, g_user_count, g_channel_type = WOL_LOBBY_TYPE;
+/* The game publishes its map slot count in GAMEOPT, separately from the room
+ * limit it later sends with MODE +l. Keep both so the lobby and server use the
+ * smaller, actually playable capacity. */
+static uint32_t g_map_player_slots, g_requested_player_limit;
 /* True while g_channels holds the answer to a type-0 (lobby) channel list. */
 static uint32_t g_channel_list_lobby;
 /* Players in the lobby this client last joined, for the synthetic lobby entry
@@ -438,6 +442,38 @@ static void send_channel_metadata(void) {
     browser_send(line);
 }
 
+/* The native GAMEOPT options part has a fixed prefix followed by scenario
+ * fields. Field 12 is the selected map's player-slot count (for example 2 for
+ * a two-player map); the later MODE +l value is only the room limit. */
+static int game_options_player_slots(const char *options, uint32_t *slots) {
+    if (!options || !slots) return 0;
+    const char *end = strchr(options, ':');
+    if (!end) return 0;
+    const char *field = options;
+    for (unsigned index = 0; index < 12; index++) {
+        const char *comma = memchr(field, ',', (size_t)(end - field));
+        if (!comma) return 0;
+        field = comma + 1;
+    }
+    const char *comma = memchr(field, ',', (size_t)(end - field));
+    if (!comma || comma == field) return 0;
+    uint32_t value = 0;
+    for (const char *p = field; p < comma; p++) {
+        if (*p < '0' || *p > '9') return 0;
+        value = value * 10u + (uint32_t)(*p - '0');
+        if (value > 8) return 0;
+    }
+    if (value < 2) return 0;
+    *slots = value;
+    return 1;
+}
+
+static uint32_t effective_player_limit(uint32_t requested) {
+    if (g_map_player_slots >= 2 && g_map_player_slots <= 8 && requested > g_map_player_slots)
+        return g_map_player_slots;
+    return requested;
+}
+
 static void parse_room_line(const char *line) {
     if (g_channel_count >= sizeof g_channels / sizeof g_channels[0]) return;
     char copy[WOL_LINE_CAP];
@@ -592,6 +628,7 @@ static int channel_error(const char *line) {
 static void disconnected(void) {
     if (!g_connected) return;
     g_connected = g_connection_pending = g_creating_channel = g_joining_channel = g_starting_game = 0;
+    g_map_player_slots = g_requested_player_limit = 0;
     memset(&g_session, 0, sizeof g_session);
     g_current_channel[0] = '\0';
     g_user_count = g_channel_count = g_lobby_users = g_channel_list_lobby = 0;
@@ -1082,10 +1119,13 @@ static void m_chat_request_channel_create(void) {
     copy_text(g_current_channel, sizeof g_current_channel, name);
     g_active_channel = *channel;
     g_active_channel.next = 0;
+    g_map_player_slots = 0;
+    g_requested_player_limit = channel->max_users >= 2 && channel->max_users <= 8
+        ? channel->max_users : 4u;
     g_creating_channel = 1;
     g_joining_channel = 0;
     snprintf(line, sizeof line, "joingame %s 1 %u %u 0 0 0 0%s%.8s", name,
-        channel->max_users >= 2 && channel->max_users <= 8 ? channel->max_users : 4u,
+        g_requested_player_limit,
         (uint32_t)channel->type, channel->key[0] ? " " : "", channel->key);
     browser_send(line);
     RET(S_OK, 2);
@@ -1101,6 +1141,9 @@ static void m_chat_request_channel_join(void) {
     g_active_channel = *channel;
     g_active_channel.next = 0;
     copy_text(g_active_channel.name, sizeof g_active_channel.name, name + 1);
+    g_map_player_slots = 0;
+    g_requested_player_limit = channel->max_users >= 2 && channel->max_users <= 8
+        ? channel->max_users : 8u;
     g_joining_channel = 1;
     g_creating_channel = 0;
     if (strncmp(name, "#Lob_", 5) == 0) snprintf(line, sizeof line, "join %s zotclot9", name);
@@ -1188,7 +1231,23 @@ static void m_chat_request_private_game_options(void) {
 }
 static void m_chat_request_public_game_options(void) {
     char line[WOL_LINE_CAP];
-    snprintf(line, sizeof line, "gameopt %s :%s", g_current_channel, ASTR(1) ? ASTR(1) : "");
+    const char *options = ASTR(1) ? ASTR(1) : "";
+    uint32_t map_slots;
+    if (game_options_player_slots(options, &map_slots)) {
+        g_map_player_slots = map_slots;
+        uint32_t limit = effective_player_limit(g_requested_player_limit ? g_requested_player_limit : 8u);
+        wol_channel *channel = current_channel();
+        int metadata_changed = channel && channel->max_users != limit;
+        if (channel && channel->max_users != limit) {
+            channel->max_users = limit;
+        }
+        /* RA2Web enforces MODE +l; apply the map's playable capacity as soon
+         * as it is known, even if the native client sends its room limit later. */
+        snprintf(line, sizeof line, "mode %s +l%u", g_current_channel, limit);
+        browser_send(line);
+        if (metadata_changed && channel->ex_info[0]) send_channel_metadata();
+    }
+    snprintf(line, sizeof line, "gameopt %s :%s", g_current_channel, options);
     browser_send(line);
     RET(S_OK, 2);
 }
@@ -1362,19 +1421,28 @@ static void m_chat_request_user_locale(void) {
 static void m_chat_raw_message(void) {
     const char *line = ASTR(1);
     if (line) {
-        browser_send(line);
         /* The native setup changes capacity with raw MODE +l after creation.
-         * Keep the LIST metadata in step with the limit RA2Web actually applies. */
+         * RA2Web expects the IRC form +lN; the game sends +l N. Clamp that
+         * limit to the selected map's playable slots and keep LIST metadata in
+         * step with what the server enforces. */
         char command[8], name[48], mode[8], extra;
         unsigned limit;
         if (sscanf(line, "%7s %47s %7s %u %c", command, name, mode, &limit, &extra) == 4 &&
             (!strcmp(command, "mode") || !strcmp(command, "MODE")) &&
             !strcmp(name, g_current_channel) && !strcmp(mode, "+l") && limit >= 2 && limit <= 8) {
+            g_requested_player_limit = limit;
+            limit = effective_player_limit(limit);
             wol_channel *channel = current_channel();
+            int metadata_changed = channel && channel->max_users != limit;
             if (channel && channel->max_users != limit) {
                 channel->max_users = limit;
-                if (channel->ex_info[0]) send_channel_metadata();
             }
+            char normalized[96];
+            snprintf(normalized, sizeof normalized, "mode %s +l%u", name, limit);
+            browser_send(normalized);
+            if (metadata_changed && channel->ex_info[0]) send_channel_metadata();
+        } else {
+            browser_send(line);
         }
     }
     RET(S_OK, 2);
