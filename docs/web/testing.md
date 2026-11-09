@@ -465,17 +465,20 @@ both logs showed `DoList: Moving event`, `Writing sync data to file SYNC0.TXT`
 and `[dialog] open 0xCE` within seconds of the first order. Neither line may
 appear now, and `game frame` must keep growing through the hold.
 
-The match after a reconnection screen (checked by hand with `--interactive`,
-RA2, two tabs): once `--play` passes, send
-`{"client":"guest","eval":"window.wolTestRelaySocket.close(), 1","wait":15000}`.
-Both players then show the reconnection screen (`[dialog] open 0xEA`). Press its
-Quit Game, `{"client":"host","click":[1193,914]}` and the same for the guest
-(1280x960 match). Both return to the WOL lobby. Then create the game again
-(host `[720,220]`, `[283,377]`), join it (guest `[150,47]`, `[720,263]`),
-accept (guest `[720,263]`) and start it (host `[720,263]`). The second match
-must reach FRAMESYNC and keep advancing, with no `Writing sync data`. Checked
-2026-11-09: 3,300 frames, and the guest's held PART (`[wol] holding the
-server's PART`) still came before its NET_GO.
+The match after a reconnection screen: `--rematch` (RA2, two tabs, 1280x960
+match) plays the first match as `--play` does, then closes the guest's datagram
+relay. Both players show the reconnection screen (`[dialog] open 0xEA`) and
+press its Quit Game, return to the WOL lobby, and create, join, accept and start
+a second game in the same tabs. The second match must reach frame 300 with no
+`Negotiate_Scenario_Transfer failed`, `Writing sync data` or `[dialog] open 0xCE`:
+
+```powershell
+$env:E2E_SHARED_TABS = '1'
+node e2e/wol.mjs --url 'http://localhost:5173/?target=game' --headed `
+  --shots ../work/wol-ra2-rematch --arg --intro --rematch
+```
+
+It prints `REMATCH [host frame, guest frame]` for the second match.
 
 Automated result checks (no game launch): `bun test test/nativeResults.test.ts
 test/nativeRelay.test.ts test/wgameres.test.ts test/ladderService.test.ts` in the

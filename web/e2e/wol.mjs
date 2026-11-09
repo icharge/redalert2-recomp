@@ -15,7 +15,8 @@ const wrongPassword = process.argv.includes("--wrong-password");
 const abortStart = process.argv.includes("--abort");
 const partRace = process.argv.includes("--part-race");
 const finish = process.argv.includes("--finish");
-const play = process.argv.includes("--play") || partRace || finish;
+const rematch = process.argv.includes("--rematch");
+const play = process.argv.includes("--play") || partRace || finish || rematch;
 const roomPassword = process.argv.includes("--password") || wrongPassword ? "pocpass" : null;
 const clients = {};
 const redact = (value) =>
@@ -169,6 +170,123 @@ async function finishYuriMatch(host, guest) {
   await host.page.waitForTimeout(1000); // Allow the returning native lobby to paint.
   await dump("host", "match-finished");
   await dump("guest", "match-finished");
+}
+
+/** The newest "[game] Frame N," the simulation printed after line `after`. */
+function frameSince(run, after) {
+  const line = run.all.slice(after).findLast((l) => /^\[game\] Frame \d+,/.test(l));
+  return Number(/^\[game\] Frame (\d+),/.exec(line ?? "")?.[1] ?? -1);
+}
+
+async function waitFor(run, done, label, ms = 60000) {
+  const deadline = Date.now() + ms;
+  while (!(await done())) {
+    assert.ok(Date.now() < deadline, `timed out waiting for ${label}`);
+    await run.page.waitForTimeout(250);
+  }
+}
+
+/**
+ * --rematch (RA2, 1280x960 match): lose the connection mid-match, leave from the
+ * reconnection screen, and start a second match in the same tabs. The second
+ * match must load, reach frame 300 and stay in sync (docs/web/testing.md).
+ */
+async function rematchAfterReconnect(host, guest) {
+  assert.ok(ra2, "--rematch drives RA2's reconnection screen");
+  for (const run of [host, guest])
+    assert.deepEqual((await run.state()).size, { w: 1280, h: 960 }, "rematch fixture size");
+  const runs = [host, guest];
+  const mark = () => runs.map((run) => ({ native: run.all.length, wire: run.wire.length }));
+  // 1. The guest's datagram relay drops: both players stop hearing each other.
+  let at = mark();
+  await guest.page.evaluate(() => window.wolTestRelaySocket.close());
+  for (const [i, run] of runs.entries())
+    await waitFor(
+      run,
+      async () => run.all.slice(at[i].native).some((l) => l.includes("[dialog] open 0xEA")),
+      "the reconnection screen",
+    );
+  await host.page.waitForTimeout(1500);
+  await dump("host", "reconnect-screen");
+  await dump("guest", "reconnect-screen");
+  // 2. Quit Game on the reconnection screen (the sidebar's bottom button).
+  at = mark();
+  for (const run of runs) {
+    await run.clickGame(1193, 914);
+    await run.page.waitForTimeout(1000);
+  }
+  for (const [i, run] of runs.entries()) {
+    await waitNative(run, "Joined Channel", at[i].native);
+    await waitFor(
+      run,
+      async () => (await run.state()).size?.w === 800,
+      "the 800x600 lobby after leaving the match",
+    );
+  }
+  await host.page.waitForTimeout(2500);
+  await dump("host", "back-in-lobby");
+  await dump("guest", "back-in-lobby");
+  // 3. The same create / join / accept / start as the first match.
+  at = mark();
+  await host.clickGame(720, 220);
+  await waitNative(host, "[dialog] open 0xC3", at[0].native);
+  await host.page.waitForTimeout(700);
+  await host.clickGame(283, 377);
+  await waitWire(host, (l, i) => i >= at[0].wire && l.startsWith("> joingame "), "second room");
+  await waitFor(
+    guest,
+    async () =>
+      guest.wire
+        .slice(at[1].wire)
+        .some((l) => l.includes(" 322 ") && l.includes("#woltst1's_game")),
+    "second room listing",
+  );
+  // The list can repaint after it arrives: select and join until the join goes out.
+  for (let tries = 0; ; tries++) {
+    await guest.page.waitForTimeout(800);
+    await guest.clickGame(150, 47);
+    await guest.page.waitForTimeout(300);
+    await guest.clickGame(720, 263);
+    await guest.page.waitForTimeout(1500);
+    if (guest.wire.slice(at[1].wire).some((l) => l.startsWith("> joingame "))) break;
+    assert.ok(tries < 5, "guest joins the second room");
+  }
+  await waitWire(
+    guest,
+    (l, i) => i >= at[1].wire && l.includes(":woltst1!") && l.includes(" GAMEOPT "),
+    "second room options",
+  );
+  await guest.page.waitForTimeout(2500);
+  await guest.clickGame(720, 263); // Accept
+  await waitWire(
+    host,
+    (l, i) => i >= at[0].wire && l.includes(":woltst2!") && l.includes(" :A1"),
+    "guest acceptance in the second room",
+  );
+  await host.clickGame(720, 263); // Start Game
+  for (const [i, run] of runs.entries()) {
+    await waitWire(run, (l, j) => j >= at[i].wire && l.includes(" STARTG "), "second start ticket");
+    await waitNative(run, "OnGameStart", at[i].native);
+  }
+  // 4. The second match plays, in sync.
+  await waitFor(
+    host,
+    async () => runs.every((run, i) => frameSince(run, at[i].native) >= 300),
+    "the second match to reach frame 300",
+    180000,
+  );
+  for (const [i, run] of runs.entries()) {
+    const second = run.all.slice(at[i].native);
+    for (const bad of [
+      "Negotiate_Scenario_Transfer failed",
+      "Writing sync data",
+      "[dialog] open 0xCE",
+    ])
+      assert.ok(!second.some((l) => l.includes(bad)), `second match: no "${bad}"`);
+  }
+  await dump("host", "rematch-playing");
+  await dump("guest", "rematch-playing");
+  console.log("REMATCH", JSON.stringify(runs.map((run, i) => frameSince(run, at[i].native))));
 }
 
 async function dump(name, shot) {
@@ -605,6 +723,7 @@ try {
         await dump("guest", "start-handoff");
         if (play) await verifyPlaying(host, guest);
         if (finish) await finishYuriMatch(host, guest);
+        if (rematch) await rematchAfterReconnect(host, guest);
         // --hold <seconds> keeps both clients running after the handoff, to watch the match load and play.
         const holdAt = process.argv.indexOf("--hold");
         if (holdAt > 0) {
