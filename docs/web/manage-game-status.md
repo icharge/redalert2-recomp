@@ -15,6 +15,29 @@ Ledger: `.superpowers/sdd/2026-11-09-manage-game-and-saves/progress.md`.
 | 6 | The MANAGE GAME panel, wired in | done (tests; not checked in a browser) |
 | 7 | The Install screen's mods list as a dialog | done |
 
+## Final review fixes (done)
+
+One fix pass after the final code review; each was written as a failing test first.
+
+- R9, a folder save that several editions hold belongs to the install. `listSaves(deps, game,
+  editions?)` lists it once, under the first edition (rail order) whose record holds that
+  `home/name`; a copy an edition wrote in its own `save/<storage>/` stays that edition's. `removeSaves`
+  and `collectSaveRemovals` take the same `editions`: they delete the file once (unless a record
+  outside the install reads it) and forget it in every edition. `GameActions.listSaves` and
+  `onRemoveSaves` pass `install.editions` through.
+- `measureParts` and `countParts` dedupe game files, maps and settings records by `home/name`
+  across editions; saves come from the deduped list.
+- R10, `removeParts` removes the whole installation when "game" is wanted and every part that holds
+  something (bytes or a count above 0) is wanted. The Remove dialog says so: "Everything is ticked,
+  so the whole install leaves this browser."
+- IMPORT .ZIP calls `onChanged`, so the dialog and the figures list and measure again.
+  (`importSaves` only writes to `save/<storage>/`, so App has no records to reload.)
+- `listSaves` no longer crashes on a written save with no size or time (falls back to the import's
+  values, else 0); `saveDetails` leaves out "Saved ..." when there is no usable time.
+- Still unchecked: the browser check of Tasks 5 and 6, and Task 1. Deferred review findings are not done.
+- Suite: 840 of 844 pass; the 4 failures are the other session's (`SettingsScreen` 2, `changelog` 1,
+  `cursor-preferences` 1). Typecheck passes.
+
 ## Tasks 5 and 6 checks
 
 - Tests (the deferred test pass): `RemoveDialog.test.tsx` has 10 tests, the Task 5 brief's six
