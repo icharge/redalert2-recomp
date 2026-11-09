@@ -31,7 +31,8 @@ function namesOf(game: GameRecord, kind: string): string[] {
 }
 
 /**
- * How much of each part the installation holds, across every edition. A game file that is not copied
+ * How much of each part the installation holds, across every edition. A file two editions both record
+ * (the same `home/name`) is one file on the disk, so it is measured once. A game file that is not copied
  * (marked missing) is not on the disk, so it is not counted.
  */
 export async function measureParts(
@@ -39,16 +40,20 @@ export async function measureParts(
   install: ActiveInstall,
 ): Promise<PartSizes> {
   const sizes: PartSizes = { game: 0, mods: 0, maps: 0, saves: 0, settings: 0 };
+  const seen = new Set<string>();
   for (const game of install.editions) {
     for (const [name, entry] of Object.entries(game.files)) {
       const kind = kindOf(name);
       // a save is measured with the saves below, from the same list the dialog shows
       if (kind === "save" || !entry.done) continue;
+      const path = `${entry.home}/${name}`;
+      if (seen.has(path)) continue;
+      seen.add(path);
       if (kind === "map") sizes.maps += entry.size;
       else if (kind === "settings") sizes.settings += entry.size;
       else sizes.game += entry.size;
     }
-    for (const save of await listSaves(deps, game)) sizes.saves += save.size;
+    for (const save of await listSaves(deps, game, install.editions)) sizes.saves += save.size;
     for (const file of await deps.store.list(game.storage)) {
       if (isSettingsPath(file.path)) sizes.settings += file.size ?? 0;
     }
@@ -66,11 +71,16 @@ export async function countParts(
   install: ActiveInstall,
 ): Promise<PartCounts> {
   const counts: PartCounts = { mods: 0, maps: 0, saves: 0 };
+  const maps = new Set<string>();
   for (const game of install.editions) {
-    counts.maps += namesOf(game, "map").filter((name) => game.files[name]?.done).length;
-    counts.saves += (await listSaves(deps, game)).length;
+    for (const name of namesOf(game, "map")) {
+      const entry = game.files[name];
+      if (entry?.done) maps.add(`${entry.home}/${name}`);
+    }
+    counts.saves += (await listSaves(deps, game, install.editions)).length;
     counts.mods += (await listMods(deps.manifest, game.storage)).length;
   }
+  counts.maps = maps.size;
   return counts;
 }
 
@@ -87,6 +97,11 @@ export async function removeParts(
   const wanted = new Set(parts);
   const { manifest, target } = deps;
   const failed: unknown[] = [];
+  // The game with every part that holds something is the whole installation, even when the parts that
+  // hold nothing were not ticked (the dialog does not offer them). Decided before anything is removed.
+  const everything =
+    wanted.has("game") &&
+    (ALL_PARTS.every((part) => wanted.has(part)) || (await holdsOnly(deps, install, wanted)));
   if (wanted.has("settings")) {
     for (const game of install.editions) {
       for (const file of await deps.store.list(game.storage)) {
@@ -101,8 +116,15 @@ export async function removeParts(
     }
   }
   if (wanted.has("saves")) {
-    for (const game of install.editions) {
-      failed.push(...(await collectSaveRemovals(deps, game, await listSaves(deps, game))));
+    // listed before any is removed: a folder save is the install's, listed under its first edition
+    const lists = await Promise.all(
+      install.editions.map(async (game) => ({
+        game,
+        saves: await listSaves(deps, game, install.editions),
+      })),
+    );
+    for (const { game, saves } of lists) {
+      failed.push(...(await collectSaveRemovals(deps, game, saves, install.editions)));
     }
   }
   if (wanted.has("maps")) {
@@ -122,7 +144,7 @@ export async function removeParts(
     }
   }
   if (wanted.has("game")) {
-    if (ALL_PARTS.every((part) => wanted.has(part))) {
+    if (everything) {
       // every part: the whole installation goes, its records with it. Its failures join the others.
       const slot = install.installation.slot;
       const stuck = await deleteInstallFiles(manifest, target, slot);
@@ -133,6 +155,21 @@ export async function removeParts(
     }
   }
   if (failed.length) throw new Error(notRemoved(failed));
+}
+
+/** Whether every part the installation holds something of is among `wanted`. */
+async function holdsOnly(
+  deps: SaveLibraryDeps,
+  install: ActiveInstall,
+  wanted: ReadonlySet<InstallPart>,
+): Promise<boolean> {
+  const sizes = await measureParts(deps, install);
+  const counts = await countParts(deps, install);
+  return ALL_PARTS.every((part) => {
+    if (wanted.has(part)) return true;
+    const count = part === "mods" || part === "maps" || part === "saves" ? counts[part] : 0;
+    return sizes[part] === 0 && count === 0;
+  });
 }
 
 /**

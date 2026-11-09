@@ -43,8 +43,12 @@ export function saveTitle(save: SaveEntry): string {
 
 /** The scenario and when it was saved, e.g. "Allied campaign · Mission 5 · Saved 2 Nov 2026, 21:14". */
 export function saveDetails(save: SaveEntry): string {
-  const when = save.info?.savedAt ?? save.modified;
-  return [save.info?.scenario, `Saved ${dateFormat.format(when)}`].filter(Boolean).join(" · ");
+  // a save the game wrote without a time has none to show: 0 or not a number
+  const usable = (time: number | undefined) => (time && Number.isFinite(time) ? time : null);
+  const when = usable(save.info?.savedAt) ?? usable(save.modified);
+  return [save.info?.scenario, when === null ? "" : `Saved ${dateFormat.format(when)}`]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 function countLabel(count: number): string {

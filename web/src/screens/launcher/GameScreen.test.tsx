@@ -196,6 +196,45 @@ describe("GameScreen", () => {
     expect(props.onImportSaves).toHaveBeenCalledWith(expect.objectContaining({ id: "ra2" }), zip);
   });
 
+  it("lists each edition's saves and removes them with the install's editions, so a shared save is one", async () => {
+    const yr = game();
+    const red = ra2();
+    const editions = [red, yr];
+    const listSaves = vi.fn(async (g: GameRecord) =>
+      g.id === "ra2" ? [save("SAVE0001.SAV", { imported: true })] : [],
+    );
+    const { props, user } = show({ install: install(editions), edition: red, listSaves });
+    await user.click(await screen.findByRole("button", { name: /SAVED GAMES…/ }));
+    const dialog = await screen.findByRole("dialog");
+    expect(listSaves).toHaveBeenCalledWith(yr, editions);
+    await user.click(within(dialog).getByRole("button", { name: "Remove SAVE0001.SAV" }));
+    await user.click(within(dialog).getByRole("button", { name: "REMOVE" }));
+    await waitFor(() =>
+      expect(props.onRemoveSaves).toHaveBeenCalledWith(red, [expect.anything()], editions),
+    );
+  });
+
+  it("lists the saves again after IMPORT .ZIP brings some in", async () => {
+    let imported = false;
+    const listSaves = vi.fn(async () => (imported ? [save("SAVE0042.SAV")] : []));
+    const onImportSaves = vi.fn(async () => {
+      imported = true;
+      return "1 saved game brought in.";
+    });
+    const { props, user } = show({ listSaves, onImportSaves });
+    const button = await screen.findByRole("button", { name: /SAVED GAMES…/ });
+    await waitFor(() => expect(button).toHaveTextContent("None"));
+    await user.click(button);
+    const dialog = await screen.findByRole("dialog");
+    await user.upload(
+      within(dialog).getByLabelText("Import saves for Yuri’s Revenge"),
+      new File(["x"], "saves.zip", { type: "application/zip" }),
+    );
+    expect(await within(dialog).findByText("1 saved game brought in.")).toBeInTheDocument();
+    expect(await within(dialog).findByText("SAVE0042.SAV")).toBeInTheDocument();
+    expect(props.measureParts).toHaveBeenCalledTimes(2);
+  });
+
   it("shows how much of the browser's storage is used", async () => {
     show();
     expect(await screen.findByText("4.3 GB of 60 GB")).toBeInTheDocument();

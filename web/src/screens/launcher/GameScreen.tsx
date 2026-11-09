@@ -30,12 +30,15 @@ export interface GameActions {
   onDownloadSaves(game: GameRecord): Promise<string>;
   /** takes saved games from a zip; says what happened */
   onImportSaves(game: GameRecord, zip: File): Promise<string>;
-  /** the saved games of one edition, newest first */
-  listSaves(game: GameRecord): Promise<SaveEntry[]>;
+  /**
+   * The saved games of one edition, newest first. With the install's editions, a folder save they
+   * share is listed once, under the first.
+   */
+  listSaves(game: GameRecord, editions?: GameRecord[]): Promise<SaveEntry[]>;
   /** downloads one save under its own name */
   onDownloadSave(game: GameRecord, save: SaveEntry): Promise<void>;
-  /** removes saves from one edition, both copies */
-  onRemoveSaves(game: GameRecord, saves: SaveEntry[]): Promise<void>;
+  /** removes saves from one edition, both copies; a shared folder save goes from every edition */
+  onRemoveSaves(game: GameRecord, saves: SaveEntry[], editions?: GameRecord[]): Promise<void>;
   /** how much of each part the install holds, in bytes */
   measureParts(install: ActiveInstall): Promise<PartSizes>;
   /** how many mods, maps and saves the install holds */

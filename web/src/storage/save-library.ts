@@ -45,6 +45,22 @@ function importedSave(game: GameRecord, name: string) {
   return null;
 }
 
+/**
+ * The folder saves of an install belong to the install, so each is listed once: under the first edition
+ * (in `install`'s order) whose record holds that `home/name`. This is the import's record of a save for
+ * `game`, or null when an earlier edition of the install already holds the same file.
+ */
+function ownImportedSave(game: GameRecord, name: string, install: GameRecord[] | undefined) {
+  const imported = importedSave(game, name);
+  if (!imported || !install) return imported;
+  const at = install.findIndex((each) => each.slot === game.slot && each.id === game.id);
+  for (const earlier of install.slice(0, Math.max(at, 0))) {
+    const held = importedSave(earlier, name);
+    if (held && held.entry.home === imported.entry.home) return null;
+  }
+  return imported;
+}
+
 /** A save's details, or null when they cannot be read. */
 async function infoOf(
   read: () => Promise<Uint8Array>,
@@ -57,8 +73,16 @@ async function infoOf(
   }
 }
 
-/** Every save of the game, the newest first. A save that cannot be read is still listed, with info null. */
-export async function listSaves(deps: SaveLibraryDeps, game: GameRecord): Promise<SaveEntry[]> {
+/**
+ * Every save of the game, the newest first. A save that cannot be read is still listed, with info null.
+ * Pass the install's editions (in rail order) so a folder save that several of them hold is listed once,
+ * under the first; a copy an edition wrote itself is still that edition's own.
+ */
+export async function listSaves(
+  deps: SaveLibraryDeps,
+  game: GameRecord,
+  install?: GameRecord[],
+): Promise<SaveEntry[]> {
   const written = (await deps.store.list(game.storage)).filter((file) => isSavePath(file.path));
   const writtenByName = new Map(written.map((file) => [file.path.toLowerCase(), file]));
   const names = new Set(writtenByName.keys());
@@ -67,17 +91,18 @@ export async function listSaves(deps: SaveLibraryDeps, game: GameRecord): Promis
   const entries: SaveEntry[] = [];
   for (const key of names) {
     const file = writtenByName.get(key);
-    const imported = importedSave(game, key);
-    if (!file && !imported) continue;
+    const imported = ownImportedSave(game, key, install);
     const read = file
       ? () => file.read()
-      : () => deps.readImported(imported!.entry.home, imported!.key);
-    const size = file?.size ?? imported!.entry.size;
-    const modified = file?.modified ?? imported!.entry.lastModified;
+      : imported
+        ? () => deps.readImported(imported.entry.home, imported.key)
+        : null;
+    if (!read) continue;
     entries.push({
       name: file ? file.path : imported!.key,
-      size,
-      modified,
+      // a written file may not say; the import's record, else nothing known
+      size: file?.size ?? imported?.entry.size ?? 0,
+      modified: file?.modified ?? imported?.entry.lastModified ?? 0,
       info: await infoOf(read, deps),
       written: !!file,
       imported: !!imported,
@@ -102,14 +127,16 @@ export async function readSave(
 
 /**
  * Removes saves from both copies: the written one in `save/<storage>/`, and the import's record and
- * file, so the save does not come back. Collects failures and throws one Error afterwards.
+ * file, so the save does not come back. Collects failures and throws one Error afterwards. With
+ * `install`, a folder save goes from every edition of the install, as listSaves lists it once.
  */
 export async function removeSaves(
   deps: SaveLibraryDeps,
   game: GameRecord,
   saves: SaveEntry[],
+  install?: GameRecord[],
 ): Promise<void> {
-  const failed = await collectSaveRemovals(deps, game, saves);
+  const failed = await collectSaveRemovals(deps, game, saves, install);
   if (failed.length) throw new Error(notRemoved(failed));
 }
 
@@ -118,9 +145,12 @@ export async function collectSaveRemovals(
   deps: SaveLibraryDeps,
   game: GameRecord,
   saves: SaveEntry[],
+  install?: GameRecord[],
 ): Promise<unknown[]> {
   const failed: unknown[] = [];
-  const imported: { key: string; entry: FileEntry }[] = [];
+  // the editions whose records forget a folder save: all of the install's, else this game's
+  const editions = install?.length ? install : [game];
+  const imported: { edition: GameRecord; key: string; entry: FileEntry }[] = [];
   for (const save of saves) {
     if (save.written) {
       try {
@@ -129,25 +159,35 @@ export async function collectSaveRemovals(
         failed.push(error);
       }
     }
-    const record = importedSave(game, save.name);
-    if (record) imported.push(record);
+    // a copy the edition wrote itself goes alone; the folder save is the install's, listed once
+    if (!save.imported) continue;
+    for (const edition of editions) {
+      const record = importedSave(edition, save.name);
+      if (record) imported.push({ edition, ...record });
+    }
   }
   // Files go before the records that name them, as removeInstall does: a file that will not delete
   // stays listed, so it can be tried again.
   if (imported.length) {
-    const read = await pathsReadElsewhere(deps.manifest, [game]);
-    const { gone, failed: stuck } = await deleteRecordedFiles(
-      deps.target,
-      imported.map(({ key, entry }) => ({ name: key, home: entry.home })),
-      read,
-    );
-    failed.push(...stuck);
-    if (gone.length) {
-      try {
-        // the files are already gone, so the paths it returns are not removed again
-        await deps.manifest.deleteFiles(game.slot, game.id, gone);
-      } catch (error) {
-        failed.push(error);
+    const read = await pathsReadElsewhere(deps.manifest, editions);
+    const outcome = new Map<string, boolean>();
+    for (const edition of editions) {
+      const mine = imported.filter((each) => each.edition === edition);
+      if (!mine.length) continue;
+      const { gone, failed: stuck } = await deleteRecordedFiles(
+        deps.target,
+        mine.map(({ key, entry }) => ({ name: key, home: entry.home })),
+        read,
+        outcome,
+      );
+      failed.push(...stuck);
+      if (gone.length) {
+        try {
+          // the files are already gone, so the paths it returns are not removed again
+          await deps.manifest.deleteFiles(edition.slot, edition.id, gone);
+        } catch (error) {
+          failed.push(error);
+        }
       }
     }
   }

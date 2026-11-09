@@ -391,7 +391,7 @@ function Main() {
                   ? "That zip has no saved games in it."
                   : `${count} saved game${count === 1 ? "" : "s"} brought in.`;
               }}
-              listSaves={(game) => listSaves(saveLibrary(), game)}
+              listSaves={(game, editions) => listSaves(saveLibrary(), game, editions)}
               onDownloadSave={async (game, save) => {
                 const bytes = await readSave(saveLibrary(), game, save);
                 const url = URL.createObjectURL(
@@ -404,9 +404,9 @@ function Main() {
                 link.click();
                 setTimeout(() => URL.revokeObjectURL(url), 10_000);
               }}
-              onRemoveSaves={async (game, saves) => {
+              onRemoveSaves={async (game, saves, editions) => {
                 try {
-                  await manifestWork(() => removeSaves(saveLibrary(), game, saves));
+                  await manifestWork(() => removeSaves(saveLibrary(), game, saves, editions));
                 } finally {
                   await reload();
                 }

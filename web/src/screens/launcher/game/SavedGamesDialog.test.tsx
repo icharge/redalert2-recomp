@@ -90,6 +90,22 @@ describe("saveTitle and saveDetails", () => {
   });
 });
 
+describe("saveDetails: a save with no usable time", () => {
+  it("leaves the Saved part out when the time is 0 or not a number", () => {
+    const scenario = { description: "x", scenario: "Allied campaign · Mission 5" };
+    expect(saveDetails({ ...second, modified: 0, info: scenario })).toBe(
+      "Allied campaign · Mission 5",
+    );
+    expect(saveDetails({ ...second, modified: Number.NaN, info: scenario })).toBe(
+      "Allied campaign · Mission 5",
+    );
+    expect(saveDetails({ ...second, modified: 0, info: null })).toBe("");
+    expect(
+      saveDetails({ ...second, modified: 0, info: { description: "x", savedAt: Number.NaN } }),
+    ).toBe("");
+  });
+});
+
 describe("SavedGamesDialog", () => {
   it("groups saves by edition with their titles, details and file names", () => {
     setup();

@@ -1,7 +1,7 @@
 import { IDBFactory } from "fake-indexeddb";
 import { describe, expect, it } from "vitest";
 import { pickActiveInstall, type ActiveInstall } from "./active-install";
-import { measureParts, prepareReinstall, removeParts } from "./install-parts";
+import { countParts, measureParts, prepareReinstall, removeParts } from "./install-parts";
 import { listMods } from "./mods";
 import type { GameId } from "./install";
 import { Manifest, type PlannedFile } from "./manifest";
@@ -49,13 +49,18 @@ const file = (name: string, size: number, needs: GameId[]): PlannedFile => ({
  * Revenge also has a map, a settings file and a save from the import; a mod is brought in its
  * storage. `shared` adds a map both editions read, kept once in the first edition's folder.
  */
-async function setup(options: { written?: Written[]; shared?: boolean } = {}) {
+async function setup(options: { written?: Written[]; shared?: boolean; both?: boolean } = {}) {
   const manifest = await Manifest.open(new IDBFactory());
   const { slot } = await manifest.createInstallation("Main", []);
   const home = `slot-${slot}`;
   const shared = options.shared ?? false;
+  // as a real import plans them: the base game's files and the folder's saves are needed by both editions
+  const both = options.both
+    ? [file("base.mix", 300, ["ra2", "ra2md"]), file("SAVE0007.SAV", 11, ["ra2", "ra2md"])]
+    : [];
   const ra2 = [
     file("b.mix", 1000, ["ra2"]),
+    ...both,
     ...(shared ? [file("shared.map", 5, ["ra2", "ra2md"])] : []),
   ];
   const md = [
@@ -63,6 +68,7 @@ async function setup(options: { written?: Written[]; shared?: boolean } = {}) {
     file("a.yrm", 18, ["ra2md"]),
     file("RA2MD.INI", 4, ["ra2md"]),
     file("SAVE0001.SAV", 9, ["ra2md"]),
+    ...both,
     ...(shared ? [file("shared.map", 5, ["ra2", "ra2md"])] : []),
   ];
   for (const [id, title, planned] of [
@@ -133,6 +139,38 @@ describe("measureParts", () => {
   });
 });
 
+describe("an install whose editions share files", () => {
+  it("measures each shared file once: the game's files, maps and saves", async () => {
+    const { deps, manifest, slot } = await setup({ both: true, shared: true });
+    expect(await measureParts(deps, await activeOf(manifest, slot))).toEqual({
+      game: 2000 + 300,
+      mods: 140,
+      maps: 18 + 5,
+      saves: 9 + 11,
+      settings: 4,
+    });
+  });
+
+  it("counts each shared map and save once", async () => {
+    const { deps, manifest, slot } = await setup({ both: true, shared: true });
+    expect(await countParts(deps, await activeOf(manifest, slot))).toEqual({
+      mods: 1,
+      maps: 2,
+      saves: 2,
+    });
+  });
+
+  it("removing the saves deletes a shared save once and forgets it in both editions", async () => {
+    const { deps, manifest, slot, home, removed } = await setup({ both: true });
+    await removeParts(deps, await activeOf(manifest, slot), ["saves"]);
+    expect(removed.filter((p) => p === gamePath(home, "SAVE0007.SAV"))).toHaveLength(1);
+    for (const id of ["ra2", "ra2md"] as const) {
+      expect((await manifest.getGame(id, slot))?.files["SAVE0007.SAV"]).toBeUndefined();
+    }
+    expect(await measureParts(deps, await activeOf(manifest, slot))).toMatchObject({ saves: 0 });
+  });
+});
+
 describe("removeParts", () => {
   it("removes only the ticked parts", async () => {
     const { deps, manifest, slot } = await setup();
@@ -175,6 +213,25 @@ describe("removeParts", () => {
     expect(await manifest.getGame("ra2", slot)).toBeUndefined();
     expect(await manifest.getGame("ra2md", slot)).toBeUndefined();
     expect(await manifest.listInstallations()).toEqual([]);
+  });
+
+  it("removing the game and every other part that holds something removes the installation", async () => {
+    const { deps, manifest, slot } = await setup();
+    // settings are already gone, so they are not among the parts the dialog offers
+    await removeParts(deps, await activeOf(manifest, slot), ["settings"]);
+    await removeParts(deps, await activeOf(manifest, slot), ["game", "mods", "maps", "saves"]);
+    expect(await manifest.getGame("ra2md", slot)).toBeUndefined();
+    expect(await manifest.listInstallations()).toEqual([]);
+  });
+
+  it("removing the game with a part that holds something left unticked keeps the installation", async () => {
+    const { deps, manifest, slot } = await setup();
+    await removeParts(deps, await activeOf(manifest, slot), ["game", "mods", "maps", "saves"]);
+    expect(await manifest.getGame("ra2md", slot)).toBeDefined();
+    expect(await measureParts(deps, await activeOf(manifest, slot))).toMatchObject({
+      game: 0,
+      settings: 4,
+    });
   });
 
   it("removing game content keeps saves and settings in save/<storage>/", async () => {

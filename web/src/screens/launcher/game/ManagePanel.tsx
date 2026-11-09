@@ -28,11 +28,11 @@ export type ManageActions = Pick<
 export interface ManagePanelProps {
   install: ActiveInstall;
   estimate: Estimate;
-  /** bumped after a removal: the panel measures and lists again */
+  /** bumped after a removal or an import: the panel measures and lists again */
   refresh: number;
   actions: ManageActions;
   onBrowse(): void;
-  /** after every removal, whether or not it went through */
+  /** after every removal or import, whether or not it went through */
   onChanged(): void;
 }
 
@@ -82,7 +82,10 @@ export function ManagePanel({
         current.measureParts(install),
         current.countParts(install),
         Promise.all(
-          install.editions.map(async (game) => ({ game, saves: await current.listSaves(game) })),
+          install.editions.map(async (game) => ({
+            game,
+            saves: await current.listSaves(game, install.editions),
+          })),
         ),
         estimate()
           .then((value) => {
@@ -257,9 +260,12 @@ export function ManagePanel({
         onOpenChange={setSavesOpen}
         groups={groups}
         onDownload={(game, save: SaveEntry) => actions.onDownloadSave(game, save)}
-        onRemove={(game, saves) => actions.onRemoveSaves(game, saves).finally(() => onChanged())}
+        onRemove={(game, saves) =>
+          actions.onRemoveSaves(game, saves, install.editions).finally(() => onChanged())
+        }
         onDownloadZip={(game) => actions.onDownloadSaves(game)}
-        onImportZip={(game, zip) => actions.onImportSaves(game, zip)}
+        // like a removal, an import changes what is listed and measured
+        onImportZip={(game, zip) => actions.onImportSaves(game, zip).finally(() => onChanged())}
       />
 
       <RemoveDialog

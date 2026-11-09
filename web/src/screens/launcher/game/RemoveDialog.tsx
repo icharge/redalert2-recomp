@@ -82,10 +82,15 @@ export function RemoveDialog({
   }
 
   const editionText = editions.join(" and ");
+  // every part that holds something is ticked: the install is removed whole, not left empty
+  const wholeInstall = ALL_PARTS.every((part) => sizeOf(part) === 0 || chosen.includes(part));
   const gameHint =
-    editions.length === 1
-      ? "Without game content, the game needs installing again. The parts you keep stay here."
-      : "Without game content, both games need installing again. The parts you keep stay here.";
+    (editions.length === 1
+      ? "Without game content, the game needs installing again."
+      : "Without game content, both games need installing again.") +
+    (wholeInstall
+      ? " Everything is ticked, so the whole install leaves this browser."
+      : " The parts you keep stay here.");
 
   const rows: { part: InstallPart; name: string; hint?: string }[] = [
     { part: "game", name: editionText },

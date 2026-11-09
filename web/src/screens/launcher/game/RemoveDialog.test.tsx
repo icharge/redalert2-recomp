@@ -86,6 +86,35 @@ describe("RemoveDialog", () => {
     expect(screen.queryByText(/both games/)).toBeNull();
   });
 
+  it("says the whole install leaves when every part that holds something is ticked", async () => {
+    const { user } = show({ sizes: { ...sizes, settings: 0 } });
+    // settings hold nothing, so ticking the other four ticks everything there is
+    await user.click(screen.getByRole("checkbox", { name: "Red Alert 2 and Yuri’s Revenge" }));
+    expect(
+      screen.getByText(/Without game content, both games need installing again\./),
+    ).toHaveTextContent(
+      /^Without game content, both games need installing again\. The parts you keep stay here\.$/,
+    );
+    await user.click(screen.getByRole("checkbox", { name: "Saved games" }));
+    expect(
+      screen.getByText(
+        "Without game content, both games need installing again. Everything is ticked, so the whole install leaves this browser.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/The parts you keep stay here/)).toBeNull();
+  });
+
+  it("uses the one-edition wording when everything is ticked", async () => {
+    const { user } = show({ editions: ["Yuri’s Revenge"], sizes: { ...sizes, settings: 0 } });
+    await user.click(screen.getByRole("checkbox", { name: "Yuri’s Revenge" }));
+    await user.click(screen.getByRole("checkbox", { name: "Saved games" }));
+    expect(
+      screen.getByText(
+        "Without game content, the game needs installing again. Everything is ticked, so the whole install leaves this browser.",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("removes the ticked parts", async () => {
     const { props, user } = show();
     await user.click(screen.getByRole("button", { name: `REMOVE ${formatBytes(158 * MB)}` }));

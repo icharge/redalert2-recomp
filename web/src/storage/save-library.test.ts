@@ -188,3 +188,144 @@ describe("listSaves: names", () => {
     expect(saves[0]).toMatchObject({ name: "save0002.sav", written: true, imported: true });
   });
 });
+
+/**
+ * A two-edition install as a real import makes it: the same folder save (and the base game's files) sit
+ * in the RA2 and the YR record, both naming one `home/name`. `written` is what each edition's own
+ * `save/<storage>/` holds.
+ */
+async function setupInstall(
+  written: Record<string, Record<string, { text: string; modified?: number; size?: number }>> = {},
+) {
+  const manifest = await Manifest.open(new IDBFactory());
+  const { slot } = await manifest.createInstallation("Main", []);
+  const planned = [
+    {
+      name: "SAVE0001.SAV",
+      size: 20,
+      lastModified: 100,
+      needs: ["ra2" as const, "ra2md" as const],
+    },
+  ];
+  for (const [id, title] of [
+    ["ra2", "Red Alert 2"],
+    ["ra2md", "Yuri's Revenge"],
+  ] as const) {
+    await manifest.beginImport(id, title, 1, planned, slot);
+    await manifest.markFileDone(id, "SAVE0001.SAV", slot);
+  }
+  const editions = [
+    (await manifest.getGame("ra2", slot)) as GameRecord,
+    (await manifest.getGame("ra2md", slot)) as GameRecord,
+  ];
+  const { target, removed } = fakeTarget();
+  const deps: SaveLibraryDeps = {
+    store: {
+      list: async (storage) =>
+        Object.entries(written[storage] ?? {}).map(([path, file]) => ({
+          path,
+          size: file.size,
+          modified: file.modified,
+          read: async () => enc(file.text),
+        })),
+    },
+    manifest,
+    target,
+    readImported: async () => enc("DESC folder save"),
+    readInfo: (data) => ({ description: new TextDecoder().decode(data).replace(/^DESC /, "") }),
+  };
+  return { deps, manifest, editions, removed, slot, home: `slot-${slot}` };
+}
+
+describe("an install with two editions", () => {
+  it("lists a folder save both editions hold once, under the first edition", async () => {
+    const { deps, editions } = await setupInstall();
+    const [ra2, md] = editions as [GameRecord, GameRecord];
+    expect((await listSaves(deps, ra2, editions)).map((s) => s.name)).toEqual(["SAVE0001.SAV"]);
+    expect(await listSaves(deps, md, editions)).toEqual([]);
+  });
+
+  it("still lists a copy the second edition wrote as that edition's own save", async () => {
+    const { deps, editions } = await setupInstall({
+      "slot-1-ra2md": { "SAVE0001.SAV": { text: "DESC yr copy", modified: 500, size: 12 } },
+    });
+    const [ra2, md] = editions as [GameRecord, GameRecord];
+    const first = await listSaves(deps, ra2, editions);
+    expect(first.map((s) => [s.name, s.written, s.imported])).toEqual([
+      ["SAVE0001.SAV", false, true],
+    ]);
+    const second = await listSaves(deps, md, editions);
+    expect(second.map((s) => [s.name, s.written, s.imported])).toEqual([
+      ["SAVE0001.SAV", true, false],
+    ]);
+  });
+
+  it("removing the folder save deletes the file once and forgets it in every edition", async () => {
+    const { deps, manifest, editions, removed, slot, home } = await setupInstall();
+    const [ra2] = editions as [GameRecord, GameRecord];
+    const [save] = await listSaves(deps, ra2, editions);
+    await removeSaves(deps, ra2, [save!], editions);
+    expect(removed.filter((p) => p === gamePath(home, "SAVE0001.SAV"))).toHaveLength(1);
+    for (const id of ["ra2", "ra2md"] as const) {
+      expect((await manifest.getGame(id, slot))?.files["SAVE0001.SAV"]).toBeUndefined();
+    }
+    const after = [
+      (await manifest.getGame("ra2", slot)) as GameRecord,
+      (await manifest.getGame("ra2md", slot)) as GameRecord,
+    ];
+    expect(await listSaves(deps, after[0]!, after)).toEqual([]);
+  });
+
+  it("keeps the file when a record outside this install reads it, but forgets it in both editions", async () => {
+    const { deps, manifest, editions, removed, slot, home } = await setupInstall();
+    const other = await manifest.createInstallation("Other", []);
+    await manifest.beginImport(
+      "ra2md",
+      "Yuri's Revenge",
+      1,
+      [{ name: "SAVE0001.SAV", size: 20, lastModified: 999, needs: ["ra2md" as const] }],
+      other.slot,
+    );
+    // the other install's record reads the same home/name
+    await manifest.putFiles(other.slot, [
+      {
+        id: "ra2md",
+        name: "SAVE0001.SAV",
+        entry: { size: 20, lastModified: 100, done: true, needs: ["ra2md"], home },
+      },
+    ]);
+    const [ra2] = editions as [GameRecord, GameRecord];
+    const [save] = await listSaves(deps, ra2, editions);
+    await removeSaves(deps, ra2, [save!], editions);
+    expect(removed).not.toContain(gamePath(home, "SAVE0001.SAV"));
+    for (const id of ["ra2", "ra2md"] as const) {
+      expect((await manifest.getGame(id, slot))?.files["SAVE0001.SAV"]).toBeUndefined();
+    }
+  });
+
+  it("removing a copy the second edition wrote leaves the folder save listed", async () => {
+    const { deps, manifest, editions, removed, slot, home } = await setupInstall({
+      "slot-1-ra2md": { "SAVE0001.SAV": { text: "DESC yr copy", modified: 500, size: 12 } },
+    });
+    const [ra2, md] = editions as [GameRecord, GameRecord];
+    const [own] = await listSaves(deps, md, editions);
+    await removeSaves(deps, md, [own!], editions);
+    expect(removed).toEqual(["save/slot-1-ra2md/SAVE0001.SAV"]);
+    expect(removed).not.toContain(gamePath(home, "SAVE0001.SAV"));
+    expect((await manifest.getGame("ra2", slot))?.files["SAVE0001.SAV"]).toBeDefined();
+    expect((await manifest.getGame("ra2md", slot))?.files["SAVE0001.SAV"]).toBeDefined();
+    expect((await listSaves(deps, ra2, editions)).map((s) => s.name)).toEqual(["SAVE0001.SAV"]);
+  });
+});
+
+describe("listSaves: a written save with no size or time", () => {
+  it("falls back to the import's size and time, else 0", async () => {
+    const { deps, editions } = await setupInstall({
+      "slot-1-ra2": { "SAVE0001.SAV": { text: "DESC w" }, "SAVE0009.SAV": { text: "DESC n" } },
+    });
+    const [ra2] = editions as [GameRecord, GameRecord];
+    const saves = await listSaves(deps, ra2, editions);
+    expect(saves.find((s) => s.name === "SAVE0001.SAV")).toMatchObject({ size: 20, modified: 100 });
+    expect(saves.find((s) => s.name === "SAVE0009.SAV")).toMatchObject({ size: 0, modified: 0 });
+  });
+});
