@@ -41,6 +41,8 @@ pub struct RA2TextLayout {
     mask_origin_x: i32,
     mask_origin_y: i32,
     mask: Vec<u8>,
+    glyphs: Vec<GlyphBitmap>,
+    source_units: usize,
 }
 
 #[repr(C)]
@@ -176,6 +178,8 @@ fn make_layout(
             mask_origin_x: 0,
             mask_origin_y: 0,
             mask: Vec::new(),
+            glyphs: Vec::new(),
+            source_units: text.len(),
         });
     }
     let mut family_names = Vec::with_capacity(5);
@@ -227,8 +231,14 @@ fn make_layout(
     if width > MAX_DIMENSION || height > MAX_DIMENSION || pixels > MAX_MASK_PIXELS {
         return Err(Status::LimitExceeded);
     }
-    let (mask_origin_x, mask_origin_y, mask_width, mask_height, mask, ink_bounds) =
-        raster_layout(&layout, width, height)?;
+    let mut byte_to_units = vec![0usize; decoded.len() + 1];
+    let mut units_at = 0usize;
+    for (byte, ch) in decoded.char_indices() {
+        units_at += ch.len_utf16();
+        byte_to_units[byte + ch.len_utf8()] = units_at;
+    }
+    let (mask_origin_x, mask_origin_y, mask_width, mask_height, mask, glyphs, ink_bounds) =
+        raster_layout(&layout, width, height, &byte_to_units)?;
     let line = layout.lines().next();
     let baseline = line.map(|l| l.metrics().baseline).unwrap_or(0.0);
     let (ink_x, ink_y, ink_width, ink_height) =
@@ -259,6 +269,8 @@ fn make_layout(
         mask_origin_x,
         mask_origin_y,
         mask,
+        glyphs,
+        source_units: text.len(),
     })
 }
 
@@ -268,6 +280,7 @@ struct GlyphBitmap {
     width: usize,
     height: usize,
     data: Vec<u8>,
+    visible_after_units: usize,
 }
 
 fn render_glyph(
@@ -313,7 +326,19 @@ fn raster_layout(
     layout: &Layout<()>,
     logical_width: u32,
     logical_height: u32,
-) -> Result<(i32, i32, u32, u32, Vec<u8>, Option<(i32, i32, i32, i32)>), Status> {
+    byte_to_units: &[usize],
+) -> Result<
+    (
+        i32,
+        i32,
+        u32,
+        u32,
+        Vec<u8>,
+        Vec<GlyphBitmap>,
+        Option<(i32, i32, i32, i32)>,
+    ),
+    Status,
+> {
     let mut scale_context = ScaleContext::new();
     let mut image = swash::scale::image::Image::new();
     let mut glyphs = Vec::new();
@@ -345,7 +370,37 @@ fn raster_layout(
             // all raster allocations preceded by the bounds preflight below.
             let mut renderer = Render::new(&[Source::Outline]);
             renderer.format(Format::Alpha);
-            for glyph in run.positioned_glyphs() {
+            /* Match each positioned glyph to its logical source cluster. A
+             * ligature start owns its continuation graphemes as one reveal
+             * step; visual iteration then preserves RTL glyph order. */
+            let logical_clusters: Vec<_> = run.run().clusters().collect();
+            let mut threshold_by_range = HashMap::with_capacity(logical_clusters.len());
+            for (index, cluster) in logical_clusters.iter().enumerate() {
+                let mut end_byte = cluster.text_range().end;
+                if !cluster.is_ligature_continuation() {
+                    let mut next = index + 1;
+                    while next < logical_clusters.len()
+                        && logical_clusters[next].is_ligature_continuation()
+                    {
+                        end_byte = end_byte.max(logical_clusters[next].text_range().end);
+                        next += 1;
+                    }
+                }
+                let threshold = *byte_to_units.get(end_byte).ok_or(Status::InternalError)?;
+                let range = cluster.text_range();
+                threshold_by_range.insert((range.start, range.end), threshold);
+            }
+            let mut visible_by_glyph = Vec::new();
+            for cluster in run.run().visual_clusters() {
+                let range = cluster.text_range();
+                let threshold = *threshold_by_range
+                    .get(&(range.start, range.end))
+                    .ok_or(Status::InternalError)?;
+                visible_by_glyph.extend(cluster.glyphs().map(|_| threshold));
+            }
+            let mut positioned = run.positioned_glyphs();
+            for visible_after_units in visible_by_glyph {
+                let glyph = positioned.next().ok_or(Status::InternalError)?;
                 let glyph_id = glyph.id as u16;
                 if !scaler.scale_outline_into(glyph_id, &mut outline) {
                     continue;
@@ -393,7 +448,11 @@ fn raster_layout(
                     width: gw,
                     height: gh,
                     data: image.data.clone(),
+                    visible_after_units,
                 });
+            }
+            if positioned.next().is_some() {
+                return Err(Status::InternalError);
             }
         }
     }
@@ -411,7 +470,7 @@ fn raster_layout(
         return Err(Status::LimitExceeded);
     }
     let mut mask = vec![0; pixels];
-    for glyph in glyphs {
+    for glyph in &glyphs {
         for y in 0..glyph.height {
             for x in 0..glyph.width {
                 let dx = glyph.left + x as i32 - min_x;
@@ -424,7 +483,7 @@ fn raster_layout(
             }
         }
     }
-    Ok((min_x, min_y, width, height, mask, ink))
+    Ok((min_x, min_y, width, height, mask, glyphs, ink))
 }
 
 #[unsafe(no_mangle)]
@@ -574,6 +633,45 @@ pub unsafe extern "C" fn ra2_text_layout_get_metrics(
 }
 
 #[unsafe(no_mangle)]
+pub unsafe extern "C" fn ra2_text_layout_get_storage_bytes(
+    layout: *const RA2TextLayout,
+    out_bytes: *mut usize,
+) -> i32 {
+    status_boundary(Status::InternalError as i32, || {
+        if layout.is_null() || out_bytes.is_null() {
+            return Status::InvalidArgument as i32;
+        }
+        let layout = unsafe { &*layout };
+        let mut total = std::mem::size_of::<RA2TextLayout>();
+        let Some(sum) = total.checked_add(layout.mask.capacity()) else {
+            return Status::LimitExceeded as i32;
+        };
+        total = sum;
+        let Some(glyph_records) = layout
+            .glyphs
+            .capacity()
+            .checked_mul(std::mem::size_of::<GlyphBitmap>())
+        else {
+            return Status::LimitExceeded as i32;
+        };
+        let Some(sum) = total.checked_add(glyph_records) else {
+            return Status::LimitExceeded as i32;
+        };
+        total = sum;
+        for glyph in &layout.glyphs {
+            let Some(sum) = total.checked_add(glyph.data.capacity()) else {
+                return Status::LimitExceeded as i32;
+            };
+            total = sum;
+        }
+        unsafe {
+            *out_bytes = total;
+        }
+        Status::Ok as i32
+    })
+}
+
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn ra2_text_layout_render_mask(
     layout: *const RA2TextLayout,
     dst: *mut u8,
@@ -625,6 +723,78 @@ pub unsafe extern "C" fn ra2_text_layout_render_mask(
                 let coverage = layout.mask[source_y * layout.width as usize + source_x];
                 let pixel = &mut out[y as usize * row_pitch + x as usize];
                 *pixel = (*pixel).max(coverage);
+            }
+        }
+        Status::Ok as i32
+    })
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ra2_text_layout_render_mask_prefix(
+    layout: *const RA2TextLayout,
+    dst: *mut u8,
+    dst_width: u32,
+    dst_height: u32,
+    row_pitch: usize,
+    origin_x: i32,
+    origin_y: i32,
+    visible_units: usize,
+) -> i32 {
+    if layout.is_null() {
+        return Status::InvalidArgument as i32;
+    }
+    let layout_ref = unsafe { &*layout };
+    if visible_units == usize::MAX || visible_units >= layout_ref.source_units {
+        return unsafe {
+            ra2_text_layout_render_mask(
+                layout, dst, dst_width, dst_height, row_pitch, origin_x, origin_y,
+            )
+        };
+    }
+    status_boundary(Status::InternalError as i32, || {
+        if (dst.is_null() && dst_width != 0 && dst_height != 0) || row_pitch < dst_width as usize {
+            return Status::InvalidArgument as i32;
+        }
+        if dst_width == 0 || dst_height == 0 || visible_units == 0 {
+            return Status::Ok as i32;
+        }
+        let Some(rows_before_last) = (dst_height as usize).checked_sub(1) else {
+            return Status::InvalidArgument as i32;
+        };
+        let Some(prefix_bytes) = rows_before_last.checked_mul(row_pitch) else {
+            return Status::LimitExceeded as i32;
+        };
+        let Some(required_bytes) = prefix_bytes.checked_add(dst_width as usize) else {
+            return Status::LimitExceeded as i32;
+        };
+        if required_bytes > MAX_MASK_PIXELS * 4 {
+            return Status::LimitExceeded as i32;
+        }
+        let layout = unsafe { &*layout };
+        let out = unsafe { std::slice::from_raw_parts_mut(dst, required_bytes) };
+        for glyph in &layout.glyphs {
+            if glyph.visible_after_units > visible_units {
+                continue;
+            }
+            let glyph_x = origin_x as i64 + glyph.left as i64;
+            let glyph_y = origin_y as i64 + glyph.top as i64;
+            let left = glyph_x.max(0);
+            let top = glyph_y.max(0);
+            let right = (glyph_x + glyph.width as i64).min(dst_width as i64).max(0);
+            let bottom = (glyph_y + glyph.height as i64)
+                .min(dst_height as i64)
+                .max(0);
+            if left >= right || top >= bottom {
+                continue;
+            }
+            for y in top..bottom {
+                let source_y = (y - glyph_y) as usize;
+                for x in left..right {
+                    let source_x = (x - glyph_x) as usize;
+                    let coverage = glyph.data[source_y * glyph.width + source_x];
+                    let pixel = &mut out[y as usize * row_pitch + x as usize];
+                    *pixel = (*pixel).max(coverage);
+                }
             }
         }
         Status::Ok as i32

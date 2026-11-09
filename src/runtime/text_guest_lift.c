@@ -22,6 +22,15 @@
 #include "thai_font.h"
 #include "text_guest.h"
 
+#ifdef RA2_TTF_TEXT_TESTING
+/* The harness maps the external edition globals through a callback; the
+ * production path below reads them with the real guest-memory macro. */
+extern uint32_t text_guest_test_mem32(uint32_t address);
+#define TTF_MEM32(address) text_guest_test_mem32(address)
+#else
+#define TTF_MEM32(address) MEM32(address)
+#endif
+
 #ifdef RA2_TARGET_GAME
 #define TTF_MEASURE_VA 0x004314B0u
 #define TTF_LABEL_VA   0x00431CC0u
@@ -53,8 +62,8 @@
  * is src and its width is 8 - up. Returns 0 if the globals are not a valid
  * layout for a 16-bit surface. */
 static int read_channel(uint32_t src_va, uint32_t up_va, uint8_t *shift, uint8_t *bits) {
-    uint32_t src = MEM32(src_va) & 0xFFu;
-    uint32_t up = MEM32(up_va) & 0xFFu;
+    uint32_t src = TTF_MEM32(src_va) & 0xFFu;
+    uint32_t up = TTF_MEM32(up_va) & 0xFFu;
     if (up > 7 || src > 15) return 0;
     uint32_t width = 8u - up;
     if (src + width > 16) return 0;

@@ -73,6 +73,10 @@ int32_t ra2_text_layout_utf16_ex(RA2TextEngine *engine,
 
 int32_t ra2_text_layout_get_metrics(const RA2TextLayout *layout, RA2TextMetrics *out_metrics);
 
+/* Exact owned heap payload retained by a layout (object, mask, glyph-record
+   vector, and per-glyph coverage vectors). */
+int32_t ra2_text_layout_get_storage_bytes(const RA2TextLayout *layout, size_t *out_bytes);
+
 /* Writes A8 glyph coverage into a caller-owned, initialized buffer. origin_x/origin_y place the
    logical layout top-left in dst (negative ink bearings are retained). Pixels outside the
    destination are clipped; row_pitch is in bytes and must be at least dst_width. For nonzero
@@ -85,6 +89,18 @@ int32_t ra2_text_layout_render_mask(const RA2TextLayout *layout,
                                     size_t row_pitch,
                                     int32_t origin_x,
                                     int32_t origin_y);
+
+/* Render a progressive prefix from the already-shaped full layout. Visible
+   count is UTF-16 units; clusters/ligatures appear atomically. SIZE_MAX means
+   all visible and is byte-identical to ra2_text_layout_render_mask. */
+int32_t ra2_text_layout_render_mask_prefix(const RA2TextLayout *layout,
+                                           uint8_t *dst,
+                                           uint32_t dst_width,
+                                           uint32_t dst_height,
+                                           size_t row_pitch,
+                                           int32_t origin_x,
+                                           int32_t origin_y,
+                                           size_t visible_units);
 void ra2_text_layout_destroy(RA2TextLayout *layout);
 
 #ifdef __cplusplus

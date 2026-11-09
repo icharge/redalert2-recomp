@@ -17,6 +17,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <process.h>
+#else
+#include <pthread.h>
+#endif
 
 #define FONT_SIZE 0x80
 #define OFF_PIXELS 0x0C
@@ -28,6 +35,10 @@
 
 #define GUARD 64
 #define CANARY 0xA5
+#define TEST_CACHE_LIMIT (8u * 1024u * 1024u)
+
+extern size_t text_guest_test_cache_bytes(void);
+extern uint32_t text_guest_test_cache_entries(void);
 
 typedef struct {
     uint8_t *alloc;   /* guarded allocation */
@@ -99,6 +110,29 @@ static int changed_pixels(const Fixture *f, int l, int t, int r, int b, int *out
     return changed;
 }
 
+#ifdef _WIN32
+static unsigned __stdcall thread_local_adapter(void *unused) {
+#else
+static void *thread_local_adapter(void *unused) {
+#endif
+    (void)unused;
+    assert(text_guest_enabled() == 0);
+    assert(text_guest_test_cache_entries() == 0);
+    text_guest_set_enabled(1);
+    Fixture f = make_fixture(64, 20, 64, 0xFFFF);
+    uint16_t text[] = { 'T', 0 };
+    int32_t width = -1, height = -1;
+    assert(text_guest_measure(va(f.font), va(text), 0, &width, &height) == 1);
+    assert(width > 0 && text_guest_test_cache_entries() == 1);
+    free_fixture(&f);
+    text_guest_set_enabled(0);
+#ifdef _WIN32
+    return 0;
+#else
+    return NULL;
+#endif
+}
+
 static uint16_t units_of(const char *ascii, uint16_t *out) {
     uint16_t n = 0;
     for (; ascii[n]; ++n) out[n] = (uint16_t)(unsigned char)ascii[n];
@@ -153,6 +187,47 @@ int main(void) {
     }
 
     text_guest_set_enabled(1);
+
+    /* Worker-thread state, engine and cache are isolated from the game thread. */
+    {
+#ifdef _WIN32
+        assert(_putenv("RA2_TTF_TEXT=0") == 0);
+        uintptr_t thread = _beginthreadex(NULL, 0, thread_local_adapter, NULL, 0, NULL);
+        assert(thread != 0);
+        assert(WaitForSingleObject((HANDLE)thread, INFINITE) == WAIT_OBJECT_0);
+        CloseHandle((HANDLE)thread);
+#else
+        assert(setenv("RA2_TTF_TEXT", "0", 1) == 0);
+        pthread_t thread;
+        assert(pthread_create(&thread, NULL, thread_local_adapter, NULL) == 0);
+        assert(pthread_join(thread, NULL) == 0);
+#endif
+        assert(text_guest_enabled() == 1);
+        assert(text_guest_test_cache_entries() == 0);
+    }
+
+    /* Retained mask storage for long whitespace layouts is charged to the
+     * cache, and the byte cap evicts before 64 such entries accumulate. */
+    {
+        uint16_t *spaces = malloc((5000u + 1u) * sizeof(uint16_t));
+        assert(spaces != NULL);
+        for (uint32_t i = 0; i < 5000; ++i) spaces[i] = ' ';
+        spaces[5000] = 0;
+        int32_t width = -1, height = -1;
+        Fixture f = make_fixture(64, 20, 64, 0xFFFF);
+        size_t before = text_guest_test_cache_bytes();
+        spaces[4999] = 'A';
+        assert(text_guest_measure(va(f.font), va(spaces), 16384, &width, &height) == 1);
+        assert(text_guest_test_cache_bytes() - before > 100000u);
+        for (uint32_t i = 0; i < 64; ++i) {
+            spaces[4999] = (uint16_t)('A' + i);
+            assert(text_guest_measure(va(f.font), va(spaces), 16384, &width, &height) == 1);
+        }
+        assert(text_guest_test_cache_entries() < 64u);
+        assert(text_guest_test_cache_bytes() <= TEST_CACHE_LIMIT);
+        free_fixture(&f);
+        free(spaces);
+    }
 
     /* 2. Enabled Latin label: ink appears, the caret advances, canaries survive. */
     {
@@ -235,14 +310,56 @@ int main(void) {
         free_fixture(&f);
     }
 
-    /* 8. Reveal: a settled caption (count >= units + 8) is plain TTF; an active one falls back. */
+    /* A bounded string need not contain a terminator at max_units; this
+     * also runs in the browser harness where protected pages are unavailable. */
+    {
+        uint16_t exactly_bounded[] = { 'A' };
+        Fixture f = make_fixture(160, 24, 160, 0xFFFF);
+        int32_t fx = -1;
+        assert(text_guest_label(va(f.font), va(exactly_bounded), 0, 0, 1, 0, &fx) == 1);
+        assert(fx > 0);
+        free_fixture(&f);
+    }
+
+    /* A bounded non-terminated string may end immediately before an
+     * inaccessible page. The adapter must not probe the next UTF-16 unit. */
+#ifdef _WIN32
+    {
+        SYSTEM_INFO si;
+        GetSystemInfo(&si);
+        uint8_t *guarded = VirtualAlloc(NULL, si.dwPageSize * 2, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+        assert(guarded != NULL);
+        DWORD old_protect;
+        assert(VirtualProtect(guarded + si.dwPageSize, si.dwPageSize, PAGE_NOACCESS, &old_protect));
+        uint16_t *last_unit = (uint16_t *)(guarded + si.dwPageSize - sizeof(uint16_t));
+        *last_unit = 'A';
+        Fixture f = make_fixture(160, 24, 160, 0xFFFF);
+        int32_t fx = -1;
+        assert(text_guest_label(va(f.font), va(last_unit), 0, 0, 1, 0, &fx) == 1);
+        assert(fx > 0);
+        assert(VirtualFree(guarded, 0, MEM_RELEASE));
+        free_fixture(&f);
+    }
+#endif
+
+    /* 8. Reveal changes ink progressively while the full-layout advance stays
+     * stable for measurement and positioning. */
     {
         Fixture f = make_fixture(160, 24, 160, 0xFFFF);
         uint16_t text[8];
         units_of("RA", text); /* 2 units */
         int32_t fx = -1;
-        assert(text_guest_label(va(f.font), va(text), 0, 0, 0, 5, &fx) == 0);
+        assert(text_guest_label(va(f.font), va(text), 0, 0, 0, 1, &fx) == 1);
+        int outside, partial = changed_pixels(&f, 0, 0, 159, 23, &outside);
+        assert(partial > 0 && outside == 0);
+        int32_t partial_x = fx;
+        memset(f.pixels, 0, f.bytes);
         assert(text_guest_label(va(f.font), va(text), 0, 0, 0, 20, &fx) == 1);
+        int full = changed_pixels(&f, 0, 0, 159, 23, &outside);
+        assert(full > partial);
+        int32_t width = -1, height = -1;
+        assert(text_guest_measure(va(f.font), va(text), 0, &width, &height) == 1);
+        assert(partial_x == fx && fx == width);
         free_fixture(&f);
     }
 
@@ -310,8 +427,8 @@ int main(void) {
         free_fixture(&f);
     }
 
-    /* 13. Paragraph fallbacks leave the surface and the callbacks untouched:
-     * a control character, a layout taller than maxHeight, and an active reveal. */
+    /* 13. Controls and layouts taller than maxHeight fall back, while active
+     * paragraph reveals use a prefix of the full layout through setup/release. */
     {
         Fixture f = make_fixture(160, 40, 176, 0xFFFF);
         uint16_t lf[] = { 'A', 0x0A, 'B', 0 };
@@ -321,11 +438,12 @@ int main(void) {
                                     fake_setup, fake_release, &calls) == 0);
         assert(text_guest_paragraph(va(f.font), va(f.pixels), va(text), 0, 0, 40, 4, 0, 0, 0,
                                     fake_setup, fake_release, &calls) == 0);
-        assert(text_guest_paragraph(va(f.font), va(f.pixels), va(text), 0, 0, 0, 0, 0, 5, 0,
-                                    fake_setup, fake_release, &calls) == 0);
         assert(calls.setups == 0 && calls.releases == 0);
+        assert(text_guest_paragraph(va(f.font), va(f.pixels), va(text), 0, 0, 0, 0, 0, 2, 0,
+                                    fake_setup, fake_release, &calls) == 1);
+        assert(calls.setups == 1 && calls.releases == 1);
         int outside;
-        assert(changed_pixels(&f, 0, 0, 159, 39, &outside) == 0);
+        assert(changed_pixels(&f, 0, 0, 159, 39, &outside) > 0);
         free_fixture(&f);
     }
 

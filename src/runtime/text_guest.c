@@ -34,11 +34,16 @@
 #define TEXT_MAX_UNITS (16u * 1024u)
 #define CACHE_ENTRIES 64u
 #define CACHE_BYTES (8u * 1024u * 1024u)
-#define REVEAL_TAIL 8
 
-static TextGuestPixelFormat g_format = { 11, 5, 5, 6, 0, 5 }; /* RGB565 */
-static int g_on;
-static int g_env_checked;
+#ifdef _MSC_VER
+#define TEXT_THREAD_LOCAL __declspec(thread)
+#else
+#define TEXT_THREAD_LOCAL _Thread_local
+#endif
+
+static TEXT_THREAD_LOCAL TextGuestPixelFormat g_format = { 11, 5, 5, 6, 0, 5 }; /* RGB565 */
+static TEXT_THREAD_LOCAL int g_on;
+static TEXT_THREAD_LOCAL int g_env_checked;
 
 static uint32_t rd32(uint32_t va) { uint32_t v; memcpy(&v, (const void *)(uintptr_t)va, 4); return v; }
 static int32_t rds32(uint32_t va) { return (int32_t)rd32(va); }
@@ -60,16 +65,13 @@ static int read_units(uint32_t text_va, uint32_t max_units, uint16_t *out, uint3
     uint32_t limit = max_units ? max_units : TEXT_MAX_UNITS;
     if (limit > TEXT_MAX_UNITS) limit = TEXT_MAX_UNITS;
     uint32_t n = 0;
-    for (;;) {
+    while (n < limit) {
         uint16_t u = rd16(text_va + n * 2);
         if (u == 0) break;
-        if (n == limit) {
-            if (max_units == 0) return 0; /* no terminator within the cap: refuse */
-            break;
-        }
         out[n++] = u;
     }
-    if (max_units && n == max_units && n > 0 && out[n - 1] >= 0xD800 && out[n - 1] <= 0xDBFF)
+    if (!max_units && n == limit) return 0; /* no terminator within the cap: refuse */
+    if (n == limit && n > 0 && out[n - 1] >= 0xD800 && out[n - 1] <= 0xDBFF)
         n--;
     *count = n;
     return 1;
@@ -113,11 +115,16 @@ typedef struct {
     uint32_t stamp;
 } CacheEntry;
 
-static RA2TextEngine *g_engine;
-static CacheEntry g_cache[CACHE_ENTRIES];
-static uint32_t g_cache_used;
-static size_t g_cache_bytes;
-static uint32_t g_stamp;
+static TEXT_THREAD_LOCAL RA2TextEngine *g_engine;
+static TEXT_THREAD_LOCAL CacheEntry g_cache[CACHE_ENTRIES];
+static TEXT_THREAD_LOCAL uint32_t g_cache_used;
+static TEXT_THREAD_LOCAL size_t g_cache_bytes;
+static TEXT_THREAD_LOCAL uint32_t g_stamp;
+
+#ifdef RA2_TTF_TEXT_TESTING
+size_t text_guest_test_cache_bytes(void) { return g_cache_bytes; }
+uint32_t text_guest_test_cache_entries(void) { return g_cache_used; }
+#endif
 
 static int ensure_engine(void) {
     if (!g_engine) g_engine = ra2_text_engine_create();
@@ -164,7 +171,12 @@ static CacheEntry *layout_for(const uint16_t *units, uint32_t count, float line_
         ra2_text_layout_destroy(layout);
         return NULL;
     }
-    size_t bytes = (size_t)count * 2 + (size_t)m.ink_width * m.ink_height + sizeof(CacheEntry);
+    size_t retained = 0;
+    if (ra2_text_layout_get_storage_bytes(layout, &retained) != RA2_TEXT_OK) {
+        ra2_text_layout_destroy(layout);
+        return NULL;
+    }
+    size_t bytes = (size_t)count * 2 + retained + sizeof(CacheEntry);
     if (bytes > CACHE_BYTES) { /* too large to keep: decline */
         ra2_text_layout_destroy(layout);
         return NULL;
@@ -217,14 +229,15 @@ static uint8_t blend8(uint8_t dst, uint8_t src, uint8_t a) {
 /* Max-composite one shaped layout into the target, with its logical origin
  * at (x, y). Coverage is rendered for the ink box only; the origin places ink
  * at (0,0). Pixels outside the clip are never written. */
-static int draw_layout(const Target *tg, const CacheEntry *e, int32_t x, int32_t y) {
+static int draw_layout(const Target *tg, const CacheEntry *e, int32_t x, int32_t y,
+                       size_t visible_units) {
     RA2TextMetrics m = e->metrics;
     if (m.ink_width == 0 || m.ink_height == 0) return 1;
     size_t area = (size_t)m.ink_width * m.ink_height;
     uint8_t *cover = calloc(area, 1);
     if (!cover) return 0;
-    if (ra2_text_layout_render_mask(e->layout, cover, m.ink_width, m.ink_height, m.ink_width,
-                                    -m.ink_x, -m.ink_y) != RA2_TEXT_OK) {
+    if (ra2_text_layout_render_mask_prefix(e->layout, cover, m.ink_width, m.ink_height, m.ink_width,
+                                          -m.ink_x, -m.ink_y, visible_units) != RA2_TEXT_OK) {
         free(cover);
         return 0;
     }
@@ -257,8 +270,10 @@ static int draw_layout(const Target *tg, const CacheEntry *e, int32_t x, int32_t
 static void ensure_env_checked(void) {
     if (g_env_checked) return;
     g_env_checked = 1;
+#ifdef RA2_TTF_TEXT
     const char *v = getenv("RA2_TTF_TEXT");
     if (v && v[0] == '1' && v[1] == 0) g_on = 1;
+#endif
 }
 
 int text_guest_set_enabled(int on) {
@@ -328,8 +343,6 @@ int text_guest_label(uint32_t font_va, uint32_t text_va, int32_t x, int32_t y,
     if (!read_units(text_va, max_units, units, &count)) return 0;
     if (has_layout_control(units, count)) return 0;
 
-    /* A positive reveal is plain TTF only after the highlight has passed. */
-    if (reveal > 0 && (uint32_t)reveal < count + REVEAL_TAIL) return 0;
     if (!ensure_engine()) return 0;
 
     if (count == 0) {
@@ -339,7 +352,7 @@ int text_guest_label(uint32_t font_va, uint32_t text_va, int32_t x, int32_t y,
     CacheEntry *e = layout_for(units, count, line_height, 0.0f, 0);
     if (!e) return 0;
     *final_x = x + (int32_t)(e->metrics.advance_x + 0.5f);
-    return draw_layout(&tg, e, x, y);
+    return draw_layout(&tg, e, x, y, reveal > 0 ? (size_t)reveal : SIZE_MAX);
 #else
     (void)font_va; (void)text_va; (void)x; (void)y; (void)max_units; (void)reveal; (void)final_x;
     return 0;
@@ -360,8 +373,6 @@ int text_guest_paragraph(uint32_t font_va, uint32_t surface_va, uint32_t text_va
     uint32_t count = 0;
     if (!read_units(text_va, 0, units, &count)) return 0;
     if (count == 0 || has_layout_control(units, count)) return 0;
-    /* A reveal is plain TTF only once every unit and the highlight have shown. */
-    if (reveal > 0 && (uint32_t)reveal < count + (uint32_t)reveal_range + 1u) return 0;
     if (!ensure_engine()) return 0;
 
     /* The original paragraph (0x00434CD0) tests bit 0x1 for centre first, then
@@ -377,7 +388,8 @@ int text_guest_paragraph(uint32_t font_va, uint32_t surface_va, uint32_t text_va
     setup(font_va, surface_va, ctx);
     Target tg;
     int ok = read_target(font_va, &tg);
-    if (ok) ok = draw_layout(&tg, e, x, y);
+    if (ok) ok = draw_layout(&tg, e, x, y,
+                             reveal > 0 ? (size_t)(reveal - 1) : SIZE_MAX);
     release(font_va, surface_va, ctx);
     return ok;
 #else

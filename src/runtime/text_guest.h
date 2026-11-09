@@ -12,7 +12,8 @@
  * runs the original renderer. A handled call has measured and drawn the same
  * layout. It never writes outside the font clip and surface bounds.
  *
- * Same-thread: call from the game thread only, as the engine requires.
+ * Adapter state (including the engine and cache handles) is thread-local, so
+ * a host thread can never pass a layout handle to another thread.
  */
 
 #include <stdint.h>
@@ -43,10 +44,12 @@ void text_guest_set_pixel_format(const TextGuestPixelFormat *fmt);
 int text_guest_measure(uint32_t font_va, uint32_t text_va, int32_t wrap_px,
                        int32_t *width_out, int32_t *height_out);
 
-/* Draw a settled label at (x, y). max_units 0 means until NUL. reveal 0
- * means fully visible. A positive reveal is handled only once it has
- * passed the highlight window; an active reveal falls back. final_x receives
- * x plus the advance. Returns 1 when handled, 0 to fall back. */
+/* Draw a label at (x, y). max_units 0 means until NUL. reveal 0 means fully
+ * visible; positive reveal draws that many UTF-16 units from the full layout,
+ * holding grapheme/ligature clusters together. The full-layout advance is
+ * always returned in final_x. TTF reveal uses the foreground color without
+ * the original animated palette gradient. Returns 1 when handled, 0 to fall
+ * back. */
 int text_guest_label(uint32_t font_va, uint32_t text_va, int32_t x, int32_t y,
                      uint32_t max_units, int32_t reveal, int32_t *final_x);
 
@@ -56,9 +59,10 @@ int text_guest_label(uint32_t font_va, uint32_t text_va, int32_t x, int32_t y,
 typedef void (*TextGuestSurfaceFn)(uint32_t font_va, uint32_t surface_va, void *ctx);
 
 /* Paragraph draw. Wraps at wrap_px (0 = none), aligns by align_flags (0x1
- * centre, 0x2 right), and draws at (x, y). Falls back (returns 0) for
- * control characters, a layout taller than max_height (0 = no limit), and an
- * active reveal. setup and release are called only once the call is handled. */
+ * centre, 0x2 right), and draws at (x, y). A positive reveal draws the
+ * visible prefix from the same full layout used for measurement. Falls back
+ * (returns 0) for control characters and a layout taller than max_height
+ * (0 = no limit). setup and release are called only once the call is handled. */
 int text_guest_paragraph(uint32_t font_va, uint32_t surface_va, uint32_t text_va,
                          int32_t x, int32_t y, int32_t wrap_px, int32_t max_height,
                          uint32_t align_flags, int32_t reveal, int32_t reveal_range,
