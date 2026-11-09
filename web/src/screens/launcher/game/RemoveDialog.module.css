@@ -1,0 +1,163 @@
+/* The dialog's own parts; the frame, title and buttons come from Page.module.css. */
+.content {
+  padding: 0;
+  overflow: hidden;
+}
+
+.body {
+  padding: 28px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  box-sizing: border-box;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.headText {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.lede {
+  color: var(--muted);
+}
+
+.close {
+  width: 44px;
+  height: 44px;
+  margin: -10px -12px 0 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.close:hover,
+.close:focus-visible {
+  color: var(--text);
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+}
+
+/* the same row as the Import screen's CHECK step */
+.kind {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+}
+.kind input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--red);
+}
+.kind input:disabled {
+  cursor: not-allowed;
+}
+.kind[data-off] .kindName,
+.kind[data-off] .size {
+  color: var(--muted);
+}
+
+.kindText {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.kindName {
+  font-size: 16px;
+  font-weight: 600;
+}
+.kindHint {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.size {
+  font-size: 14px;
+  text-align: right;
+  min-width: 72px;
+}
+
+.warn {
+  margin: 0;
+  font-size: 14px;
+  color: var(--amber);
+}
+
+.error {
+  margin: 0;
+  font-size: 14px;
+  color: #ff8a80;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}
+
+.everything {
+  padding: 10px 16px;
+  border: 1px solid var(--red);
+  background: transparent;
+  color: #ff8a80;
+  font-family: var(--font-label);
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+.everything:hover:not(:disabled),
+.everything:focus-visible {
+  background: rgba(211, 38, 43, 0.1);
+}
+.everything:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.allAsk {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 10px 16px;
+  box-sizing: border-box;
+  background: rgba(211, 38, 43, 0.1);
+  border: 1px solid #5a1214;
+}
+
+.allQuestion {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
