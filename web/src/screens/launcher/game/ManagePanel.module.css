@@ -1,0 +1,126 @@
+/* The Manage panel's own parts; the frame, labels and buttons come from Page.module.css. */
+.storage {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.storageHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.storageName {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.bar {
+  height: 8px;
+  background: #2a2b30;
+  overflow: hidden;
+}
+.bar > div {
+  height: 100%;
+  background: var(--red);
+}
+
+.breakdown {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.breakRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.breakSize {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.actions {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.action,
+.actionDanger {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 14px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid #3a3b40;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-label);
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  text-align: left;
+  cursor: pointer;
+}
+.action:hover:not(:disabled),
+.action:focus-visible,
+.actionDanger:hover:not(:disabled),
+.actionDanger:focus-visible {
+  border-color: var(--muted);
+}
+.action:disabled,
+.actionDanger:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.actionDanger {
+  border-color: #5a1214;
+  color: #ff8a80;
+}
+.actionDanger:hover:not(:disabled),
+.actionDanger:focus-visible {
+  border-color: var(--red);
+  background: rgba(211, 38, 43, 0.1);
+}
+
+.actionCount {
+  margin-left: auto;
+  font-size: 13px;
+  font-family: var(--font-body);
+  letter-spacing: normal;
+  color: var(--muted);
+}
+
+.ask {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 14px;
+  box-sizing: border-box;
+  background: rgba(211, 38, 43, 0.1);
+  border: 1px solid #5a1214;
+}
+
+.askText {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+}

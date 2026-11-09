@@ -11,9 +11,35 @@ Ledger: `.superpowers/sdd/2026-11-09-manage-game-and-saves/progress.md`.
 | 2 | List, read and remove single saves | done (tests only; `readInfo` is injected until Task 1) |
 | 3 | Measure and remove the parts of an install, and reinstall | done (tests only; the Manage panel wires it in Task 6) |
 | 4 | The SAVED GAMES dialog | done (tests only; the Manage panel opens it in Task 6) |
-| 5 | The REMOVE... dialog | not started |
-| 6 | The MANAGE GAME panel, wired in | not started |
+| 5 | The REMOVE... dialog | done (no tests yet; not checked in a browser) |
+| 6 | The MANAGE GAME panel, wired in | done (no tests yet; not checked in a browser) |
 | 7 | The Install screen's mods list as a dialog | done |
+
+## Tasks 5 and 6 checks
+
+- Tests were deferred by the user: no test was written or run for these two tasks, and the
+  full suite and typecheck were not run as a gate. `GameScreen.test.tsx` is NOT updated yet:
+  its fixtures lack the new required `GameActions` members, so its typecheck fails
+  (`GameScreen.test.tsx(48,8)`), and its tests for the old SAVED GAMES section, the REMOVE GAME
+  alert and BROWSE FILES in INSTALLED will fail. The next pass rewrites those tests as Task 6
+  Step 1 describes.
+- Typecheck (`tsc --noEmit`) run once at the end: the only error is that fixture.
+- Not checked in a browser yet.
+- `RemoveDialog.tsx`: the Task 5 brief's six behaviours, with the copy from the brief. The
+  game-content warning uses R6's wording. The "game" row is the edition titles joined with
+  " and ". Two props beyond the brief: `editions` (titles) and `counts` (mods, maps, saves),
+  so the rows can say how many.
+- `countParts` (install-parts.ts, new): the mod, map and save counts, which `measureParts`
+  (bytes only) does not give.
+- `ManagePanel.tsx`: the storage breakdown (estimate, then the four parts, then "Cache and
+  other" when it is above 0), BROWSE FILES, REINSTALL GAME (inline), SAVED GAMES… (the
+  SavedGamesDialog) and REMOVE… (the RemoveDialog). Each removal refreshes the panel.
+- `App.tsx`: `saveLibrary()` builds the deps with `readInfo: () => null` (R1). Removals run
+  under `manifestWork` and end with `reload()`. `onReinstall` runs `prepareReinstall`, then
+  opens `/import?resume=<slot>`.
+- GameScreen: the right column is the Manage panel. The saved-games section, StoragePanel and
+  RemoveButton are gone. The old `.bar`, `.stack` and `.remove` CSS classes are unused now and
+  left in place.
 
 ## Task 4 checks
 

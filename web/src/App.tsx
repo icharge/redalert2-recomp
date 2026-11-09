@@ -38,6 +38,8 @@ import {
   type CopyTarget,
 } from "./storage/opfs";
 import { removeInstall } from "./storage/remove-install";
+import { countParts, measureParts, prepareReinstall, removeParts } from "./storage/install-parts";
+import { listSaves, readSave, removeSaves, type SaveLibraryDeps } from "./storage/save-library";
 import { exportSaves, importSaves, isSavePath } from "./storage/saves";
 import { managedInstallationSource } from "./storage/file-manager";
 import { reconcileInstallation } from "./storage/reconcile";
@@ -248,6 +250,14 @@ function Main() {
     const [build, records] = await Promise.all([loadBuildInfo(), refresh(manifest)]);
     setBoot({ ...boot, build, ...records });
   };
+  const saveLibrary = (): SaveLibraryDeps => ({
+    store: opfsSaveStore(),
+    manifest,
+    target,
+    readImported: readGameFile,
+    // R1: the save parser (Task 1) replaces this; until then saves show by file name and date
+    readInfo: () => null,
+  });
   const resume = slotFromPath(query.get("resume") ?? undefined);
   const others: ActiveInstall[] = installations
     .filter((entry) => entry.slot !== slot)
@@ -380,6 +390,39 @@ function Main() {
                 return count === 0
                   ? "That zip has no saved games in it."
                   : `${count} saved game${count === 1 ? "" : "s"} brought in.`;
+              }}
+              listSaves={(game) => listSaves(saveLibrary(), game)}
+              onDownloadSave={async (game, save) => {
+                const bytes = await readSave(saveLibrary(), game, save);
+                const url = URL.createObjectURL(
+                  new Blob([bytes as BlobPart], { type: "application/octet-stream" }),
+                );
+                const link = document.createElement("a");
+                link.href = url;
+                // the save's own name, without any folder the game kept it in
+                link.download = save.name.split("/").pop() ?? save.name;
+                link.click();
+                setTimeout(() => URL.revokeObjectURL(url), 10_000);
+              }}
+              onRemoveSaves={async (game, saves) => {
+                try {
+                  await manifestWork(() => removeSaves(saveLibrary(), game, saves));
+                } finally {
+                  await reload();
+                }
+              }}
+              measureParts={(install) => measureParts(saveLibrary(), install)}
+              countParts={(install) => countParts(saveLibrary(), install)}
+              onRemoveParts={async (install, parts) => {
+                try {
+                  await manifestWork(() => removeParts(saveLibrary(), install, parts));
+                } finally {
+                  await reload();
+                }
+              }}
+              onReinstall={async (install) => {
+                await manifestWork(() => prepareReinstall(manifest, install));
+                navigate(`/import?resume=${install.installation.slot}`);
               }}
               onRemove={async (installation) => {
                 try {

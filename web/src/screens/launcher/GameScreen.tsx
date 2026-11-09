@@ -1,5 +1,5 @@
 import { AlertDialog } from "@radix-ui/themes";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useMemo, useRef, useState } from "react";
 import { EDITION_BRAND } from "../../components/brand";
 import { FileExplorer } from "../../components/FileExplorer";
 import { formatBytes } from "../../components/format";
@@ -7,9 +7,12 @@ import { KeyArt } from "../../components/KeyArt";
 import type { ActiveInstall } from "../../storage/active-install";
 import { importedFileSource, type ReadOnlyFileSource } from "../../storage/file-browser";
 import type { BuildInfo } from "../../storage/install";
+import type { PartCounts, PartSizes, InstallPart } from "../../storage/install-parts";
 import type { GameRecord, InstallationRecord } from "../../storage/manifest";
+import type { SaveEntry } from "../../storage/save-library";
 import { editionReadiness, needsResume, playStatus } from "./readiness";
 import { EditionIcon, type Estimate } from "./Shell";
+import { ManagePanel } from "./game/ManagePanel";
 import page from "./Page.module.css";
 import styles from "./GameScreen.module.css";
 
@@ -27,6 +30,20 @@ export interface GameActions {
   onDownloadSaves(game: GameRecord): Promise<string>;
   /** takes saved games from a zip; says what happened */
   onImportSaves(game: GameRecord, zip: File): Promise<string>;
+  /** the saved games of one edition, newest first */
+  listSaves(game: GameRecord): Promise<SaveEntry[]>;
+  /** downloads one save under its own name */
+  onDownloadSave(game: GameRecord, save: SaveEntry): Promise<void>;
+  /** removes saves from one edition, both copies */
+  onRemoveSaves(game: GameRecord, saves: SaveEntry[]): Promise<void>;
+  /** how much of each part the install holds, in bytes */
+  measureParts(install: ActiveInstall): Promise<PartSizes>;
+  /** how many mods, maps and saves the install holds */
+  countParts(install: ActiveInstall): Promise<PartCounts>;
+  /** removes the ticked parts; all five remove the whole install */
+  onRemoveParts(install: ActiveInstall, parts: InstallPart[]): Promise<void>;
+  /** marks the game files not copied, then opens Resume import for the slot */
+  onReinstall(install: ActiveInstall): Promise<void>;
   /** what BROWSE FILES shows: a source that can change the files, or by default a read-only view */
   browseSource?(installation: InstallationRecord, games: GameRecord[]): ReadOnlyFileSource;
   estimate?: Estimate;
@@ -39,94 +56,6 @@ export function installName(install: ActiveInstall): string {
     // with two games the install is the folder, not whichever game was listed first
     (editions.length === 1 ? editions[0]?.title : undefined) ??
     installation.name
-  );
-}
-
-function StoragePanel({ estimate, refresh }: { estimate: Estimate; refresh: number }) {
-  const [numbers, setNumbers] = useState<{ usage: number; quota: number } | null>(null);
-  useEffect(() => {
-    let live = true;
-    estimate()
-      .then((value) => {
-        if (live) setNumbers({ usage: value.usage ?? 0, quota: value.quota ?? 0 });
-      })
-      .catch(() => {});
-    return () => {
-      live = false;
-    };
-  }, [estimate, refresh]);
-  if (!numbers || numbers.quota === 0) return null;
-  const percent = Math.min(100, Math.round((numbers.usage / numbers.quota) * 100));
-  const gb = (bytes: number) => {
-    const value = bytes / 1e9;
-    return value >= 10 ? String(Math.round(value)) : value.toFixed(1);
-  };
-  return (
-    <section className={page.panel} aria-labelledby="game-storage">
-      <h2 id="game-storage" className={page.label}>
-        BROWSER STORAGE
-      </h2>
-      <div
-        role="progressbar"
-        aria-label="Browser storage used"
-        aria-valuenow={percent}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        className={styles.bar}
-      >
-        <div style={{ width: `${Math.max(percent, 1)}%` }} />
-      </div>
-      <p className={page.status}>
-        {gb(numbers.usage)} GB of {gb(numbers.quota)} GB
-      </p>
-    </section>
-  );
-}
-
-function RemoveButton({
-  install,
-  label,
-  className,
-  children,
-  onRemove,
-}: {
-  install: ActiveInstall;
-  label?: string;
-  className?: string;
-  children: ReactNode;
-  onRemove(): void;
-}) {
-  const name = installName(install);
-  const bytes = install.editions.reduce((sum, game) => sum + game.bytes, 0);
-  return (
-    <AlertDialog.Root>
-      <AlertDialog.Trigger>
-        <button type="button" className={className} aria-label={label} title={label}>
-          {children}
-        </button>
-      </AlertDialog.Trigger>
-      <AlertDialog.Content maxWidth="440px" className={page.dialog}>
-        <AlertDialog.Title className={page.dialogTitle}>
-          REMOVE {name.toUpperCase()}?
-        </AlertDialog.Title>
-        <AlertDialog.Description size="2">
-          Deletes {formatBytes(bytes)} from this browser. Your own folder is not touched. Saved
-          games and settings are kept.
-        </AlertDialog.Description>
-        <div className={page.dialogActions}>
-          <AlertDialog.Cancel>
-            <button type="button" className={page.quiet}>
-              KEEP IT
-            </button>
-          </AlertDialog.Cancel>
-          <AlertDialog.Action>
-            <button type="button" className={page.primary} onClick={onRemove}>
-              REMOVE
-            </button>
-          </AlertDialog.Action>
-        </div>
-      </AlertDialog.Content>
-    </AlertDialog.Root>
   );
 }
 
@@ -188,23 +117,21 @@ export function GameScreen({
   onResume,
   onImport,
   onRemove,
-  onDownloadSaves,
-  onImportSaves,
   browseSource,
   estimate = browserEstimate,
+  ...manage
 }: GameActions & {
   install: ActiveInstall | null;
-  /** the edition chosen in the rail: the one SAVED GAMES works on */
+  /** the edition chosen in the rail: the one the KeyArt shows */
   edition: GameRecord | null;
   /** installs left from the slot system; only offered for deletion */
   others: ActiveInstall[];
   build?: BuildInfo;
 }) {
-  const [notice, setNotice] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [browsing, setBrowsing] = useState(false);
+  // bumped after a removal: the Manage panel measures and lists again
   const [removed, setRemoved] = useState(0);
-  const savesInput = useRef<HTMLInputElement>(null);
 
   // The source keeps its own copy of the record and the widget is built once per opening, so it must not
   // follow `browseSource`, which is a new function on every render.
@@ -219,16 +146,6 @@ export function GameScreen({
       (first ? importedFileSource(first) : null)
     );
   }, [browsing]);
-
-  async function say(work: Promise<string>) {
-    try {
-      setNotice(await work);
-      setFailure(null);
-    } catch (error) {
-      setFailure(message(error));
-      setNotice(null);
-    }
-  }
 
   async function remove(installation: InstallationRecord) {
     try {
@@ -264,7 +181,6 @@ export function GameScreen({
   const moviesMissing = editions.some(
     (game) => game.complete && editionReadiness(game, build)?.moviesMissing,
   );
-  const savesGame = editions.find((game) => game.id === edition?.id) ?? editions.at(-1) ?? null;
 
   return (
     <div className={styles.screen}>
@@ -274,12 +190,9 @@ export function GameScreen({
           <h1 className={page.title}>GAME</h1>
         </div>
 
-        {(notice || failure) && (
-          <p
-            className={failure ? page.failure : `${page.status} ${page.ok}`}
-            role={failure ? "alert" : "status"}
-          >
-            {failure ?? notice}
+        {failure && (
+          <p role="alert" className={page.failure}>
+            {failure}
           </p>
         )}
 
@@ -319,66 +232,24 @@ export function GameScreen({
                 </button>
               </div>
             )}
-            <div className={styles.actions}>
-              <button type="button" className={page.outline} onClick={() => setBrowsing(true)}>
-                BROWSE FILES
-              </button>
-              {needsResume(install) && (
+            {needsResume(install) && (
+              <div className={styles.actions}>
                 <button type="button" className={page.quiet} onClick={() => onResume(slot)}>
                   RESUME INSTALL
                 </button>
-              )}
-            </div>
+              </div>
+            )}
           </section>
 
           <div className={styles.side}>
-            {savesGame && (
-              <section className={page.panel} aria-labelledby="game-saves">
-                <h2 id="game-saves" className={page.label}>
-                  SAVED GAMES
-                  {editions.length > 1
-                    ? ` · ${EDITION_BRAND[savesGame.id].title.toUpperCase()}`
-                    : ""}
-                </h2>
-                <div className={styles.stack}>
-                  <button
-                    type="button"
-                    className={page.quiet}
-                    onClick={() => void say(onDownloadSaves(savesGame))}
-                  >
-                    DOWNLOAD .ZIP
-                  </button>
-                  <button
-                    type="button"
-                    className={page.quiet}
-                    onClick={() => savesInput.current?.click()}
-                  >
-                    IMPORT .ZIP
-                  </button>
-                  <input
-                    ref={savesInput}
-                    type="file"
-                    accept=".zip,application/zip"
-                    tabIndex={-1}
-                    className={page.visuallyHidden}
-                    aria-label={`Saves for ${EDITION_BRAND[savesGame.id].title}`}
-                    onChange={(event) => {
-                      const file = event.target.files?.[0];
-                      event.target.value = "";
-                      if (file) void say(onImportSaves(savesGame, file));
-                    }}
-                  />
-                </div>
-              </section>
-            )}
-            <StoragePanel estimate={estimate} refresh={removed} />
-            <RemoveButton
+            <ManagePanel
               install={install}
-              className={styles.remove}
-              onRemove={() => void remove(installation)}
-            >
-              REMOVE GAME
-            </RemoveButton>
+              estimate={estimate}
+              refresh={removed}
+              actions={manage}
+              onBrowse={() => setBrowsing(true)}
+              onChanged={() => setRemoved((n) => n + 1)}
+            />
           </div>
 
           {others.length > 0 && (

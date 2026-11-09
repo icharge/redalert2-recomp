@@ -137,9 +137,12 @@ is never reused for another slot. Mod/font restarts reload the same game URL.
    unfinished import offers RESUME INSTALL.
 3. **Mods.** Every mod of the install with its edition and size, filtered by edition; IN USE marks
    the active one. INSTALL MOD (or a dropped folder) asks which edition when there are two.
-4. **Game.** The install's editions and their readiness, BROWSE FILES, RESUME INSTALL, ADD MOVIES,
-   the saved games of the chosen edition (DOWNLOAD .ZIP, IMPORT .ZIP), browser storage, REMOVE
-   GAME (an alert dialog says the size and that saves and settings are kept), and OLDER COPIES.
+4. **Game.** The install's editions and their readiness, RESUME INSTALL and ADD MOVIES. The MANAGE
+   GAME panel beside them: browser storage with a breakdown (game content, mods, custom maps, saved
+   games, cache and other), then BROWSE FILES, REINSTALL GAME (confirmed inline; saves, settings and
+   mods are kept), SAVED GAMES… (the saves of each edition, by title, with download, remove and the
+   .ZIP buttons) and REMOVE… (the REMOVE FROM THIS BROWSER dialog: tick the parts to remove, with
+   REMOVE EVERYTHING asking inline first). OLDER COPIES stays below.
 5. **Install** (`/import`, full screen). Steps 1 FOLDER, 2 CHECK, 3 COPY: the folder picker
    (`showDirectoryPicker`, Chromium), the file picker, Use an archive or installer (7-Zip, see
    [storage.md](storage.md#archives)) and a drop zone that takes either; then CHECK sorts the folder

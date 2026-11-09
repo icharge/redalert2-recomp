@@ -57,6 +57,23 @@ export async function measureParts(
   return sizes;
 }
 
+/** How many mods, maps and saves the installation holds, across every edition. */
+export type PartCounts = Record<"mods" | "maps" | "saves", number>;
+
+/** The counts the Remove dialog shows beside each part. Maps are counted as measureParts sums them. */
+export async function countParts(
+  deps: SaveLibraryDeps,
+  install: ActiveInstall,
+): Promise<PartCounts> {
+  const counts: PartCounts = { mods: 0, maps: 0, saves: 0 };
+  for (const game of install.editions) {
+    counts.maps += namesOf(game, "map").filter((name) => game.files[name]?.done).length;
+    counts.saves += (await listSaves(deps, game)).length;
+    counts.mods += (await listMods(deps.manifest, game.storage)).length;
+  }
+  return counts;
+}
+
 /**
  * Removes the ticked parts, in the order settings, saves, maps, mods, game. Each part's failures are
  * collected and reported in one Error at the end; what could go is gone, and what could not stays
