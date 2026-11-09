@@ -2,10 +2,16 @@ import { Theme } from "@radix-ui/themes";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { formatBytes } from "../../components/format";
 import type { ActiveInstall } from "../../storage/active-install";
 import type { BuildInfo } from "../../storage/install";
+import type { PartCounts, PartSizes } from "../../storage/install-parts";
 import type { GameRecord } from "../../storage/manifest";
+import type { SaveEntry } from "../../storage/save-library";
 import { GameScreen } from "./GameScreen";
+
+const MB = 1024 * 1024;
+const GB = 1024 * MB;
 
 const game = (over: Partial<GameRecord> = {}): GameRecord => ({
   id: "ra2md",
@@ -28,6 +34,21 @@ const install = (
   installation: { slot: editions[0]?.slot ?? 1, name: "Original", importedAt: 1, ...over },
   editions,
 });
+const save = (name: string, over: Partial<SaveEntry> = {}): SaveEntry => ({
+  name,
+  size: 1_600_000,
+  modified: Date.UTC(2026, 10, 2, 21, 14),
+  info: null,
+  written: true,
+  imported: false,
+  ...over,
+});
+
+// what the Manage panel measures for the default install: the game, two mods' worth of bytes, one map
+const partSizes: PartSizes = { game: GB, mods: 2 * MB, maps: MB, saves: 0, settings: 0 };
+const partCounts: PartCounts = { mods: 1, maps: 1, saves: 0 };
+// the bytes the Remove dialog starts with: mods and custom maps are ticked
+const startsWith = formatBytes(3 * MB);
 
 function show(over: Partial<Parameters<typeof GameScreen>[0]> = {}) {
   const yr = game();
@@ -40,6 +61,13 @@ function show(over: Partial<Parameters<typeof GameScreen>[0]> = {}) {
     onRemove: vi.fn(async () => {}),
     onDownloadSaves: vi.fn(async () => "The saved games are downloading."),
     onImportSaves: vi.fn(async () => "2 saved games brought in."),
+    listSaves: vi.fn(async () => [] as SaveEntry[]),
+    onDownloadSave: vi.fn(async () => {}),
+    onRemoveSaves: vi.fn(async () => {}),
+    measureParts: vi.fn(async () => partSizes),
+    countParts: vi.fn(async () => partCounts),
+    onRemoveParts: vi.fn(async () => {}),
+    onReinstall: vi.fn(async () => {}),
     estimate: async () => ({ quota: 60e9, usage: 4.3e9 }),
     ...over,
   };
@@ -50,6 +78,8 @@ function show(over: Partial<Parameters<typeof GameScreen>[0]> = {}) {
   );
   return { props, user: userEvent.setup() };
 }
+
+const manage = () => screen.getByRole("region", { name: "MANAGE GAME" });
 
 const fullBuild: BuildInfo = {
   games: {
@@ -139,15 +169,29 @@ describe("GameScreen", () => {
     expect(await screen.findByRole("dialog")).toHaveTextContent("Yuri's Revenge — imported files");
   });
 
+  it("BROWSE FILES is in the MANAGE GAME panel, not in INSTALLED", async () => {
+    show();
+    await screen.findByText("Cache and other");
+    expect(
+      within(screen.getByRole("region", { name: "INSTALLED" })).queryByRole("button", {
+        name: "BROWSE FILES",
+      }),
+    ).toBeNull();
+    expect(within(manage()).getByRole("button", { name: "BROWSE FILES" })).toBeInTheDocument();
+  });
+
   it("downloads the saves of the chosen edition, and brings some in from a zip", async () => {
     const yr = game();
     const red = ra2();
     const { props, user } = show({ install: install([red, yr]), edition: red });
-    await user.click(screen.getByRole("button", { name: "DOWNLOAD .ZIP" }));
+    await user.click(await screen.findByRole("button", { name: /SAVED GAMES…/ }));
+    const dialog = await screen.findByRole("dialog");
+    const redSaves = within(dialog).getByRole("region", { name: "Red Alert 2 saves" });
+    await user.click(within(redSaves).getByRole("button", { name: "DOWNLOAD .ZIP" }));
     expect(await screen.findByText("The saved games are downloading.")).toBeInTheDocument();
     expect(props.onDownloadSaves).toHaveBeenCalledWith(expect.objectContaining({ id: "ra2" }));
     const zip = new File(["x"], "saves.zip", { type: "application/zip" });
-    await user.upload(screen.getByLabelText("Saves for Red Alert 2"), zip);
+    await user.upload(screen.getByLabelText("Import saves for Red Alert 2"), zip);
     expect(await screen.findByText("2 saved games brought in.")).toBeInTheDocument();
     expect(props.onImportSaves).toHaveBeenCalledWith(expect.objectContaining({ id: "ra2" }), zip);
   });
@@ -161,38 +205,87 @@ describe("GameScreen", () => {
     );
   });
 
-  it("asks before removing, saying the size and that saves and settings are kept", async () => {
-    const { props, user } = show();
-    await user.click(screen.getByRole("button", { name: "REMOVE GAME" }));
-    const dialog = await screen.findByRole("alertdialog");
-    expect(dialog).toHaveTextContent("REMOVE YURI'S REVENGE?");
-    expect(dialog).toHaveTextContent("1.00 GB");
-    expect(dialog).toHaveTextContent("Saved games and settings are kept.");
-    expect(props.onRemove).not.toHaveBeenCalled();
-    await user.click(within(dialog).getByRole("button", { name: "REMOVE" }));
-    await waitFor(() =>
-      expect(props.onRemove).toHaveBeenCalledWith(expect.objectContaining({ slot: 1 })),
-    );
+  it("breaks the storage down by part, with the rest as cache and other", async () => {
+    show();
+    // the rows appear once the install is measured
+    const row = async (label: string) =>
+      (await within(manage()).findByText(label)).closest("li") as HTMLElement;
+    expect(await row("Game content")).toHaveTextContent("1.00 GB");
+    expect(await row("Mods")).toHaveTextContent("2.00 MB");
+    expect(await row("Custom maps")).toHaveTextContent("1.00 MB");
+    expect(await row("Saved games")).toHaveTextContent("0 B");
+    expect(await row("Cache and other")).toBeInTheDocument();
   });
 
-  it("keeps the game when the player says keep it", async () => {
+  it("hides Cache and other when the parts take all of the browser's storage", async () => {
+    show({ estimate: async () => ({ quota: 60e9, usage: GB + 3 * MB }) });
+    await screen.findByText("Game content");
+    expect(screen.queryByText("Cache and other")).toBeNull();
+  });
+
+  it("keeps the breakdown and leaves the figure out when the browser gives no estimate", async () => {
+    show({ estimate: async () => ({}) });
+    expect(await screen.findByText("Game content")).toBeInTheDocument();
+    expect(screen.queryByRole("progressbar")).toBeNull();
+    expect(screen.queryByText(/ of /)).toBeNull();
+  });
+
+  it("SAVED GAMES… shows how many saves there are, and lists them", async () => {
+    const { user } = show({ listSaves: vi.fn(async () => [save("SAVE0003.SAV")]) });
+    const button = await screen.findByRole("button", { name: /SAVED GAMES…/ });
+    await waitFor(() => expect(button).toHaveTextContent("1 save"));
+    await user.click(button);
+    expect(await screen.findByRole("dialog")).toHaveTextContent("SAVE0003");
+  });
+
+  it("REMOVE… removes the parts ticked, then measures the install again", async () => {
     const { props, user } = show();
-    await user.click(screen.getByRole("button", { name: "REMOVE GAME" }));
-    await user.click(await screen.findByRole("button", { name: "KEEP IT" }));
-    expect(props.onRemove).not.toHaveBeenCalled();
+    await user.click(await screen.findByRole("button", { name: "REMOVE…" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent("REMOVE FROM THIS BROWSER");
+    await user.click(within(dialog).getByRole("button", { name: `REMOVE ${startsWith}` }));
+    await waitFor(() =>
+      expect(props.onRemoveParts).toHaveBeenCalledWith(props.install, ["mods", "maps"]),
+    );
+    await waitFor(() => expect(props.measureParts).toHaveBeenCalledTimes(2));
+  });
+
+  it("CANCEL in REMOVE… removes nothing", async () => {
+    const { props, user } = show();
+    await user.click(await screen.findByRole("button", { name: "REMOVE…" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "CANCEL" }));
+    expect(props.onRemoveParts).not.toHaveBeenCalled();
   });
 
   it("says why a removal failed", async () => {
     const { user } = show({
-      onRemove: async () => {
+      onRemoveParts: vi.fn(async () => {
         throw new Error("storage said no");
-      },
+      }),
     });
-    await user.click(screen.getByRole("button", { name: "REMOVE GAME" }));
+    await user.click(await screen.findByRole("button", { name: "REMOVE…" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: `REMOVE ${startsWith}` }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("storage said no");
+  });
+
+  it("REINSTALL GAME asks inline, and only REINSTALL reinstalls", async () => {
+    const { props, user } = show();
+    await user.click(await screen.findByRole("button", { name: "REINSTALL GAME" }));
+    const ask = screen.getByRole("group", { name: "Confirm reinstall" });
+    expect(ask).toHaveTextContent("Reinstall? Saves, settings and mods are kept.");
+    await user.click(within(ask).getByRole("button", { name: "CANCEL" }));
+    expect(screen.queryByRole("group", { name: "Confirm reinstall" })).toBeNull();
+    expect(props.onReinstall).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "REINSTALL GAME" }));
     await user.click(
-      within(await screen.findByRole("alertdialog")).getByRole("button", { name: "REMOVE" }),
+      within(screen.getByRole("group", { name: "Confirm reinstall" })).getByRole("button", {
+        name: "REINSTALL",
+      }),
     );
-    expect(await screen.findByText("storage said no")).toBeInTheDocument();
+    await waitFor(() => expect(props.onReinstall).toHaveBeenCalledWith(props.install));
   });
 
   it("offers to delete the copies left from the slot system, after asking", async () => {

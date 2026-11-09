@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { IDBFactory } from "fake-indexeddb";
 import { Manifest } from "./storage/manifest";
@@ -317,18 +317,28 @@ describe("Launcher routes", () => {
     window.history.replaceState({}, "", "/manage");
     render(<App />);
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "REMOVE GAME" }));
-    await user.click(screen.getByRole("button", { name: "REMOVE" }));
+    await user.click(await screen.findByRole("button", { name: "REMOVE…" }));
+    const dialog = await screen.findByRole("dialog");
+    // the game's own files: ticking them removes the game and keeps the installation
+    const game = within(dialog).getByRole("checkbox", { name: /^Red Alert 2 and/ });
+    await waitFor(() => expect(game).toBeEnabled());
+    await user.click(game);
+    await user.click(within(dialog).getByRole("button", { name: /^REMOVE \d/ }));
     // the record stays: forgetting it would leave the files behind, and RESUME INSTALL on a
     // page that still listed it would name an installation that does not exist
-    expect(await screen.findByRole("alert")).toHaveTextContent(/in use.*another tab/);
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(/in use.*another tab/);
     expect(await m.listInstallations()).toHaveLength(1);
-    expect(screen.getByRole("button", { name: "REMOVE GAME" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
 
-    // the tab is closed: REMOVE GAME again goes through
+    // the tab is closed: REMOVE EVERYTHING, asked inline, goes through and forgets the install
     locked.clear();
-    await user.click(screen.getByRole("button", { name: "REMOVE GAME" }));
-    await user.click(screen.getByRole("button", { name: "REMOVE" }));
+    await user.click(within(dialog).getByRole("button", { name: /^REMOVE EVERYTHING · / }));
+    await user.click(
+      within(within(dialog).getByRole("group", { name: "Confirm remove everything" })).getByRole(
+        "button",
+        { name: "REMOVE EVERYTHING" },
+      ),
+    );
     expect(await screen.findByText("No game installed yet.")).toBeInTheDocument();
     expect(await m.listInstallations()).toEqual([]);
     m.close();

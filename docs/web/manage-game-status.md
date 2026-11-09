@@ -11,20 +11,24 @@ Ledger: `.superpowers/sdd/2026-11-09-manage-game-and-saves/progress.md`.
 | 2 | List, read and remove single saves | done (tests only; `readInfo` is injected until Task 1) |
 | 3 | Measure and remove the parts of an install, and reinstall | done (tests only; the Manage panel wires it in Task 6) |
 | 4 | The SAVED GAMES dialog | done (tests only; the Manage panel opens it in Task 6) |
-| 5 | The REMOVE... dialog | done (no tests yet; not checked in a browser) |
-| 6 | The MANAGE GAME panel, wired in | done (no tests yet; not checked in a browser) |
+| 5 | The REMOVE... dialog | done (tests; not checked in a browser) |
+| 6 | The MANAGE GAME panel, wired in | done (tests; not checked in a browser) |
 | 7 | The Install screen's mods list as a dialog | done |
 
 ## Tasks 5 and 6 checks
 
-- Tests were deferred by the user: no test was written or run for these two tasks, and the
-  full suite and typecheck were not run as a gate. `GameScreen.test.tsx` is NOT updated yet:
-  its fixtures lack the new required `GameActions` members, so its typecheck fails
-  (`GameScreen.test.tsx(48,8)`), and its tests for the old SAVED GAMES section, the REMOVE GAME
-  alert and BROWSE FILES in INSTALLED will fail. The next pass rewrites those tests as Task 6
-  Step 1 describes.
-- Typecheck (`tsc --noEmit`) run once at the end: the only error is that fixture.
-- Not checked in a browser yet.
+- Tests (the deferred test pass): `RemoveDialog.test.tsx` has 10 tests, the Task 5 brief's six
+  plus the warning copy for one edition, removing only the game, a disabled REMOVE when nothing
+  is ticked, and CANCEL in the remove-everything strip. `GameScreen.test.tsx` is rewritten for
+  the MANAGE GAME panel: the storage breakdown (with and without an estimate, and "Cache and
+  other" hidden when nothing is left over), SAVED GAMES…, REMOVE… (remove, cancel, and a failure
+  shown), REINSTALL GAME (confirm and cancel, and `onReinstall` only after REINSTALL), and BROWSE
+  FILES in the panel. The OLDER COPIES tests are unchanged. `App.test.tsx` rewrites the REMOVE GAME
+  test for REMOVE…: an in-use game file keeps the installation, and REMOVE EVERYTHING then forgets it.
+- Typecheck (`tsc --noEmit`, both configs) passes. The full suite has 4 failures, all in files
+  outside this change: `SettingsScreen.test.tsx` (2), `changelog.test.ts` (1) and
+  `cursor-preferences.test.ts` (1), which belong to the other session's uncommitted work.
+- Not checked in a browser yet (Task 6 Step 5).
 - `RemoveDialog.tsx`: the Task 5 brief's six behaviours, with the copy from the brief. The
   game-content warning uses R6's wording. The "game" row is the edition titles joined with
   " and ". Two props beyond the brief: `editions` (titles) and `counts` (mods, maps, saves),
@@ -112,7 +116,7 @@ Ledger: `.superpowers/sdd/2026-11-09-manage-game-and-saves/progress.md`.
 
 ## Left
 
-- Tasks 1, 5 and 6. Removing the game (ruling R6) leaves the install resumable with its
+- Task 1, and the browser check of Tasks 5 and 6 (`?mute`, a real install). Removing the game (ruling R6) leaves the install resumable with its
   saves, settings, maps and mods; the Manage panel wires the parts in Task 6.
 - Task 1 replaces the injected `readInfo` with the real save parser.
 - Fix or wait on the 3 failing tests above.
