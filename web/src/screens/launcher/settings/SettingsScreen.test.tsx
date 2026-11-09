@@ -505,6 +505,20 @@ describe("SettingsScreen", () => {
     expect(screen.queryByRole("combobox", { name: "Size" })).toBeNull();
   });
 
+  it("uses and writes the INI dynamic mode instead of a stale browser preference", async () => {
+    localStorage.setItem("ra2.video.slot-1-ra2md", '"browser"');
+    const { written } = setup({
+      mainIni: "[Video]\nDynamicScreen=no\nScreenWidth=1280\nScreenHeight=720\n",
+    });
+    await open("VIDEO");
+    await waitFor(() =>
+      expect(screen.getByRole("radio", { name: "Fixed" })).toHaveAttribute("aria-checked", "true"),
+    );
+    await userEvent.click(screen.getByRole("radio", { name: "Match browser" }));
+    await waitFor(() => expect(written.at(-1)?.text).toContain("DynamicScreen=yes"));
+    expect(written.at(-1)?.text).toContain("ScreenWidth=1280");
+  });
+
   it("shows a write error and keeps the rest of the screen usable", async () => {
     const { deps } = setup();
     deps.writeSave.mockRejectedValueOnce(new Error("disk full"));

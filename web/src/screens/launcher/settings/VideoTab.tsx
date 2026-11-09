@@ -5,7 +5,11 @@ import {
   writeFullscreenPreference,
   type FullscreenPreference,
 } from "../../../storage/fullscreen-preferences";
-import { setIniValue } from "../../../storage/game-settings";
+import {
+  readIniVideoChoice,
+  setIniValue,
+  writeIniVideoChoice,
+} from "../../../storage/game-settings";
 import {
   BROWSER_VIDEO_SIZE,
   DEFAULT_VIDEO_SIZE,
@@ -47,14 +51,18 @@ export function VideoTab({ editions, edition, settings }: TabProps) {
     setChoice(next);
     if (next && next !== BROWSER_VIDEO_SIZE) setLastFixed(next);
     forEachEdition(editions, (game) => writeVideoPreference(game.storage, next));
+    void settings.update("main", (ini) => writeIniVideoChoice(ini, next));
   };
   /** Only remembered: the game page applies it when a game starts. */
   const saveFullscreen = (next: FullscreenPreference) => {
     setFullscreen(next);
     forEachEdition(editions, (game) => writeFullscreenPreference(game.storage, next));
   };
-  const mode = modeOf(choice);
-  const fixed = choice && choice !== BROWSER_VIDEO_SIZE ? choice : lastFixed;
+  const savedChoice = loaded?.main.ini ? readIniVideoChoice(loaded.main.ini) : undefined;
+  const effectiveChoice = savedChoice === undefined ? choice : savedChoice;
+  const mode = modeOf(effectiveChoice);
+  const fixed =
+    effectiveChoice && effectiveChoice !== BROWSER_VIDEO_SIZE ? effectiveChoice : lastFixed;
   const savedSize = `${settings.mainValue("Video", "ScreenWidth", "1920")} × ${settings.mainValue("Video", "ScreenHeight", "1080")}`;
 
   return (

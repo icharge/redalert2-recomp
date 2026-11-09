@@ -17,7 +17,12 @@ export function wolLineBytes(line: string): Uint8Array {
 export function withBrowserWolPort(bytes: Uint8Array): Uint8Array {
   const text = Array.from(bytes, (byte) => String.fromCharCode(byte)).join("");
   const eol = text.includes("\r\n") ? "\r\n" : "\n";
-  const lines = text.split(/\r?\n/);
+  // Older launches could append the game's Options section to our port line.
+  const repaired = text.replace(
+    /^([ \t]*PortNumberOverride[ \t]*=[ \t]*\d+)(\[Options\])[ \t]*\r?$/gim,
+    `$1${eol}$2`,
+  );
+  const lines = repaired.split(/\r?\n/);
   let inMultiplayer = false;
   let sectionAt = -1;
   let found = false;
@@ -38,6 +43,7 @@ export function withBrowserWolPort(bytes: Uint8Array): Uint8Array {
     if (sectionAt >= 0) lines.splice(sectionAt + 1, 0, "PortNumberOverride=1234");
     else lines.push("[MultiPlayer]", "PortNumberOverride=1234");
   }
+  if (lines[lines.length - 1] !== "") lines.push("");
   return Uint8Array.from(lines.join(eol), (character) => character.charCodeAt(0));
 }
 

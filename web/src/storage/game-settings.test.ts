@@ -19,18 +19,33 @@ import {
   parseHandle,
   parseHotkeys,
   parseIni,
+  readIniVideoChoice,
   serializeIni,
   setIniValue,
   setIniValueLast,
   settingsFileNames,
   withDefaultHotkeys,
   writeGameSettings,
+  writeIniVideoChoice,
   type GameSettingsDeps,
 } from "./game-settings";
 import { isSettingsPath } from "./settings-files";
 
 const bytes = (text: string) => encodeLatin1(text);
 const text = (data: Uint8Array) => new TextDecoder("latin1").decode(data);
+
+describe("INI video mode", () => {
+  it("uses DynamicScreen as the durable resolution choice", () => {
+    const ini = parseIni(
+      bytes("[Video]\r\nDynamicScreen=YES\r\nScreenWidth=1920\r\nScreenHeight=1080\r\n"),
+    );
+    expect(readIniVideoChoice(ini)).toBe("browser");
+    const fixed = writeIniVideoChoice(ini, { w: 1280, h: 720 });
+    expect(readIniVideoChoice(fixed)).toEqual({ w: 1280, h: 720 });
+    expect(text(serializeIni(fixed))).toContain("DynamicScreen=no\r\n");
+    expect(readIniVideoChoice(parseIni(bytes("[Video]\nScreenWidth=800\n")))).toBeUndefined();
+  });
+});
 
 function record(id: GameRecord["id"], files: Record<string, string> = {}): GameRecord {
   return {
@@ -350,6 +365,36 @@ describe("player name", () => {
 });
 
 describe("ensureDefaultMainSettings", () => {
+  it("migrates the existing fixed preference but respects an explicit INI mode", async () => {
+    localStorage.setItem("ra2.video.slot-1-ra2md", JSON.stringify({ w: 1280, h: 720 }));
+    try {
+      const writes: string[] = [];
+      const deps = {
+        readSave: async () => ({
+          name: "RA2MD.INI",
+          data: bytes("[Video]\nScreenWidth=1920\nScreenHeight=1080\n"),
+        }),
+        writeSave: async (_storage: string, _name: string, data: Uint8Array) => {
+          writes.push(text(data));
+        },
+      };
+      await ensureDefaultMainSettings(record("ra2md"), deps);
+      expect(writes[0]).toContain("DynamicScreen=no");
+      expect(writes[0]).toContain("ScreenWidth=1280");
+      const explicit = {
+        ...deps,
+        readSave: async () => ({
+          name: "RA2MD.INI",
+          data: bytes("[Video]\nDynamicScreen=yes\n[Intro]\nPlay=no\n"),
+        }),
+      };
+      writes.length = 0;
+      await ensureDefaultMainSettings(record("ra2md"), explicit);
+      expect(writes).toEqual([]);
+    } finally {
+      localStorage.removeItem("ra2.video.slot-1-ra2md");
+    }
+  });
   it("writes the defaults into the save store when the game has no settings file", async () => {
     const writes: { name: string; text: string }[] = [];
     await ensureDefaultMainSettings(record("ra2md"), {

@@ -7,6 +7,7 @@
 
 import { keyFor } from "../game/input";
 import type { GameId } from "./install";
+import { BROWSER_VIDEO_SIZE, readVideoChoice, type VideoChoice } from "./video-preferences";
 import { defaultMainValue, gameSettingsDefaults } from "./game-settings-defaults";
 import type { GameRecord } from "./manifest";
 import { readGameFile, readSaveFile, opfsTarget, type SavedSettingsFile } from "./opfs";
@@ -48,6 +49,37 @@ export function parseIni(data: Uint8Array): Ini {
 
 export function serializeIni(ini: Ini): Uint8Array {
   return encodeLatin1(ini.lines.join(ini.eol));
+}
+
+/** The INI mode, or undefined when an older profile needs migration. */
+export function readIniVideoChoice(ini: Ini): VideoChoice | undefined {
+  const dynamic = getIniValue(ini, "Video", "DynamicScreen");
+  if (dynamic === null) return undefined;
+  if (/^(yes|true|1)$/i.test(dynamic.trim())) return BROWSER_VIDEO_SIZE;
+  const w = Number(getIniValue(ini, "Video", "ScreenWidth"));
+  const h = Number(getIniValue(ini, "Video", "ScreenHeight"));
+  return Number.isInteger(w) &&
+    Number.isInteger(h) &&
+    w >= 320 &&
+    h >= 200 &&
+    w <= 8192 &&
+    h <= 8192
+    ? { w, h }
+    : null;
+}
+
+export function writeIniVideoChoice(ini: Ini, choice: VideoChoice): Ini {
+  let next = setIniValue(
+    ini,
+    "Video",
+    "DynamicScreen",
+    choice === BROWSER_VIDEO_SIZE ? "yes" : "no",
+  );
+  if (choice && choice !== BROWSER_VIDEO_SIZE) {
+    next = setIniValue(next, "Video", "ScreenWidth", String(choice.w));
+    next = setIniValue(next, "Video", "ScreenHeight", String(choice.h));
+  }
+  return next;
 }
 
 export function emptyIni(): Ini {
@@ -812,21 +844,33 @@ export async function ensureDefaultMainSettings(
   const names = settingsFileNames(game.id);
   const saved = await (deps.readSave ?? defaultReadSave)(game.storage, names.main);
   if (saved) {
-    const patched = withIntroPlayOff(saved.data);
+    const ini = parseIni(saved.data);
+    const migrated =
+      readIniVideoChoice(ini) === undefined
+        ? writeIniVideoChoice(ini, readVideoChoice(game.storage))
+        : null;
+    const patched = withIntroPlayOff(migrated ? serializeIni(migrated) : saved.data) ?? migrated;
     if (patched) await writeGameSettings(game, saved.name, serializeIni(patched), deps);
     return;
   }
   const imported = importedEntry(game, names.main);
   if (imported) {
     const data = await (deps.readImported ?? readGameFile)(imported[1].home, imported[0]);
-    const patched = withIntroPlayOff(data) ?? parseIni(data);
+    let patched = withIntroPlayOff(data) ?? parseIni(data);
+    if (readIniVideoChoice(patched) === undefined)
+      patched = writeIniVideoChoice(patched, readVideoChoice(game.storage));
     await writeGameSettings(game, imported[0], serializeIni(patched), deps);
     return;
   }
   await writeGameSettings(
     game,
     gameIniName(game.id),
-    serializeIni(setIniValue(defaultMainIni(game.id), "Intro", "Play", "no")),
+    serializeIni(
+      writeIniVideoChoice(
+        setIniValue(defaultMainIni(game.id), "Intro", "Play", "no"),
+        readVideoChoice(game.storage),
+      ),
+    ),
     deps,
   );
 }
