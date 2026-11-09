@@ -10,10 +10,24 @@ Ledger: `.superpowers/sdd/2026-11-09-manage-game-and-saves/progress.md`.
 | 1 | Read a save's title and details | not started (waits on the user saving a game in each edition) |
 | 2 | List, read and remove single saves | done (tests only; `readInfo` is injected until Task 1) |
 | 3 | Measure and remove the parts of an install, and reinstall | done (tests only; the Manage panel wires it in Task 6) |
-| 4 | The SAVED GAMES dialog | not started |
+| 4 | The SAVED GAMES dialog | done (tests only; the Manage panel opens it in Task 6) |
 | 5 | The REMOVE... dialog | not started |
 | 6 | The MANAGE GAME panel, wired in | not started |
 | 7 | The Install screen's mods list as a dialog | done |
+
+## Task 4 checks
+
+- `SavedGamesDialog.test.tsx`: 11 tests, written first and failing on the missing
+  module, then passing (11 of 11). The brief's 8 plus 3: a zip download's message
+  shows as a status line; a zip import goes to one edition; closing the dialog
+  cancels an open confirmation.
+- Presentational: all data and actions come in as props. Confirmations are inline
+  (the row or the footer turns into the question), with no nested dialog.
+- Zip buttons sit in each group's header (the ruling); DOWNLOAD .ZIP and IMPORT .ZIP
+  are quiet buttons there.
+- The full suite and typecheck were skipped on purpose, at the coordinator's
+  request; they run once after all tasks.
+- Not checked in a browser yet.
 
 ## Task 3 checks
 
@@ -72,7 +86,7 @@ Ledger: `.superpowers/sdd/2026-11-09-manage-game-and-saves/progress.md`.
 
 ## Left
 
-- Tasks 1, 4 to 6. Removing the game (ruling R6) leaves the install resumable with its
+- Tasks 1, 5 and 6. Removing the game (ruling R6) leaves the install resumable with its
   saves, settings, maps and mods; the Manage panel wires the parts in Task 6.
 - Task 1 replaces the injected `readInfo` with the real save parser.
 - Fix or wait on the 3 failing tests above.

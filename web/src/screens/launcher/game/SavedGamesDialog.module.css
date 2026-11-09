@@ -1,0 +1,234 @@
+/* The dialog's own parts; the frame, title and buttons come from Page.module.css. */
+.content {
+  padding: 0;
+  overflow: hidden;
+}
+
+.body {
+  padding: 28px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  box-sizing: border-box;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.headText {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.lede {
+  color: var(--muted);
+}
+
+.close {
+  width: 44px;
+  height: 44px;
+  margin: -10px -12px 0 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.close:hover,
+.close:focus-visible {
+  color: var(--text);
+}
+
+.groups {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-height: 0;
+  max-height: calc(100vh - 160px);
+  overflow-y: auto;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+}
+
+.groupHead {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #3a3b40;
+}
+
+.groupIcon {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+
+.groupName {
+  margin: 0;
+  flex: 1;
+  font-family: var(--font-label);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+.count {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row,
+.rowAsking {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  margin: 0 -8px;
+  padding: 10px 8px;
+  border-bottom: 1px solid #2a2b30;
+}
+.rowAsking {
+  background: rgba(211, 38, 43, 0.1);
+}
+
+.text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.rowTitle {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.details {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.file {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.size {
+  width: 64px;
+  font-size: 14px;
+  text-align: right;
+  color: var(--muted);
+}
+
+.iconButton,
+.iconButtonRemove {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid #3a3b40;
+  background: transparent;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.iconButtonRemove {
+  border-color: #5a1214;
+  color: #ff8a80;
+}
+.iconButton:disabled,
+.iconButtonRemove:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.ask {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.question {
+  font-size: 14px;
+  color: #ff8a80;
+  margin-right: 4px;
+}
+
+.error {
+  margin: 0;
+  font-size: 14px;
+  color: #ff8a80;
+}
+
+.status {
+  margin: 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.allAsk {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 10px 16px;
+  box-sizing: border-box;
+  background: rgba(211, 38, 43, 0.1);
+  border: 1px solid #5a1214;
+}
+
+.allText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.allQuestion {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.allHint {
+  font-size: 13px;
+  color: var(--muted);
+}
