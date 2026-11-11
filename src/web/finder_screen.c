@@ -54,6 +54,7 @@ static uint8_t g_tmpl[2048];
 static size_t g_at;
 static uint32_t g_screen, g_previous, g_owner;
 static volatile int g_open_request, g_close_request, g_search_request, g_add_request;
+static int g_sliding;   /* a slide-out is running (the game's loop calls the pump) */
 
 static void w16(uint16_t v) { memcpy(g_tmpl + g_at, &v, 2), g_at += 2; }
 static void w32(uint32_t v) { memcpy(g_tmpl + g_at, &v, 4), g_at += 4; }
@@ -329,6 +330,18 @@ static void repaint(void) {
     if (g_screen) hle_call_guest(hle_resolve("InvalidateRect"), 3, (uint32_t[]){ g_screen, 0, 0 });
 }
 
+/* The game's teardown of a screen slides its buttons out first (0x7757E0 -> 0x622720 -> 0x608070), with the screen still
+ * showing; the next screen then slides its own in. It is a loop that runs the game's pump until the slide is done, and
+ * returns at once for a dialog that is not showing steady. We take that step alone: the dialog is not torn down. */
+#define SLIDE_OUT_VA 0x00608070u   /* ecx = the dialog */
+
+static void slide_out(uint32_t dialog) {
+    if (!dialog || !hle_is_window(dialog)) return;
+    g_sliding = 1;   /* the loop runs the pump: the pump must not start another change meanwhile */
+    call_this(SLIDE_OUT_VA, dialog, 0, NULL);
+    g_sliding = 0;
+}
+
 static void preview_clear(void) {
     if (!g_preview) return;
     call_this(PREVIEW_FREE_VA, g_preview, 0, NULL);
@@ -419,6 +432,7 @@ static void open_now(void) {
     static int registered;
     uint32_t owner = web_finder_screen_owner();
     if (!owner || g_screen) return;
+    slide_out(owner);   /* Customize Battle's buttons slide out, as they do when it is left */
     if (!registered) win32hle_register(g_shims), registered = 1;
     build_template();
     uint32_t args[5] = { MEM32(GAME_INSTANCE_VA), (uint32_t)(uintptr_t)g_tmpl, hle_window_parent(owner),
@@ -447,6 +461,7 @@ static void open_now(void) {
 
 static void close_now(void) {
     uint32_t h = g_screen;
+    slide_out(h);   /* ours slides out while it still shows, then Customize Battle slides in */
     g_screen = 0, g_close_request = 0;
     preview_clear();
     if (g_picked[0]) g_picked[0] = 0, send_event("mapFinderPreview", "sha1", "");
@@ -459,6 +474,7 @@ static void close_now(void) {
 }
 
 void web_finder_screen_pump(void) {
+    if (g_sliding) return;
     if (g_open_request) g_open_request = 0, open_now();
     if (!g_screen) {
         if (g_in_flags & 16) preview_drop_pending();   /* the page answered after the screen closed */
