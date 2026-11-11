@@ -5,6 +5,8 @@
 
 /* Ask for the screen; it opens at the next pump. */
 void web_finder_screen_open(void);
+/* Whether the screen is up (it covers the map screen it was opened from). */
+int web_finder_screen_showing(void);
 /* The presenter's pump, on the game's thread. */
 void web_finder_screen_pump(void);
 /* A message the game took from its queue (map_search.c's take hook): the keys that reach the search Edit. */

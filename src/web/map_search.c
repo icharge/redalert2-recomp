@@ -170,7 +170,14 @@ uint32_t web_finder_screen_owner(void) { return screen_showing() ? g_screen.dial
 
 /* The presenter's pump, on the game's thread. */
 void web_map_search_pump(void) {
-    if (maps_rescan_pending()) maps_rescan_now();
+    /* The scan reads every map file again, on this thread: the game stands still for it, longer with each map added.
+     * While the finder covers the map screen nobody sees that screen's list, so the scan waits for the finder to
+     * close, and then runs once for all the maps it added. */
+    int covered = 0;
+#ifndef RA2_TARGET_GAME
+    covered = web_finder_screen_showing();
+#endif
+    if (maps_rescan_pending() && !covered) maps_rescan_now();
     find_button_settle();
 #ifndef RA2_TARGET_GAME
     web_finder_screen_pump();
@@ -255,9 +262,10 @@ static void maps_rescan_now(void) {
     if (how == 2) MEM32(MAP_COUNT_VA) = 0;
     uint32_t keep = g_ecx;
     g_ecx = SESSION_VA;
+    double began = emscripten_get_now();
     hle_call_guest(MAP_SCAN_VA, 0, NULL);
     g_ecx = keep;
-    fprintf(stderr, "[maps] rescan (%s): %u -> %u\n", how == 2 ? "truncate" : "append", before, MEM32(MAP_COUNT_VA));
+    fprintf(stderr, "[maps] rescan (%s): %u -> %u in %.0f ms\n", how == 2 ? "truncate" : "append", before, MEM32(MAP_COUNT_VA), emscripten_get_now() - began);
     /* A Customize Battle that is already open filled its list before the scan. Its proc rebuilds list 1363
      * from the vector when the game type list (0x6EB) reports a selection change (0x5E6B78); send it that, so
      * a new map shows with no reopen. (WM_COMMAND 0x583 is the Random Map button: not that.) */

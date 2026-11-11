@@ -104,6 +104,7 @@ static void finder_proc(void) {
 static const win32hle_shim g_shims[] = { { "ra2_finder_screen_proc", finder_proc }, { NULL, NULL } };
 
 void web_finder_screen_open(void) { g_open_request = 1; }
+int web_finder_screen_showing(void) { return g_screen != 0; }
 
 /* ---- the rows ------------------------------------------------------------------------------------------------------
  * The game's own list takes a row as a message (0x4CD, wParam 0, lParam a UTF-16 string): it makes the row's record, adds the
@@ -306,6 +307,10 @@ static void open_now(void) {
     build_template();
     uint32_t args[5] = { MEM32(GAME_INSTANCE_VA), (uint32_t)(uintptr_t)g_tmpl, hle_window_parent(owner),
                          hle_resolve("ra2_finder_screen_proc"), 0 };
+    /* The template is ours. Unsaid, user32 names the dialog as the last one the game looked up (Customize Battle), and
+     * map_search.c then takes this screen for a new map screen: it adds its search box and Find button to it, and loses
+     * the real one under it. */
+    hle_dialog_resource_forget();
     uint32_t h = hle_call_guest(hle_resolve("CreateDialogIndirectParamA"), 5, args);
     fprintf(stderr, "[finder] dialog %x (owner %x, parent %x)\n", h, owner, args[2]);
     if (!h) return;

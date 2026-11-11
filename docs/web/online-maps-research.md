@@ -304,6 +304,21 @@ which settles the doubt left by the second step.
   The default build is unchanged (`RA2_FINDER_NATIVE` off): Find opens the page's panel. What is not settled: the
   status line is a static with a fixed label, so messages go in the list; the screen borrows Customize Battle's ids
   and layout; and `RA2_FINDER_NATIVE` is still opt-in.
+  **Two faults found by playing it** (a player reported a freeze on download). First, user32 named the finder's
+  dialog as Customize Battle: `hle_dialog_resource_id` answers with the last dialog resource the game looked up,
+  whatever template it is given, so a host template made right after Customize Battle was called `0x6B`.
+  `map_search.c` then took the finder for a new map screen: it added its own search box and Find button to it (a
+  second box that filtered the results, a third button that did nothing) and forgot the real Customize Battle, so
+  after Back the Find button was dead and a new map never reached the list. The host now says the template is its
+  own first (`hle_dialog_resource_forget`). Second, every Add ran the map scan at once, on the game's thread. The
+  scan (`0x699980`) reads each custom map again, and the game's reader (`0x6994F0`) looks for `[Basic]` by reading
+  the first 1%, 2%, ... of the file until it finds it: a 1 MB map with `[Basic]` near its end costs 40 MB of reading,
+  every scan. Eight maps from an empty search stopped the game for 25, 56, 64, 173, 297, 385, 385 and 528 ms, more
+  on a busy machine. The scan now waits while the finder covers the map screen and runs once at Back (534 ms for
+  those eight; `web/e2e/finder-add-live.mjs` watches the game's picture and the page's timer while maps are added).
+  A download also had no time limit, and its row showed "..." for as long as it took: it now fails after 90 s with
+  a line in the list. Not done: a double click on a row adds nothing (user32 makes no `WM_LBUTTONDBLCLK`), and a
+  map scan still stops the game for as long as it takes when the page's panel adds a map over Customize Battle.
 - **Restyled.** The panel is inside `GameDialogChrome` (the link dialogs' frame, title strip and red plates), with a
   dark list well and yellow text like the game's lists. It is still a page panel, not a game screen.
 - **A screen of the game's own.** Not done, and not possible from the host alone. A game screen is a dialog template

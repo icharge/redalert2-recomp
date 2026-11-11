@@ -12,6 +12,9 @@ export interface MapFinderCommand {
 
 const clean = (text: string) => text.replace(/[\t\r\n]+/g, " ");
 
+/** How long one map's download may take (the largest is 8 MB). */
+const DOWNLOAD_LIMIT_MS = 90_000;
+
 /** The lines `ra2_finder_results` takes: "sha1 TAB flags TAB name", flags `u` unreviewed, `a` already added. */
 export function finderRows(results: MapResult[], added: ReadonlySet<string>): string {
   return results
@@ -69,13 +72,17 @@ export function NativeMapFinder({
       const sha1 = command.add;
       void (async () => {
         try {
-          await installMap(game, sha1, await downloadMap(sha1));
+          // The row shows only "..." while this runs: a download that never ends must end as a failure.
+          const limit = AbortSignal.timeout(DOWNLOAD_LIMIT_MS);
+          await installMap(game, sha1, await downloadMap(sha1, limit));
           exports.ra2_finder_added(sha1, 1);
         } catch (reason) {
+          const why =
+            reason instanceof DOMException && reason.name === "TimeoutError"
+              ? "the download took too long"
+              : message(reason);
           exports.ra2_finder_added(sha1, 0);
-          exports.ra2_finder_note(
-            `${found.current.get(sha1)?.name ?? "The map"}: ${message(reason)}`,
-          );
+          exports.ra2_finder_note(`${found.current.get(sha1)?.name ?? "The map"}: ${why}`);
         }
       })();
     }
