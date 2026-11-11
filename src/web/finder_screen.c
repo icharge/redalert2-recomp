@@ -432,7 +432,9 @@ static void open_now(void) {
     static int registered;
     uint32_t owner = web_finder_screen_owner();
     if (!owner || g_screen) return;
-    slide_out(owner);   /* Customize Battle's buttons slide out, as they do when it is left */
+    /* Customize Battle's buttons slide out, as they do when it is left. Known fault: one frame of its Find plate then shows
+     * on the emptied sidebar while ours slides in (docs/web/shell-screens.md, "a flash of the Find button"). */
+    slide_out(owner);
     if (!registered) win32hle_register(g_shims), registered = 1;
     build_template();
     uint32_t args[5] = { MEM32(GAME_INSTANCE_VA), (uint32_t)(uintptr_t)g_tmpl, hle_window_parent(owner),
