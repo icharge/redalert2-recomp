@@ -106,3 +106,9 @@ No Unicode text entry, IME composition, browser text box, network encoding,
 or guest edit storage has been added. The browser TYPE control remains as
 before. Those changes require the separate edit-owner and encoding
 inventory, including distinct tactical-chat and menu/lobby input styles.
+
+The 2026-11-11 browser probe confirmed that Thai typing in the Skirmish name,
+LAN lobby name, and LAN chat draft is still broken with TTF enabled: `การ`
+arrives as widened CP874 bytes (`¡ÒÃ`) rather than Thai Unicode. See the
+[input diagnosis](thai-input-diagnosis.md). Font coverage alone does not fix
+this input conversion.
