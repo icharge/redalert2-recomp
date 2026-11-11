@@ -91,6 +91,15 @@ describe("parseEventLine", () => {
       sha1: "ab",
     });
     expect(parseEventLine('@ra2 {"e":"mapFinderSearch"}')).toBeNull();
+    expect(parseEventLine('@ra2 {"e":"mapFinderPreview","sha1":"ab"}')).toEqual({
+      e: "mapFinderPreview",
+      sha1: "ab",
+    });
+    expect(parseEventLine('@ra2 {"e":"mapFinderPreview","sha1":""}')).toEqual({
+      e: "mapFinderPreview",
+      sha1: "",
+    });
+    expect(parseEventLine('@ra2 {"e":"mapFinderPreview"}')).toBeNull();
   });
 
   it("ignores a malformed event instead of throwing", () => {

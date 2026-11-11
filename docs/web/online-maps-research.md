@@ -319,6 +319,28 @@ which settles the doubt left by the second step.
   A download also had no time limit, and its row showed "..." for as long as it took: it now fails after 90 s with
   a line in the list. Not done: a double click on a row adds nothing (user32 makes no `WM_LBUTTONDBLCLK`), and a
   map scan still stops the game for as long as it takes when the page's panel adds a map over Customize Battle.
+- **A preview in the game-drawn finder (11 November 2026).** Picking a row shows that map's preview in the top-right
+  panel, as Customize Battle does, and Add reuses the same download. The screen's template has the preview control
+  (id `0x468`, Static, exStyle `0x20`, rect 428, 23, 96 x 69, copied from Customize Battle's). Each pump the screen
+  reads the list's picked row; when it changes it forgets the old preview and sends the page `mapFinderPreview
+  {sha1}` (`""` for none). The page (`NativeMapFinder.tsx`) waits 250 ms, so arrowing or clicking down the list
+  fetches only the row the pick rests on, downloads the map through a keep of the last four downloads, writes it to
+  the game's folder as `fp<seq>.tmp` and calls `ra2_finder_preview(sha1, file)`. The game's thread takes that, and
+  if the map is still the picked one runs the game's own preview code on the file, removes the file and repaints.
+  Add takes its bytes from the same keep, so a previewed map is downloaded once (`finder-native.mjs` counts the
+  requests). A `.tmp` name is never listed as a map. The game's functions, read from Customize Battle's procedure
+  `0x5E6920` and its callback `0x5E66F0`: the preview object is 4 bytes (`[0]` is its picture), made with
+  `operator new` (`0x7C8E17`, cdecl) and its constructor `0x6406E0`, loaded with `0x641EE0` (thiscall, the file
+  name: it opens the file in the game's folder, reads it as an INI, reads the `[Header]` start positions into the
+  global scenario and builds the picture), drawn with `0x640710` (thiscall, the dialog: scales the picture into
+  control `0x468` and draws the start markers; does nothing when `[0]` is 0), let go with `0x6406F0` and
+  `delete` (`0x7C8B3D`). The screen's `WM_PAINT` runs the shell's common handler (which paints the background, so
+  an old picture is covered when the preview is cleared) and then `0x640710` and `0x607FD0`, which a screen's
+  `WM_PAINT` ends with. The load writes the map's start positions into the scenario, so Back sets Customize
+  Battle's "map last previewed" index (`0xAC0D30`) to -1 and it loads its own again. Checked by playing it: a
+  preview loads in 34 to 126 ms, a new search clears it, five quick picks fetch one map, Back shows Customize
+  Battle's own map, and `finder-add-live.mjs` sees the game stand still for 0 ms. Not exercised: picking the
+  "Type a map name" note row, and a map whose preview comes back empty (the code leaves the panel empty).
 - **Restyled.** The panel is inside `GameDialogChrome` (the link dialogs' frame, title strip and red plates), with a
   dark list well and yellow text like the game's lists. It is still a page panel, not a game screen.
 - **A screen of the game's own.** Not done, and not possible from the host alone. A game screen is a dialog template

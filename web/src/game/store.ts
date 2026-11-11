@@ -54,6 +54,8 @@ export interface GameState {
   mapFinderRequests: number;
   /** the native finder screen asked for a search or an add; `seq` makes each ask a new value */
   mapFinderCommand: { seq: number; search?: string; add?: string } | null;
+  /** the native finder screen's picked map ("" for none), for its preview; `seq` makes each ask a new value */
+  mapFinderPreview: { seq: number; sha1: string } | null;
   settings: HostSettings | null;
   restart: { mod: string } | null;
 }
@@ -75,6 +77,7 @@ const INITIAL: GameState = {
   mapSearchStatus: { open: false, noMatches: false, x: 0, y: 0, w: 0, h: 0 },
   mapFinderRequests: 0,
   mapFinderCommand: null,
+  mapFinderPreview: null,
   settings: null,
   restart: null,
 };
@@ -188,6 +191,11 @@ export class GameStore {
       case "mapFinderAdd":
         this.set({
           mapFinderCommand: { seq: (this.state.mapFinderCommand?.seq ?? 0) + 1, add: event.sha1 },
+        });
+        return;
+      case "mapFinderPreview":
+        this.set({
+          mapFinderPreview: { seq: (this.state.mapFinderPreview?.seq ?? 0) + 1, sha1: event.sha1 },
         });
         return;
       case "fps":

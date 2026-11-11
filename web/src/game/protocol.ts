@@ -51,6 +51,7 @@ export type GameEvent =
   /** the native finder screen (src/web/finder_screen.c): the player pressed Search, or Add on a result */
   | { e: "mapFinderSearch"; q: string }
   | { e: "mapFinderAdd"; sha1: string }
+  | { e: "mapFinderPreview"; sha1: string }
   | { e: "fps"; fps: number; ms: number; pacing: Pacing | null }
   | { e: "exit"; code: number }
   | { e: "exitConfirm"; request: number }
@@ -161,6 +162,8 @@ export function parseEventLine(line: string): GameEvent | null {
       return typeof value.q === "string" ? { e: "mapFinderSearch", q: value.q } : null;
     case "mapFinderAdd":
       return typeof value.sha1 === "string" ? { e: "mapFinderAdd", sha1: value.sha1 } : null;
+    case "mapFinderPreview":
+      return typeof value.sha1 === "string" ? { e: "mapFinderPreview", sha1: value.sha1 } : null;
     case "fps":
       return typeof value.fps === "number" && typeof value.ms === "number"
         ? { e: "fps", fps: value.fps, ms: value.ms, pacing: pacingOf(value) }
@@ -372,6 +375,8 @@ export interface Ra2Exports {
   ra2_finder_note(text: string): void;
   /** an add ended: the map is in (1) or is not (0) */
   ra2_finder_added(sha1: string, added: number): void;
+  /** the map is in the game's folder as `file`, for the finder's preview; the game removes the file */
+  ra2_finder_preview(sha1: string, file: string): void;
   ra2_crash_report(why: string): void;
 }
 
@@ -400,5 +405,6 @@ export const EXPORT_SIGNATURES: {
   ra2_finder_results: { returns: null, args: ["string"] },
   ra2_finder_note: { returns: null, args: ["string"] },
   ra2_finder_added: { returns: null, args: ["string", "number"] },
+  ra2_finder_preview: { returns: null, args: ["string", "string"] },
   ra2_crash_report: { returns: null, args: ["string"] },
 };

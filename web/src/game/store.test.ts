@@ -59,6 +59,11 @@ describe("GameStore", () => {
     expect(store.getSnapshot().mapFinderCommand).toEqual({ seq: 1, search: "dust" });
     store.line('@ra2 {"e":"mapFinderAdd","sha1":"ab"}');
     expect(store.getSnapshot().mapFinderCommand).toEqual({ seq: 2, add: "ab" });
+    store.line('@ra2 {"e":"mapFinderPreview","sha1":"ab"}');
+    expect(store.getSnapshot().mapFinderPreview).toEqual({ seq: 1, sha1: "ab" });
+    expect(store.getSnapshot().mapFinderCommand).toEqual({ seq: 2, add: "ab" });
+    store.line('@ra2 {"e":"mapFinderPreview","sha1":""}');
+    expect(store.getSnapshot().mapFinderPreview).toEqual({ seq: 2, sha1: "" });
   });
 
   it("keeps the copy's progress until the game boots", () => {

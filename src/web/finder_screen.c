@@ -18,8 +18,13 @@
  *
  * The page does the finding: the screen reads what the player typed (the game keeps it inside its own one-line control, so it
  * is followed from the keys that reach it, as map_search.c does), tells the page what to search (mapFinderSearch) or add
- * (mapFinderAdd), and shows what the page answers (ra2_finder_results, ra2_finder_note, ra2_finder_added). */
+ * (mapFinderAdd), and shows what the page answers (ra2_finder_results, ra2_finder_note, ra2_finder_added).
+ *
+ * A picked row shows the map's preview where Customize Battle shows one (control 0x468): the screen tells the page which
+ * map is picked (mapFinderPreview), the page puts the map's file in the game's folder and says so (ra2_finder_preview), and
+ * the game's own preview code reads that file and draws it. */
 #ifndef RA2_TARGET_GAME
+#include <emscripten.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -39,10 +44,11 @@
 #define WS_VISIBLE 0x10000000u
 #define WM_INITDIALOG 0x0110u
 #define WM_COMMAND 0x0111u
+#define WM_PAINT 0x000Fu
 
 /* The ids are Customize Battle's (0x6B): its two buttons in their slots on the right panel (Use Map's and Random
  * Map's), its Cancel at the bottom, its map list, and its statics. */
-enum { SEARCH_ID = 0x7FF0, LIST_ID = 1363, FIND_ID = 0x6C5, DOWNLOAD_ID = 0x583, CLOSE_ID = 0x5C0, TITLE_ID = 0x694, STATUS_ID = 0x695 };
+enum { SEARCH_ID = 0x7FF0, LIST_ID = 1363, FIND_ID = 0x6C5, DOWNLOAD_ID = 0x583, CLOSE_ID = 0x5C0, TITLE_ID = 0x694, STATUS_ID = 0x695, PREVIEW_ID = 0x468 };
 
 static uint8_t g_tmpl[2048];
 static size_t g_at;
@@ -52,14 +58,17 @@ static volatile int g_open_request, g_close_request, g_search_request, g_add_req
 static void w16(uint16_t v) { memcpy(g_tmpl + g_at, &v, 2), g_at += 2; }
 static void w32(uint32_t v) { memcpy(g_tmpl + g_at, &v, 4), g_at += 4; }
 static void wstr(const char *s) { do w16((uint16_t)(unsigned char)*s); while (*s++); }
-static void item(uint32_t id, uint16_t cls, const char *text, int x, int y, int cx, int cy, uint32_t style) {
+static void item_ex(uint32_t id, uint16_t cls, const char *text, int x, int y, int cx, int cy, uint32_t style, uint32_t ex) {
     while (g_at & 3) g_tmpl[g_at++] = 0;
-    w32(0), w32(0), w32(style);
+    w32(0), w32(ex), w32(style);
     w16((uint16_t)x), w16((uint16_t)y), w16((uint16_t)cx), w16((uint16_t)cy);
     w32(id);
     w16(0xFFFF), w16(cls);
     wstr(text);
     w16(0);
+}
+static void item(uint32_t id, uint16_t cls, const char *text, int x, int y, int cx, int cy, uint32_t style) {
+    item_ex(id, cls, text, x, y, cx, cy, style, 0);
 }
 
 /* A DLGTEMPLATEEX on the grid of the game's map screens (533 x 369 dialog units): the Edit and the list at the left, the
@@ -68,10 +77,11 @@ static void build_template(void) {
     g_at = 0;
     memset(g_tmpl, 0, sizeof g_tmpl);
     w16(1), w16(0xFFFF), w32(0), w32(0), w32(0x40000040u | WS_VISIBLE);
-    w16(8), w16(0), w16(0), w16(533), w16(369);
+    w16(9), w16(0), w16(0), w16(533), w16(369);
     w16(0), w16(0), wstr("");
     w16(8), w16(400), g_tmpl[g_at++] = 0, g_tmpl[g_at++] = 1, wstr("Arial");
     item(TITLE_ID, 0x82, "GUI:ChooseMap", 425, 1, 108, 10, 0x50020001u);
+    item_ex(PREVIEW_ID, 0x82, "", 428, 23, 96, 69, 0x50000004u, 0x20u);   /* Customize Battle's preview control, as its template has it */
     item(0xFFFFFFFFu, 0x82, "GUI:GameMap", 77, 60, 278, 10, 0x50000201u);
     item(SEARCH_ID, 0x81, "", 77, 78, 278, 12, 0x50010080u);
     item(LIST_ID, 0x83, "", 77, 92, 278, 197, 0x50000151u);
@@ -81,7 +91,11 @@ static void build_template(void) {
     item(CLOSE_ID, 0x80, "GUI:Back", 425, 346, 108, 23, 0x5000000Bu);
 }
 
-/* The dialog procedure, as a host function: stdcall (hwnd, message, wParam, lParam) on the guest stack. */
+static void preview_paint(uint32_t dialog);
+static void preview_load(const char *file);
+static void preview_clear(void);
+
+/* The dialog procedure, as a host function:stdcall (hwnd, message, wParam, lParam) on the guest stack. */
 static void finder_proc(void) {
     uint32_t hwnd = A32(0), message = A32(1), wParam = A32(2), lParam = A32(3), result = 0;
     {
@@ -98,6 +112,7 @@ static void finder_proc(void) {
         else if (code == 0 && id == DOWNLOAD_ID) g_add_request = 1, result = 1;
         else if (code == 2 && id == LIST_ID) g_add_request = 1, result = 1;   /* LBN_DBLCLK */
     }
+    else if (message == WM_PAINT) preview_paint(hwnd);   /* over what the common handler painted */
     RET(result, 4);
 }
 
@@ -156,6 +171,7 @@ typedef struct { char sha1[SHA1_CHARS + 1], name[96]; int unreviewed, state; } r
 static row_t g_rows[MAX_ROWS];
 static int g_nrows;
 static char g_note[96];
+static char g_picked[SHA1_CHARS + 1];   /* the picked row's map; "" when none is */
 
 static void show_rows(void) {
     uint32_t list = g_screen ? hle_dialog_item(g_screen, LIST_ID) : 0;
@@ -166,19 +182,20 @@ static void show_rows(void) {
         char text[160];
         snprintf(text, sizeof text, "%s%s%s", g_rows[i].name, g_rows[i].unreviewed ? " [unreviewed]" : "",
                  g_rows[i].state == 2 ? " - added" : g_rows[i].state == 1 ? " ..." : "");
-        list_add(list, text, (uint32_t)(i + 1));
+        int at = list_add(list, text, (uint32_t)(i + 1));
+        if (at >= 0 && g_picked[0] && !strcmp(g_rows[i].sha1, g_picked)) hle_send(list, LB_SETCURSEL, (uint32_t)at, 0);
     }
 }
 
 /* ---- from the page (any thread): what it sends waits for the pump ---------------------------------------------------- */
 static char g_in_results[MAX_ROWS * 160], g_in_note[96], g_in_added[SHA1_CHARS + 1];
-static volatile int g_in_flags;   /* 1 results, 2 note, 4 added, 8 add failed; the page writes, the pump takes */
+static char g_in_preview[SHA1_CHARS + 1], g_in_preview_file[32];
+static volatile int g_in_flags;   /* 1 results, 2 note, 4 added, 8 add failed, 16 preview; the page writes, the pump takes */
 static volatile int g_in_lock;
 
 static void lock(void) { while (__atomic_exchange_n(&g_in_lock, 1, __ATOMIC_ACQUIRE)) {} }
 static void unlock(void) { __atomic_store_n(&g_in_lock, 0, __ATOMIC_RELEASE); }
 
-#include <emscripten.h>
 /* Lines of "sha1 TAB flags TAB name" (flags: u unreviewed, a already added); replaces the rows. */
 EMSCRIPTEN_KEEPALIVE void ra2_finder_results(const char *tsv) {
     lock();
@@ -199,6 +216,30 @@ EMSCRIPTEN_KEEPALIVE void ra2_finder_added(const char *sha1, int added) {
     snprintf(g_in_added, sizeof g_in_added, "%s", sha1 ? sha1 : "");
     g_in_flags |= added ? 4 : 8;
     unlock();
+}
+static void remove_game_file(const char *name) {
+    char path[64];
+    snprintf(path, sizeof path, "/game/%s", name);
+    remove(path);
+}
+/* The map `sha1` is in the game's folder as `file`, for its preview. The file is ours to remove. */
+EMSCRIPTEN_KEEPALIVE void ra2_finder_preview(const char *sha1, const char *file) {
+    char dropped[sizeof g_in_preview_file] = "";
+    lock();
+    if (g_in_flags & 16) memcpy(dropped, g_in_preview_file, sizeof dropped);   /* one the pump never took */
+    snprintf(g_in_preview, sizeof g_in_preview, "%s", sha1 ? sha1 : "");
+    snprintf(g_in_preview_file, sizeof g_in_preview_file, "%s", file ? file : "");
+    g_in_flags |= 16;
+    unlock();
+    if (dropped[0] && strcmp(dropped, g_in_preview_file)) remove_game_file(dropped);
+}
+/* A preview file the page sent that nothing will read (the screen closed). */
+static void preview_drop_pending(void) {
+    char file[sizeof g_in_preview_file] = "";
+    lock();
+    if (g_in_flags & 16) memcpy(file, g_in_preview_file, sizeof file), g_in_flags &= ~16;
+    unlock();
+    if (file[0]) remove_game_file(file);
 }
 
 static void take_results(const char *tsv) {
@@ -226,20 +267,26 @@ static void take_results(const char *tsv) {
 static void take_from_page(void) {
     if (!__atomic_load_n(&g_in_flags, __ATOMIC_ACQUIRE)) return;
     static char results[sizeof g_in_results];
-    char note[sizeof g_in_note], added[sizeof g_in_added];
+    char note[sizeof g_in_note], added[sizeof g_in_added], preview[sizeof g_in_preview], file[sizeof g_in_preview_file];
     lock();
     int flags = g_in_flags;
     g_in_flags = 0;
     memcpy(results, g_in_results, sizeof results);
     memcpy(note, g_in_note, sizeof note);
     memcpy(added, g_in_added, sizeof added);
+    memcpy(preview, g_in_preview, sizeof preview);
+    memcpy(file, g_in_preview_file, sizeof file);
     unlock();
     if (flags & 1) take_results(results);
     if (flags & 2) snprintf(g_note, sizeof g_note, "%s", note);
     if (flags & (4 | 8))
         for (int i = 0; i < g_nrows; i++)
             if (!strcmp(g_rows[i].sha1, added)) g_rows[i].state = flags & 4 ? 2 : 0;
-    show_rows();
+    if (flags & ~16) show_rows();
+    if ((flags & 16) && file[0]) {
+        if (!strcmp(preview, g_picked)) preview_load(file);   /* still the picked map */
+        remove_game_file(file);
+    }
 }
 
 /* ---- to the page ------------------------------------------------------------------------------------------------------- */
@@ -254,6 +301,75 @@ static void send_event(const char *kind, const char *key, const char *value) {
     esc[n] = 0;
     snprintf(event, sizeof event, "{\"e\":\"%s\",\"%s\":\"%s\"}", kind, key, esc);
     web_event_json(event);
+}
+
+/* ---- the preview: the game's own, as Customize Battle shows one ------------------------------------------------------
+ * The game's preview is an object of 4 bytes (its picture) that reads a map file by name (which also reads the map's start
+ * positions into the scenario) and draws itself into the dialog's control 0x468. */
+#define PREVIEW_INIT_VA 0x006406E0u    /* ecx = the object */
+#define PREVIEW_FREE_VA 0x006406F0u    /* ecx = the object: lets its picture go */
+#define PREVIEW_LOAD_VA 0x00641EE0u    /* ecx = the object, (file name) */
+#define PREVIEW_DRAW_VA 0x00640710u    /* ecx = the object, (dialog) */
+#define SCREEN_SHOW_VA 0x00607FD0u     /* ecx = the dialog: what a screen's WM_PAINT ends with */
+#define GAME_NEW_VA 0x007C8E17u        /* cdecl (bytes) */
+#define GAME_DELETE_VA 0x007C8B3Du     /* cdecl (pointer) */
+#define MAP_SCREEN_PREVIEWED_VA 0x00AC0D30u   /* Customize Battle: the map its own preview was last loaded for */
+
+static uint32_t g_preview;
+
+static uint32_t call_this(uint32_t va, uint32_t self, int nargs, const uint32_t *args) {
+    uint32_t keep = g_ecx;
+    g_ecx = self;
+    uint32_t r = hle_call_guest(va, nargs, args);
+    g_ecx = keep;
+    return r;
+}
+
+static void repaint(void) {
+    if (g_screen) hle_call_guest(hle_resolve("InvalidateRect"), 3, (uint32_t[]){ g_screen, 0, 0 });
+}
+
+static void preview_clear(void) {
+    if (!g_preview) return;
+    call_this(PREVIEW_FREE_VA, g_preview, 0, NULL);
+    hle_call_guest(GAME_DELETE_VA, 1, &g_preview);
+    g_preview = 0;
+    repaint();
+}
+
+static void preview_load(const char *file) {
+    preview_clear();
+    uint32_t bytes = 4, name = (uint32_t)(uintptr_t)file;
+    uint32_t made = hle_call_guest(GAME_NEW_VA, 1, &bytes);
+    if (!made) return;
+    call_this(PREVIEW_INIT_VA, made, 0, NULL);
+    g_preview = made;
+    double began = emscripten_get_now();
+    call_this(PREVIEW_LOAD_VA, g_preview, 1, &name);
+    fprintf(stderr, "[finder] preview of %s: %s, %.0f ms\n", file, MEM32(g_preview) ? "a picture" : "none",
+            emscripten_get_now() - began);
+    repaint();
+}
+
+static void preview_paint(uint32_t dialog) {
+    if (!g_preview || !MEM32(g_preview)) return;
+    call_this(PREVIEW_DRAW_VA, g_preview, 1, &dialog);
+    call_this(SCREEN_SHOW_VA, dialog, 0, NULL);
+}
+
+/* The picked row changed: its preview is asked of the page ("" stops it fetching). */
+static void follow_pick(void) {
+    uint32_t list = hle_dialog_item(g_screen, LIST_ID);
+    const char *sha1 = "";
+    int at = list ? (int)hle_send(list, LB_GETCURSEL, 0, 0) : -1;
+    if (at >= 0) {
+        uint32_t data = hle_send(list, LB_GETITEMDATA, (uint32_t)at, 0);
+        if (data && data <= (uint32_t)g_nrows) sha1 = g_rows[data - 1].sha1;
+    }
+    if (!strcmp(sha1, g_picked)) return;
+    snprintf(g_picked, sizeof g_picked, "%s", sha1);
+    preview_clear();
+    send_event("mapFinderPreview", "sha1", g_picked);
 }
 
 /* ---- the search text: what the game's own Edit holds (the same following of its keys as map_search.c) ------------------- */
@@ -317,7 +433,7 @@ static void open_now(void) {
     g_screen = h, g_owner = owner;
     g_previous = MEM32(SHELL_CURRENT_VA);
     memset(&g_text, 0, sizeof g_text);
-    g_box = 0, g_nrows = 0;
+    g_box = 0, g_nrows = 0, g_picked[0] = 0;
     uint32_t keep_ecx = g_ecx, keep_edx = g_edx;
     g_ecx = h, g_edx = LAYOUT_ID;
     hle_call_guest(SCREEN_SETUP_VA, 0, NULL);
@@ -332,6 +448,10 @@ static void open_now(void) {
 static void close_now(void) {
     uint32_t h = g_screen;
     g_screen = 0, g_close_request = 0;
+    preview_clear();
+    if (g_picked[0]) g_picked[0] = 0, send_event("mapFinderPreview", "sha1", "");
+    preview_drop_pending();
+    MEM32(MAP_SCREEN_PREVIEWED_VA) = 0xFFFFFFFFu;   /* ours read another map's start positions: Customize Battle loads its own again */
     if (h && hle_is_window(h)) hle_call_guest(hle_resolve("DestroyWindow"), 1, &h);
     if (g_owner && hle_is_window(g_owner)) hle_call_guest(hle_resolve("ShowWindow"), 2, (uint32_t[]){ g_owner, 5 });
     MEM32(SHELL_CURRENT_VA) = g_previous;   /* the set-up made ours the current screen */
@@ -340,11 +460,15 @@ static void close_now(void) {
 
 void web_finder_screen_pump(void) {
     if (g_open_request) g_open_request = 0, open_now();
-    if (!g_screen) return;
+    if (!g_screen) {
+        if (g_in_flags & 16) preview_drop_pending();   /* the page answered after the screen closed */
+        return;
+    }
     if (!hle_is_window(g_screen)) { g_screen = 0; return; }
     if (g_close_request) { close_now(); return; }
     take_from_page();
     if (g_search_request) g_search_request = 0, press_search();
     if (g_add_request) g_add_request = 0, press_add();
+    follow_pick();
 }
 #endif

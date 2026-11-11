@@ -144,6 +144,7 @@ export function Play({ files }: { files: FileSource }) {
   const mapSearchStatus = useGameState((s) => s.mapSearchStatus);
   const mapFinderRequests = useGameState((s) => s.mapFinderRequests);
   const mapFinderCommand = useGameState((s) => s.mapFinderCommand);
+  const mapFinderPreview = useGameState((s) => s.mapFinderPreview);
   const linkDialogTarget = useMemo(
     () => (openLink ? linkTarget(openLink.url, undefined, openLink.page) : null),
     [openLink],
@@ -751,7 +752,11 @@ export function Play({ files }: { files: FileSource }) {
         />
       )}
       {presenter && handle.current && (
-        <NativeMapFinder game={handle.current} command={mapFinderCommand} />
+        <NativeMapFinder
+          game={handle.current}
+          command={mapFinderCommand}
+          preview={mapFinderPreview}
+        />
       )}
       <GameTray quiet={trayQuiet}>
         <button
