@@ -81,6 +81,32 @@ minimum duration/placement count to isolate the checks and touched no persistent
 data or running service. No full-suite rerun, TypeScript check, WASM build or
 real-client/relay test was performed during this review.
 
+## Execution status (subagent-driven run, 12 November 2026)
+
+Plan: [2026-11-12-shared-ranked-release.md](../superpowers/plans/2026-11-12-shared-ranked-release.md).
+Code lives in `ra2web` on branch `feat/shared-ranked-release` (baseline `c8e43b7`).
+Each task was reviewed (spec + quality); findings and rulings are in the run's
+ledger (`ra2web/.superpowers/sdd/2026-11-12-shared-ranked-release/progress.md`,
+git-ignored scratch). Full suite after each task: only the 5 baseline failures.
+
+| Task | State | ra2web commits |
+|---|---|---|
+| T0 baseline, YR SKU default | complete | a696a0c (recomp db802124) |
+| T1 roster-only Vera finish | complete | e425437 |
+| T2 SKU-scoped storage + migration | complete | f15cec2, 223add1 |
+| T3 running seasons, closedAt | complete | f22c3b8 |
+| T4 atomic settlement | complete | 44cc49b, 978bf55 |
+| T5 Vera admission + eligibility | complete | 8fd49ad |
+| T6 durable Settlement + adjudication | complete | 94a1eb0, 4b8bb1a |
+| T7 bounded `/v1/*` + limits + bans | complete | 8d0af0e |
+| T8 family-safe queues | in progress | |
+| T9, T10, T12, T13, T14 | not started | |
+
+Open carry-overs: T13 must strip `nativeReports` from public `GET /matches/{id}`
+and authenticate the replay bearer before reading the body; T14 documents the
+known limitations (client-controlled `ended_ago`, 3-rated-games-per-24h limit
+not implemented, adjudication `winner` required for win/loss).
+
 ## Repositories and working state
 
 | Repo | Change |
