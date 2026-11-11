@@ -242,7 +242,7 @@ describe("readBody", () => {
 });
 
 describe("startGame", () => {
-  it.each(["lobby", "next-match", "new-login", "failed-post"])(
+  it.each(["lobby", "next-match", "new-login", "failed-post", "ranked-lobby", "ranked-next-match"])(
     "keeps result identity through %s and isolates stale completions",
     async (next) => {
       const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -310,16 +310,24 @@ describe("startGame", () => {
         packet.fill(0);
         expect(sentUrl).toBe("http://127.0.0.1:9090/native-results/g1-old");
         expect(sentPacket).toEqual(new Uint8Array([0, 255, 128]));
-        if (next === "next-match")
+        if (next === "next-match" || next === "ranked-next-match")
           sockets[0]!.receive(":wol STARTG #next :ws://127.0.0.1:9090/gserv :g2-new 2 ticket");
         if (next === "new-login") module.ra2WolStart!("other", "password");
         finish(
-          new Response(JSON.stringify({ stored: true, gameId: "g1-old", ranked: false }), {
-            status: next === "failed-post" ? 503 : 200,
-          }),
+          new Response(
+            JSON.stringify(
+              next.startsWith("ranked-")
+                ? { stored: true, gameId: "g1-old", ranked: true, state: "pending" }
+                : { stored: true, gameId: "g1-old", ranked: false },
+            ),
+            {
+              status: next === "failed-post" ? 503 : 200,
+            },
+          ),
         );
         await new Promise((resolve) => setTimeout(resolve, 0));
-        if (next === "lobby") expect(receive).toHaveBeenCalledWith("@wolapi gameres 41 0");
+        if (next === "lobby" || next === "ranked-lobby")
+          expect(receive).toHaveBeenCalledWith("@wolapi gameres 41 0");
         else expect(receive).not.toHaveBeenCalledWith("@wolapi gameres 41 0");
         if (next === "failed-post") {
           expect(receive).toHaveBeenCalledWith(`@wolapi gameres 41 ${0x80004005}`);

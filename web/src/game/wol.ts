@@ -144,6 +144,21 @@ export interface WolServer {
 }
 
 /** Authenticates to RA2Web and exposes the lobby and custom-game commands used by RA2/YR. */
+const MATCH_STATES: ReadonlySet<unknown> = new Set([
+  "pending",
+  "scored",
+  "unscored",
+  "disputed",
+  "incomplete",
+  "expired",
+]);
+
+/** `ranked: false` (custom/WDT) needs no state; `ranked: true` needs a known one. */
+function validRankedAck(ack: { ranked?: unknown; state?: unknown }): boolean {
+  if (ack.ranked === false) return true;
+  return ack.ranked === true && MATCH_STATES.has(ack.state);
+}
+
 export class WolClient {
   private socket: WolSocket | null = null;
   private generation = 0;
@@ -252,7 +267,10 @@ export class WolClient {
     }
   }
 
-  /** Save a native Custom Match report; it never enters ranked scoring. */
+  /**
+   * Save a native match report. The server acknowledges storage only: a ranked
+   * report is judged later (`state`), and no score or ladder result is read here.
+   */
   async submitNativeResult(gameId: string, packet: Uint8Array): Promise<void> {
     const token = this.authToken;
     if (!token) throw new Error("WOL result submission is not authenticated.");
@@ -275,9 +293,10 @@ export class WolClient {
       const accepted = (await response.json()) as {
         stored?: boolean;
         gameId?: string;
-        ranked?: boolean;
+        ranked?: unknown;
+        state?: unknown;
       };
-      if (accepted.stored !== true || accepted.gameId !== gameId || accepted.ranked !== false)
+      if (accepted.stored !== true || accepted.gameId !== gameId || !validRankedAck(accepted))
         throw new Error("Invalid native result storage acknowledgement.");
     } finally {
       clearTimeout(timeout);

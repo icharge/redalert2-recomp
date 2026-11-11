@@ -149,6 +149,90 @@ describe("WolClient", () => {
       "authenticated",
     );
   });
+  describe("native result acknowledgement", () => {
+    class AckSocket extends EventTarget {
+      readyState = 1;
+      send(data: string): void {
+        const reply = data.startsWith("cvers ")
+          ? ":wol 700 * :ok"
+          : data.startsWith("setlocale ")
+            ? ":wol 310 * :ok"
+            : ":wol 376 test :done";
+        queueMicrotask(() => this.dispatchEvent(new MessageEvent("message", { data: reply })));
+      }
+      close(): void {
+        this.readyState = 3;
+      }
+    }
+    const submit = async (ack: unknown, gameId = "g1-abc"): Promise<void> => {
+      const fetcher = async function (this: unknown, input: RequestInfo | URL) {
+        if (String(input).endsWith("/native-results/g1-abc"))
+          return new Response(JSON.stringify(ack));
+        return new Response(JSON.stringify({ sessionToken: "session-only" }));
+      };
+      const client = new WolClient(
+        { httpUrl: "https://wol.test/emu-api/", socketUrl: "wss://wol.test/wol" },
+        "test",
+        "password",
+        fetcher as typeof fetch,
+        () => new AckSocket() as unknown as WebSocket,
+        50,
+      );
+      try {
+        await client.connect({ joinLobby: false });
+        await client.submitNativeResult(gameId, new Uint8Array([1, 2, 3]));
+      } finally {
+        client.close();
+      }
+    };
+    it("accepts a stored ranked ACK in state pending", async () => {
+      await expect(
+        submit({ gameId: "g1-abc", stored: true, ranked: true, state: "pending" }),
+      ).resolves.toBeUndefined();
+    });
+    it.each(["scored", "unscored", "disputed", "incomplete", "expired"])(
+      "accepts a stored ranked ACK in state %s",
+      async (state) => {
+        await expect(
+          submit({ gameId: "g1-abc", stored: true, ranked: true, state }),
+        ).resolves.toBeUndefined();
+      },
+    );
+    it("still accepts the unranked custom ACK, including a wdt field", async () => {
+      await expect(
+        submit({ gameId: "g1-abc", stored: true, ranked: false }),
+      ).resolves.toBeUndefined();
+      await expect(
+        submit({ gameId: "g1-abc", stored: true, ranked: false, wdt: { anything: 1 } }),
+      ).resolves.toBeUndefined();
+    });
+    it("rejects ranked true with an unknown state", async () => {
+      await expect(
+        submit({ gameId: "g1-abc", stored: true, ranked: true, state: "winner" }),
+      ).rejects.toThrow("acknowledgement");
+    });
+    it("rejects ranked true with a missing state", async () => {
+      await expect(submit({ gameId: "g1-abc", stored: true, ranked: true })).rejects.toThrow(
+        "acknowledgement",
+      );
+    });
+    it("rejects a non-boolean ranked", async () => {
+      for (const ranked of ["true", 1, null, undefined])
+        await expect(
+          submit({ gameId: "g1-abc", stored: true, ranked, state: "pending" }),
+        ).rejects.toThrow("acknowledgement");
+    });
+    it("rejects a mismatched gameId", async () => {
+      await expect(
+        submit({ gameId: "g1-other", stored: true, ranked: true, state: "pending" }),
+      ).rejects.toThrow("acknowledgement");
+    });
+    it("rejects an ACK that is not stored", async () => {
+      await expect(
+        submit({ gameId: "g1-abc", stored: false, ranked: true, state: "pending" }),
+      ).rejects.toThrow("acknowledgement");
+    });
+  });
   it("keeps HTTP authentication at its base when the WOL socket has a different path", async () => {
     class Socket extends EventTarget {
       readyState = 1;
