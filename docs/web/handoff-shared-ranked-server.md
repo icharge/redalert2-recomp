@@ -99,10 +99,11 @@ git-ignored scratch). Full suite after each task: only the 5 baseline failures.
 | T5 Vera admission + eligibility | complete | 8fd49ad |
 | T6 durable Settlement + adjudication | complete | 94a1eb0, 4b8bb1a |
 | T7 bounded `/v1/*` + limits + bans | complete | 8d0af0e |
-| T8 family-safe queues | in progress | |
-| T9, T10, T12, T13, T14 | not started | |
+| T8 family-safe queues | complete | be57dc6, 14b2baf |
+| T9 native ranked settlement | complete | 8664f72, 2a11733, 1a87368, 7cba005 |
+| T10, T12, T13, T14 | not started | |
 
-Open carry-overs: T13 must strip `nativeReports` from public `GET /matches/{id}`
+Open carry-overs: **YR native wire GSKU 18688 is an unconfirmed assumption that blocks the T14 real-client run** (see `ra2web/docs/ranked-ladder.md`);  T13 must strip `nativeReports` from public `GET /matches/{id}`
 and authenticate the replay bearer before reading the body; T14 documents the
 known limitations (client-controlled `ended_ago`, 3-rated-games-per-24h limit
 not implemented, adjudication `winner` required for win/loss).
