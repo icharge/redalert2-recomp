@@ -26,9 +26,12 @@ and still owns real gameplay testing. No new gameplay or public probes were run.
 - Server route: **POST `/native-results/{full-game-id}`**, Bearer session, raw
   `application/octet-stream` native packet. It validates authenticated roster
   membership, full/numeric ID association, edition, field bounds and report window.
-  Native channel types 33/41 bind new instances to SKU 16640/18688. Existing
-  instances created by the old running server do not have that metadata: restart
-  the updated backend and create a new match before manual validation.
+  The ladder SKU of a native instance comes from the lobby channel type (ranked
+  quick match: 50/51 RA2 = 16640, 60/61 YR = 18688), and the report's wire GSKU
+  is mapped separately (RA2 retail sends 8960, confirmed; YR 18688 is unconfirmed;
+  see `ra2web/docs/ranked-ladder.md`). Existing instances created by an older
+  running server do not have that metadata: restart the updated backend and
+  create a new match before manual validation.
 - Native FieldClass differs from the web report: flags are type 2 / one byte,
   signed/unsigned 32-bit fields use types 5/6, C strings type 7, binary tallies
   type 20; payloads have four-byte padding. Headers/numeric values are big endian.
