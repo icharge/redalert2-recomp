@@ -79,3 +79,38 @@ The full implementation plan and server configuration are in
   by this lobby pass.
 - Vera account registration is immediate in this deployment; the emailed
   verification code is accepted but not delivered.
+
+## Release state and operator flags
+
+Status (12 November 2026): T0–T13 are implemented and reviewed on `ra2web`
+`feat/shared-ranked-release` and `vera20k` `feat/lobby-replay-upload`; the
+real-client integration gate (T14 steps 2–4) has **not** been run.
+
+| Flag (ra2web server) | Default | Effect |
+|---|---|---|
+| `VERA_ENABLED` | `true` | Serve Vera20k's `/v1/*` lobby on the shared data. `VERA_SKU` defaults to 18688 (YR). |
+| `NATIVE_RANKED_ENABLED` | `false` | Ranked 1v1 for retail clients on the exact `NATIVE_GAME_VERSION`. Keep off until a real YR capture confirms the wire GSKU 18688 (`ra2web/docs/ranked-ladder.md`). |
+| `RANKED_SEASON_GRACE_SECONDS` | `1800` | Reports are settled until `(closedAt \|\| endTime)` plus this; later reports are archived unscored. |
+| `LADDER_LEGACY_SKU` | unset | Assigns pre-SKU legacy rows to 16640 or 18688. Unset hides them. Back up first (the migration does; see the server README). |
+
+Rollback: turn the flags off; ranked rows stay. The README's "Ranked rollout
+and rollback" section has the enable order, the log lines to watch, and the
+migration backup restore.
+
+## Known limitations
+
+- Only authenticated 1v1 quick match ranks, paired per client family. No AI,
+  co-op, custom-room or Vera team/FFA ranking.
+- No native in-game ladder or score-gain UI (T11 excluded); use
+  `GET /leaderboard/...` and `GET /players/{name}`. Cross-engine replay
+  playback is not promised.
+- A client-controlled `ended_ago` can force a non-adjudicable `too_short`.
+- Adjudication skips the season grace check, and a win/loss adjudication needs
+  an explicit `winner`.
+- The Vera 3-rated-games-per-24h limit is not implemented.
+- `GET /v1/matches/{id}` is memory-only and lasts 10 minutes.
+- Rematches in the same paired Vera room rank.
+- `replayPath` is still exposed in public `/matches`.
+- Unconfirmed against real clients: YR wire GSKU 18688, `FINI=0` semantics,
+  retail native version 1.006 and lobby channel mapping, UDP relay
+  admission/renewal, and whether the recomp native client records replays.
