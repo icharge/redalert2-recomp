@@ -101,9 +101,14 @@ git-ignored scratch). Full suite after each task: only the 5 baseline failures.
 | T7 bounded `/v1/*` + limits + bans | complete | 8d0af0e |
 | T8 family-safe queues | complete | be57dc6, 14b2baf |
 | T9 native ranked settlement | complete | 8664f72, 2a11733, 1a87368, 7cba005 |
-| T10, T12, T13, T14 | not started | |
+| T10 web client ranked acknowledgement | complete | recomp cd1a95e9 |
+| T11 native in-game ladder UI | excluded from this release (T0 decision) | |
+| T12 relay vectors, critical/soft event retention | complete | 280108a, 1dda047, 5ef0639 |
+| T13a replay download/storage (server) | complete | 89b3bd4, 6f0bdb7 |
+| T13b Vera replay upload hook | complete | vera20k `feat/lobby-replay-upload` c31c1e799, befeb3716 |
+| T14 integration gate, rollout docs | not started | |
 
-Open carry-overs: **YR native wire GSKU 18688 is an unconfirmed assumption that blocks the T14 real-client run** (see `ra2web/docs/ranked-ladder.md`);  T13 must strip `nativeReports` from public `GET /matches/{id}`
+Open carry-overs: (T13 strip of `nativeReports` and replay auth-before-body are done in T13a.) **YR native wire GSKU 18688 is an unconfirmed assumption that blocks the T14 real-client run** (see `ra2web/docs/ranked-ladder.md`);  T13 must strip `nativeReports` from public `GET /matches/{id}`
 and authenticate the replay bearer before reading the body; T14 documents the
 known limitations (client-controlled `ended_ago`, 3-rated-games-per-24h limit
 not implemented, adjudication `winner` required for win/loss).
