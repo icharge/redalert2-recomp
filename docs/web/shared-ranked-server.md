@@ -99,10 +99,7 @@ migration backup restore.
 
 ## Known limitations
 
-- **Web ranked carve-out:** the existing web `/wgameres` path still scores from a
-  single client report and resolves the newest season, with no dispute handling,
-  season binding at start or grace window. Decisions 3 and 4 hold for Vera and
-  native ranked only.
+- **Web ranked:** web 1v1 now settles through Settlement like Vera and native: two agreeing roster reports (a resign or drop report is accepted as a self-loss claim), season bound at start, grace window, unscored archive on dispute or a missing report. Draws are unscored, a desynced game ends `incomplete`, the first reporter sees the result only when the second report settles, and scored web history has no map name. Web 2v2 still scores from one report through the old path.
 - Vera matches and native gserv instances are in memory: after a restart the
   match ends `incomplete` (adjudicable, never mis-scored).
 - Only authenticated 1v1 quick match ranks, paired per client family. No AI,
