@@ -49,7 +49,7 @@ adjudication, season bound at start with a grace window, no native ladder UI
 (T11 excluded), and replay download plus Vera auto-upload (needs a `vera20k`
 client hook). The implementation plan is
 [2026-11-12-shared-ranked-release.md](../superpowers/plans/2026-11-12-shared-ranked-release.md);
-next is T0 (baseline commit approval) and then T1.
+T0–T13 are implemented and reviewed (see "Execution status"); T14 real-client runs are the remaining gate.
 
 | Task | Deliverable | Dependencies |
 |---|---|---|
@@ -64,15 +64,15 @@ next is T0 (baseline commit approval) and then T1.
 | T8 | Enable family-safe native ranked queues and periodic Vera queue checks | T0, T3 |
 | T9 | Add native ranked report consensus and settlement | T2–T4, T6, T8 |
 | T10 | Handle native stored/pending/scored acknowledgements and stale callbacks | T6 contract, T9 |
-| T11 | Implement native ladder/score presentation if included | T0 UI decision, T2/T3; T10 for score delivery |
+| T11 | Native ladder/score presentation — **excluded from this release** (T0 decision 5); standings come from the HTTP leaderboard/profile | n/a |
 | T12 | Verify Vera event/retry/relay interoperability | T5, T7; T6 if resume is included |
 | T13 | Deliver format-aware replay/history reads and approved upload behavior | T0 replay decision, T2, T6, T7 |
 | T14 | Run real-client integration and document rollout/rollback | Required T1–T13 scope |
 
 Recommended sequence: T0 plus the immediate T1 fix; shared correctness T2–T4;
 Vera admission/lifecycle/HTTP T5–T7 with queue work T8 after its contracts settle;
-native ranked T9/T10; required presentation, interoperability and replays
-T11–T13; then T14. Keep ranked expansion disabled until its dependencies pass.
+native ranked T9/T10; interoperability and replays T12–T13 (T11 excluded);
+then T14. Keep ranked expansion disabled until its dependencies pass.
 
 Review verification: **64 pass, 0 fail, 270 assertions across 7 files**, running
 `veraLobby`, `veraRoutes`, `leaderboardRoutes`, `ladderService`, `nativeResults`,
@@ -269,8 +269,8 @@ and admission are ready, the native integration work is:
 1. Server: allow native ranked quick match, keep native/native and
    web/web pairing separated, set the correct native SKU, and score
    `/native-results` only when all roster reports agree.
-2. Recomp: accept `ranked: true` in `submitNativeResult()`, and handle the
-   `730` game report if the native score screen should show the gain.
+2. Recomp: accept `ranked: true` in `submitNativeResult()` (done, T10). The
+   `730` game report and any native score-screen gain are out of scope (T11 excluded).
 3. Native ladder screen: out of scope for this release (decision 5, no native
    in-game ladder or score-gain UI); use the web/admin/API leaderboard. The
    `RequestLadderSearch`/`RequestLadderList` COM methods stay stubs.
