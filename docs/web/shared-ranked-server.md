@@ -99,6 +99,12 @@ migration backup restore.
 
 ## Known limitations
 
+- **Web ranked carve-out:** the existing web `/wgameres` path still scores from a
+  single client report and resolves the newest season, with no dispute handling,
+  season binding at start or grace window. Decisions 3 and 4 hold for Vera and
+  native ranked only.
+- Vera matches and native gserv instances are in memory: after a restart the
+  match ends `incomplete` (adjudicable, never mis-scored).
 - Only authenticated 1v1 quick match ranks, paired per client family. No AI,
   co-op, custom-room or Vera team/FFA ranking.
 - No native in-game ladder or score-gain UI (T11 excluded); use

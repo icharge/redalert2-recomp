@@ -106,7 +106,20 @@ git-ignored scratch). Full suite after each task: only the 5 baseline failures.
 | T12 relay vectors, critical/soft event retention | complete | 280108a, 1dda047, 5ef0639 |
 | T13a replay download/storage (server) | complete | 89b3bd4, 6f0bdb7 |
 | T13b Vera replay upload hook | complete | vera20k `feat/lobby-replay-upload` c31c1e799, befeb3716 |
-| T14 integration gate, rollout docs | not started | |
+| T14 rollout docs, flags, observability | complete (docs, operator log lines) | b9dbe1c, 5a5a31f, d1f0f59 |
+| T14 real-client integration gate (steps 2–4) | **not run** — needs two real RA2/YR clients, a real relay and HTTPS/WS | |
+| Final whole-branch review | complete, no Critical; one fix wave applied | d1f0f59 |
+
+Pinned reviewed revisions: `ra2web` `feat/shared-ranked-release` **d1f0f59**
+(baseline c8e43b7, 530 pass / 5 known baseline failures, tsc clean);
+`vera20k` `feat/lobby-replay-upload` **befeb3716** (base 83ae715ad; not pushed);
+`redalert2-recomp` `web-port` web client change cd1a95e9 plus these docs.
+None of the three branches is pushed.
+
+Rulings to revisit: the web `/wgameres` ranked path is unchanged by plan and
+still scores from one client report with no season binding or grace (a carve-out
+from decisions 3 and 4, documented in `ra2web/server/README.md`); routing it
+through Settlement needs your sign-off or a follow-up task.
 
 Open carry-overs: (T13 strip of `nativeReports` and replay auth-before-body are done in T13a.) **YR native wire GSKU 18688 is an unconfirmed assumption that blocks the T14 real-client run** (see `ra2web/docs/ranked-ladder.md`);  T13 must strip `nativeReports` from public `GET /matches/{id}`
 and authenticate the replay bearer before reading the body; T14 documents the
