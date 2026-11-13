@@ -1,4 +1,4 @@
-# Quick Match (retail Yuri's Revenge, native)
+# Quick Match (retail Yuri's Revenge and Red Alert 2, native)
 
 How the retail Yuri's Revenge "Quick Match" button finds a game on the RA2Web
 server, what the server does about it, and what is verified. The line formats are
@@ -85,7 +85,7 @@ The client also owns welcome strings (`STT:WOLWelcomeQuickMatch`,
 
 The constants are `NATIVE_QUICK_MATCH_LOBBY` and `NATIVE_QUICK_MATCH_TYPE` in
 `ra2web/server/src/protocol/qmCodes.ts`. The tests are
-`ra2web/server/test/nativeQuickMatch.test.ts` (nine, all passing).
+`ra2web/server/test/nativeQuickMatch.test.ts` (nineteen, all passing, RA2 included).
 
 Lobby 39 is deliberately not published: the game only asks for it when its mode
 word is 2, which no run here has produced.
@@ -114,6 +114,23 @@ and the matchbot now sends it for type 40:
 
 `XMP29U2` is a placeholder. A map pool is not built, so every Quick Match plays
 that one map; the match only starts if both installs have it.
+
+## Red Alert 2
+
+RA2's handler (Game.exe `0x759FFF`, `recomp_0051.c`) does the same walk with other lobby
+numbers: it wants `Lob_35_*`, or `Lob_38_*` when the mode word at `0xA3D2A4` is 2. Without
+a listed lobby the dialog said "Matching Server Not Found". What the server does:
+
+- Publishes `#Lob_35_0` with `@matchbot` in its names list, like lobby 40 (`RA2_QUICK_MATCH_LOBBY`).
+- World Domination uses lobby 35 as well, so the queue is chosen by the player, not the
+  channel: a `Match` with no `VRS`, from a player whose WDT screen is not up (no `wdtarmed`
+  or pending `wdtstart`), is Quick Match. It queues as type 135 (`RA2_QUICK_MATCH_TYPE`), native
+  ranked 1v1 on SKU 16640, with its own queue. A `Match` carrying `VRS` or from a WDT-armed player
+  stays World Domination.
+- Uses the RA2 options record (`MP32S8`), speed field 0 (fastest).
+- The shim passes `Lob_35_`/`Lob_38_` through its list filter for the RA2 edition (`wolapi.c`).
+  Needs an RA2 rebuild.
+- Lobby 38 is not published (mode word 2, never seen).
 
 ## Game speed
 
@@ -162,6 +179,6 @@ tabs or two profiles, and press Quick Match in each.
 - **Retail clients.** Only the recomp's lifted YR has played it. A real install
   that uses the original `wol.dll` is not checked.
 - **A map pool.** One placeholder map.
-- **Red Alert 2.** Its handler uses other lobby types (38/35); not traced, so RA2
-  has no native Quick Match here.
+- **Red Alert 2 end to end.** The server side is tested; the play-through is not (see
+  "Red Alert 2" above).
 - **Lobby 39** (mode word 2).
