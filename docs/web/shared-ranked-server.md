@@ -84,12 +84,15 @@ The full implementation plan and server configuration are in
 
 Status (12 November 2026): T0–T13 are implemented and reviewed on `ra2web`
 `feat/shared-ranked-release` and `vera20k` `feat/lobby-replay-upload`; the
-real-client integration gate (T14 steps 2–4) has **not** been run.
+real-client integration gate (T14 steps 2–4) has only partly run: on 13 November
+2026 two real YR native clients (this build, custom match, local server) reported
+wire GSKU `10496`, which the server now maps to the YR ladder SKU 18688. Ranked
+quick matches, retail clients and Vera20k have not been run.
 
 | Flag (ra2web server) | Default | Effect |
 |---|---|---|
 | `VERA_ENABLED` | `true` | Serve Vera20k's `/v1/*` lobby on the shared data. `VERA_SKU` defaults to 18688 (YR). |
-| `NATIVE_RANKED_ENABLED` | `false` | Ranked 1v1 for retail clients on the exact `NATIVE_GAME_VERSION`. Keep off until a real YR capture confirms the wire GSKU 18688 (`ra2web/docs/ranked-ladder.md`). |
+| `NATIVE_RANKED_ENABLED` | `false` | Ranked 1v1 for retail clients on the exact `NATIVE_GAME_VERSION`. The YR wire GSKU is now observed (10496, see `ra2web/docs/ranked-ladder.md`); keep off until a ranked quick match with a retail client has been tried. |
 | `RANKED_SEASON_GRACE_SECONDS` | `1800` | Reports are settled until `(closedAt \|\| endTime)` plus this; later reports are archived unscored. |
 | `LADDER_LEGACY_SKU` | unset | Assigns pre-SKU legacy rows to 16640 or 18688. Unset hides them. Back up first (the migration does; see the server README). |
 
@@ -114,6 +117,6 @@ migration backup restore.
 - `GET /v1/matches/{id}` is memory-only and lasts 10 minutes.
 - Rematches in the same paired Vera room rank.
 - `replayPath` is still exposed in public `/matches`.
-- Unconfirmed against real clients: YR wire GSKU 18688, `FINI=0` semantics,
+- Unconfirmed against real clients: `FINI=0` semantics,
   retail native version 1.006 and lobby channel mapping, UDP relay
   admission/renewal, and whether the recomp native client records replays.

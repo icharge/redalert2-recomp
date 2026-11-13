@@ -118,7 +118,7 @@ None of the three branches is pushed.
 
 Web ranked 1v1 was routed through Settlement after the final review (b4be024, d1b5082; resign and disconnect endings accepted as self-loss claims). Web 2v2 stays on the old single-report path. T14 step 4 failure cases (disconnect, dispute then adjudication, season closed mid-match, restart) are covered by scripted tests in `ra2web/server/test/settlement.test.ts` and `wgameres.test.ts`; the real-client runs are still outstanding.
 
-Open carry-overs: (T13 strip of `nativeReports` and replay auth-before-body are done in T13a.) **YR native wire GSKU 18688 is an unconfirmed assumption that blocks the T14 real-client run** (see `ra2web/docs/ranked-ladder.md`);  T13 must strip `nativeReports` from public `GET /matches/{id}`
+Open carry-overs: (T13 strip of `nativeReports` and replay auth-before-body are done in T13a.) **The YR native wire GSKU was assumed to be 18688; a real YR client (13 Nov 2026) sent 10496, now mapped to 18688** (see `ra2web/docs/ranked-ladder.md`; that run was a custom match, so ranked quick match and retail clients are still unchecked);  T13 must strip `nativeReports` from public `GET /matches/{id}`
 and authenticate the replay bearer before reading the body; T14 documents the
 known limitations (client-controlled `ended_ago`, 3-rated-games-per-24h limit
 not implemented, adjudication `winner` required for win/loss).

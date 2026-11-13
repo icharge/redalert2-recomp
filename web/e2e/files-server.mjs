@@ -6,7 +6,18 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { transformWithEsbuild } from "vite";
 
-export async function serveGame(game, pageOrigin, overrides = {}) {
+// The game stops at start ("Failed to initialize") when these movie archives are missing, though it
+// takes an empty one. The real importer (src/storage/install.ts) writes 12-byte stubs for them; this
+// raw transport must do the same, or a folder without movies (the usual dev `../game`) will not boot.
+const REQUIRED_MOVIE_ARCHIVES = ["movies01.mix", "movmd03.mix"];
+
+export async function serveGame(game, pageOrigin, callerOverrides = {}) {
+  const present = new Set(readdirSync(game).map((name) => name.toLowerCase()));
+  const overrides = { ...callerOverrides };
+  for (const name of REQUIRED_MOVIE_ARCHIVES) {
+    const given = Object.keys(overrides).some((key) => key.toLowerCase() === name);
+    if (!present.has(name) && !given) overrides[name] = new Uint8Array(12);
+  }
   const rulesPath = fileURLToPath(new URL("../src/storage/install.ts", import.meta.url));
   const rules = await transformWithEsbuild(readFileSync(rulesPath, "utf8"), rulesPath);
   const { classify } = await import(

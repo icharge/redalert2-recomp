@@ -567,7 +567,11 @@ shared game assets. It streams js/wasm/data through a temporary loopback HTTP
 server because the debug WASM exceeds Chrome's DevTools fulfillment-buffer limit.
 Use the private `build-web-udp` memory configuration and `--arg --intro` described
 in [handoff-wolapi.md](handoff-wolapi.md#build-and-test-recipes).
-For YR, `--finish` additionally drives the known 640x480 guest quit-menu fixture,
+With `--game`, the harness serves the folder as it is and adds the 12-byte
+`Movies01.mix` and `Movmd03.mix` stubs the importer would write when the folder has
+none; without them the game stops at start ("Failed to initialize"). For YR,
+`--finish` needs the page at 640x480 (`--url 'http://localhost:5173/?video=640x480'`;
+the page defaults to 1280x960 now) and additionally drives the known 640x480 guest quit-menu fixture,
 checks the remote victory and score continuation, waits for both native lobby
 callbacks, and asserts that old relay sockets and native sessions are cleared.
 It is currently a YR-only fixture; general RA2/YR play checks use `--play`.
