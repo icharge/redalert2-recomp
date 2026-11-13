@@ -115,6 +115,17 @@ and the matchbot now sends it for type 40:
 `XMP29U2` is a placeholder. A map pool is not built, so every Quick Match plays
 that one map; the match only starts if both installs have it.
 
+## Game speed
+
+Quick Match plays at speed 6, Fastest (60 ticks a second). The third field of the
+options record is the speed as the game stores it, 6 minus the slider (1 is speed 5,
+45 ticks a second; 0 is speed 6). The server sets it to 0 in its own record and again
+in the final record, even when the host's client published a slower one, so both
+players run at the same rate. The field's place comes from a record captured at speed 5
+and from the server's replay reader; it is not traced in the game's code, so check it by
+the game's frame rate. Custom rooms use the host's own slider
+(`[WonlinePref] GameSpeed`).
+
 ## Ranking
 
 Ranking cannot be decided from the request, which has no `RKD`. So for the
