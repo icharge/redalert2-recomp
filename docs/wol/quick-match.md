@@ -132,6 +132,10 @@ still said "Matching Server Not Found"). Without a listed lobby the dialog said 
 - The shim passes `Lob_35_`/`Lob_38_` through its list filter for the RA2 edition (`wolapi.c`).
   Needs an RA2 rebuild.
 - Lobby 35 is not published (mode word 2, never seen).
+- First play-through (14 Nov 2026, two recomp RA2 clients): both queued as type 135, matched, STARTG
+  and the relay worked, and the game ran. Both result reports were refused because the client's
+  GSKU is 8448, not the World Domination 8960; the server maps it to SKU 16640 now. That match stays
+  `pending`. Scoring after the fix is not seen yet.
 
 ## Game speed
 
