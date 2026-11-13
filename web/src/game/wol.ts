@@ -115,6 +115,7 @@ async function sessionToken(
   let result = (await response.json().catch(() => ({}))) as {
     sessionToken?: unknown;
     error?: unknown;
+    errorCode?: unknown;
   };
   if (typeof result.sessionToken !== "string") {
     response = await fetcher(new URL("login", ensureSlash(server)), {
