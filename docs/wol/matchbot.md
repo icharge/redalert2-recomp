@@ -121,7 +121,7 @@ speaks in sentences (`matchmaking/nativeMessages.ts`) instead of the words above
 | After the request | `Working`, then `Welcome to Quick Match (Yuri's Revenge, 1v1).` |
 | Searching, nobody else | `No other players are searching right now. Waiting for an opponent...` |
 | Searching, others in the queue | `Searching for an opponent. <n> other players in the queue...` |
-| Every 15 s while waiting | `Still searching. ...` with the current count |
+| Every 15 s while waiting | `Working` (restarts the client's 180 s counter), then `Still searching. ...` with the current count |
 | Pair found | `Match found! Your opponent is <name>.` then `Game begins in 10...` to `1...` |
 | Opponent left during the countdown | `Working` again (restarts the client's 180 s timer), then `Your opponent left. Searching for a new opponent...` |
 | Already queued / queue full | `You are already searching for a match.` / `The queue is full. Try again in a moment.` |
@@ -163,16 +163,15 @@ Not sent:
 
 - **The retail dialog gives up 180 s after a `Working`** ("Error : Timed out waiting for
   game start"; the game sets a 180 second counter in its `Working` handler, gamemd
-  `0x7A1838`). A player alone in the queue is timed out by their own client; the server
-  does not know. A requeue after an opponent leaves sends `Working` again to restart it.
-  Sending `Working` periodically while someone waits would keep the search open longer;
-  that is not done.
+  `0x7A1838`). The server now repeats `Working` with each 15 second reminder, so a waiting
+  player's counter restarts and the search stays open until they cancel. Not checked on a
+  real client for longer than 180 s.
 
 - Lobbies other than 40 still get no progress messages while waiting.
 - The 10 second countdown is fixed and applies even when both players are ready.
 - If no gserv is available at match time, the entries are left as they were and
   the players get `Requeue`; they are not put back in the queue.
 - The host's options win over the server's only if the host publishes within
-  4 seconds; otherwise the server's record (YR `XMP29U2`, RA2 `MP32S8`) is used.
+  4 seconds; otherwise the server's record is used (a random pool map for Quick Match, see [quick-match.md](quick-match.md); RA2 World Domination keeps `MP32S8`).
 - Parties (`party_*`) are only for the web 2v2 queue; the retail client never
   forms one.

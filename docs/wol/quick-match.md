@@ -112,8 +112,23 @@ and the matchbot now sends it for type 40:
   :@:0,-1,-1,-2,-2 (x8)
 ```
 
-`XMP29U2` is a placeholder. A map pool is not built, so every Quick Match plays
-that one map; the match only starts if both installs have it.
+`XMP29U2` was the first map. It is now one of three YR maps in a pool (see "Map pool").
+
+## Map pool
+
+Each match picks one stock two-player map at random (`matchmaking/quickMatchMaps.ts`):
+
+| Edition | Maps |
+|---|---|
+| Yuri's Revenge | `XMP29U2`, `XMP31S2`, `XMP21S2` |
+| Red Alert 2 | `MP29U2`, `MP31S2`, `MP21S2` |
+
+The record's size is the map file's byte length; its digest is the value of the map's own `[Digest] 1=` line,
+not a hash of the file. Both rules reproduce the two records captured from real clients. To read them from an
+install: `bun server/scripts/map-pool-scan.ts <game dir> --probe XMP29U2.MAP` (in `../ra2web`). The pool
+is two-player maps so a random start cannot land on a slot with no opponent. `QUICK_MATCH_MAPS=XMP21S2`
+restricts the pool (a name that matches nothing is ignored). The server logs `quick match map <name>`.
+Only `XMP29U2` has been loaded by a real client; the others are verified by rule only (see [roadmap.md](roadmap.md), M2).
 
 ## Red Alert 2
 
@@ -128,7 +143,7 @@ still said "Matching Server Not Found"). Without a listed lobby the dialog said 
   or pending `wdtstart`), is Quick Match. It queues as type 135 (`RA2_QUICK_MATCH_TYPE`), native
   ranked 1v1 on SKU 16640, with its own queue. A `Match` carrying `VRS` or from a WDT-armed player
   stays World Domination.
-- Uses the RA2 options record (`MP32S8`), speed field 0 (fastest).
+- Uses the RA2 options record with a map from the pool above (it was `MP32S8`, an eight-player map), speed field 0 (fastest).
 - The shim passes `Lob_35_`/`Lob_38_` through its list filter for the RA2 edition (`wolapi.c`).
   Needs an RA2 rebuild.
 - Lobby 35 is not published (mode word 2, never seen).
@@ -199,7 +214,7 @@ tabs or two profiles, and press Quick Match in each.
   result is not traced; the server scores whatever `FINI` the reports agree on.
 - **Retail clients.** Only the recomp's lifted YR has played it. A real install
   that uses the original `wol.dll` is not checked.
-- **A map pool.** One placeholder map.
+- **The pool maps other than `XMP29U2`** on a real client.
 - **Red Alert 2 end to end.** The server side is tested; the play-through is not (see
   "Red Alert 2" above).
 - **Lobby 39** (mode word 2).
