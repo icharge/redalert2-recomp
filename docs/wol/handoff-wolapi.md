@@ -274,7 +274,7 @@ come from the lifted code and are now exercised by the passing YR gameplay runs.
   router drops the query).
 - `web/e2e/wol.mjs` (new, Codex's; I added `--hold <s>` and an `eval` action for
   `--interactive`), `web/e2e/boot-probe.mjs` (scratch probe).
-- `docs/web/handoff-wolapi.md` (this file).
+- `docs/wol/handoff-wolapi.md` (this file).
 
 `ra2web/server` (branch `feat/wol-lobby-server`, a separate repository):
 - `src/gserv/NativeRelay.ts` (new), `src/index.ts` (route `<gservUrlPath>/native`,
@@ -445,7 +445,10 @@ Local only; no public probes. Rebuilt `build-web-udp` (RA2) and
   relay socket (the page currently only reports it), per-player rate limits, TLS
   deployments (`wss://`). The loader defaults to `http://127.0.0.1:9090` unless
   the operator sets its trusted build configuration.
-- Ranked results and ladder trust are out of scope for this POC.
+- Ranked results and the shared season ladder are now served by the RA2Web
+  backend; see [shared-ranked-server.md](shared-ranked-server.md). The handoff
+  here predates that work, so its "out of scope" note applies only to the
+  original POC.
 - Commit plan when resumed: the three repositories separately; in
   `redalert2-recomp` split the WOL files from the presenter/input/Thai-font/LAN work
   that shares `main.c`, `loader.ts` and other files.

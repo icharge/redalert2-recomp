@@ -136,7 +136,7 @@ The WOL `Help` button (`0xBE:1375`) lives in that same unreachable chat
 dialog: RA2's PlayWDT (`0x10E:1763`) ends in the game's `0xD0` notice after
 login, and so does Quick Match (`0x10E:1760`) against a server that does not publish
 the quick-match lobby with an operator (see "Native Quick Match lookup" in
-`handoff-shared-ranked-server.md`). Current ra2web does, so YR Quick Match
+`docs/wol/handoff-shared-ranked-server.md`). Current ra2web does, so YR Quick Match
 pairs two clients and plays (checked 13 Nov 2026 with two driven clients). YR's `0x113` lobby has no Help
 control. The help URL itself is covered without a menu path: the WOLAPI
 selftest checks `WolChat::GetHelpURL`, and
@@ -569,7 +569,7 @@ after STARTG, covering the guest's NET_GO identity-validation race.
 shared game assets. It streams js/wasm/data through a temporary loopback HTTP
 server because the debug WASM exceeds Chrome's DevTools fulfillment-buffer limit.
 Use the private `build-web-udp` memory configuration and `--arg --intro` described
-in [handoff-wolapi.md](handoff-wolapi.md#build-and-test-recipes).
+in [handoff-wolapi.md](../wol/handoff-wolapi.md#build-and-test-recipes).
 With `--game`, the harness serves the folder as it is and adds the 12-byte
 `Movies01.mix` and `Movmd03.mix` stubs the importer would write when the folder has
 none; without them the game stops at start ("Failed to initialize"). For YR,

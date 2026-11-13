@@ -8,7 +8,7 @@
 
 **Tech Stack:** Bun + TypeScript (`ra2web/server`, tests with `bun:test`, SQLite and memory storage), C/WASM + TypeScript (`redalert2-recomp/web`), Rust (`vera20k`, replay upload hook only).
 
-**Spec:** [shared-ranked-server-gap-analysis.md](../../web/shared-ranked-server-gap-analysis.md) (see "Decisions taken (T0)"), [handoff-shared-ranked-server.md](../../web/handoff-shared-ranked-server.md) and `ra2web/docs/superpowers/plans/2026-11-11-shared-ranked-wol-vera.md`.
+**Spec:** [shared-ranked-server-gap-analysis.md](../../wol/shared-ranked-server-gap-analysis.md) (see "Decisions taken (T0)"), [handoff-shared-ranked-server.md](../../web/handoff-shared-ranked-server.md) and `ra2web/docs/superpowers/plans/2026-11-11-shared-ranked-wol-vera.md`.
 
 **Repos:** `RA2WEB` = `C:\Users\Norrapat\projects\ra2web` (paths `server/...`). `RECOMP` = this repo. `VERA` = `C:\Users\Norrapat\projects\vera20k`. Run server commands from `RA2WEB\server`. Commit in the repo that owns the changed files; stage only the files a task names, because other work shares each tree.
 
@@ -52,7 +52,7 @@ Each is pinned by a named test in the owning task (T1, T2, T6, T3/T6 respectivel
 ### Task 0: Baseline, SKU default and inventory
 
 **Files:**
-- Modify: `RA2WEB server/src/config.ts:292`, `RA2WEB server/.env.example`, `RA2WEB server/README.md`, `RECOMP docs/web/shared-ranked-server.md`
+- Modify: `RA2WEB server/src/config.ts:292`, `RA2WEB server/.env.example`, `RA2WEB server/README.md`, `RECOMP docs/wol/shared-ranked-server.md`
 - Test: `RA2WEB server/test/veraLobby.test.ts`
 
 **Interfaces:**
@@ -230,7 +230,7 @@ Each is pinned by a named test in the owning task (T1, T2, T6, T3/T6 respectivel
 - Produces: `canonicalSkuForWire(gsku: number): 16640 | 18688` — `8960 → 16640`, `16640 → 16640`, `18688 → 18688`. This is a proposed mapping: confirm it against real captured RA2 and YR packets in step 1 and change the table (not the callers) if a capture disagrees.
 - Produces: for a ranked native instance, `handleNativeResults` calls `settlement.admit` once at instance creation (source `wol-native`) and `settlement.submitReport` per authenticated roster reporter, mapping `nativeResultType(CMPn)` (0 win, 1 loss, 2 draw) and `OOSY`/`FINI` (`oos`, unfinished → `disconnected`). The response is `{ gameId, stored: true, ranked: true, state }` where `state` is a `MatchState`. Custom and WDT instances keep `{ ranked: false }` and their existing semantics. A packet cannot make an instance ranked; only the server-created instance can.
 
-- [ ] **Step 1: Capture fixtures.** Take one RA2 and one YR `GameRes` packet from a real native match (or the existing `nativeResults.test.ts` builders, if they were derived from captures) and check `GSKU`; record the finding in `docs/web/handoff-wolapi.md`.
+- [ ] **Step 1: Capture fixtures.** Take one RA2 and one YR `GameRes` packet from a real native match (or the existing `nativeResults.test.ts` builders, if they were derived from captures) and check `GSKU`; record the finding in `docs/wol/handoff-wolapi.md`.
 - [ ] **Step 2: Write failing tests**: `RA2 and YR packets settle once after both players report`; `a wrong GSKU for the instance edition is rejected`; `a roster mismatch, extra human, OOS, unfinished or too-short report never scores`; `custom and WDT matches stay unscored in both storage backends`; `reporting twice does not double score`.
 - [ ] **Step 3: Run** `bun test test/nativeResults.test.ts`. Expected: FAIL.
 - [ ] **Step 4: Implement** the mapping, instance admission and the ranked branch of the handler, behind `NATIVE_RANKED_ENABLED`.
@@ -294,7 +294,7 @@ Native ladder screens and score-gain UI are not in this release. In T14, documen
 ### Task 14: Integration gate, rollout and rollback
 
 **Files:**
-- Modify: `RA2WEB server/README.md`, `RECOMP docs/web/handoff-shared-ranked-server.md`, `RECOMP docs/web/shared-ranked-server.md`, `RECOMP docs/web/testing.md`
+- Modify: `RA2WEB server/README.md`, `RECOMP docs/wol/handoff-shared-ranked-server.md`, `RECOMP docs/wol/shared-ranked-server.md`, `RECOMP docs/web/testing.md`
 
 **Interfaces:**
 - Produces: documented flags `NATIVE_RANKED_ENABLED`, `VERA_ENABLED`, `RANKED_SEASON_GRACE_SECONDS`, `LADDER_LEGACY_SKU`; log lines/counters for settlement state counts, rejected starts (with `unrankedReason`), queue waits and replay failures; migration backup and rollback steps from T2.

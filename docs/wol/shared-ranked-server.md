@@ -36,7 +36,7 @@ and Vera20k.
 ## Native client scope
 
 There is **no native in-game ladder or score-gain UI in this release**
-(decision 5 in `shared-ranked-server-gap-analysis.md`, "Decisions taken"). The
+(decision 5 in `docs/wol/shared-ranked-server-gap-analysis.md`, "Decisions taken"). The
 native ladder COM calls stay stubs and the native client shows no rating gain;
 standings come from the HTTP leaderboard and profile endpoints above. Native
 ladder screens are planned for a later release.

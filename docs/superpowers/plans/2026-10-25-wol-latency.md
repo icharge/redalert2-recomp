@@ -351,7 +351,7 @@ git commit -m "Send WOL datagrams as soon as the game queues them"
 
 **Files:**
 - Modify: `docs/web/decisions.md` (new entry D-next: "WOL match transport")
-- Modify: `docs/web/progress.md`, `docs/web/handoff-wolapi.md`, this plan's Results
+- Modify: `docs/web/progress.md`, `docs/wol/handoff-wolapi.md`, this plan's Results
 
 - [ ] **Step 1: Measure on two networks** (still a local server: the second client reaches it over the LAN or a tunnel the user sets up; no public host)
 
@@ -364,7 +364,7 @@ Write the decision entry. Choose WebRTC data channels (unordered, `maxRetransmit
 - [ ] **Step 3: Commit** (only when the user asks)
 
 ```bash
-git add docs/web/decisions.md docs/web/progress.md docs/web/handoff-wolapi.md docs/superpowers/plans/2026-10-25-wol-latency.md
+git add docs/web/decisions.md docs/web/progress.md docs/wol/handoff-wolapi.md docs/superpowers/plans/2026-10-25-wol-latency.md
 git commit -m "Record WOL latency measurements and the match transport decision"
 ```
 

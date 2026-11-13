@@ -353,7 +353,7 @@ STARTG the game attempts UDP NET_PORT_PROBE packets; browser delivery of that
 native Internet packet path remains W13.3. W13.2 still has compatibility and
 negative-path work, including YR two-client/start verification and failed room
 operations. Current details and reproduction commands are in
-[handoff-wolapi.md](handoff-wolapi.md) and [testing.md](testing.md#wolapi-bridge).
+[handoff-wolapi.md](../wol/handoff-wolapi.md) and [testing.md](testing.md#wolapi-bridge).
 
 ## 24 October 2026: room metadata, passwords and rejected joins
 

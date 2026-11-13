@@ -427,10 +427,10 @@ In `redalert2-recomp`:
 
 ```
 docs/web/README.md
-docs/web/handoff-wolapi.md
-docs/web/shared-ranked-server.md       (new)
-docs/web/handoff-shared-ranked-server.md (this file)
-docs/web/shared-ranked-server-gap-analysis.md (new review/task breakdown)
+docs/wol/handoff-wolapi.md
+docs/wol/shared-ranked-server.md       (new)
+docs/wol/handoff-shared-ranked-server.md (this file)
+docs/wol/shared-ranked-server-gap-analysis.md (new review/task breakdown)
 ```
 
 No commits were made. The Vera lobby implementation has not been reviewed by a

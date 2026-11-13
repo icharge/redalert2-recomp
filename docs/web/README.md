@@ -40,6 +40,7 @@ See [deploy.md](deploy.md) for the hosting constraint.
 | [storage.md](storage.md) | Importing the install, checking it, the OPFS layout, saves and settings |
 | [testing.md](testing.md) | Unit tests for the page, the playtest suite in a headless browser, the conformance milestones |
 | [network-performance.md](network-performance.md) | Where a WOL match's command delay goes, the lockstep floor, transport options (WebRTC, WebTransport, WS↔UDP) and the game-transport improvements worth making |
+| [../wol/README.md](../wol/README.md) | Everything about WOL (Internet play): the wire protocol, Quick Match, the WOLAPI shim, the ranked server, handoffs |
 | [deploy.md](deploy.md) | Hosting, the cross-origin headers, the service worker, caching, browser support |
 | [decisions.md](decisions.md) | Each decision made so far, with the reason and what would change it |
 
