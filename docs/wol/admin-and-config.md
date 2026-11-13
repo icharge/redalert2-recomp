@@ -1,8 +1,9 @@
 # Server settings and the admin platform
 
-Status of 14 Nov 2026. **Implemented** (ra2web `ec585c7`): the settings store, the Quick Match map pool as
-data, the audit trail and their admin routes. **Designed, not built:** separate admin accounts with roles,
-cookie sessions with CSRF protection, and the admin web UI beyond what exists. Paths under `server/` are in `../ra2web`.
+Status of 14 Nov 2026. **Implemented** (ra2web `ec585c7`, `68318fe`): the settings store, the Quick Match map pool as
+data, the audit trail and their admin routes, and admin accounts with roles, cookie and bearer sessions, CSRF and lockout.
+**Designed, not built:** TOTP, admin-user management in the console, a separate admin listener, and the admin web UI
+beyond what exists (see "Console login"). Paths under `server/` are in `../ra2web`.
 
 ## Configuration layers
 
@@ -74,6 +75,23 @@ The console is a React app (`ra2web/admin`) over `/admin/*`. An admin is **a gam
 `ADMIN_USERNAMES`, authenticated by the game's bearer session token. That is the weakest part: a stolen game password
 is an admin takeover, there are no roles (any listed name can do everything, including closing a season or deleting a map),
 and the audit is a log line.
+
+### Console login (built)
+
+| Route | Use |
+|---|---|
+| `POST /admin/auth/login` `{username, password}` | Sets the `ra2admin` cookie (`HttpOnly; SameSite=Strict; Path=/admin`, `Secure` over HTTPS) and returns `{username, role, token, csrfToken}`. A wrong password and an unknown name give the same 401; a locked account gives 429 |
+| `GET /admin/auth/me` | Who the session is, its role and its CSRF token |
+| `POST /admin/auth/logout` | Ends the session and clears the cookie |
+
+A browser sends the cookie and puts `csrfToken` in `X-CSRF-Token` on every change; a script sends `Authorization: Bearer <token>`
+and needs no CSRF header. Accounts are made from the host: `bun scripts/admin-user.ts create|list|password|disable|enable`
+(password from `--password-file`, `ADMIN_PASSWORD` or a prompt, at least 12 characters). The role a route needs comes from its
+method and path (`requiredPermission` in `http/adminAuthRoutes.ts`): reads need `viewer`; ban, unban and adjudication need `moderator`;
+every other change needs `admin`; a restart-only setting needs `owner`. Differences from the target below: sessions are not bound to
+the `Origin` header, there is no per-username limiter beyond the lockout, and the WDT operator routes accept any `admin` or `owner`
+session. The React console (`ra2web/admin`) signs in through `/admin/auth/login` and falls back to the game-account login, and then
+uses the token as a Bearer, so it does not use the cookie or CSRF path yet; it has no screen for managing admin users.
 
 ### Target
 

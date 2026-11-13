@@ -22,7 +22,7 @@ Status of 14 Nov 2026. What exists is audited from the code (ra2web `server/src/
 | SE1 | **Soft reset.** A new season restarts everyone at 1000, so a long-time top player and a newcomer tie on day one | Seasons feel like wipes; players quit |
 | SE2 | **Season rewards and badges.** No record of who finished where | Nothing to play for; no history after the season |
 | SE3 | **Archived season page.** A closed season's final table is only reachable by its id; nothing freezes it | A later rescore or adjudication silently changes an old "final" |
-| SE4 | **Public season list and API.** No `GET /seasons`; the client has to know ids | A leaderboard page cannot list seasons |
+| SE4 | **Public season list and API.** `GET /seasons[?sku=]` now lists seasons with the slug the leaderboard route takes (ra2web `a363c2f`); still missing: `GET /seasons/{sku}/{id}` and the `archived` flag, which need the season states below | A leaderboard page cannot show a frozen final table |
 | SE5 | **Per-mode boards.** One board per (SKU, ladder type). Quick Match and a lobby-made ranked 1v1 share `1v1`; WDT and co-op have none | Modes with different pace cannot be compared |
 | SE6 | **A leaderboard web page.** The data is public; there is no page in the web client or the admin | Players cannot see the ladder without the API |
 | SE7 | **Scheduled start and end.** Seasons start when an admin creates them and end when closed or past `end_time` | Operators want "ends 1 Jan 00:00" without being awake |

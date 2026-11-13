@@ -21,6 +21,8 @@ Effort: S under an hour, M a day, L several days. Paths under `server/` are in `
 | D5 | `bun test` wrote its fake players into the real `data/server.log` (found: `alice`/`bob` lines at 20:31 in the log) | log size unchanged across a run after the fix | `864d391` |
 
 | D6 | **Settings as data.** A `settings` table and a `SettingsService` hold the operator's overrides of the environment; live ones apply to the running server, restart-only ones are flagged. The Quick Match map pool is a setting (per edition and mode, weights, on/off; an uploaded map's size, digest and slots are read from the file). Every change writes an `audit_log` row | `bun test` 627 pass, `tsc` clean; `settings.test.ts`, `adminSettings.test.ts`, `quickMatchMaps.test.ts` on memory and SQLite | `ec585c7` |
+| D7 | **Admin accounts with roles.** An `admin_users` table (viewer, moderator, admin, owner) separate from game accounts; login with a per-account lockout (5 failures, 15 min) and a per-address limit; sessions in memory (30 min idle, 8 h absolute) delivered as an `HttpOnly; SameSite=Strict; Path=/admin` cookie plus a CSRF token, or as a Bearer for scripts; every route checks the role (viewer reads, moderator bans and adjudicates, admin changes live settings, owner changes restart-only ones); logins and failures are audited, never with the password; `bun scripts/admin-user.ts create <name> --role owner` makes the first owner and there is no default credential. The game-account `ADMIN_USERNAMES` login still works as owner until `ADMIN_LEGACY_AUTH=false` | `adminAuth.test.ts` (20 tests: roles, lockout, expiry, cookie and CSRF, bearer, role gates, legacy switch, no accounts means nothing reachable); `bun test` 647 pass, `tsc` clean | `68318fe` |
+| D8 | **Backup and public seasons.** `bun scripts/backup.ts` writes a consistent copy with `VACUUM INTO` while the server runs, checks it (`integrity_check`, account count) and only then prunes to the newest N; `GET /seasons[?sku=]` lists seasons with the slug the leaderboard route takes | `backup.test.ts`, `seasonsApi.test.ts`; ran the script against a real database file | `a363c2f` |
 
 ## Platform work (scope added 14 Nov): ranked plan
 
@@ -32,12 +34,12 @@ Ordered as requested: foundations, then map pool and seasons, then co-op, then t
 |---|---|---|---|---|
 | **Foundations** | | | | |
 | P1 | Config store (settings as data, restart flags, audit) | **done** (D6); more keys are one entry each | S per key | |
-| P2 | Admin auth: separate admin accounts, roles, cookie sessions, CSRF, lockout, no default credentials; threat model | designed | L | P1 (audit) |
+| P2 | Admin auth: separate admin accounts, roles, cookie sessions, CSRF, lockout, no default credentials; threat model | **done** (D7); TOTP, admin-user management screen and the loopback-only listener are not built | L | P1 (audit) |
 | P3 | Member model, launch ticket and redeem endpoint, migration of `accounts` | designed; needs decisions 1-4 of [members-and-sso.md](members-and-sso.md) | L | P2 (shares the password and session code) |
-| P4 | Ordered migrations (`schema_version`) and backup/restore (M7) | designed | M | |
+| P4 | Ordered migrations (`schema_version`) and backup/restore (M7) | backup script **done** (D8); `schema_version` migrations and the scheduled daily backup are designed, not built | M | |
 | **Map pool and seasons** | | | | |
 | P5 | Map pool: data, weights, on/off, size and digest from the file, per-map validation | **done** (D6); admin UI page missing | S for the page | P1 |
-| P6 | `GET /seasons`, archived flag on the leaderboard (SE4) | designed | S | |
+| P6 | `GET /seasons`, archived flag on the leaderboard (SE4) | `GET /seasons` **done** (D8); the `archived` flag waits for P7's states | S | |
 | P7 | Season states, scheduler, archive snapshot, soft reset policy (SE1, SE3, SE7) | designed; decision on reset rule | M | P6 |
 | P8 | Leaderboard page and awards (SE2, SE6) | designed | M | P7 |
 | **Co-op** | | | | |

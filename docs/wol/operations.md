@@ -29,13 +29,13 @@ version; on start the server applies the missing ones in order and refuses to st
 (a downgrade). Before any migration that changes existing rows the server copies the file to `data/backups/pre-<version>.sqlite`.
 This replaces today's "detect by schema shape" checks with one ordered list.
 
-### Backup and restore (target, [roadmap M7](roadmap.md))
+### Backup and restore ([roadmap M7](roadmap.md))
 
-| Piece | Design |
+| Piece | State |
 |---|---|
-| Backup | `bun scripts/backup.ts [--to DIR]` runs `VACUUM INTO 'DIR/ra2web-<UTC time>.sqlite'`, a consistent copy that is safe while the server runs; keeps the newest `BACKUP_KEEP` (default 14) |
-| Schedule | The server runs it daily at `BACKUP_AT` (default 04:00 local) when `BACKUP_DIR` is set; the log says what it wrote. Off when unset |
-| Verify | After writing, open the copy read-only, run `PRAGMA integrity_check` and count the accounts; a failed check is logged as an error and keeps the previous good backups |
+| Backup | **Built.** `bun scripts/backup.ts [--to DIR] [--keep N] [--db FILE]` runs `VACUUM INTO 'DIR/ra2web-<UTC time>.sqlite'`, a consistent copy that is safe while the server runs; default folder `data/backups` beside the database (or `BACKUP_DIR`), keeps the newest 14 (or `BACKUP_KEEP`) |
+| Schedule | Not built. Until then run the script from cron or Task Scheduler. Design: the server runs it daily at `BACKUP_AT` (default 04:00 local) when `BACKUP_DIR` is set and logs what it wrote |
+| Verify | **Built.** After writing, the copy is opened read-only, `PRAGMA integrity_check` runs and the accounts are counted; a copy that fails is deleted, the run exits 1 and the earlier backups are left alone (pruning happens only after a good copy) |
 | Restore | Stop the server, copy the chosen file over `data/ra2web.sqlite` (and delete `-wal`/`-shm` beside it), start. The restore note belongs here and in `server/README.md` |
 | Off-host | Copy `BACKUP_DIR` with the operator's own tool (rsync, rclone, the host's snapshot); the server does not push data anywhere |
 
@@ -68,20 +68,21 @@ external checker at `/health` and the settlement-age metric (a stuck timer shows
 
 Put the HTTP port behind a reverse proxy with TLS. To keep the admin API off the public internet, have the proxy refuse
 `/admin/*` from outside, or serve it on a separate listener ([admin-and-config.md](admin-and-config.md)). Set `ADMIN_USERNAMES`
-to the smallest list you need; with no separate admin accounts yet, an admin is a game account, so use a long unique password.
+to the smallest list you need. Better: create real console accounts (`bun scripts/admin-user.ts create <name> --role owner`)
+and then set `ADMIN_LEGACY_AUTH=false`, so a game-account password is no longer an admin key ([admin-and-config.md](admin-and-config.md)).
 
 ## Setup checklist for a new operator
 
 1. Install Bun; check out `ra2web`; `cd server && bun install`.
 2. Copy the example environment: set `EXTERNAL_URL` (the public URL), `ADMIN_USERNAMES`, `NATIVE_RANKED_ENABLED=true` if you want ranked Quick Match.
-3. Start, open `/health`, register the admin's game account, open the admin console.
+3. Start, open `/health`, create the first owner with `bun scripts/admin-user.ts create <name> --role owner`, sign in to the console API (`POST /admin/auth/login`).
 4. Set the welcome text and the map pool; try Quick Match with two clients ([quick-match.md](quick-match.md)).
 5. Put TLS in front; decide `WOL_TCP_HOST`; schedule off-host copies of the backup folder.
 
 ## What to build, in order
 
 1. `schema_version` and the ordered migrations (small, protects every later change).
-2. `scripts/backup.ts` and the scheduled backup with verification (M7).
+2. The scheduled backup (`scripts/backup.ts` itself is built, M7).
 3. `/metrics` and the health page (M8).
 4. A server `README` section that is this page's checklist, so the repo explains itself.
 5. A single `server/.env.example` listing every variable with its default and meaning (generated from `config.ts` so it cannot drift).
