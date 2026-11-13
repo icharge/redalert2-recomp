@@ -19,7 +19,7 @@ from `matchbot`:
 :matchbot!matchbot@local PRIVMSG <nick> :<reply>
 ```
 
-Only the Quick Match lobbies (`#Lob_40_0` for YR, `#Lob_35_0` for RA2) list it in the names list, as
+Only the Quick Match lobbies (`#Lob_40_0` for YR, `#Lob_38_0` for RA2) list it in the names list, as
 `@matchbot,0,0,0`, because the retail client looks for an operator there.
 Other lobbies work without it appearing.
 
@@ -43,8 +43,8 @@ not by a tag. No lobby gives `Unavailable`.
 | 40 | Retail YR native 1v1, SKU 18688, ranked unless `RKD=0` |
 | 50 / 51 | Web 1v1 / 2v2 (SKU 16640) |
 | 60 / 61 | Web Yuri 1v1 / 2v2 (SKU 18688) |
-| 35 | RA2 retail Quick Match (queue 135, native 1v1, SKU 16640, ranked unless `RKD=0`) when the request has no `VRS` and the WDT screen is not up (no `wdtarmed`); otherwise World Domination |
-| 38 | World Domination (native, never ranked) |
+| 38 | RA2 retail Quick Match (queue 135, native 1v1, SKU 16640, ranked unless `RKD=0`) when the request has no `VRS` and the WDT screen is not up (no `wdtarmed`); otherwise World Domination |
+| 35 | World Domination (native, never ranked) |
 
 ## Admission checks, in order
 

@@ -118,11 +118,12 @@ that one map; the match only starts if both installs have it.
 ## Red Alert 2
 
 RA2's handler (Game.exe `0x759FFF`, `recomp_0051.c`) does the same walk with other lobby
-numbers: it wants `Lob_35_*`, or `Lob_38_*` when the mode word at `0xA3D2A4` is 2. Without
-a listed lobby the dialog said "Matching Server Not Found". What the server does:
+numbers: it wants `Lob_38_*` by default, and `Lob_35_*` only when the mode word at `0xA3D2A4` is 2
+(the branch is `0x75A014`; the first version of this server published 35 and the dialog
+still said "Matching Server Not Found"). Without a listed lobby the dialog said "Matching Server Not Found". What the server does:
 
-- Publishes `#Lob_35_0` with `@matchbot` in its names list, like lobby 40 (`RA2_QUICK_MATCH_LOBBY`).
-- World Domination uses lobby 35 as well, so the queue is chosen by the player, not the
+- Publishes `#Lob_38_0` with `@matchbot` in its names list, like lobby 40 (`RA2_QUICK_MATCH_LOBBY`).
+- World Domination uses lobby 38 as well, so the queue is chosen by the player, not the
   channel: a `Match` with no `VRS`, from a player whose WDT screen is not up (no `wdtarmed`
   or pending `wdtstart`), is Quick Match. It queues as type 135 (`RA2_QUICK_MATCH_TYPE`), native
   ranked 1v1 on SKU 16640, with its own queue. A `Match` carrying `VRS` or from a WDT-armed player
@@ -130,7 +131,7 @@ a listed lobby the dialog said "Matching Server Not Found". What the server does
 - Uses the RA2 options record (`MP32S8`), speed field 0 (fastest).
 - The shim passes `Lob_35_`/`Lob_38_` through its list filter for the RA2 edition (`wolapi.c`).
   Needs an RA2 rebuild.
-- Lobby 38 is not published (mode word 2, never seen).
+- Lobby 35 is not published (mode word 2, never seen).
 
 ## Game speed
 

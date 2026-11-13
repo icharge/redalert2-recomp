@@ -507,7 +507,7 @@ static void parse_room_line(const char *line) {
          * (Lob_40_ unless the lobby mode word at 0xA8B244 is 2). */
         own = own || strncmp(fields[3] + 1, "Lob_39_", 7) == 0 || strncmp(fields[3] + 1, "Lob_40_", 7) == 0;
 #else
-        /* Red Alert 2 Quick Match (Game.exe ~0x759FFF) wants Lob_35_ (Lob_38_ when its
+        /* Red Alert 2 Quick Match (Game.exe ~0x759FFF) wants Lob_38_ (Lob_35_ when its
          * mode word at 0xA3D2A4 is 2). World Domination reads the same two lobbies. */
         own = own || strncmp(fields[3] + 1, "Lob_35_", 7) == 0 || strncmp(fields[3] + 1, "Lob_38_", 7) == 0;
 #endif

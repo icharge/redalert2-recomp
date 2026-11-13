@@ -84,7 +84,7 @@ Channel names travel escaped: space is `_`, a literal `_` is `%_`, `%` is `%%`,
 Each entry is `[@]name,0,<ping>,<fresh>`. `@` marks a channel operator (in a game
 room, the host). The game maps it to bit 0 of the user's flags, and **the
 quick-match handler uses that bit to find its matching agent**. `fresh` is 1 for
-a new account. Only `#Lob_40_0` (YR) and `#Lob_35_0` (RA2) list the virtual user
+a new account. Only `#Lob_40_0` (YR) and `#Lob_38_0` (RA2) list the virtual user
 `@matchbot` (see [quick-match.md](quick-match.md)).
 
 ### Channel list (`322`)
@@ -111,7 +111,7 @@ game's channel list and keeps only the lobbies it recognises
 |---|---|
 | 33 | RA2 main lobby (`WOL_LOBBY_TYPE` for RA2; also the game-room type of an RA2 custom match) |
 | 41 | YR main lobby (`WOL_LOBBY_TYPE` for YR; also the game-room type of a YR custom match) |
-| 35, 38 | World Domination matching lobbies; lobby 35 is also the **RA2 retail Quick Match** lobby (queue type 135 inside the server) |
+| 35, 38 | World Domination matching lobbies; lobby 38 is also the **RA2 retail Quick Match** lobby (queue type 135 inside the server) |
 | 40 | **YR retail Quick Match** (native 1v1, ranked, SKU 18688) |
 | 39 | YR Quick Match when the lobby mode word is 2; the server does not publish it |
 | 50 / 51 | RA2Web (browser) Quick Match 1v1 / 2v2 |
