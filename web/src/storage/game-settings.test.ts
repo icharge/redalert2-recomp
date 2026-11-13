@@ -310,7 +310,7 @@ describe("loadGameSettings", () => {
     expect(getIniValue(yuri, "Audio", "IsScoreShuffle")).toBe("yes");
     for (const edition of [ra2, yuri])
       for (const section of MATCH_SPEED_SECTIONS)
-        expect(getIniValueLast(edition, section, "GameSpeed")).toBe("1");
+        expect(getIniValueLast(edition, section, "GameSpeed")).toBe("0"); // shown as 6, Fastest
   });
 
   it("does not treat an imported settings file as a missing one", async () => {

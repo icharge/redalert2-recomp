@@ -8,7 +8,11 @@
 import { keyFor } from "../game/input";
 import type { GameId } from "./install";
 import { BROWSER_VIDEO_SIZE, readVideoChoice, type VideoChoice } from "./video-preferences";
-import { defaultMainValue, gameSettingsDefaults } from "./game-settings-defaults";
+import {
+  DEFAULT_MATCH_SPEED,
+  defaultMainValue,
+  gameSettingsDefaults,
+} from "./game-settings-defaults";
 import type { GameRecord } from "./manifest";
 import { readGameFile, readSaveFile, opfsTarget, type SavedSettingsFile } from "./opfs";
 import { settingsFileNames, gameIniName, type SettingsFileNames } from "./settings-files";
@@ -617,9 +621,8 @@ export function defaultMainIni(game: GameId): Ini {
     for (const [key, value] of entries) lines.push(`${key}=${value}`);
     lines.push("");
   }
-  // The skirmish screen shows the position, so the stored value is the inverse of the chosen 5.
-  const matchSpeed = Number(defaults.Options.GameSpeed ?? "5");
-  const storedMatchSpeed = Math.max(0, Math.min(6, 6 - matchSpeed));
+  // The skirmish screen shows the position, so the stored value is the inverse of the chosen speed.
+  const storedMatchSpeed = 6 - DEFAULT_MATCH_SPEED;
   for (const section of MATCH_SPEED_SECTIONS)
     lines.push(`[${section}]`, `GameSpeed=${storedMatchSpeed}`, "");
   while (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();

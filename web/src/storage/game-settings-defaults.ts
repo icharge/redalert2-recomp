@@ -5,6 +5,12 @@
 
 import type { GameId } from "./install";
 
+/**
+ * The match game speed a fresh installation starts with, as the skirmish and internet game screens
+ * show it (0 slowest, 6 Fastest). The INI stores the inverse, so this is written as 6 - value.
+ */
+export const DEFAULT_MATCH_SPEED = 6;
+
 export type SettingsSection = "Options" | "Audio" | "Video" | "MultiPlayer" | "Intro";
 
 export type SettingsDefaults = Record<SettingsSection, Record<string, string>>;

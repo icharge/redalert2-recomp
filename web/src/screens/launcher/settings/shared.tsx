@@ -1,5 +1,6 @@
 import { MATCH_SPEED_SECTIONS, setIniValue, setIniValueLast } from "../../../storage/game-settings";
 import {
+  DEFAULT_MATCH_SPEED,
   gameSettingsDefaults,
   type SettingsSection,
 } from "../../../storage/game-settings-defaults";
@@ -23,7 +24,7 @@ export function resetSectionsEdit(sections: SettingsSection[]): Edit {
       for (const [key, value] of Object.entries(defaults[section]))
         next = setIniValue(next, section, key, value);
     if (sections.includes("Options")) {
-      const stored = Math.max(0, Math.min(6, 6 - Number(defaults.Options.GameSpeed ?? "5")));
+      const stored = 6 - DEFAULT_MATCH_SPEED;
       for (const section of MATCH_SPEED_SECTIONS)
         next = setIniValueLast(next, section, "GameSpeed", String(stored));
     }

@@ -9,6 +9,7 @@ import {
   setIniValue,
   setIniValueLast,
 } from "../../../storage/game-settings";
+import { DEFAULT_MATCH_SPEED } from "../../../storage/game-settings-defaults";
 import {
   readCampaignSpeedControlPreference,
   writeCampaignSpeedControlPreference,
@@ -89,7 +90,7 @@ export function GameplayTab({ editions, edition, settings }: TabProps) {
       const stored = raw === null ? Number.NaN : Number(raw);
       if (Number.isFinite(stored)) return Math.max(0, Math.min(6, 6 - stored));
     }
-    return 5;
+    return DEFAULT_MATCH_SPEED;
   })();
   const saveMatchSpeed = (value: number) =>
     void settings.update("main", (ini) => {
