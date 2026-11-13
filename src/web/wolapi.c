@@ -716,7 +716,20 @@ static void handle_line(const char *line) {
         if (g_connected) disconnected();
         else if (g_connection_pending) {
             g_connection_pending = 0;
-            emit_connection(E_FAIL, line + 14);
+            /* `@wolapi error 0x80040065 <message>`: the loader names the result the
+             * game's OnConnection turns into its own text ("bad password", "banned").
+             * Without a code it is a plain failure ("could not connect"). */
+            const char *text = line + 14;
+            char *end;
+            uint32_t result = E_FAIL;
+            if (text[0] == '0' && text[1] == 'x') {
+                unsigned long code = strtoul(text, &end, 16);
+                if (end == text + 10 && *end == ' ' && (code == 0x80040065ul || code == 0x80040072ul)) {
+                    result = (uint32_t)code;
+                    text = end + 1;
+                }
+            }
+            emit_connection(result, text);
         }
         return;
     }

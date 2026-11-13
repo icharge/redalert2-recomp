@@ -125,12 +125,39 @@ async function sessionToken(
     result = (await response.json().catch(() => ({}))) as {
       sessionToken?: unknown;
       error?: unknown;
+      errorCode?: unknown;
     };
   }
   if (!response.ok || typeof result.sessionToken !== "string") {
-    throw new Error(typeof result.error === "string" ? result.error : "WOL register/login failed.");
+    throw new WolLoginError(
+      typeof result.error === "string" ? result.error : "WOL register/login failed.",
+      typeof result.errorCode === "string" ? result.errorCode : undefined,
+    );
   }
   return result.sessionToken;
+}
+
+/** A refused register/login, with the server's `errorCode` when it gave one. */
+export class WolLoginError extends Error {
+  constructor(
+    message: string,
+    readonly code?: string,
+  ) {
+    super(message);
+    this.name = "WolLoginError";
+  }
+}
+
+/**
+ * The chat HRESULT the game's OnConnection handler turns into its own message
+ * (gamemd 0x7A5290: 0x80040065 "TXT_BADPASS", 0x80040072 "TXT_BANNED"). Any other
+ * failure gets no code and shows the game's generic "could not connect".
+ */
+export function wolLoginResult(error: unknown): number | undefined {
+  if (!(error instanceof WolLoginError)) return undefined;
+  if (error.code === "invalid_credentials") return 0x80040065;
+  if (error.code === "banned_from_server") return 0x80040072;
+  return undefined;
 }
 
 function ensureSlash(value: string): string {

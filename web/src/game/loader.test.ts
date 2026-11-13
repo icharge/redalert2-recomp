@@ -398,6 +398,38 @@ describe("startGame", () => {
     }
   });
 
+  it.each([
+    [
+      "invalid_credentials",
+      "Invalid username or password",
+      "@wolapi error 0x80040065 Invalid username or password",
+    ],
+    ["banned_from_server", "Account is banned", "@wolapi error 0x80040072 Account is banned"],
+    ["rate_limited", "Too many attempts", "@wolapi error Too many attempts"],
+  ])("tells the game why a %s login failed", async (errorCode, error, expected) => {
+    vi.stubGlobal(
+      "fetch",
+      await runtimeFetch(() => Promise.resolve(new Response(JSON.stringify({ error, errorCode })))),
+    );
+    const startup = startGame({ files: { kind: "already-there" }, store: new GameStore() });
+    await vi.waitFor(() => expect(window.Module?.onRuntimeInitialized).toBeTypeOf("function"));
+    const module = window.Module!;
+    module.FS = testFs();
+    module.cwrap = (() => () => 0) as never;
+    module.callMain = vi.fn();
+    module.HEAPU8 = new Uint8Array(2048);
+    module.onRuntimeInitialized!();
+    await startup;
+    const receive = vi.fn();
+    module.ra2WolReceiveLine = receive;
+    try {
+      module.ra2WolStart!("test", "wrong-password");
+      await vi.waitFor(() => expect(receive).toHaveBeenCalledWith(expected));
+    } finally {
+      module.ra2WolStop!();
+    }
+  });
+
   it("uses the operator's build setting for WOL authentication", async () => {
     vi.stubEnv("VITE_WOL_HTTP_URL", "https://wol.test/service/");
     vi.stubEnv("VITE_WOL_SOCKET_URL", "wss://wol.test/service/wol");

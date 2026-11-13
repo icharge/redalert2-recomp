@@ -38,7 +38,7 @@ import {
   shouldLoadImportedGameFile,
   type ThaiFontPreference,
 } from "../storage/thai-fonts";
-import { toWolSocketUrl, withBrowserWolPort, wolLineBytes, WolClient } from "./wol";
+import { toWolSocketUrl, withBrowserWolPort, wolLineBytes, wolLoginResult, WolClient } from "./wol";
 import { UdpRelay, parseStartHandoff } from "./udp-relay";
 
 /** The two edition bundles share /game and use edition-specific filenames. */
@@ -671,10 +671,15 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
           if (wolClient === client) module.ra2WolReceiveLine?.("@wolapi connected");
         },
         (error: unknown) => {
-          if (wolClient === client)
+          if (wolClient === client) {
+            // A refused login carries the HRESULT the game turns into "wrong password"
+            // or "banned"; without one the shim reports a generic failure.
+            const result = wolLoginResult(error);
+            const code = result === undefined ? "" : `0x${result.toString(16)} `;
             module.ra2WolReceiveLine?.(
-              `@wolapi error ${error instanceof Error ? error.message : String(error)}`,
+              `@wolapi error ${code}${error instanceof Error ? error.message : String(error)}`,
             );
+          }
         },
       );
     };
