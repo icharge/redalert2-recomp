@@ -44,7 +44,7 @@ this order:
 | `PingFail`, `RankFail`, `WDTSideFail` | `WOL:MatchFailPing` / `MatchFailRank` / `MatchFailWDTSide`, ends |
 | `Exit` | `WOL:MatchFailExit`, ends |
 | `Working` | Shows `GUI:MatchingProgress2` (the searching text) |
-| `Info <text>` | **Shows `<text>` as is** in the dialog |
+| `Info <text>` | Parser shows `<text>` in the dialog (but see below: the dialog also prints the raw message) |
 | `Pool <n>` | Shows `WOL:MatchingPlayerPool` with `n` (players in the pool) |
 | `Start <gameopt>` | The original "create the game now" command: copies the options and fires the start callback. The server does not use it |
 | `ack`, `nack`, `need <nick>,...` | The ping exchange (`Pings <nick>,<ms>;` goes back) |
@@ -57,6 +57,15 @@ dialog does with any other text, seen on screen: it prints the message as
 animation). So a retail player can be told anything with a plain sentence, as long
 as it does not start with a word in the table above. Lobby 40 does exactly that
 ([matchbot.md](matchbot.md)).
+
+**The `matchbot : ` prefix cannot be removed or changed** (tried 14 Nov 2026):
+
+- `Info <text>` does not print bare. The dialog showed `matchbot : Info <text>`, so the
+  generic line printer shows the whole message, `Info ` included, and runs apart from
+  the reply parser above.
+- Renaming the bot (`MATCH_BOT_NAME=QuickMatch`) broke Quick Match: the client joined
+  the lobby but its request never reached the server, so it must send to the literal
+  name `matchbot`. Keep the default.
 
 The client also owns welcome strings (`STT:WOLWelcomeQuickMatch`,
 `STT:QuickCoop`); those are its own text, not sent by the server.
