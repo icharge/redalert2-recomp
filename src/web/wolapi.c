@@ -317,16 +317,26 @@ static void emit_channel_list(void) {
         /* RA2Web creates global lobbies on JOIN. If no lobby of this edition
          * exists yet it has nothing to report, but the native directory still
          * needs the configured lobby so the game can find and join it. */
-        if (g_channel_count == 0) {
+        char own[24];
+        snprintf(own, sizeof own, "Lob_%u_", (unsigned)WOL_LOBBY_TYPE);
+        int have_own = 0;
+        for (uint32_t i = 0; i < g_channel_count; i++)
+            if (strncmp(g_channels[i].name, own, strlen(own)) == 0) have_own = 1;
+        if (!have_own) {
             memset(&g_lobby, 0, sizeof g_lobby);
             snprintf(g_lobby.name, sizeof g_lobby.name, "Lob_%u_0", (unsigned)WOL_LOBBY_TYPE);
             copy_text(g_lobby.topic, sizeof g_lobby.topic, "RA2Web");
             g_lobby.max_users = 100;
             g_lobby.official = 1;
             g_lobby.current_users = g_lobby_users;
-            uint32_t values[] = { S_OK, (uint32_t)(uintptr_t)&g_lobby };
-            event_call(5, 2, values); /* IChatEvent::OnChannelList */
-            return;
+            if (g_channel_count == 0) {
+                uint32_t values[] = { S_OK, (uint32_t)(uintptr_t)&g_lobby };
+                event_call(5, 2, values); /* IChatEvent::OnChannelList */
+                return;
+            }
+            /* Only quick-match lobbies exist so far: list the configured lobby too. */
+            if (g_channel_count < sizeof g_channels / sizeof g_channels[0])
+                g_channels[g_channel_count++] = g_lobby;
         }
     }
     for (uint32_t i = 0; i < g_channel_count; i++)
@@ -490,7 +500,14 @@ static void parse_room_line(const char *line) {
     if (g_channel_list_lobby) {
         char prefix[24];
         snprintf(prefix, sizeof prefix, "Lob_%u_", (unsigned)WOL_LOBBY_TYPE);
-        if (strncmp(fields[3] + 1, prefix, strlen(prefix)) != 0) return;
+        int own = strncmp(fields[3] + 1, prefix, strlen(prefix)) == 0;
+#ifndef RA2_TARGET_GAME
+        /* Yuri's Revenge Quick Match (sub_0079FC40, gamemd 0x79FC40) asks for this same
+         * type-0 list and only proceeds if an entry starts with Lob_39_ or Lob_40_
+         * (Lob_40_ unless the lobby mode word at 0xA8B244 is 2). */
+        own = own || strncmp(fields[3] + 1, "Lob_39_", 7) == 0 || strncmp(fields[3] + 1, "Lob_40_", 7) == 0;
+#endif
+        if (!own) return;
     }
     wol_channel *channel = &g_channels[g_channel_count++];
     memset(channel, 0, sizeof *channel);

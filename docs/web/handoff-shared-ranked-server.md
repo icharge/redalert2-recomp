@@ -262,7 +262,8 @@ scoring or display the new season leaderboard:
    - Until those are implemented, the native ladder screen cannot read the
      shared season standings.
 
-3. **Native ranked quick match is not accepted by the server.**
+3. **Native ranked quick match is not accepted by the server** (written before
+   T8; YR's lobby 40 is accepted now, see "Native Quick Match lookup" below).
    - Ranked `versionOk` currently accepts only the RA2Web web version.
    - Native quick-match instances only receive `nativeSku` in the WDT path.
    - A native `RKD=1` queue therefore cannot become a ranked native instance.
@@ -271,12 +272,61 @@ The browser WOL client in `ra2web` is fully covered by the existing HTTP
 ladder and `wgameres` path. The gaps above are specific to the recomp/native
 WOLAPI route.
 
+### Native Quick Match lookup (YR, traced 13 November 2026)
+
+"Error: Matching Server Not Found" is `WOL:NoMatchingAgentFound`. The YR Quick
+Match handler is gamemd `0x79FC40` (lifted `sub_0079FC40`); the names are leads,
+the lifted bytes are the proof. What it needs, in order:
+
+1. It requests the channel list with type 0 (`list 0 0`) and needs an entry whose
+   name starts with `Lob_40_` (`Lob_39_` when the lobby mode word `0xA8B244` is 2;
+   a plain Quick Match used `Lob_40_`). No such entry gives `WOL:MatchingServerUnavailable`;
+   an empty list gives `NoMatchingAgentFound`.
+2. `wolapi.c` used to drop every entry of a type-0 list that was not the
+   edition's own `Lob_41_` lobby, so the game never saw one. YR now also passes
+   `Lob_39_`/`Lob_40_` through, and the configured `Lob_41_0` is still listed when
+   only those exist (Custom Match relies on it). RA2 is not changed: its exe
+   names `Lob_38_` and `Lob_35_` for the same purpose, untraced.
+3. It joins that lobby and needs at least two users and one with the operator
+   flag (`@` in the `353` NAMES reply). That user is the matching agent. The
+   server sends no `@` for lobby members, so it must list `@matchbot` in
+   `Lob_40_*`.
+4. It then sends `privmsg matchbot :Match COU=-2, COL=-2, MBR=1, LOC=2, RAT=5,
+   RES=640, ADR=-1, NAT=1, PRT=1257` and `Pings <user>,<ms>;`. `matchbot`
+   answers `Working` and the screen shows "Requesting Match".
+
+Verified on the real YR client against a local server that was given a scripted
+holder in `#Lob_40_0` and an `@matchbot` NAMES entry (a four-line probe in
+`WolServer.sendChannelNames`, reverted): the client reached "matchbot : Working".
+Server side, done the same day (ra2web `WolServer`, `MatchmakingBot`,
+`protocol/qmCodes.ts`, `test/nativeQuickMatch.test.ts`): `LIST 0` publishes
+`#Lob_40_0` even while empty, its NAMES list `@matchbot`, and channel type 40 is
+a native ranked 1v1 on SKU 18688 (the native request has no `VRS`/`RKD`, so
+the channel names the family and joining it is the ranked request; `RKD=0`,
+`NATIVE_RANKED_ENABLED` off, or a web `VRS` there is not ranked). The
+fallback `gameopts` use the retail Yuri client's own record: an extra option
+field, `XMP29U2.MAP` (83573 bytes), 8-field player and 5-field AI records (RA2's
+`MP32S8` record gave "Not same scenario" and a scenario-mismatch leave).
+
+Verified with two real YR clients (`NATIVE_RANKED_ENABLED=true`): both queued
+in `#Lob_40_0`, were paired into a ranked 1v1 instance, negotiated the
+scenario, loaded `XMP29U2.MAP` and ran in lockstep (frame ~2100, ~45 fps).
+A played-out match (user run, same day) was admitted at creation
+(`settlement: admitted ... wol-native, sku 18688`), both clients posted
+`/native-results`, the reports agreed and it went `pending -> scored`
+(`/players/{name}?sku=18688` shows the win and rating 1030; the leaderboard
+stays empty until placement ends). Not verified: `FINI=0` semantics, retail
+(non-recomp) clients, a real map pool, RA2 (types 38/35 untraced), and lobby 39
+(mode word 2). The recomp still sends
+`cvers 0.83.4 16640` for YR; the lobby, not the version, identifies the
+client here.
+
 ### Recommended order for the follow-up
 
 The shared blockers and T0–T14 order above take precedence. Once shared scoring
 and admission are ready, the native integration work is:
 
-1. Server: allow native ranked quick match, keep native/native and
+1. Server (done for YR channel 40, see above; RA2 still open): allow native ranked quick match, keep native/native and
    web/web pairing separated, set the correct native SKU, and score
    `/native-results` only when all roster reports agree.
 2. Recomp: accept `ranked: true` in `submitNativeResult()` (done, T10). The

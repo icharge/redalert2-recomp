@@ -133,8 +133,11 @@ RA2's ladder controls are reached through the custom-match lobby:
 this path; the run's next press waits for `0xBE` and never reaches it.
 
 The WOL `Help` button (`0xBE:1375`) lives in that same unreachable chat
-dialog: Quick Match (`0x10E:1760`) and RA2's PlayWDT (`0x10E:1763`) both end
-in the game's `0xD0` notice after login, and YR's `0x113` lobby has no Help
+dialog: RA2's PlayWDT (`0x10E:1763`) ends in the game's `0xD0` notice after
+login, and so does Quick Match (`0x10E:1760`) against a server that does not publish
+the quick-match lobby with an operator (see "Native Quick Match lookup" in
+`handoff-shared-ranked-server.md`). Current ra2web does, so YR Quick Match
+pairs two clients and plays (checked 13 Nov 2026 with two driven clients). YR's `0x113` lobby has no Help
 control. The help URL itself is covered without a menu path: the WOLAPI
 selftest checks `WolChat::GetHelpURL`, and
 `LinkDialogContent.test.tsx` renders the `support`/`help` target (heading
