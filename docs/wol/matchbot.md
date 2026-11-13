@@ -122,7 +122,7 @@ speaks in sentences (`matchmaking/nativeMessages.ts`) instead of the words above
 | Searching, others in the queue | `Searching for an opponent. <n> other players in the queue...` |
 | Every 15 s while waiting | `Still searching. ...` with the current count |
 | Pair found | `Match found! Your opponent is <name>.` then `Game begins in 10...` to `1...` |
-| Opponent left during the countdown | `Your opponent left. Searching for a new opponent...` |
+| Opponent left during the countdown | `Working` again (restarts the client's 180 s timer), then `Your opponent left. Searching for a new opponent...` |
 | Already queued / queue full | `You are already searching for a match.` / `The queue is full. Try again in a moment.` |
 
 No sentence may start with a word the game's own parser acts on (`Exit`, `Fail`,
@@ -159,6 +159,13 @@ Not sent:
 | Rating window | 120 base, +40 per second, capped at 30 s, unlimited after 60 s |
 
 ## Known gaps
+
+- **The retail dialog gives up 180 s after a `Working`** ("Error : Timed out waiting for
+  game start"; the game sets a 180 second counter in its `Working` handler, gamemd
+  `0x7A1838`). A player alone in the queue is timed out by their own client; the server
+  does not know. A requeue after an opponent leaves sends `Working` again to restart it.
+  Sending `Working` periodically while someone waits would keep the search open longer;
+  that is not done.
 
 - Lobbies other than 40 still get no progress messages while waiting.
 - The 10 second countdown is fixed and applies even when both players are ready.
