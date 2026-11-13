@@ -137,6 +137,22 @@ still said "Matching Server Not Found"). Without a listed lobby the dialog said 
   GSKU is 8448, not the World Domination 8960; the server maps it to SKU 16640 now. That match stays
   `pending`. Scoring after the fix is not seen yet.
 
+## Side and colour
+
+The request's `COU=` and `COL=` are the player's own WOL settings (`-2` is random). The game resolves
+"random" in its pre-match dialog, which a server start skips, so a record that says `-2` shows the random
+icon on the loading screen instead of a flag. The server writes concrete values instead
+(`ra2web/server/src/matchmaking/nativeSides.ts`):
+
+- A requested country in range is kept (RA2 0-8, YR 0-9); random or out-of-range becomes a random real country.
+- A requested colour (0-7) is kept unless the first player holds it; others get the lowest free colour.
+- It writes the side into the record's second field per player (YR and RA2 Quick Match only; World Domination
+  records are unchanged). The server log line `quick match sides ...` shows what each player asked for.
+
+Not checked: that `COU` uses the same numbering as the record's side field. It is the same `-2` for random,
+so it should; read the log of a game where a player picked a country. The random start position (the
+fourth field, `-2`) is left as it was.
+
 ## Game speed
 
 Quick Match plays at speed 6, Fastest (60 ticks a second). The third field of the
