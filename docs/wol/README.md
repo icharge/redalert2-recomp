@@ -16,6 +16,11 @@ documents the client side and the contract between the two.
 | The WOLAPI shim in `src/web/wolapi.c`, Custom Match, what is built and open | [handoff-wolapi.md](handoff-wolapi.md) |
 | The ranked ladder shared by this client and Vera20k | [shared-ranked-server.md](shared-ranked-server.md) |
 | What is left to make it fully functional, ranked, with evidence | [roadmap.md](roadmap.md) |
+| Settings as data, the map pool, the admin platform, its security design | [admin-and-config.md](admin-and-config.md) |
+| Members and launcher single sign-on (design for your decisions) | [members-and-sso.md](members-and-sso.md) |
+| Seasons, soft reset, archive, public leaderboard | [seasons.md](seasons.md) |
+| Yuri's Revenge Quick Co-op: what the button does, how to serve it | [co-op.md](co-op.md) |
+| Running, backing up and upgrading the server | [operations.md](operations.md) |
 | Where the shared ranked server stands, and the next steps | [handoff-shared-ranked-server.md](handoff-shared-ranked-server.md) |
 | What was missing for it, task by task | [shared-ranked-server-gap-analysis.md](shared-ranked-server-gap-analysis.md) |
 | Why a match feels slow, and the transport options | [../web/network-performance.md](../web/network-performance.md) |

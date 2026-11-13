@@ -20,6 +20,38 @@ Effort: S under an hour, M a day, L several days. Paths under `server/` are in `
 | D4 | **Duration exploit.** Settlement took the minimum of the clients' durations, so a loser could report 10 s and force `too_short` (terminal, not adjudicable), and a pair could report a long duration for a match that ended at once. It now takes the longer claim, capped by the server-observed time from admission to the last report | `Settlement.settle`; two new tests on both backends | `ffd641c`, harness fix after it |
 | D5 | `bun test` wrote its fake players into the real `data/server.log` (found: `alice`/`bob` lines at 20:31 in the log) | log size unchanged across a run after the fix | `864d391` |
 
+| D6 | **Settings as data.** A `settings` table and a `SettingsService` hold the operator's overrides of the environment; live ones apply to the running server, restart-only ones are flagged. The Quick Match map pool is a setting (per edition and mode, weights, on/off; an uploaded map's size, digest and slots are read from the file). Every change writes an `audit_log` row | `bun test` 627 pass, `tsc` clean; `settings.test.ts`, `adminSettings.test.ts`, `quickMatchMaps.test.ts` on memory and SQLite | `ec585c7` |
+
+## Platform work (scope added 14 Nov): ranked plan
+
+Ordered as requested: foundations, then map pool and seasons, then co-op, then the rest. Design and status are in
+[admin-and-config.md](admin-and-config.md), [members-and-sso.md](members-and-sso.md), [seasons.md](seasons.md),
+[co-op.md](co-op.md) and [operations.md](operations.md). Effort: S under an hour, M a day, L several days.
+
+| # | Item | State | Effort | Depends |
+|---|---|---|---|---|
+| **Foundations** | | | | |
+| P1 | Config store (settings as data, restart flags, audit) | **done** (D6); more keys are one entry each | S per key | |
+| P2 | Admin auth: separate admin accounts, roles, cookie sessions, CSRF, lockout, no default credentials; threat model | designed | L | P1 (audit) |
+| P3 | Member model, launch ticket and redeem endpoint, migration of `accounts` | designed; needs decisions 1-4 of [members-and-sso.md](members-and-sso.md) | L | P2 (shares the password and session code) |
+| P4 | Ordered migrations (`schema_version`) and backup/restore (M7) | designed | M | |
+| **Map pool and seasons** | | | | |
+| P5 | Map pool: data, weights, on/off, size and digest from the file, per-map validation | **done** (D6); admin UI page missing | S for the page | P1 |
+| P6 | `GET /seasons`, archived flag on the leaderboard (SE4) | designed | S | |
+| P7 | Season states, scheduler, archive snapshot, soft reset policy (SE1, SE3, SE7) | designed; decision on reset rule | M | P6 |
+| P8 | Leaderboard page and awards (SE2, SE6) | designed | M | P7 |
+| **Co-op** | | | | |
+| P9 | One capture of Quick Co-op against a stub `Lob_39` to learn the real record | **open**, needs a client | S | |
+| P10 | Lobby 39 + co-op queue (type 41), unranked, behind a switch | designed | M | P9, P5 |
+| **The rest** | | | | |
+| P11 | Admin web UI screens: settings, map pool, audit, live queues, bans/mutes/kicks, disputes, announcements, health | API partly done | L | P2 |
+| P12 | `/metrics`, health page, `.env.example` generated from config, README checklist | designed | M | |
+| P13 | Launcher side: shim reads `#ticket=` and `RA2_LAUNCH_TICKET`; launcher login, email, OAuth | designed | L | P3 |
+| P14 | More settings keys: queue rules, per-queue ranked, game speed, lobbies | one entry each | S each | P1 |
+
+What blocks a "fully self-managed" server, in order of value: **P2** (an admin that is not a game account, plus a real audit),
+**P4** (a backup you can restore), **P7** (seasons that end and start without a person), then **P3**.
+
 ## Must-have: not yet "fully functional"
 
 | # | Gap | Evidence | Impact | Effort / risk | Verify | Depends |
@@ -72,6 +104,14 @@ Effort: S under an hour, M a day, L several days. Paths under `server/` are in `
 3. **M6, 2v2.** Settle web 2v2 through the same agreement rule, or leave it casual-only.
 4. **Pool size.** Three maps per edition is a start. Say which stock maps you want if you have favourites;
    each needs a real two-client run (M2).
+5. **Launcher sign-in** ([members-and-sso.md](members-and-sso.md)): email required, optional or none; permanent nick or
+   rename (rating key); one session per member or per device; require a member for ranked eventually; OAuth providers;
+   ticket delivery (env var and URL fragment, recommended, or a local pipe).
+6. **Admin split** ([admin-and-config.md](admin-and-config.md)): separate admin accounts with roles (recommended) or the
+   current `ADMIN_USERNAMES` plus the audit trail only; whether the console is reachable from the public internet; TOTP for owners.
+7. **Seasons** ([seasons.md](seasons.md)): reset rule (recommended: soft, factor 0.5, at least 5 games), badges or not, one
+   board for Quick Match and lobby ranked or two, season length.
+8. **Co-op** ([co-op.md](co-op.md)): in scope or a "not hosted" message; ranked or not (recommended: not); which missions.
 
 ## What I could not verify
 

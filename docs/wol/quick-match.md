@@ -128,6 +128,7 @@ not a hash of the file. Both rules reproduce the two records captured from real 
 install: `bun server/scripts/map-pool-scan.ts <game dir> --probe XMP29U2.MAP` (in `../ra2web`). The pool
 is two-player maps so a random start cannot land on a slot with no opponent. `QUICK_MATCH_MAPS=XMP21S2`
 restricts the pool (a name that matches nothing is ignored). The server logs `quick match map <name>`.
+The pool is data: an admin adds, removes, weights and switches maps from the console (`quickMatch.pool` setting, size and digest read from the uploaded file); see [admin-and-config.md](admin-and-config.md).
 Only `XMP29U2` has been loaded by a real client; the others are verified by rule only (see [roadmap.md](roadmap.md), M2).
 
 ## Red Alert 2
