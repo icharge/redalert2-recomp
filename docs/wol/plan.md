@@ -2,7 +2,8 @@
 
 Status of 14 Nov 2026, checked against the code the same day. One plan for the whole scope: a configurable, self-managed
 shared ranked server, a map pool and seasons, Yuri's Revenge Quick Co-op, a secure admin web and configuration, a pluggable database
-(SQLite by default, Postgres or MySQL when configured) with an auto-migrate tool, members with a web launcher and WOL auto-login, and the gaps left in
+(SQLite by default, Postgres or MySQL when configured) with an auto-migrate tool, members with a web launcher and WOL auto-login, a
+lobby bot (YuriBOT) for help, announcements and slash commands, and the gaps left in
 the [roadmap](roadmap.md) register. Designs are in [admin-and-config.md](admin-and-config.md),
 [members-and-sso.md](members-and-sso.md), [seasons.md](seasons.md), [co-op.md](co-op.md) and [operations.md](operations.md).
 
@@ -31,6 +32,7 @@ run also had two `nativeQuickMatch.test.ts` "sides and colours" tests hit the 5 
 | **LW. Web launcher and members** | Welcome, bring-your-own-game guide, guest or member, WOL auto-login | LW-1..LW-8, MB-1..MB-3, GU-1 | The welcome page and the guide need no server and start now; members need slice A's tickets |
 | **2. Co-op** | Quick Co-op on by default, then finish it | C-0 switch on, C-1..C-4 | Turned on now (decision 4); "Next Mission" and score-screen chat are fixed as found, the rest needs R1 |
 | **AW. Web admin and configuration** | Every admin task in the console, with roles | AW-0..AW-13, K1 keys | AW-0..AW-4 can start in phase 0 (their APIs exist); the rest follow the APIs they show |
+| **LB. Lobby bot, YuriBOT** | Help, greetings, announcements, reports and `/commands` in the chat lobbies; linked moderators act from the lobby | LB-0..LB-8 | LB-0 (does the game pass a `/` line on?) starts now; the core after phase 0's settings tasks; announcements of season events after SE-1; moderation shares one service with AW-6 |
 | **3. The rest** | Operations and should-haves | O1, G2 | Independent once phases 0-1 exist |
 
 ## What is already built
@@ -198,6 +200,17 @@ mute and ban, seasons admin, disputes, live queues, announcements, health and lo
 diff, and a read-only environment view (secrets only as "set / not set"). Settings keys (K1) are added in batches, since they all
 write `SettingsService.ts`. Env-only by design: the storage engine and its URL, ports, secrets, `AUTO_MIGRATE`.
 
+## Track LB: the lobby bot, YuriBOT
+
+A bot in the chat lobbies, in the spirit of XWIS's: it greets players, answers `/help`, `/rules`, `/rank`, `/top`, `/season`,
+`/online`, `/queue` and `/maps`, takes `/report`, makes scheduled and event announcements (and the console's announcements go out as
+YuriBOT), and lets a moderator whose game nick is linked to an admin account `/mute`, `/kick` and ban for up to 24 hours from the
+lobby, each audited. **Seen:** `matchbot` is already a virtual user (listed in the Quick Match lobbies' NAMES, private messages to it
+routed in `WolServer.handlePrivmsg`), so YuriBOT follows that pattern, listed in the chat lobbies only and never as operator. The web shim
+reads a sender's nick as at most 9 characters (`wolapi.c:672`), and `/me` actions are stubs. **Open:** whether the retail chat box
+passes a typed `/help` on as text (LB-0); if it does not, paging YuriBOT always works. A game login has no TOTP, so moderation from
+the lobby is limited to time-limited, moderator-level actions; a permanent ban stays in the console.
+
 ## Phase 3: the rest
 
 O1 (`/metrics`, a generated `server/.env.example` with a staleness test, the `server/README.md` checklist, service notes) and the G2
@@ -250,6 +263,13 @@ are observations in R1; S7 (the Connection slider) is a decision, left alone by 
 9. **Guests** play offline at once, and online under **any name that no account and no player online already uses**, never scored;
    **a match with a guest in it is scored for nobody**.
 10. **Online play is web only.** No native WOL path; the native launch ticket is dropped.
+
+Taken later the same day, for the lobby bot (numbered on so the open ones keep their numbers):
+
+15. **Commands are `/command`**, the line is not shown to the lobby, and the answer goes only to the asker. If the game does not pass
+    `/` lines on (LB-0), paging the bot is the way in.
+16. **Moderation through the bot: yes, by game nicks linked to admin accounts**, up to the admin account's role, time-limited, audited.
+17. **The bot's name is `YuriBOT`** (a setting, restart-only, reserved from registration and guest names).
 
 ### Still open (the recommendation stands until you say otherwise)
 

@@ -134,7 +134,7 @@ maps screens in `admin/src/main.tsx`; the settings, map pool, audit and admin-lo
 | AW-7 | **Seasons admin**: create with dates and reset policy, start or close now, archive and awards view | `admin/src/screens/Seasons.tsx` | typecheck | SE-1, SE-2 | S-M | browser |
 | AW-8 | **Disputes and adjudication** (route exists; `winner` required; grace rule from G1-S8) | `admin/src/screens/Disputes.tsx` | typecheck | G1-S8 | S-M | browser |
 | AW-9 | **Live queues**: `MatchmakingBot.snapshot()` (queue, nick, seconds waiting) and `GET /admin/queues` | `MatchmakingBot.ts`, `adminRoutes.ts`, `admin/src/screens/Queues.tsx` | snapshot test | AW-6 (route file) | S-M | browser |
-| AW-10 | **Announcements**: `POST /admin/announce {text}` broadcast through `WolServer`, audited; the `welcome.motd` editor | `adminRoutes.ts`, `WolServer.ts`, `admin/src/screens/Announce.tsx` | broadcast reaches connected users | AW-9 (route file) | S | browser |
+| AW-10 | **Announcements**: `POST /admin/announce {text, lobbies?}` sent as YuriBOT through `LobbyBot.announce` (LB-4), audited; the `welcome.motd` editor | `adminRoutes.ts`, `admin/src/screens/Announce.tsx` | the announcement reaches every lobby member as YuriBOT | AW-9 (route file), LB-4 | S | browser |
 | AW-11 | **Health and logs**: `/metrics` data (O1-1), last backup, schema version, `GET /admin/logs?tail=200` (owner-only, bounded) | `adminRoutes.ts`, `admin/src/screens/Health.tsx` | tail bound and role; memory + SQLite | O1-1, F4-1, DB1 | S-M | browser |
 | AW-12 | **Configuration export and import**: `GET /admin/settings/export` (overrides as JSON, never secrets), `POST /admin/settings/import` with a dry-run diff first, owner-only, audited, to copy a server's setup or restore it | `server/src/http/adminSettingsRoutes.ts`, `SettingsService.ts`, `admin/src/screens/Settings.tsx` | round trip; an invalid value refuses the whole import; memory + SQLite | AW-2 | S-M | browser |
 | AW-13 | **Environment view**: read-only list of env-only settings (ports, storage engine, `DB_PATH`/`DATABASE_URL` host only, `ADMIN_LISTEN`, `AUTO_MIGRATE`), secrets as "set / not set" | `adminSettingsRoutes.ts`, `admin/src/screens/Environment.tsx` | no secret value in the response | O1-2 | S | browser |
@@ -147,10 +147,37 @@ maps screens in `admin/src/main.tsx`; the settings, map pool, audit and admin-lo
 |---|---|---|
 | K1-a | queue pair window and rating spread, ranked on/off per queue | S-M |
 | K1-b | game speed, per-channel lobby switches, minimum report length per mode | S-M |
-| (with their task) | `auth.registrationOpen` (REG-1), `backup.keep` (F4-1), `ladder.softReset*` (SE-2), `ranked.quitterWin` (G1-M3), `ranked.web2v2Agreement` (G1-M6), `auth.guestEnabled` (GU-1), `members.maxGameAccounts` (MB-1) | |
+| (with their task) | `auth.registrationOpen` (REG-1), `backup.keep` (F4-1), `ladder.softReset*` (SE-2), `ranked.quitterWin` (G1-M3), `ranked.web2v2Agreement` (G1-M6), `auth.guestEnabled` (GU-1), `members.maxGameAccounts` (MB-1), `lobbyBot.*` (LB-1..LB-4) | |
 
 Env-only by design (never runtime settings): the storage engine and its URL, ports, secrets, `AUTO_MIGRATE`.
 `server/.env.example` is generated from `config.ts` (O1-2).
+
+## Track LB: the lobby bot, YuriBOT
+
+A bot in the chat lobbies, in the spirit of the one XWIS ran: it greets players, answers help and information commands,
+makes announcements, takes reports, and lets linked moderators act from the lobby. Decided 14 Nov 2026 (plan.md decisions
+15-17): commands are **`/command`**, answered privately to the asker (decision 15); moderation through game nicks **linked to admin
+accounts** (16); the bot is called **`YuriBOT`** (17).
+
+**What it builds on (Seen).** `matchbot` is already a virtual user: `WolServer.sendChannelNames` adds `@matchbot` to the Quick Match and
+co-op lobbies' NAMES, and `handlePrivmsg` routes a private message to that name to `MatchmakingBot.handleMessage`
+(`server/src/server/WolServer.ts:617`, `:968`). YuriBOT is a second virtual user on the same pattern. Two limits from the web shim:
+it reads a sender's nick with `%9[^! ]` (`src/web/wolapi.c:672`), so the bot's name must be at most 9 characters (`YuriBOT` is 7); and
+`WolChat::RequestPublicAction`/`RequestPrivateAction` (`/me`) are stubs that send nothing (`wolapi.c:1298`). Whether the retail chat box
+passes a typed `/help` on as text is **Open** (LB-0). If it does not, paging YuriBOT (a private message, which always reaches the
+server) is the way in.
+
+| Id | Task and sketch | Files | Tests | Deps | Effort | Client |
+|---|---|---|---|---|---|---|
+| LB-0 | **What the game does with a `/` line** (RA2 and YR, lobby chat and a page): does `RequestPublicMessage` get `/help` verbatim, does the game act on it itself, or drop it? Also the longest chat line the lobby shows, and whether a listed non-operator virtual user appears in the player list and can be paged. Log in `send_chat` (`wolapi.c`), try with two web clients against a local server, write the result into [handoff-wolapi.md](handoff-wolapi.md) | `src/web/wolapi.c` (a log line), docs | | | S | browser |
+| LB-1 | **The bot core.** `server/src/bot/LobbyBot.ts`: a virtual user named by `lobbyBot.nick` (default `YuriBOT`, restart-only, at most 9 characters, refused by `AccountStore.register` and as a guest name), `lobbyBot.enabled`. Listed in the NAMES of the chat lobbies, **not** as operator, and **never** in the Quick Match or co-op lobbies (the client takes their operator for the matchmaker) or game rooms. In `handlePrivmsg`: channel text starting with `/` goes to `LobbyBot.handleCommand(user, channel, text)` and is **not** broadcast; a private message to the bot is a command with or without the `/`. Replies are private (`:YuriBOT!YuriBOT@local PRIVMSG <nick> :...`), at most a few lines each within the length LB-0 measured, flood-limited per user; an unknown command answers "try /help". A command registry `{name, usage, role: "player" \| "moderator" \| "admin", run}` | `server/src/bot/LobbyBot.ts`, `server/src/server/WolServer.ts`, `server/src/auth/accountStore.ts`, `server/src/config.ts`, `SettingsService.ts`, `server/test/lobbyBot.test.ts` | the bot is in `Lob_41_0`'s NAMES and not in `Lob_40_0`'s or `Lob_39_0`'s; `/help` in a lobby is not broadcast and the reply reaches only the sender; a page works; rate limit; the name cannot be registered; off hides it | LB-0 | M | no |
+| LB-2 | **Help and greeting**: `/help` (the commands this user's role may use), `/rules`, `/motd`; a private greeting on a player's first lobby join per session (`lobbyBot.greeting` lines, `lobbyBot.greetOnJoin`); `lobbyBot.help` and `lobbyBot.rules` as editable lines | `LobbyBot.ts`, `SettingsService.ts` | greeting once per session; texts follow the settings live | LB-1 | S-M | no |
+| LB-3 | **Player information**: `/rank [nick]` (current season, edition from the lobby's SKU), `/top [n≤10]`, `/season` (name, end date, reset rule), `/online`, `/queue` (players waiting per queue, from `MatchmakingBot.snapshot()`), `/maps` (the enabled pool) | `LobbyBot.ts`, `server/src/matchmaking/MatchmakingBot.ts` (`snapshot`, shared with AW-9: whichever runs first adds it) | each command against fixtures; an unknown nick; memory + SQLite | LB-1 | M | no |
+| LB-4 | **Announcements**: `LobbyBot.announce(text, lobbies?)` sends a message as YuriBOT to the lobbies; scheduled ones from `lobbyBot.announcements` (`[{text, everyMinutes, lobbies?, from?, until?}]`); event ones: a season starting, closing and archived (from SE-1's transitions), and a restart countdown. The admin route (AW-10) calls it | `LobbyBot.ts`, `server/src/index.ts` (timer), `LadderService.ts` (an event hook) | injected clock: schedule, window, lobby filter; the season events fire once | LB-1; SE-1 for the season events | M | no |
+| LB-5 | **Reports**: `/report <nick> <reason>` writes `player_reports(id, at, reporter, target, channel, reason, status)` (additive) with a per-user limit; "thank you" reply; listed for moderators in the console (LB-7) | `LobbyBot.ts`, `Storage*.ts`, `server/src/http/adminRoutes.ts` | stored, limited, listed; memory + SQLite | LB-1 | M | no |
+| LB-6 | **Moderator commands** (decision 16). An admin account may link one game nick: table `admin_game_links(admin_username UNIQUE, username_key UNIQUE, linked_at, linked_by)` (additive), set from the console by an owner or admin (LB-7). A linked nick may use `/mute <nick> [minutes]`, `/unmute`, `/kick <nick>`, `/ban <nick> <hours≤24> <reason>` as far as its admin account's role allows; a disabled or locked admin account allows nothing. Each is audited with actor `admin:<name> via <nick>`. **Care:** a game login has no TOTP, so the bot allows only moderator-level, time-limited actions; a permanent ban stays in the console. The actions go through one `ModerationService` (mute, kick, timed ban) shared with AW-6 | `server/src/moderation/ModerationService.ts`, `LobbyBot.ts`, `WolServer.ts` (mute enforcement in `handlePrivmsg`), `Storage*.ts` | role gates per command; disabled admin; mute stops the target's lobby chat until it expires; timed ban ends; audit rows; memory + SQLite | LB-1, F2-1; before or with AW-6 | M | no |
+| LB-7 | **Console page "Lobby bot"**: edit greeting, help, rules and scheduled announcements (they are settings, so AW-2's editors are reused); the reports list with status; the command log (from the audit); on the admin users page (AW-5), link or unlink a game nick | `admin/src/screens/LobbyBot.tsx`, `admin/src/screens/AdminUsers.tsx` | typecheck | LB-2, LB-5, LB-6, AW-0 | S-M | browser |
+| LB-8 | **End to end** with two web clients against a local server, both editions: YuriBOT listed in the lobby, greeting, `/help`, `/rank`, an announcement, a linked moderator's `/mute` | `web/e2e/` | the e2e script | LB-1..LB-6 | M | browser |
 
 ## Track LW: the web launcher, members and WOL auto-login
 
@@ -205,11 +232,13 @@ order).
 | `server/src/settings/SettingsService.ts` | C-0, REG-1, F4-1, K1-a, K1-b, SE-2, G1-M3, MB-1, GU-1, AW-12 |
 | `server/src/index.ts` | F4-1 → DB2 → SE-1 → O1-1 |
 | `server/src/http/adminAuthRoutes.ts`, `server/src/auth/adminAuth.ts` | F2-2 → F2-3 → F2-5 |
-| `server/src/http/adminRoutes.ts` | F2-1 → G1-S8 → AW-6 → AW-9 → AW-10 → AW-11 |
+| `server/src/http/adminRoutes.ts` | F2-1 → G1-S8 → LB-5 → AW-6 → AW-9 → AW-10 → AW-11 |
 | `server/src/storage/Storage.ts`, `MemoryStorage.ts`, `SqliteStorage.ts` | DB1 → F5A-1 → MB-1 → SE-1 → SE-2 → SE-3; DB3 touches every line, so nothing else runs during it |
 | `server/src/ladder/LadderService.ts` | SE-1 → SE-2 → SE-3 → G1-S8 |
 | `server/src/ladder/Settlement.ts` | G1-M3 → G1-M6 → GU-1 |
-| `server/src/matchmaking/MatchmakingBot.ts` | C-1 → AW-9 → G2-S10 |
+| `server/src/matchmaking/MatchmakingBot.ts` | C-1 → AW-9 or LB-3 (`snapshot`) → G2-S10 |
+| `server/src/server/WolServer.ts` | LB-1 → LB-6 → AW-6 → C-2 (if it needs a server answer) |
+| `server/src/bot/LobbyBot.ts` | LB-1 → LB-2 → LB-3 → LB-4 → LB-5 → LB-6 (one at a time; split the command groups into files in LB-1 if they should run in parallel) |
 | `admin/src/main.tsx` | AW-0 first; after it each screen is its own file |
 | recomp `web/src/App.tsx` | LW-1 (adds all route stubs), then only the screen files change |
 | recomp `web/src/game/loader.ts`, `wol.ts` | F5A-2 → F5A-3 (loader call) |
@@ -219,7 +248,8 @@ order).
 
 Groups whose tasks share no file. Start any task of a group once its dependencies are in.
 
-- **Now:** F6-1, F6-2, F2-1, F4-2, AW-0, LW-1 (then LW-2), LW-7a. C-0, REG-1 and F4-1 all write `config.ts` and
+- **Now:** F6-1, F6-2, F2-1, F4-2, AW-0, LW-1 (then LW-2), LW-7a, LB-0 (then LB-1, which writes `config.ts` and
+  `SettingsService.ts` too, so after C-0, REG-1 and F4-1). C-0, REG-1 and F4-1 all write `config.ts` and
   `SettingsService.ts`, so they go one after the other (C-0 first: it is the smallest).
 - **After that:** F2-2 (then F2-3, F2-4), DB1 (then DB2), F5A-1 (then F5A-2, F5A-3), AW-2, AW-3, AW-4.
 - **Single-writer window:** DB3, once phase 0 is merged. Nothing else on the server meanwhile; web and admin console tasks can continue.
