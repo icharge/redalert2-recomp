@@ -157,7 +157,8 @@ A message typed on the co-op "Campaign Results" screen showed on the sender's sc
 
 Server side in `ra2web/server`, behind a switch, covered by `test/yrCoop.test.ts` (eight tests):
 
-- **Switch:** `YR_COOP_ENABLED=true`, or the admin setting `queues.yrCoop.enabled` (live). Off by default.
+- **Switch:** `YR_COOP_ENABLED=true`, or the admin setting `queues.yrCoop.enabled` (live). Off by default today; decided
+  14 Nov 2026 to turn it **on by default** (task C-0 in [tasks.md](tasks.md)), unranked.
 - **Needs a co-op map:** the lobby is published (`#Lob_39_0` on `LIST 0`, `@matchbot` in its names) only while the
   switch is on **and** the pool (`quickMatch.pool`) has an enabled map with `mode: "coop"` for `yr`. The built-in pool
   has one since ra2web `7f69afc`: `C1A01MD` (163770 bytes, the first Allied co-op mission from a stock `MultiMD.mix`).

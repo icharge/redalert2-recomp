@@ -15,15 +15,15 @@ WOL auto-login ([tasks.md](tasks.md), track LW). An external launcher can use th
 | WOL login | after HTTP, the line `session <token>`; a bad token, a banned account or an invalid nick gives `378` | `WolServer.handleSession` |
 | Web client | `web/src/game/wol.ts` does `POST /register` then `/login` with the game's nick and password, then `session <token>` | |
 | Retail login screen | nick and password fields, each at most **10 characters** (`login[10], password[10]` in `src/web/wolapi.c`); the shim forwards them to `Module.ra2WolStart(login, password)` | |
-| Native builds | **No WOL path to this server** (Seen, 14 Nov): `wolapi.c` is compiled only into the web build (`CMakeLists.txt`), `src/runtime/host.c` has no WOL code (its launcher emulation is the launcher mutex), and the server accepts only `cvers`, `setlocale`, `getlocale` and `session <token>` before login, also on the TCP gateway (6667). See N1 in [tasks.md](tasks.md) | `WolServer.handleLine` |
+| Native builds | **No WOL path to this server** (Seen, 14 Nov): `wolapi.c` is compiled only into the web build (`CMakeLists.txt`), `src/runtime/host.c` has no WOL code (its launcher emulation is the launcher mutex), and the server accepts only `cvers`, `setlocale`, `getlocale` and `session <token>` before login, also on the TCP gateway (6667). Online play is web only (decision 10 in [plan.md](plan.md)) | `WolServer.handleLine` |
 | Game's nick | the dialog's login, copied into `g_login` and then `g_nick` in `m_chat_request_connection`; the server takes the nick from the session instead | `src/web/wolapi.c:1118` |
 | Admin | a game session whose username is in `ADMIN_USERNAMES` | `adminRoutes.requireAdmin` |
 
 Two facts shape the design. First, the retail screen cannot carry a token (10 characters), so the
 ticket must travel **beside** the game's own fields, never through them. Second, the shim already
 sits between the game and the server: it holds `g_login`/`g_password` and does the HTTP login. The
-ticket exchange therefore belongs in the shim (web: the JS bridge and `wolapi.c`; native: once a native
-WOL path exists, N1), and the game's own dialog is skipped (auto-login, below).
+ticket exchange therefore belongs in the shim (the web build's JS bridge and `wolapi.c`; online play is web
+only), and the game's own dialog is skipped (auto-login, below).
 
 ## Account model: one member, many game accounts (one for now)
 
@@ -37,24 +37,26 @@ members               id (uuid), login, login_key (lower, unique), email (unique
                       password_hash (argon2id via Bun.password), status (active|suspended|banned),
                       created_at, last_login_at
 member_game_accounts  member_id, username_key (unique: a nick belongs to at most one member), created_at
-accounts              unchanged: the game account (username, password_hash, created_at, banned) + a guest flag
+accounts              unchanged: the game account (username, password_hash, created_at, banned)
 refresh               token_hash, member_id, expires_at, rotated_from              -- launcher login, rotating
 launch_tickets        ticket_hash, username_key, member_id (null for slice A and guests), edition,
                       created_at, expires_at, used_at                               -- game launch, single use
 identities            provider, subject, member_id                                 -- optional OAuth, later
 ```
 
-All tables are new, so they need no migration (`CREATE TABLE IF NOT EXISTS`); only the guest flag on
-`accounts` is a column change (a DB1 migration). A game account without a member (every account today, and
+All tables are new, so they need no migration (`CREATE TABLE IF NOT EXISTS`). A game account without a member (every account today, and
 every `POST /register`) keeps working with nick and password exactly as now. A member gets a game account
 either by creating a new nick or by **claiming** an existing one with its password; both count toward the
 limit. `devices` from the first draft is dropped for now: the refresh token is per browser, and "sign out
 everywhere" revokes all of a member's refresh tokens.
 
-**Guests.** "Play as guest" plays offline at once (campaign, skirmish, LAN need no account). Online, the
-launcher asks `POST /v1/auth/guest {edition}` for a ticket for a generated nick (`Guest` and digits, within
-the dialog's width). A guest account has the guest flag, is never admitted to `Settlement` (never rated), and
-is purged after some idle days. `auth.guestEnabled` switches guests off.
+**Guests** (decision 9 in [plan.md](plan.md)). "Play as guest" plays offline at once (campaign, skirmish,
+LAN need no account). Online, the guest types **any name that no account and no player online already uses**
+(within the nick rules and the dialog's width), and the launcher asks `POST /v1/auth/guest {nick, edition}` for
+a ticket; a taken name gets one clear "name taken". The guest holds the name only while its session lives: no
+`accounts` row, the session carries `guest: true`, and `POST /register` refuses the name while a guest is on it.
+A guest is never scored, and **a match with any guest in its roster is scored for nobody** (the admission is
+refused). `auth.guestEnabled` switches guests off.
 
 **Nickname rules** (the WOL protocol is IRC-like and the retail lobby lists render a narrow charset):
 2-15 characters (already `MIN/MAX_USERNAME_LENGTH`), `A-Z a-z 0-9 _ - [ ]`, must start with a letter, unique
@@ -92,9 +94,8 @@ nick and the session token.
 
 | Build | Channel | Reason |
 |---|---|---|
-| Native | environment variable `RA2_LAUNCH_TICKET` set by the launcher on the child process, read and cleared by the host, redeemed over HTTPS. **Waits for a native WOL path** (N1 in [tasks.md](tasks.md)): no native build has one today | not visible in the process list; only the child inherits it |
+| Native | ~~environment variable `RA2_LAUNCH_TICKET`~~: **dropped** (decision 10, online play is web only; no native build has a WOL path) | |
 | Web | URL fragment `#ticket=...`; `web/src/game/loader.ts` reads and removes it (`history.replaceState`) before any request, then redeems through `wol.ts`. The web launcher's PLAY uses the same fragment, so there is one path | fragments are not sent to servers, so they are not in access logs |
-| Fallback | a named pipe or loopback listener the launcher opens; only if the env route proves unreliable | local IPC, more code |
 
 **WOL auto-login.** With a ticket the game goes from Internet to the welcome screen with no login dialog:
 
@@ -148,7 +149,7 @@ The order is in [tasks.md](tasks.md):
 2. The web launcher's welcome page and install guide (LW-1, LW-2), which need no server.
 3. Members and game accounts, the launcher routes, the launch ticket, guests (MB-1..MB-3, GU-1), then the account screen,
    the PLAY hand-off and auto-login (LW-3..LW-8).
-4. Later: email verification and reset; OAuth only if wanted; the native ticket once N1 gives native builds a WOL path.
+4. Later: email verification and reset; OAuth only if wanted.
 
 ## Decisions (taken 14 Nov 2026)
 
@@ -159,9 +160,10 @@ The recommendations in this page were accepted:
 3. **One live game session per member**, as today (with one game account per member, the same as one per game account).
 4. **No member required for ranked yet**; bare nick+password accounts stay first-class. `ranked.requireMember` can be added later.
 5. **No OAuth** until the launcher exists.
-6. Delivery: **environment variable `RA2_LAUNCH_TICKET` (native) and URL fragment `#ticket=` (web)**; a local pipe only if the env route proves unreliable.
+6. Delivery: **URL fragment `#ticket=` (web)**. The native `RA2_LAUNCH_TICKET` was withdrawn later the same day:
+   online play is web only.
 
-Added 14 Nov 2026 (user's direction): the launcher is the recomp web launcher with a welcome page and a
+Added 14 Nov 2026 (your direction): the launcher is the recomp web launcher with a welcome page and a
 bring-your-own-game guide; players choose guest or member; **one member, many game accounts, limited to one for now**;
-the game's WOL login is automatic. Still open, in [plan.md](plan.md): guests online (decision 11), member login
-details and the nick width (12), a native WOL path (13).
+the game's WOL login is automatic; guests online use any free name, are never scored, and a match with a guest is
+scored for nobody. Still open, in [plan.md](plan.md): member login details and the name width (decision 11).
