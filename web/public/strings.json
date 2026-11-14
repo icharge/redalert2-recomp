@@ -4,14 +4,16 @@
     "encoding": "windows-1252",
     "strings": {
       "GUI:ExitGame": "Exit to Launcher",
-      "GUI:Version": "YN {version} /"
+      "GUI:Version": "YN {version} /",
+      "GUI:WOLWelcome": "YuriNET Online"
     }
   },
   "ra2md": {
     "encoding": "windows-1252",
     "strings": {
       "GUI:ExitGame": "Exit to Launcher",
-      "GUI:Version": "YN {version} /"
+      "GUI:Version": "YN {version} /",
+      "GUI:WOLWelcome": "YuriNET Online"
     }
   }
 }
