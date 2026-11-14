@@ -135,6 +135,24 @@ Not confirmed: the cooperative campaign line (`C0,...`) is still not sent and no
 answered 404 (not logged), so the two games of this run were not stored. Quick Co-op instances now carry
 `nativeSku` 18688 so the report is kept as unscored history; co-op is still never rated.
 
+## Chat on the Campaign Results screen (open, 14 Nov 2026)
+
+A message typed on the co-op "Campaign Results" screen showed on the sender's screen and not on the partner's.
+
+- **Dialog.** `gamemd.exe` dialog `0xBC6` (`GUI:CampaignResults`, `GUI:PreviousMission`, `GUI:NextMission`) has a
+  chat list `0x53F` and an edit box `0x540`. **Seen** in `sub_0046DFD0` (0x0046E137): Enter in `0x540` formats the
+  text and sends a `0x1C7`-byte message with `IPXManagerClass` (`0x00541820`, object `0xA8E9C0`) to every non-null
+  entry of the session's connection array (`[0xA8DA78]`, count `[0xA8DA84]`).
+- **So it is a UDP datagram, not IRC.** It goes through the native relay like game traffic. The server log shows no
+  IRC chat for it (and `privmsg ... missing channel` is logged, so it was not sent to the closed room).
+- **Unknown:** whether the game sends it at all after the match (an empty connection array sends nothing), or the
+  relay drops or misroutes it, or the partner's game ignores it. Added to find out: the relay logs the first datagram
+  of each new length per player after its first 24 (`new datagram length N`), each destination with no target, and
+  each delivery to a closed socket; the server logs chat sent to a game room with its members; `wolapi.c` logs
+  `chat sent` / `chat not sent` / `chat ... ignored` on the `[wol]` console channel.
+- **To read:** play to the score screen, type a line on each side, then compare `server.log` (a `new datagram length`
+  line from the sender means the game sent it) with the receiver's browser console.
+
 ## Built (15 Nov 2026)
 
 Server side in `ra2web/server`, behind a switch, covered by `test/yrCoop.test.ts` (eight tests):

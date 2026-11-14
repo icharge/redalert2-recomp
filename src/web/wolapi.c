@@ -671,7 +671,11 @@ static void receive_chat(const char *line) {
     char sender[10], target[48], command[16];
     if (sscanf(line, ":%9[^! ]%*s %15s %47s", sender, command, target) != 3 || strcmp(command, "PRIVMSG")) return;
     int public = target[0] == '#';
-    if (strcmp(target, public ? g_current_channel : g_nick)) return;
+    if (strcmp(target, public ? g_current_channel : g_nick)) {
+        fprintf(stderr, "[wol] chat from %s to %s ignored: current %s is \"%s\"\n", sender, target,
+            public ? "channel" : "nick", public ? g_current_channel : g_nick);
+        return;
+    }
     const char *text = strstr(line, " :");
     if (!text) return;
     wol_user user = { 0 };
@@ -1214,7 +1218,12 @@ static void m_chat_request_user_list(void) {
 }
 static uint32_t send_chat(const wol_user *user, const void *message, int wide, int private) {
     if (!message || (private && !user)) return E_POINTER;
-    if (!private && !g_current_channel[0]) return E_FAIL;
+    if (!private && !g_current_channel[0]) {
+        /* The post-match chat is typed into a room the game may already have left. */
+        fprintf(stderr, "[wol] chat not sent: no current channel (match room %s, part held %d)\n",
+            g_session.game_id[0] ? g_session.channel : "none", g_match_part_held);
+        return E_FAIL;
+    }
     size_t length = 0;
     for (; length < 1024; length++) {
         uint32_t ch = wide ? ((const uint16_t *)message)[length] : ((const unsigned char *)message)[length];
@@ -1233,6 +1242,7 @@ static uint32_t send_chat(const wol_user *user, const void *message, int wide, i
         }
         if (user) return E_FAIL;
     } else copy_text(targets, sizeof targets, g_current_channel);
+    fprintf(stderr, "[wol] chat sent to %s (%s, part held %d)\n", targets, private ? "private" : "public", g_match_part_held);
     char line[WOL_LINE_CAP];
     snprintf(line, sizeof line, "privmsg %s :", targets);
     if (wide) browser_send_unicode(line, message);
