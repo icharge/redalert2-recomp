@@ -126,6 +126,13 @@ speaks in sentences (`matchmaking/nativeMessages.ts`) instead of the words above
 | Opponent left during the countdown | `Working` again (restarts the client's 180 s timer), then `Your opponent left. Searching for a new opponent...` |
 | Already queued / queue full | `You are already searching for a match.` / `The queue is full. Try again in a moment.` |
 
+Quick Co-op (lobby 39, queue 141) is two humans against the computer, so it is
+not a 1v1 and nobody is an opponent. It gets the same sentences with these
+changes: `Welcome to Quick Co-op (Yuri's Revenge).`, `Waiting for a partner...`,
+`Searching for a partner. ...`, `Match found! Your partner is <name>.` and
+`Your partner left. Searching for a new partner...`. A test (`yrCoop.test.ts`)
+checks that none of them says `1v1` or `opponent`.
+
 No sentence may start with a word the game's own parser acts on (`Exit`, `Fail`,
 `Working`, `Info `, `Pool `, `Start `, `need `, `ack`, `nack`, ...); a test
 (`nativeQuickMatch.test.ts`) checks that. Web and World Domination queues are
