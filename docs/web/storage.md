@@ -171,6 +171,9 @@ reads through `src/web/opfs_read.js`, which keeps a read-only handle open betwee
 file, and `src/web/read_cache.c`, which answers repeated small `ReadFile` calls from 1 MiB blocks in
 memory. A write to `/game` never goes through a link: saves, the
 Thai font and mod overlays remove a link first (`replaceFile`), and the save watcher skips links.
+The game's own save does the same: a campaign save of 1 MiB or more that came with the import is a
+link, and writing through it fails with `EACCES` (the handle the menu's read left open) and would
+change the imported file, so `write_cfb` (pcrecomp `storage.c`) unlinks it first ([issues.md](issues.md), row 20).
 
 ## String tables and `strings.json`
 
