@@ -370,7 +370,7 @@ Most **Open** items close with one sitting of two clients (one YR, one RA2 pair;
 
 Recommendations first. Each says what it unblocks.
 
-1. **Launcher sign-in design** (unblocks F5 slices B-F). Recommend: **launch ticket** (60 s, single use, redeemed over HTTP by the shim),
+1. **Launcher sign-in design: DECIDED 14 Nov 2026, the recommendation below is accepted** (unblocks F5 slices A-F; slice A can start now). Recommend: **launch ticket** (60 s, single use, redeemed over HTTP by the shim),
    delivered by environment variable `RA2_LAUNCH_TICKET` (native) and URL fragment `#ticket=` (web); **email optional** (needed only for
    password reset); **permanent nick** in v1 (ratings stay keyed by nick, no ladder migration); **one live game session per member**
    (as today); **no member required for ranked yet**, add `ranked.requireMember` later; **no OAuth** until the launcher exists. Slice A

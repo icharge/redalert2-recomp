@@ -118,11 +118,15 @@ no rename in v1 (nick is permanent, support does it by hand), and revisit with t
 2. The shim side: `wol.ts` reads `#ticket=`; `host.c` reads `RA2_LAUNCH_TICKET`.
 3. Launcher login (`/v1/auth/login`, refresh, revoke), email verification and reset, then OAuth.
 
-## Decisions that are yours
+## Decisions (taken 14 Nov 2026)
 
-1. Email: required, optional or none.
-2. Rename: allowed (with the key migration) or permanent nick.
-3. One session per member, or one per device.
-4. Is a member required for ranked, eventually, or do bare nick+password accounts stay first-class?
-5. Which OAuth providers, if any (each needs an app registered under your name).
-6. Delivery: env var and URL fragment as above, or a local pipe from the start.
+The recommendations in this page were accepted:
+
+1. Email: **optional** (needed only for password reset).
+2. Rename: **permanent nick** in v1; ratings stay keyed by nick, no ladder migration.
+3. **One live game session per member**, as today.
+4. **No member required for ranked yet**; bare nick+password accounts stay first-class. `ranked.requireMember` can be added later.
+5. **No OAuth** until the launcher exists.
+6. Delivery: **environment variable `RA2_LAUNCH_TICKET` (native) and URL fragment `#ticket=` (web)**; a local pipe only if the env route proves unreliable.
+
+Next step: slice A of [plan.md](plan.md) (F5), tickets on the existing accounts.

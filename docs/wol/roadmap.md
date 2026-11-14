@@ -109,7 +109,7 @@ What blocks a "fully self-managed" server, in order of value: **P2** (an admin t
 3. **M6, 2v2.** Settle web 2v2 through the same agreement rule, or leave it casual-only.
 4. **Pool size.** Three maps per edition is a start. Say which stock maps you want if you have favourites;
    each needs a real two-client run (M2).
-5. **Launcher sign-in** ([members-and-sso.md](members-and-sso.md)): email required, optional or none; permanent nick or
+5. **Launcher sign-in: decided 14 Nov, recommendation accepted** ([members-and-sso.md](members-and-sso.md)); original options: email required, optional or none; permanent nick or
    rename (rating key); one session per member or per device; require a member for ranked eventually; OAuth providers;
    ticket delivery (env var and URL fragment, recommended, or a local pipe).
 6. **Admin split** ([admin-and-config.md](admin-and-config.md)): separate admin accounts with roles (recommended) or the
