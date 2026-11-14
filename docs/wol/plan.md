@@ -1,30 +1,39 @@
 # WOL shared server: execution plan
 
-Status of 14 Nov 2026. One plan for the whole scope: a configurable, self-managed shared ranked server, a map pool
-and seasons, Yuri's Revenge Quick Co-op, a secure admin web, members with launcher single sign-on, and the gaps left in
+Status of 14 Nov 2026, checked against the code the same day. One plan for the whole scope: a configurable, self-managed
+shared ranked server, a map pool and seasons, Yuri's Revenge Quick Co-op, a secure admin web and configuration, a pluggable database
+(SQLite by default, Postgres or MySQL when configured) with an auto-migrate tool, members with a web launcher and WOL auto-login, a
+lobby bot (YuriBOT) for help, announcements and slash commands, and the gaps left in
 the [roadmap](roadmap.md) register. Designs are in [admin-and-config.md](admin-and-config.md),
-[members-and-sso.md](members-and-sso.md), [seasons.md](seasons.md), [co-op.md](co-op.md) and [operations.md](operations.md);
-this page is the order of work, the tasks, how each is checked and what is waiting on you. Paths under `server/` and
-`admin/` are in the sibling repo `../ra2web` (branch `feat/shared-ranked-release`); `src/`, `web/` and `docs/` are this repo
-(branch `web-port`). Both stay local: nothing is pushed.
+[members-and-sso.md](members-and-sso.md), [seasons.md](seasons.md), [co-op.md](co-op.md) and [operations.md](operations.md).
 
-**How to read the marks.** Status: **built** (committed, commit named), **partly built**, **not started**. Evidence:
-**Seen** = read in code or run in this work; **Assumed** = from a document, not re-checked; **Open** = needs a real client.
-Effort: S under an hour, M about a day, L several days. "Tests" are the server's `bun test` (652 pass, `tsc` clean at the
-last run); "real client" means a person running two game clients.
+**This page is the phase order, the status of each item and the decisions. The tasks, one session each, with files, sketches,
+tests, dependencies, effort and the file-ownership map, are in [tasks.md](tasks.md).**
+
+Paths under `server/` and `admin/` are in the sibling repo `../ra2web` (branch `feat/shared-ranked-release`); `src/`, `web/` and
+`docs/` are this repo. Both stay local: nothing is pushed.
+
+**Marks.** Status: **built** (committed, commit named), **partly built**, **not started**. Evidence: **Seen** = read in code or run
+in this work; **Assumed** = from a document, not re-checked; **Open** = needs a real client. Effort: S under an hour, M about a day,
+L several days. "Real client" means a person running two game clients.
+
+**Tests** (`cd ../ra2web/server && bun test`, `bunx tsc --noEmit -p .`), 14 Nov 2026: `tsc` exit 0. Two full runs of 662 tests in 44
+files: **661 pass, 1 fail**, then **659 pass, 3 fail**. The fail in both runs is the known `errorReport.test.ts` flake (S12); the second
+run also had two `nativeQuickMatch.test.ts` "sides and colours" tests hit the 5 s timeout. All three are task F6-1.
 
 ## Phase order
 
 | Phase | Goal | Items | Why this order |
 |---|---|---|---|
-| **0. Foundations** | An operator can run, change, back up and secure the server without editing code | F1 config store, F2 admin auth, F3 migrations, F4 scheduled backup, F5 member model and launcher sign-in, F6 housekeeping | Everything later adds tables, settings and admin routes; F3 makes each of those safe, F1/F2 are what they plug into. F5 is last in the phase because it waits on your decisions and shares F2's password and session code |
-| **1. Pool and seasons** | The ladder runs itself and players can see it | M1 map pool, SE seasons lifecycle, reset, awards, leaderboard page | Seasons need F3 (new tables) and the settlement timer; the pool is already data, what is left is proof on real clients |
-| **2. Co-op** | The Quick Co-op button works | C1 capture, C2 queue | Needs the pool (mode `coop`) and one real-client capture; unranked, behind a switch |
-| **3. The rest** | Everything an operator or player still lacks | A1 admin screens, O1 metrics and docs, K1 more settings keys, G1 ranked-integrity gaps, G2 should-haves | Each is independent once phases 0-1 exist |
-
-Suggested sequence inside the phases (what to start first, given dependencies): F6, F3, F2 remainder, F4, F5 slice A, M1 proof
-session, SE1-SE2, then the rest in the order of the sections. The single real-client session that closes most **Open** items
-is described once, near the end ("One real-client session").
+| **0. Foundations** | An operator can run, change, back up and secure the server without editing code; a launcher can hand the game a login | F6 housekeeping, F2 admin security, F4 scheduled backup, F3 migrations and the auto-migrate tool (DB1, DB2), REG registration switch, F5 slice A tickets | F4 before F3, so real data is backed up before any migration runs. F3 is needed only for **changed** tables; new tables are `CREATE TABLE IF NOT EXISTS` and arrive without it (Seen, `SqliteStorage.ts`), so F5 slice A does not wait for it |
+| **1. Pool, seasons, ranked integrity** | The ladder runs itself, cannot be gamed by quitting, and players can see it | MP-1..MP-3 stock map catalog and automatic proof, SE seasons, G1-M3 quitters, G1-M6 web 2v2, G1-S8 | Seasons need the settlement timer and (for the reset policy) a migration. M3 and M6 are moved here from phase 3, behind settings, because "fully functional ranked" depends on them |
+| **DB. Storage engines** | SQLite by default; Postgres and MySQL when configured | DB3 async storage, DB4 Postgres, DB5 copy tool, DB6 backups, DB7 MySQL | **DB3 after phase 1** (decision 12): phase 1's storage code is written synchronously and converted with the rest. DB3 touches every storage caller, so nothing else on the server runs during it |
+| **R. Real-client session** | Close the **Open** items | R1 (two clients), R2 (browser) | **After phase 1** (decision 2). Until then M1 (no RA2 match has scored) and the co-op follow-ups stay **Open** (pool maps are proven by live matches, MP-2), and phase 1's rules are proven by tests only |
+| **LW. Web launcher and members** | Welcome, bring-your-own-game guide, guest or member, WOL auto-login | LW-1..LW-8, MB-1..MB-3, GU-1 | The welcome page and the guide need no server and start now; members need slice A's tickets |
+| **2. Co-op** | Quick Co-op on by default, then finish it | C-0 switch on, C-1..C-4 | Turned on now (decision 4); "Next Mission" and score-screen chat are fixed as found, the rest needs R1 |
+| **AW. Web admin and configuration** | Every admin task in the console, with roles | AW-0..AW-13, K1 keys | AW-0..AW-4 can start in phase 0 (their APIs exist); the rest follow the APIs they show |
+| **LB. Lobby bot, YuriBOT** | Help, greetings, announcements, reports and `/commands` in the chat lobbies; linked moderators act from the lobby | LB-0..LB-8 | LB-0 (does the game pass a `/` line on?) starts now; the core after phase 0's settings tasks; announcements of season events after SE-1; moderation shares one service with AW-6 |
+| **3. The rest** | Operations and should-haves | O1, G2 | Independent once phases 0-1 exist |
 
 ## What is already built
 
@@ -35,358 +44,258 @@ is described once, near the end ("One real-client session").
 | `68318fe` | `admin_users`, roles, lockout, cookie plus CSRF and bearer console sessions, role checks on every admin route, `scripts/admin-user.ts` |
 | `a363c2f` | `scripts/backup.ts` (`VACUUM INTO`, verify, prune); public `GET /seasons` |
 | `7788c8f` | Admin console signs in through `/admin/auth/login`, falls back to the game-account login |
+| `f282661` | YR Quick Co-op: lobby 39, unranked queue 141, switch `YR_COOP_ENABLED` / `queues.yrCoop.enabled` (off) |
+| `7f69afc` | Built-in stock co-op mission `C1A01MD` in the pool (`mode: "coop"`), used only while the switch is on |
+| `e2e4676` | Co-op record: Cooperative mode id 3, starts and AI opponents; the result kept as unscored history |
+| `5c91029`, `cd8721f`, `b47f736` | Co-op diagnostics and wording: options sent to a closed room, "partner" not "opponent", relay datagram and chat logging |
 | recomp `a10b5ab2`, `e0fd833b` | Design docs and status |
 
 ---
 
 ## Phase 0: foundations
 
-### F1. Config store (roadmap P1, P14)
+### F1. Config store: built
 
-**Status: built** (`ec585c7`, Seen: `settings.test.ts`, `adminSettings.test.ts`, memory and SQLite). Ten keys: ranked on/off,
-ladder starting rating, placement games, minimum report length, season grace, two rate limits, welcome text, the map pool,
-and `net.wolTcpPort` (restart-only example).
+`ec585c7`, `f282661` (Seen: `settings.test.ts`, `adminSettings.test.ts`, memory and SQLite). **Eleven keys** in `SETTING_DEFS`
+(`server/src/settings/SettingsService.ts`): `ranked.nativeEnabled`, `queues.yrCoop.enabled`, `ladder.startingRating`,
+`ladder.placementMatches`, `ladder.minReportDurationSeconds`, `ladder.seasonGraceSeconds`, `limits.loginMaxPerMin`,
+`limits.registerMaxPerHour`, `welcome.motd`, `quickMatch.pool`, `net.wolTcpPort` (restart-only). More keys are K1 (tasks.md,
+"Web admin and configuration"); a stored value that stops validating after an upgrade is skipped with a warning (Seen).
 
-**Left:** more keys (K1 below), and the console page (A1). Nothing structural.
+### F2. Admin authentication and security: built for the API, partly for the console
 
-**Task pattern for a key** (S each): add an entry to `SETTING_DEFS` in `server/src/settings/SettingsService.ts` (type, range,
-`live`, the `ServerConfig` field it writes); if the consumer copies the value at start (as `LadderService` did) add a line to the
-`settings.onApplied` handler in `server/src/index.ts` that pushes it; add a case to `test/settings.test.ts`. A key that needs a
-restart sets `live: false`, which the API already reports as `restartRequired` and which only an owner may change.
+`68318fe`, `7788c8f` (Seen: `adminAuth.test.ts`, 20 tests). Separate `admin_users` with four roles, five-failure lockout for 15
+minutes, per-address login limit, 30 minute idle and 8 hour absolute sessions, cookie (`HttpOnly; SameSite=Strict; Path=/admin`) plus
+CSRF header or Bearer, role per route, restart-only settings owner-only, audited logins, no default credential,
+`ADMIN_LEGACY_AUTH=false` closes the game-account route. **Seen:** only `adminAuth.ts` and `SettingsService.ts` call `insertAudit`; bans,
+season edits, adjudications, map and replay deletes write only a log line.
 
-**Verify:** `GET /admin/settings` shows it; `PUT` changes behaviour without a restart (a test reads the consumer).
-**Risk:** low. A stored value that stops validating after an upgrade is skipped with a warning (Seen).
+**Left** (tasks F2-1..F2-7): audit every admin change; admin-user routes; Origin check; console onto cookie and CSRF (depends on the
+Origin check, not on the user routes: `GET /admin/auth/me` already exists); TOTP for owners; the cut-over. **Decided (decision 6):
+the console is served on the public site behind TLS, with TOTP for owners.** So it goes public only after F2-3 (Origin), F2-4 (no bearer
+in `localStorage`) and F2-5 (TOTP) are in; until then it stays behind loopback, a VPN or a proxy allow-list. The separate admin
+listener (F2-6) is no longer planned. The cut-over (F2-7) comes last.
 
-### F2. Admin authentication and security (P2, P11 part)
+### F3. Ordered migrations and the auto-migrate tool: not started (tasks DB1, DB2)
 
-**Status: built for the API, partly for the console** (`68318fe`, `7788c8f`; Seen: `adminAuth.test.ts`, 20 tests).
-Separate `admin_users` with four roles, five-failure lockout for 15 minutes, per-address login limit, 30 minute idle and 8 hour
-absolute sessions, cookie (`HttpOnly; SameSite=Strict; Path=/admin`) plus CSRF header or Bearer, role per route, restart-only
-settings owner-only, audited logins, no default credential, `ADMIN_LEGACY_AUTH=false` closes the game-account route.
+Tables are created with `CREATE TABLE IF NOT EXISTS` and one shape check (`migrateSkuColumns`, `SqliteStorage.ts`) that copies the
+file to a `.bak` first (Seen). New tables arrive free; a changed table (for example `ladder_seasons.reset_policy`,
+`admin_users.totp_secret`) needs a migration. DB1 builds an ordered list with `schema_version`, a pre-migration backup, one
+transaction per step and a downgrade guard. It is **dialect-aware from the start** (`up(tx, dialect)`), so the same list serves
+Postgres and MySQL later. DB2 is the tool: `bun scripts/migrate.ts status|plan|up` and `AUTO_MIGRATE` (apply on start, or refuse to
+start while any is pending), with a database lock on networked engines.
 
-**Left**, in order (each independent):
+### F4. Backup schedule and restore: partly built
 
-1. **Audit every admin change** (S, do first). Today only settings and logins write `audit_log`; bans, season edits,
-   adjudications, map deletes, replay deletes write a log line. Add one wrapper in `server/src/http/adminRoutes.ts` that, after a
-   non-GET returns below 400, calls `storage.insertAudit({at, actor, action: "http.<METHOD> /admin/<path>", target, detail:{ip,status}})`.
-   Route handlers that know old and new values can add their own richer row. Test: perform each mutation, read `/admin/audit`.
-2. **Admin-user management routes** (S-M). `GET/POST /admin/users`, `POST /admin/users/{name}/role|disable|enable|password`,
-   owner-only, using `AdminAuth` (add `setRole(name, role, actor)`; revoke live sessions on a role change, as `setDisabled` does).
-   Refuse to demote or disable the last active owner. Test: role gates, last-owner rule, sessions revoked.
-3. **Origin check** (S). For a cookie session, a non-GET must also carry an `Origin` equal to `EXTERNAL_URL`'s HTTP origin or a new
-   `ADMIN_ORIGIN`; reject otherwise. Test with a forged `Origin`. Bearer is unaffected.
-4. **Console onto cookie and CSRF** (M). `admin/src/api.ts` stores nothing in `localStorage`: login sets the cookie, the CSRF token is
-   kept in memory and sent as `X-CSRF-Token`, `GET /admin/auth/me` restores the session on reload. Removes the long-lived bearer in
-   `localStorage` (the main XSS exposure of the console). Needs 2 first.
-5. **TOTP for owners** (M, decision 6). Column `admin_users.totp_secret` (encrypted with a server key from the environment),
-   RFC 6238 (SHA-1, 30 s, one step of drift) with `node:crypto` HMAC, ten single-use recovery codes stored hashed; login becomes
-   two steps (`POST /admin/auth/login` returns `{needTotp: true, pending}`, then `POST /admin/auth/totp`). Test: wrong, replayed and
-   drifted codes, recovery code single use.
-6. **Separate admin listener** (S-M, decision 5). `ADMIN_LISTEN=127.0.0.1:9091` serves only `/admin/*` from a second `Bun.serve`
-   and the public listener answers 404 for `/admin/*` when it is set. Test with both handlers.
-7. **Cut over** (operator step, S): create real accounts, confirm the console works, set `ADMIN_LEGACY_AUTH=false`, remove
-   `ADMIN_USERNAMES`. Then drop the legacy fallback in `admin/src/api.ts`.
+`scripts/backup.ts` and `src/ops/backup.ts` (`a363c2f`; Seen: `backup.test.ts`, a run on a real file).
+Left: the daily schedule and its status in `/health` (F4-1), the restore script (F4-2). **F4-1 lands before DB1 runs on real data.**
 
-**Threat model:** as in [admin-and-config.md](admin-and-config.md). What the built part closes: a game-password takeover is no
-longer admin (once legacy is off); brute force (lockout, limit); forged cross-site changes (cookie plus CSRF, bearer cannot be
-forged by a browser); insider changes unseen (audit, after task 1); a bricking setting (validation, restart-only for owners).
-What stays open until tasks 3-6: a stolen bearer in the console's `localStorage`, admin API on the public origin, no second factor.
+### REG. Registration switch (new)
 
-**Verify:** the test suite, plus a manual pass with a viewer, an admin and an owner account against a running server.
-**Dependencies:** none. **Effort:** the six tasks total about L. **Risk:** low; lockout means a forgotten owner password is reset
-from the host with `bun scripts/admin-user.ts password <name>` (Seen).
+**Seen:** `/register` is open to anyone, limited only per IP (`limits.registerMaxPerHour`, 20 an hour, `routes.ts:198`). The web
+client calls `/register` before every `/login` (`web/src/game/wol.ts:110`), so every web login uses up that IP's registration budget
+(players behind one NAT stop being able to register). REG-1: a live `auth.registrationOpen` and a limiter that counts only accounts
+actually created.
 
-### F3. Ordered migrations (P4 part, M7 part)
+### F5. Members and launcher sign-in
 
-**Status: not started.** Tables are created with `CREATE TABLE IF NOT EXISTS` and one shape check (`migrateSkuColumns`,
-`SqliteStorage.ts`) that copies the file to a `.bak` first (Seen). New tables arrive free; a changed table does not.
+**Slice A: tickets on today's accounts** (tasks F5A-1..F5A-3; no migration, the table is additive). Server: `TicketService`, `POST
+/v1/auth/redeem`, a mint script. Web: the loader reads and clears `#ticket=`, redeems, and `WolClient` uses the held session.
+**The gap the earlier plan missed (Seen):** the game's nick comes from the dialog. `m_chat_request_connection`
+(`src/web/wolapi.c:1118`) copies the typed login into `g_login` and then `g_nick` (line 1127) and sets the virtual IP from it, while
+the server takes the nick from the session (`WolServer.handleSession`). So a ticket for X with Y typed leaves the two disagreeing. The
+fix belongs in the shim: a new export `ra2_wolapi_set_launch_login(nick)` fills the saved-nick slot the dialog reads
+(`WolChat::GetNick`) and makes the launch nick win in `m_chat_request_connection`. Skipping the dialog altogether is LW-7 (below).
 
-**Tasks** (M):
+**Native delivery (`RA2_LAUNCH_TICKET`): dropped (decision 10, online play is web only).** **Seen:** `wolapi.c` is compiled only
+into the Emscripten target (`CMakeLists.txt:111`), not into the Linux target (`:94`) or the Windows build, and `src/runtime/host.c` has
+no WOL code (its "launcher emulation" is the launcher mutex). The server accepts only `cvers`, `setlocale`, `getlocale` and `session`
+before login. So no native build reaches this server, and none is planned to.
 
-1. `server/src/storage/migrations.ts`: `interface Migration { version: number; name: string; up(db: Database): void }` and an ordered
-   array. Version 1 is "the schema as it is today" and runs the existing create statements plus `migrateSkuColumns`, which stay
-   idempotent.
-2. Table `schema_version(version INTEGER PRIMARY KEY, name TEXT, applied_at INTEGER)`. On start, `SqliteStorage` reads the highest
-   version; a database with tables but no `schema_version` is baselined to 1 after checking its shape.
-3. For each pending migration: `backupDatabase(dbPath, <data>/backups/pre-<version>.sqlite)` (reuse `src/ops/backup.ts`), then run it
-   in a transaction that also inserts the `schema_version` row. A failure rolls back and stops the server with the migration's name.
-4. A database **newer** than the code refuses to start with a clear message (the downgrade guard).
-5. Log the version at start; show it in `/health`. `MemoryStorage` is unaffected.
+**Slices B and C** are replaced by the launcher track (below). **Slice D** (email verification and reset, `SMTP_URL`) and **slice E**
+(OAuth, not wanted until the launcher exists) stay later and unchanged. **Slice F** (`ranked.requireMember`) is not planned (decision 1).
 
-**Tests:** `migrations.test.ts`: fresh database lands on the latest version; a fixture in the old shape (with and without SKU columns)
-upgrades with its rows intact; a newer database refuses; a failing migration leaves the data and version untouched and the
-pre-backup exists; running twice is a no-op. **Verify on real data:** copy `data/ra2web.sqlite`, start the server against the
-copy, compare `GET /leaderboard/...` before and after (Open until run).
-**Dependencies:** none; **blocks:** SE1-SE3, F5 slice B (each adds migrations). **Risk:** medium, it runs on every start and on
-real ratings; the copy-first rule and the transaction contain it.
+### F6. Housekeeping (tasks F6-1, F6-2)
 
-### F4. Backup schedule and restore (M7, P4)
+The flaky and timing-out tests (above), and a test that `LadderService.updateSettings` applies live. Put each new environment
+variable in `server/README.md` as it lands (O1-2 later generates the full list).
 
-**Status: partly built.** `scripts/backup.ts` and `src/ops/backup.ts` (`a363c2f`; Seen: `backup.test.ts`, three tests, and a run
-on a real file). Not built: the schedule, restore tooling, status in `/health`.
+## R. The real-client sessions
 
-**Tasks** (S-M):
+R1, **after phase 1** (decision 2; tasks.md has the rows): spot checks of pool maps (M2), the first scored RA2 match (M1), the
+quitter rule G1-M3 and the web 2v2 rule G1-M6 as built, a report from a dropped game (M5), sides (S2), YR frame rate (S3), and co-op
+"Next Mission" and score-screen chat. R2, in a browser, checks the ticket and auto-login paths as soon as they exist. A retail install
+(M4) is no longer in it: online play is web only.
 
-1. `server/src/ops/backupScheduler.ts`: `startBackupSchedule(opts: {dir, keep, at: "HH:MM", now, log, onResult})`, a once-a-minute
-   timer that runs `backupDatabase` when the local time passes `at` and no backup ran that day. Config `BACKUP_DIR` (off when unset),
-   `BACKUP_AT` (default `04:00`), `BACKUP_KEEP` (default 14); `backup.keep` as a live setting.
-2. Record the last result (time, file, bytes, ok, error) in memory and as an audit row `backup.run`; expose it in `/health` and in
-   `/metrics` (O1). A failed run logs an error; the previous backups are untouched (Seen in the function).
-3. Restore: `bun scripts/restore.ts <file> [--db PATH]` refuses while a server answers on `SERVER_PORT`, verifies the file
-   (`integrity_check`), moves the current database and its `-wal`/`-shm` aside as `*.before-restore`, copies the backup in. The note
-   in [operations.md](operations.md) stays the manual form.
-4. Document off-host copying (operator's tool); the server pushes nothing.
+## Track DB: SQLite by default, Postgres and MySQL when configured
 
-**Tests:** injected clock: runs once per day, skips when `BACKUP_DIR` is unset, reports a failure. `restore.test.ts`: restore into a
-scratch folder, read an account back. **Verify:** restore a real backup into a scratch folder and read the leaderboard (Open).
-**Dependencies:** none. **Risk:** low. A backup of a live WAL database through `VACUUM INTO` is consistent (Seen in the test with an
-open connection).
+**Decided (decision 3):** SQLite stays the default; Postgres and MySQL are both supported and chosen by configuration
+(`STORAGE_ENGINE=sqlite|postgres|mysql`, `DATABASE_URL`). **Seen:** `Storage` (`server/src/storage/Storage.ts`, about 61 methods) is
+fully synchronous over `bun:sqlite`, with 124 call sites in seven files outside storage plus their callers. Networked drivers are
+asynchronous, so the first step is **DB3: make `Storage` async** (L, mechanical, wide; one connection's WOL lines must stay in order;
+after phase 1, decision 12).
+Then **DB4** a `PostgresStorage` over `Bun.SQL` (**Assumed:** Bun 1.3.13's `Bun.SQL` has the Postgres and MySQL clients this needs;
+DB4 checks first) with one storage contract suite run on every engine; **DB5** a `db-copy` tool from SQLite to either engine; **DB6**
+backups for networked engines (`pg_dump`, `mysqldump`; the scheduler reports "external"); **DB7** a `MysqlStorage`.
 
-### F5. Members and launcher single sign-on (P3, P13)
+## Phase 1: map pool, seasons and ranked integrity
 
-**Status: design only** ([members-and-sso.md](members-and-sso.md)). Nothing in it changes how a client logs in today.
-**The launcher does not exist**, so this fixes the contract it will be built against. The retail login screen takes at most 10
-characters per field (Seen, `src/web/wolapi.c`), so a ticket travels beside the fields, and the shim, which already does the HTTP
-login, redeems it.
+**M1. Map pool: built for data and admin API** (`fbf8e32`, `ec585c7`, `7f69afc`). The pool is already a live setting
+(`quickMatch.pool`: per edition and mode, weight, on/off) with admin routes (`/admin/quick-match/maps`, upload a `.MAP` and the server
+reads size, digest and slots from it). **Decided (decision 14): every stock map is the operator's to use, configured on the admin site.**
+Online play is web only (decision 10) and every web player imports a full game, so every stock map is on every client. So:
 
-It is built in slices so most of it is not blocked on your decisions:
+- **A stock map catalog ships with the server** (MP-1): every multiplayer map of both editions with its name, size, digest and start
+  count, generated once from a stock install by `scripts/map-pool-scan.ts`. A pool entry then only names a map; nobody uploads a
+  stock map. Today the scan names only `MPnnSx`/`XMPnnUx` files, and about 30 maps in `MultiMD.mix` are present only by hash, so MP-1
+  first finds their names (Assumed: in the game's multiplayer map lists, `MPMaps.ini`/`MPMapsMD.ini`). `.mmx` maps use a layout whose
+  record form was never captured (Assumed); they wait for MP-1 to read one.
+- **The admin page picks from the catalog** (AW-3): per edition and mode, filter by start count, switch maps on or off, set weights,
+  upload a custom map.
+- **Proof is automatic, not a gate** (MP-2). The server counts, per map, the matches started and the matches that really played (relay
+  traffic past a minute, or a result report). A map whose matches end at once is marked "suspect": a wrong digest makes both clients
+  leave with "scenarios do not match". The admin page shows proven, unproven or suspect; `quickMatch.autoDisableSuspect` can switch a
+  suspect map off.
+- **Care:** a player whose active mod replaces a stock map has a different digest and gets the same error. The launcher's Quick Match
+  should say so (MP-3).
 
-**Slice A: tickets on the existing accounts** (M; no member model, no decision needed except delivery, decision 1).
+The real-client session's map rows become spot checks, not a condition for enabling a map.
 
-1. Migration (F3): `launch_tickets(ticket_hash PRIMARY KEY, username_key, edition, created_at, expires_at, used_at)`.
-2. `server/src/auth/tickets.ts`: `TicketService.mint(username, edition): string` (32 random bytes, stored as SHA-256, 60 s, once) and
-   `redeem(ticket): {user, sessionToken} | undefined` (refuses used, expired, banned, unknown with one generic result; creates the
-   normal game session through `SessionManager.create`).
-3. Routes: `POST /v1/auth/redeem {ticket}` (per-IP limiter as `/login`); a mint route for the launcher in slice C, and for now
-   `bun scripts/ticket.ts mint <nick> [--edition yr]` for testing.
-4. Web shim: `web/src/game/wol.ts` reads `#ticket=` from `location.hash`, clears it with `history.replaceState` before any request,
-   calls redeem instead of `POST /register`/`/login`, then `session <token>` as today. Test: `wol.test.ts` with a fake fetcher.
-5. Native shim: `src/runtime/host.c` reads and clears `RA2_LAUNCH_TICKET`, redeems it and feeds the session to the TCP gateway.
-   **Assumed:** how the native build currently obtains its session token was not re-read for this plan; task 5 starts by finding
-   that path in `host.c` and the gateway (`WolTcpGateway` takes `session <token>`).
-6. Without a ticket nothing changes, so retail installs, bots and Vera keep working.
+**SE. Seasons: partly built.** Exists (Seen): per-season standings and history, season bound at admission, grace after the end,
+admin create, edit and close, the public leaderboard and player routes, `GET /seasons`. Left (SE-1..SE-5): states, scheduler and
+archive snapshot; reset policy (a column change, so it needs DB1), **soft, factor 0.5, at least 5 rated games, placements restart at 3**
+(decision 7); awards, shown on the web page (decision 8); `GET /seasons/{sku}/{id}` and the archived flag; the leaderboard page. One
+1v1 board per edition stays (decision 8), so per-mode boards are not planned. **Care in SE-1:** "current" today is the newest season by `start_time`, so a scheduled future season
+must not become current early.
 
-**Slice B: member model** (L; needs decisions 1-4). Tables `members`, `devices`, `refresh`, `identities` as in the design; migration of
-`accounts` into `members` (`legacy=1`), keeping `accounts` for one release so a rollback is a switch. `AccountStore` becomes a facade;
-nick rules and reserved names enforced at registration; claim flow for legacy nicks. **Rating key:** recommended, nick is permanent in
-v1 (ratings stay keyed by `username_key`), so no ladder migration is needed.
-**Slice C: launcher login** (L): `POST /v1/auth/login` (email or nick), 15 minute access token, 30 day rotating refresh per device
-(reuse of an old refresh revokes the device), `POST /v1/auth/launch-ticket`, device list and revoke, "log out everywhere".
-**Slice D: email** (M): verification and reset tokens (hashed, 24 h and 1 h, single use), `SMTP_URL`; without SMTP an admin marks an
-address verified. **Slice E: OAuth** (M per provider, only if decision 5 says yes).
-**Slice F: require a member for ranked** (S, setting `ranked.requireMember`, only if decision 4 says so).
+**G1. Ranked integrity, moved into this phase behind settings** (rules decided, decision 5).
 
-**Tests:** ticket single use, expiry (injected clock), banned member, wrong edition, replay after redeem, redeem rate limit; refresh
-rotation and reuse detection; migration keeps ratings. **Needs a real client:** the web path in a browser; the native path with an
-install (Open).
-**Dependencies:** F3; F2's password hashing and lockout code is reused. **Effort:** A is M; the whole is XL. **Risk:** slice A low
-(additive); slice B medium (touches login for everyone, hence the one-release overlap and the unchanged nick+password path).
+| Item | State | Task | Setting |
+|---|---|---|---|
+| M3 quitter not penalised | not started | G1-M3: score the win when one player reports a win, the other never reported **and** gserv saw the drop | `ranked.quitterWin` (on once tested) |
+| M6 web 2v2 on one report | not started | G1-M6: roster-wide agreement through `Settlement` (every reporter agrees on the winning team) | `ranked.web2v2Agreement` |
+| Guests in a match | not started | GU-1: a match with any guest in its roster is not admitted, so nobody in it is scored | |
+| S8 adjudication skips the grace | documented | G1-S8: enforce it or record an override reason | |
+| M5 `FINI=0` | not traced | R1 row 5 | |
 
-### F6. Housekeeping before the rest (S)
+## Track LW: the web launcher, members and WOL auto-login
 
-- S12: `test/errorReport.test.ts` shares `tmp-error-reports`; give each test its own `mkdtempSync` folder (flake in one full run, Seen).
-- Fix the test-environment leaks first seen in D5 if any new test touches `data/` (none known).
-- Put `ADMIN_LEGACY_AUTH`, `BACKUP_*`, `ADMIN_ORIGIN`, `ADMIN_LISTEN` in `server/README.md` as they land (O1 generates the full list).
+The recomp web launcher exists (`web/src`: Shell, Play, Mods, Game, Settings, and the Install screen `screens/Import.tsx`).
+It gets:
 
----
-
-## Phase 1: map pool and seasons
-
-### M1. Map pool
-
-**Status: built for data and admin API** (`fbf8e32`, `ec585c7`; Seen: `quickMatchMaps.test.ts`, `adminSettings.test.ts`, the digest
-rule reproduces both real records). Per edition and mode, weights, enabled flag, size/digest/slots read from the uploaded file,
-refused when it has no digest, fewer than two start points or is over 4 MiB.
-
-**Left:**
-
-1. **Prove each map on a real client** (roadmap M2; Open). Five maps have never been loaded: `XMP31S2`, `XMP21S2`, `MP21S2`,
-   `MP29U2`, `MP31S2`. For each: set the pool to that map alone (or weight it up), play Quick Match with two clients, check both reach
-   the first frame and the log shows `quick match map <name>`. A wrong digest ends with "scenarios do not match". Effort S per map.
-2. **Pool page in the console** (S-M, part of A1): list, add by upload, weight, enable, remove, with the size and digest shown.
-3. **Rotating or seasonal pool** (nice to have): a season may carry its own pool; `quickMatch.pool` entries gain `seasonId?`. Not planned.
-4. **More maps:** about 30 more two-player maps in `MultiMD.mix` are unnamed by hash, and `.mmx` maps use a layout whose record form was
-   never captured (Assumed). Add only after the M2 proof for the existing ones.
-
-**Dependencies:** F1. **Risk:** low to the server; the cost of a bad map is a failed match, so a new map goes in disabled or low weight.
-
-### SE. Seasons and the leaderboard (P6-P8)
-
-**Status: partly built.** Exists (Seen): per-season standings and history, season bound at admission, grace after the end, admin create,
-edit and close, public `GET /leaderboard/{sku}/{type}/{season}`, `GET /players/{name}`, and `GET /seasons[?sku=]` (`a363c2f`, tested).
-Missing: SE1 reset, SE2 awards, SE3 archive, SE5 modes, SE6 page, SE7 scheduled start and end ([seasons.md](seasons.md)).
-
-**Tasks, in order:**
-
-1. **States, scheduler, archive** (M; needs F3; decision 3 on mode boards can wait). `ladder_seasons.status` takes
-   `scheduled | current | closing | archived` (the admin already writes `closedAt`); new table `season_results(season_id, sku,
-   ladder_type, rank, player, rating, wins, losses, placed)`. `LadderService.advanceSeasons(now)` moves a scheduled season to
-   current at `start_time`, a current one to closing at `end_time` or on admin close, and a closing one to archived after the grace,
-   writing the snapshot in one transaction. Call it from the settlement timer in `server/src/index.ts` (the timer already runs every
-   few seconds; run this once a minute). **Care:** "current" today is the newest by `start_time`, so a scheduled future season must
-   not become current early; `getRunningSeason`/`getLeaderboard` need a test for it. Routes: `GET /seasons/{sku}/{id}`, `archived` and
-   `snapshotAt` on the leaderboard. Tests on both storages with an injected clock: transitions, the snapshot is frozen against a later
-   rescore, a late report inside the grace still counts, a late report after it does not.
-2. **Reset policy** (M; decision 1). `ladder_seasons.reset_policy` (`hard`, `soft:<factor>`, `carry`). Apply it **lazily**: when a player
-   has no standing in the new season, derive the start from their previous-season standing (`start + (prev - start) * factor` if they
-   had at least N rated games, else `start`; placements restart at 3) the first time they are needed, so no bulk job runs at the
-   season boundary. Settings `ladder.softResetFactor`, `ladder.softResetMinGames`. Tests: veteran, newcomer, one game short of N, carry.
-3. **Awards** (S-M; decision 2): `season_awards(season_id, sku, ladder_type, player, kind, rank)` written with the snapshot (`champion`,
-   `top10`, `top100`, `placed`), `GET /players/{name}/awards`.
-4. **Admin season screens** (S-M, part of A1): create with dates and reset policy, start or close now, view the archive.
-5. **Leaderboard page** (M): in the web client, `/ladder`: season picker from `GET /seasons`, edition and mode tabs, search by name,
-   the player's season history. Read-only over the public routes. Verify in a browser; no client needed.
-6. **Per-mode boards** (S, decision 3): add ladder types rather than tables (`qm-1v1`, later `coop`); the admission already carries
-   its source (`wol-native`), so the rating service can choose the type.
-
-**Dependencies:** F3 for 1-3; 1 before 2-3. **Effort:** about L in total. **Risk:** medium for task 1 (it changes which season a game is
-scored into); the admission-bound season rule means a running match is unaffected (Seen).
-
----
+- a **welcome page** and a **bring-your-own-game (BYOG) install guide**: where the game folder is for each source (CDs, The First
+  Decade, EA App/Origin, Steam), what is copied, and that it stays in the player's browser;
+- **guest or member**: guests play offline at once, and online under **any name that no account and no player online already uses**
+  (decision 9). A guest is never scored, and **a match with a guest in it is scored for nobody**. A **member** (the person) owns
+  **game accounts** (WOL nicks, today's `accounts` rows, which keep the ratings), at most **one** for now (`members.maxGameAccounts`
+  = 1). See [members-and-sso.md](members-and-sso.md);
+- **WOL auto-login**: PLAY hands the game a ticket (`#ticket=`), the loader redeems it, the shim uses the ticket's nick, and the game
+  goes from Internet to the welcome screen without the login dialog. LW-7a first looks for the game's own auto-login path in the lifted
+  code; otherwise LW-7b completes the dialog from the shim. Without a ticket nothing changes, so retail-style login, bots and Vera keep
+  working.
 
 ## Phase 2: Yuri's Revenge Quick Co-op
 
-**Status: researched, not implemented** ([co-op.md](co-op.md)). Seen in the lifted `gamemd`: the button is control `0x771`, mode word 2,
-dispatched at `0x0077B40C` to the same Quick Match runner `0x0079FC40`; lobby prefix `Lob_39_`. **Assumed** (VERA20K notes): same
-`Match` request line, game channel tournament field 0, cooperative game mode, the host replaces the map with the first Allied mission,
-and a cooperative campaign line `C0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-1,<host b64>,<guest b64>`. **Open:** the exact record a real matchbot sent.
+**Status: built behind a switch** (`f282661`, `7f69afc`, `e2e4676`, `5c91029`, `cd8721f`, `b47f736`; Seen: `test/yrCoop.test.ts`).
+The lobby `#Lob_39_0` is published only while `queues.yrCoop.enabled` is on and the pool has an enabled `coop` map (the built-in
+`C1A01MD` counts). The queue is type 141, unranked, never paired with Quick Match; results are kept as unscored history. **Seen on two
+real clients** ([co-op.md](co-op.md)): paired through lobby 39, loaded `C1A01MD`, played to the "Campaign Results" score screen, after
+three record fixes (mode id, countries, starts and AI).
 
-**C1. Capture** (S; needs a YR client; roadmap P9). Add a switch `queues.yrCoop.enabled` (default off) and, when on, publish
-`#Lob_39_0` with `@matchbot` the way lobby 40 is (`NATIVE_QUICK_MATCH_LOBBY` in `server/src/protocol/qmCodes.ts`, used in
-`WolServer.ts` around the lobby list and the channel join). Answer a co-op `Match` with the best-guess record and log every `GAMEOPT`
-line (`web/e2e/wol.mjs --start` logs them). Press Quick Co-op with two clients; keep the log. This answers the three Open questions
-and does not ship anything.
+**Decided (decision 4): in scope, unranked, on by default now** (task C-0 flips the default; `YR_COOP_ENABLED=false` or the
+setting still turns it off). Publishing lobby 39 makes the retail button live instead of "Matching Server Not Found", so players will
+reach the parts not yet checked. **Left** (C-1..C-4): the cooperative campaign line (not sent, its wire form unknown, not needed for
+`C1A01MD`); "Next Mission" after the score screen (not exercised; a player who presses it may hit a dead end); chat on the score screen
+(a UDP datagram through the relay, logging added, cause open); more missions.
 
-**C2. Queue** (M; after C1 and M1 for the pool): queue type 141 (41 is the YR main lobby), unranked, two players, never paired with Quick Match players
-(`MatchmakingBot.ts`: extend `isNativeQuickMatchType`-style helpers, add the queue); the record builder in `matchmaking/nativeGameOpts.ts`
-gets a co-op variant (tournament 0, cooperative mode, the campaign line); map chosen from the pool with `mode: coop` (size and digest by
-the same rule); no `Settlement.admit`, so nothing is rated. Tests `nativeCoop.test.ts` modelled on `nativeQuickMatch.test.ts`: lobby
-join, pairing, record shape, never pairs with a Quick Match entry, nothing admitted. **Verify (real client):** both clients reach the
-mission's first frame; log shows the co-op pair line. Keep the switch off until that passes.
+## Track AW: web admin and configuration
 
-**Dependencies:** M1 (pool mode `coop`), C1 before C2. **Risk:** publishing lobby 39 changes what retail clients show (the button
-becomes live instead of "Matching Server Not Found"); a wrong record makes both clients leave with "scenarios do not match". Hence off
-by default and a real run before enabling. **Scope decision 4** below (in scope or a clear "not hosted" message; unranked).
+The console (`ra2web/admin`) has dashboard, seasons, matches, replays, players and maps screens in one `admin/src/main.tsx`. In
+order: split it into a file per screen (AW-0, so screens are separate writers), the cookie sign-in (AW-1 = F2-4), the settings page
+(every key rendered from its definition, so new keys need no console work), the map pool page, the audit view, admin users, kick,
+mute and ban, seasons admin, disputes, live queues, announcements, health and logs, **configuration export and import** with a dry-run
+diff, and a read-only environment view (secrets only as "set / not set"). Settings keys (K1) are added in batches, since they all
+write `SettingsService.ts`. Env-only by design: the storage engine and its URL, ports, secrets, `AUTO_MIGRATE`.
 
----
+## Track LB: the lobby bot, YuriBOT
+
+A bot in the chat lobbies, in the spirit of XWIS's: it greets players, answers `/help`, `/rules`, `/rank`, `/top`, `/season`,
+`/online`, `/queue` and `/maps`, takes `/report`, makes scheduled and event announcements (and the console's announcements go out as
+YuriBOT), and lets a moderator whose game nick is linked to an admin account `/mute`, `/kick` and ban for up to 24 hours from the
+lobby, each audited. **Seen:** `matchbot` is already a virtual user (listed in the Quick Match lobbies' NAMES, private messages to it
+routed in `WolServer.handlePrivmsg`), so YuriBOT follows that pattern, listed in the chat lobbies only and never as operator. The web shim
+reads a sender's nick as at most 9 characters (`wolapi.c:672`), and `/me` actions are stubs. **Open:** whether the retail chat box
+passes a typed `/help` on as text (LB-0); if it does not, paging YuriBOT always works. A game login has no TOTP, so moderation from
+the lobby is limited to time-limited, moderator-level actions; a permanent ban stays in the console.
 
 ## Phase 3: the rest
 
-### A1. Admin web screens (P11)
-
-**Status: partly built.** Exists (Seen): dashboard, seasons, matches, replays, players, maps in `admin/src/main.tsx`. Every screen is
-a thin view of an API, so build in this order, each S-M, each with the API first where it is missing:
-
-1. Settings page and map pool page (API done, F1/M1).
-2. Audit view (API done: `GET /admin/audit?limit=&before=`).
-3. Admin users page (needs F2 task 2) and sign-out-everywhere.
-4. Bans, mutes, kicks: the WOL server has the commands; add `POST /admin/players/{name}/mute|kick` through `WolServer` and audit them.
-5. Disputes and adjudication screen (route exists; adjudication needs `winner`, roadmap S8).
-6. Live queue view: `MatchmakingBot.snapshot()` (queue, waiting seconds, nick) and `GET /admin/queues`.
-7. Announcements: `POST /admin/announce {text}` broadcast through the WOL server and recorded in the audit; also the `welcome.motd` setting.
-8. Health and log tail: `GET /admin/logs?tail=200` reading `LOG_FILE`, bounded, owner-only; health data from O1.
-
-**Verify:** each screen with all three roles in a browser; `bun run admin:typecheck`. **Dependencies:** F2 for 3-8.
-
-### O1. Operations and documentation (P12)
-
-**Status: partly built** (backup script, F4 above). Remaining, in order:
-
-1. `GET /metrics`, Prometheus text, admin role or loopback only: connected players, queued players per queue, matches in progress,
-   settlement counts by state, seconds since the last settlement tick (a stuck timer shows as that number growing), database size, last
-   backup time and result, schema version. Test: counts match a fixture.
-2. `server/.env.example` generated from `server/src/config.ts` by `scripts/gen-env-example.ts` (each `env.NAME` with its default and the
-   comment above it), plus a test that fails when the file is stale, so it cannot drift.
-3. `server/README.md` gets the checklist from [operations.md](operations.md) (run, configure, back up, upgrade, restore, expose).
-4. Systemd unit and Windows service notes, log rotation already exists (`LOG_MAX_BYTES`, `LOG_MAX_FILES`, `LOG_ROTATE_DAILY`).
-5. A signed-in "health" console page reading 1.
-
-### K1. More settings keys (P14)
-
-Each S, in this order of value: queue rules (pair window, rating spread), ranked on/off per queue, game speed, per-channel lobby
-switches, minimum report length per mode, `queues.yrCoop.enabled` (C1), `ranked.requireMember` (F5F), `ladder.softReset*` (SE2),
-`backup.keep` (F4). Pattern in F1.
-
-### G1. Ranked-integrity gaps (roadmap M1, M3-M6, S8)
-
-| Item | State | Tasks | Verify | Decision |
-|---|---|---|---|---|
-| M1 first RA2 scored match | not proven (Seen: both recent RA2 matches ended `too_short`) | play over two minutes with two RA2 clients, both report | `GET /players/<name>` shows the win and a changed rating; admission `scored` | none |
-| M3 quitter not penalised | not started | with option (c): score a win when one player reports a win and the other left before the end and never reported, **and** gserv saw the drop; change `Settlement.expire` (`one_report`/`no_reports` paths) and `docs/ranked-ladder.md` | test: winner reports, loser disconnects, grace passes | recommended (c) |
-| M5 `FINI=0` | not traced | trace the report builder in the lifted game or capture a report from a dropped game | a captured report | none |
-| M6 web 2v2 on one report | not started | route web 2v2 through `Settlement` with a roster-wide agreement rule (all reporters agree on the winning team) | test: lone winner report is not scored | team rule |
-| S8 adjudication skips the season grace | documented | enforce the grace or record an explicit override reason | test both | small |
-
-M (each) apart from M1 and M5 which need a client. Risk: M3 and M6 change who gets rating, so ship behind a setting and test on both storages.
-
-### G2. Should-have and nice-to-have (roadmap S1-S11, nice list)
-
-Grouped by what they need:
-- **Real client, observe only (S):** S1 random start position display, S2 side numbering vs the log line, S3 YR 60 fps against server
-  timestamps, S4 Custom Match after the lobby-filter change, S5 lobbies 39/35 (folds into C1), S11 UDP relay and native recording.
-- **Build (S-M):** S6 RA2 login-failure message needs an RA2 rebuild (`build-web.cmd --mode fast --edition ra2` first, then production
-  per `CLAUDE.md`), S10 matchbot countdown and requeue on no gserv, S9 Vera items (3 rated games per 24 h, match lookup beyond 10 minutes;
-  the sibling client's contract, so confirm with its owner first).
-- **Decision (S7):** the Connection slider; leaving it alone is the safe default.
-- **Nice to have, not planned:** queue size in the retail dialog (`Pool <n>`), native ladder screen (excluded by an earlier decision), per-player
-  veto, more maps (M1 task 4).
+O1 (`/metrics`, a generated `server/.env.example` with a staleness test, the `server/README.md` checklist, service notes) and the G2
+should-haves (S6 RA2 login-failure message, S9 Vera items after its owner agrees, S10 matchbot countdown and requeue). S1-S4 and S11
+are observations in R1; S7 (the Connection slider) is a decision, left alone by default.
 
 ---
-
-## One real-client session
-
-Most **Open** items close with one sitting of two clients (one YR, one RA2 pair; ideally one retail install for M4):
-
-| Order | Check | Closes |
-|---|---|---|
-| 1 | YR Quick Match on each pool map in turn (disable the others), play past the first frame | M2 |
-| 2 | RA2 Quick Match, play over two minutes, report both | M1 |
-| 3 | A match left early by one player (no report) | confirms M3's current behaviour before changing it |
-| 4 | A match ended by a disconnect, keep the report | M5 |
-| 5 | Pick Soviet in the dialog, compare the log line with the game | S2 |
-| 6 | Frame counter against log timestamps | S3 |
-| 7 | Custom Match in YR | S4 |
-| 8 | Quick Co-op against the C1 capture build | C1, S5 |
-| 9 | One retail install in a Quick Match against a recomp client | M4 |
-| 10 | Web client with `#ticket=` after F5 slice A | F5 |
-| 11 | A native launch with `RA2_LAUNCH_TICKET` after F5 slice A | F5 |
 
 ## Verified and assumed
 
 | Claim | Evidence |
 |---|---|
-| Settings, pool, audit, admin auth, backup script, `GET /seasons` work as specified | **Seen**: server tests (652 pass, `tsc` clean), the CLI and backup run on real database files |
+| Settings, pool, audit, admin auth, backup script, `GET /seasons` work as specified | **Seen**: server tests (above), the CLI and backup run on real database files |
 | Map size is the file length and the digest is the map's `[Digest] 1=`; two real records reproduce | **Seen** |
-| The other five pool maps load on real clients | **Open** |
-| Quick Co-op is mode 2 sharing the Quick Match runner and uses lobby 39 | **Seen** in `gamemd` (dispatch table and prefix); everything about the co-op record is **Assumed** from VERA20K |
-| The admin console works with the new login against a running server in a browser | **Assumed**: typechecked and the API is tested, the UI was not run |
-| `LadderService.updateSettings` applies live | **Assumed**: used by the settings hook, no dedicated test (add one in F6) |
-| Launcher ticket flow | **Design only**; native delivery path in `host.c` **Assumed** |
-| Migrations, scheduled backup, season lifecycle, members | **Not started** |
+| The other five pool maps load on real clients | **Open** (R1) |
+| Quick Co-op is mode 2 on the Quick Match runner, lobby 39 | **Seen** in `gamemd` |
+| Quick Co-op pairs, loads `C1A01MD` and plays to the score screen | **Seen** on two real clients ([co-op.md](co-op.md)) |
+| The cooperative campaign line and "Next Mission" | **Open** |
+| New tables need no migration; changed tables do | **Seen** (`CREATE TABLE IF NOT EXISTS` for every table) |
+| `Storage` is synchronous; a networked engine needs DB3 first | **Seen** (`Storage.ts`: no `Promise`; 124 call sites) |
+| `Bun.SQL` covers Postgres and MySQL in Bun 1.3.13 | **Assumed** (DB4 checks) |
+| A native build can reach the server | **Seen: no.** `wolapi.c` is web-only; `host.c` has no WOL code; the server takes only `session <token>` before login. Not planned (decision 10) |
+| A retail install can log in through the TCP gateway | **Open**, likely not for the same reason; not planned (web only) |
+| The game's own auto-login path exists | **Open** (LW-7a) |
+| The admin console works with the new login in a browser | **Assumed**: typechecked and the API is tested, the UI was not run |
+| `LadderService.updateSettings` applies live | **Assumed** (F6-2 adds the test) |
+| Migrations, scheduled backup, season lifecycle, members, launcher pages | **Not started** |
 
 ---
 
-## Decisions needed from you
+## Decisions
 
-Recommendations first. Each says what it unblocks.
+### Taken (14 Nov 2026, by you)
 
-1. **Launcher sign-in design: DECIDED 14 Nov 2026, the recommendation below is accepted** (unblocks F5 slices A-F; slice A can start now). Recommend: **launch ticket** (60 s, single use, redeemed over HTTP by the shim),
-   delivered by environment variable `RA2_LAUNCH_TICKET` (native) and URL fragment `#ticket=` (web); **email optional** (needed only for
-   password reset); **permanent nick** in v1 (ratings stay keyed by nick, no ladder migration); **one live game session per member**
-   (as today); **no member required for ranked yet**, add `ranked.requireMember` later; **no OAuth** until the launcher exists. Slice A
-   (tickets on the existing accounts) can start on the delivery choice alone.
-2. **Admin split** (unblocks F2 tasks 4-6). Recommend: keep the separate accounts (built), turn `ADMIN_LEGACY_AUTH` off after the first
-   owner works, add **TOTP for owners** before the console is on the public internet, and serve `/admin` on a **separate loopback or VPN
-   listener** rather than the public origin.
-3. **Season reset rule** (unblocks SE2). Recommend: **soft reset, factor 0.5, at least 5 rated games**, placements restart at 3.
-   Season length: a quarter if the ladder is active, otherwise keep 365 days.
-4. **Awards and badges** (SE3). Recommend: yes, as a web-page feature only (the retail game cannot show them).
-5. **One board or two for Quick Match and lobby-made ranked 1v1** (SE6). Recommend: one board per edition, as today.
-6. **Co-op scope** (unblocks C2). Recommend: **in scope but unranked**, first Allied mission only to start (a pool of missions later),
-   behind `queues.yrCoop.enabled`; do C1 first, because without a capture the record is a guess.
-7. **M3, a quitter's penalty.** Recommend option (c): score the win only when gserv saw the drop.
-8. **M6, web 2v2.** Recommend: settle through the same agreement rule (all reporters agree on the winning team), behind a setting.
-9. **S7, the Connection slider.** Recommend: leave it alone.
-10. **Pool size.** Recommend: prove the five untested maps (M2) before adding any; say if you have favourite stock maps.
-11. **A real-client session.** Not a design choice but a need: who runs the session in the table above, and with which installs (a retail
-    install for M4)? Phases 1-3 are buildable without it, but several are only **Seen** in tests until it happens.
+1. **Launcher sign-in.** Launch ticket (60 s, single use, redeemed over HTTP by the shim), delivered by the `#ticket=` URL
+   fragment; email optional; permanent nick (the game account's); one live game session per member (with the limit of one game
+   account, the same as one per game account); no member required for ranked; no OAuth until wanted. The native
+   `RA2_LAUNCH_TICKET` delivery is withdrawn by decision 10.
+2. **The real-client session runs after phase 1.** Until then M1, M2 and the co-op follow-ups stay **Open**, and phase 1's rules are
+   proven by tests only.
+3. **Storage engines: SQLite is the default; Postgres and MySQL are both supported**, chosen by configuration
+   (`STORAGE_ENGINE`, `DATABASE_URL`). DB3, DB4 and DB7 are all in scope.
+4. **Quick Co-op: in scope, unranked, on by default now** (C-0). "Next Mission" and score-screen chat are fixed as they are found.
+5. **Ranked integrity:** a quitter loses only when gserv saw the drop and the other player reported a win (`ranked.quitterWin`);
+   web 2v2 scores only when every report agrees on the winning team (`ranked.web2v2Agreement`).
+6. **Admin console on the public site, with TOTP for owners.** Public only once the Origin check, the cookie console and TOTP are in;
+   no separate admin listener.
+7. **Season reset: soft, factor 0.5, at least 5 rated games**, placements restart at 3.
+8. **Awards yes** (web page only), **one 1v1 board per edition**. Season length: a quarter if the ladder is active, otherwise 365 days.
+9. **Guests** play offline at once, and online under **any name that no account and no player online already uses**, never scored;
+   **a match with a guest in it is scored for nobody**.
+10. **Online play is web only.** No native WOL path; the native launch ticket is dropped.
+
+Taken later the same day, for the lobby bot (numbered on so the open ones keep their numbers):
+
+15. **Commands are `/command`**, the line is not shown to the lobby, and the answer goes only to the asker. If the game does not pass
+    `/` lines on (LB-0), paging the bot is the way in.
+16. **Moderation through the bot: yes, by game nicks linked to admin accounts**, up to the admin account's role, time-limited, audited.
+17. **The bot's name is `YuriBOT`** (a setting, restart-only, reserved from registration and guest names).
+
+11. **Member sign-in:** a login name or email, kept apart from the game account's nick; claiming an existing WOL account with its
+    password counts toward the limit of one; game account and guest names capped at the retail login field's width (F5A-3 confirms
+    9 characters; the shim already reads sender nicks as at most 9, `wolapi.c:672`).
+12. **DB3 (async storage) runs after phase 1.** Seasons, members and the bot are written against today's synchronous `Storage` and
+    converted with everything else; Postgres and MySQL (DB4, DB7) follow DB3.
+13. **S7, the Connection slider: left alone.**
+14. **Map pool: every stock map is available and configurable on the admin site** (changed the same day; first answer was "prove the
+    five first"). Every web player has the full game, so the server ships a catalog of all stock maps, the operator switches them on
+    and weights them in the console, and proof is recorded automatically from real matches instead of gating them.
+
+No decision is open now.
