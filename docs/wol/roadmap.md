@@ -6,8 +6,9 @@ It supersedes the open items scattered over [quick-match.md](quick-match.md),
 limitations") and [shared-ranked-server-gap-analysis.md](shared-ranked-server-gap-analysis.md)
 (its T0-T14 are implemented; what remains of them is listed here).
 
-**The execution plan is [plan.md](plan.md)**: phase order, per-item status, ordered tasks with files and interfaces, tests, what needs a
-real client, effort and risk, and the decisions needed from you. This page is the evidence register behind it.
+**The execution plan is [plan.md](plan.md)** (phase order, status, decisions) and **[tasks.md](tasks.md)** (one-session tasks with
+files, tests, dependencies and effort; also the Postgres/MySQL and auto-migrate track, the web admin and the web launcher). This page is
+the evidence register behind them.
 
 Every row says how it is known. **Seen** = observed in code, a log or the database this
 session. **Assumed** = from a document, not re-checked. **Open** = needs a real client.
@@ -46,8 +47,8 @@ Ordered as requested: foundations, then map pool and seasons, then co-op, then t
 | P7 | Season states, scheduler, archive snapshot, soft reset policy (SE1, SE3, SE7) | designed; decision on reset rule | M | P6 |
 | P8 | Leaderboard page and awards (SE2, SE6) | designed | M | P7 |
 | **Co-op** | | | | |
-| P9 | One capture of Quick Co-op against a stub `Lob_39` to learn the real record | **open**, needs a client | S | |
-| P10 | Lobby 39 + co-op queue (type 141), unranked, behind a switch | **built** (server only, 15 Nov 2026); the record is unconfirmed until P9 | M | P9, P5 |
+| P9 | One real run of Quick Co-op to learn the record | **done in effect**: two clients played `C1A01MD` to the score screen after three record fixes ([co-op.md](co-op.md)); the campaign line and "Next Mission" stay open (tasks C-1, C-2) | S | |
+| P10 | Lobby 39 + co-op queue (type 141), unranked, behind a switch | **built** (ra2web `f282661`, `7f69afc`, `e2e4676`) | M | P9, P5 |
 | **The rest** | | | | |
 | P11 | Admin web UI screens: settings, map pool, audit, live queues, bans/mutes/kicks, disputes, announcements, health | API partly done | L | P2 |
 | P12 | `/metrics`, health page, `.env.example` generated from config, README checklist | designed | M | |
@@ -64,7 +65,7 @@ What blocks a "fully self-managed" server, in order of value: **P2** (an admin t
 | M1 | **No RA2 Quick Match has been scored.** Both recent RA2 matches ended `unscored too_short` (18 s and 91 s games, minimum is 120 s); the first play-through is still `pending` from before the GSKU fix | Seen: `ladder_admissions` rows `g1-mwfd8tw5`, `g1-mwff6p84` (16640, `too_short`), `g1-mwfcun8h` (`pending`) | The RA2 report path is proven to be accepted, but the score and rating change are not | S, no risk. Needs a person: play RA2 Quick Match for over two minutes with two clients, report both | `GET /players/<name>` shows a win and a changed rating; admission state `scored` | none |
 | M2 | **The five new pool maps are untested on real clients.** The digest rule is checked on two maps (one per edition); the other five follow the same rule | Seen: scan reproduces both captured records. Open: no client has loaded `XMP31S2`, `XMP21S2`, `MP21S2`, `MP29U2`, `MP31S2` | A wrong digest makes both clients leave with "scenarios do not match" | S per map, low risk: set `QUICK_MATCH_MAPS=<one map>` and play | Both clients reach the first frame; server log `quick match map <name>` | D2 |
 | M3 | **A player who quits is not penalised.** One report never awards a win (decision 3), so a loser who closes the game before reporting leaves the match `incomplete` | Seen: `Settlement.expire` gives `one_report` / `no_reports`; `docs/ranked-ladder.md` "What does NOT score" | Rating can be protected by quitting; the main ranked-integrity gap | M. **Decision for the user** (see below) | Test: winner reports, loser never does, grace passes | none |
-| M4 | **Real retail installs are untested.** Only the recomp's lifted clients have played Quick Match. An original install uses the real `wol.dll`/launcher | Assumed (`quick-match.md` "Not verified") | If it differs, Quick Match fails for the people the server is for | Open; needs a retail install | One real install in a Quick Match against a recomp client | none |
+| M4 | **Real retail installs are untested.** Only the recomp's lifted clients have played Quick Match. An original install uses the real `wol.dll`/launcher. **Seen 14 Nov:** the server accepts only `cvers`, `setlocale`, `getlocale` and `session <token>` before login (`WolServer.handleLine`), so a retail `wol.dll`'s own login lines are probably refused; N1 in [tasks.md](tasks.md) | Assumed (`quick-match.md` "Not verified") | If it differs, Quick Match fails for the people the server is for | Open; needs a retail install | One real install in a Quick Match against a recomp client | none |
 | M5 | **`FINI=0` is untraced.** The server scores whatever `FINI` both reports agree on; the retail client's behaviour when a game ends without a result is unknown | Assumed (`quick-match.md`) | A game ended by a disconnect might be reported as a win or loss in a way the server cannot tell apart | M to trace in `sub_` of the report builder, or observe by playing | Capture a report from a dropped game | none |
 | M6 | **Web 2v2 still scores from one report** through the old path | Assumed (`shared-ranked-server.md` "Known limitations") | One player can claim any result for a web 2v2 | M. 2v2 settlement needs a roster-wide agreement rule (decision) | Test with a lone winner report | decision on team rule |
 | M7 | **No scheduled backup** of the SQLite database. Only the SKU migration takes a `.bak` | Seen: `data/` holds one migration `.bak` and no job; `server/README.md` mentions backup only for rollback | Ratings and history are a single file | S. A `VACUUM INTO` or `sqlite3 .backup` job plus a restore note | Restore into a scratch folder and read the leaderboard | none |
