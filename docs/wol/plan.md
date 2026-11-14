@@ -26,9 +26,9 @@ run also had two `nativeQuickMatch.test.ts` "sides and colours" tests hit the 5 
 | Phase | Goal | Items | Why this order |
 |---|---|---|---|
 | **0. Foundations** | An operator can run, change, back up and secure the server without editing code; a launcher can hand the game a login | F6 housekeeping, F2 admin security, F4 scheduled backup, F3 migrations and the auto-migrate tool (DB1, DB2), REG registration switch, F5 slice A tickets | F4 before F3, so real data is backed up before any migration runs. F3 is needed only for **changed** tables; new tables are `CREATE TABLE IF NOT EXISTS` and arrive without it (Seen, `SqliteStorage.ts`), so F5 slice A does not wait for it |
-| **1. Pool, seasons, ranked integrity** | The ladder runs itself, cannot be gamed by quitting, and players can see it | M1 pool proof (R1), SE seasons, G1-M3 quitters, G1-M6 web 2v2, G1-S8 | Seasons need the settlement timer and (for the reset policy) a migration. M3 and M6 are moved here from phase 3, behind settings, because "fully functional ranked" depends on them |
+| **1. Pool, seasons, ranked integrity** | The ladder runs itself, cannot be gamed by quitting, and players can see it | MP-1..MP-3 stock map catalog and automatic proof, SE seasons, G1-M3 quitters, G1-M6 web 2v2, G1-S8 | Seasons need the settlement timer and (for the reset policy) a migration. M3 and M6 are moved here from phase 3, behind settings, because "fully functional ranked" depends on them |
 | **DB. Storage engines** | SQLite by default; Postgres and MySQL when configured | DB3 async storage, DB4 Postgres, DB5 copy tool, DB6 backups, DB7 MySQL | **DB3 after phase 1** (decision 12): phase 1's storage code is written synchronously and converted with the rest. DB3 touches every storage caller, so nothing else on the server runs during it |
-| **R. Real-client session** | Close the **Open** items | R1 (two clients), R2 (browser) | **After phase 1** (decision 2). Until then M1 (no RA2 match has scored), the five unproven pool maps and the co-op follow-ups stay **Open**, and phase 1's rules are proven by tests only |
+| **R. Real-client session** | Close the **Open** items | R1 (two clients), R2 (browser) | **After phase 1** (decision 2). Until then M1 (no RA2 match has scored) and the co-op follow-ups stay **Open** (pool maps are proven by live matches, MP-2), and phase 1's rules are proven by tests only |
 | **LW. Web launcher and members** | Welcome, bring-your-own-game guide, guest or member, WOL auto-login | LW-1..LW-8, MB-1..MB-3, GU-1 | The welcome page and the guide need no server and start now; members need slice A's tickets |
 | **2. Co-op** | Quick Co-op on by default, then finish it | C-0 switch on, C-1..C-4 | Turned on now (decision 4); "Next Mission" and score-screen chat are fixed as found, the rest needs R1 |
 | **AW. Web admin and configuration** | Every admin task in the console, with roles | AW-0..AW-13, K1 keys | AW-0..AW-4 can start in phase 0 (their APIs exist); the rest follow the APIs they show |
@@ -122,7 +122,7 @@ variable in `server/README.md` as it lands (O1-2 later generates the full list).
 
 ## R. The real-client sessions
 
-R1, **after phase 1** (decision 2; tasks.md has the rows): the five unproven pool maps (M2), the first scored RA2 match (M1), the
+R1, **after phase 1** (decision 2; tasks.md has the rows): spot checks of pool maps (M2), the first scored RA2 match (M1), the
 quitter rule G1-M3 and the web 2v2 rule G1-M6 as built, a report from a dropped game (M5), sides (S2), YR frame rate (S3), and co-op
 "Next Mission" and score-screen chat. R2, in a browser, checks the ticket and auto-login paths as soon as they exist. A retail install
 (M4) is no longer in it: online play is web only.
@@ -140,10 +140,26 @@ backups for networked engines (`pg_dump`, `mysqldump`; the scheduler reports "ex
 
 ## Phase 1: map pool, seasons and ranked integrity
 
-**M1. Map pool: built for data and admin API** (`fbf8e32`, `ec585c7`, `7f69afc`). Left: the proof on real clients for `XMP31S2`,
-`XMP21S2`, `MP21S2`, `MP29U2`, `MP31S2` (R1 rows 1-2; a wrong digest ends with "scenarios do not match"), the console page (AW-3). More
-maps only after that proof; about 30 two-player maps in `MultiMD.mix` are unnamed by hash and `.mmx` maps use an uncaptured layout
-(Assumed).
+**M1. Map pool: built for data and admin API** (`fbf8e32`, `ec585c7`, `7f69afc`). The pool is already a live setting
+(`quickMatch.pool`: per edition and mode, weight, on/off) with admin routes (`/admin/quick-match/maps`, upload a `.MAP` and the server
+reads size, digest and slots from it). **Decided (decision 14): every stock map is the operator's to use, configured on the admin site.**
+Online play is web only (decision 10) and every web player imports a full game, so every stock map is on every client. So:
+
+- **A stock map catalog ships with the server** (MP-1): every multiplayer map of both editions with its name, size, digest and start
+  count, generated once from a stock install by `scripts/map-pool-scan.ts`. A pool entry then only names a map; nobody uploads a
+  stock map. Today the scan names only `MPnnSx`/`XMPnnUx` files, and about 30 maps in `MultiMD.mix` are present only by hash, so MP-1
+  first finds their names (Assumed: in the game's multiplayer map lists, `MPMaps.ini`/`MPMapsMD.ini`). `.mmx` maps use a layout whose
+  record form was never captured (Assumed); they wait for MP-1 to read one.
+- **The admin page picks from the catalog** (AW-3): per edition and mode, filter by start count, switch maps on or off, set weights,
+  upload a custom map.
+- **Proof is automatic, not a gate** (MP-2). The server counts, per map, the matches started and the matches that really played (relay
+  traffic past a minute, or a result report). A map whose matches end at once is marked "suspect": a wrong digest makes both clients
+  leave with "scenarios do not match". The admin page shows proven, unproven or suspect; `quickMatch.autoDisableSuspect` can switch a
+  suspect map off.
+- **Care:** a player whose active mod replaces a stock map has a different digest and gets the same error. The launcher's Quick Match
+  should say so (MP-3).
+
+The real-client session's map rows become spot checks, not a condition for enabling a map.
 
 **SE. Seasons: partly built.** Exists (Seen): per-season standings and history, season bound at admission, grace after the end,
 admin create, edit and close, the public leaderboard and player routes, `GET /seasons`. Left (SE-1..SE-5): states, scheduler and
@@ -278,6 +294,8 @@ Taken later the same day, for the lobby bot (numbered on so the open ones keep t
 12. **DB3 (async storage) runs after phase 1.** Seasons, members and the bot are written against today's synchronous `Storage` and
     converted with everything else; Postgres and MySQL (DB4, DB7) follow DB3.
 13. **S7, the Connection slider: left alone.**
-14. **Map pool: prove the five untested maps first** (R1 rows 1-2); more maps only after, one client run each.
+14. **Map pool: every stock map is available and configurable on the admin site** (changed the same day; first answer was "prove the
+    five first"). Every web player has the full game, so the server ships a catalog of all stock maps, the operator switches them on
+    and weights them in the console, and proof is recorded automatically from real matches instead of gating them.
 
 No decision is open now.

@@ -57,8 +57,10 @@ types a size or digest, so a wrong digest ("scenarios do not match") cannot come
 `DELETE` removes it; `GET /admin/quick-match/maps` lists them. The CLI equivalent for reading an install is
 `bun server/scripts/map-pool-scan.ts <game dir> --probe NAME.MAP`.
 
-A map enters the pool unproven. Whether a real client loads it is [roadmap M2](roadmap.md): add it with a low weight or
-disabled first, try it with two clients, then enable it.
+A map enters the pool unproven. Whether a real client loads it is [roadmap M2](roadmap.md). **Planned (decision 14 in
+[plan.md](plan.md)):** every web player imports a full game, so every stock map is on every client. The server will ship a catalog
+of all stock maps (task MP-1 in [tasks.md](tasks.md)), the admin site's map pool page picks from it with a switch and a weight per map
+(AW-3), and each map's proof is recorded from real matches: proven, unproven, or suspect when its matches end at once (MP-2).
 
 ## The audit trail
 

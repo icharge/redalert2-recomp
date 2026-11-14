@@ -54,8 +54,8 @@ the new rules as built. Keep the `server.log` of the sitting and record the resu
 
 | Row | Check | Closes |
 |---|---|---|
-| 1 | YR Quick Match on each pool map in turn (pool narrowed to one map), past the first frame: `XMP31S2`, `XMP21S2` | M2 |
-| 2 | Same for RA2: `MP21S2`, `MP29U2`, `MP31S2` | M2 |
+| 1 | Spot check (not a gate, decision 14): a YR Quick Match on a few enabled maps that MP-2 still shows as unproven, past the first frame | M2 |
+| 2 | Same for RA2 | M2 |
 | 3 | RA2 Quick Match over two minutes, both report | M1 (first scored RA2 match) |
 | 4 | A match left early by one player (no report), with `ranked.quitterWin` on: the stayer wins only when gserv saw the drop | G1-M3 on clients |
 | 5 | A match ended by a disconnect, keep the report | M5 (`FINI=0`) |
@@ -101,7 +101,16 @@ only**, so there is no native WOL task and the `RA2_LAUNCH_TICKET` delivery is d
 | G1-M6 | **Web 2v2 agreement** (decision 5) behind `ranked.web2v2Agreement`: web 2v2 through `Settlement` with a roster-wide rule (every reporter agrees on the winning team) | `Settlement.ts`, the web 2v2 report path in `routes.ts` | a lone winner report is not scored; agreeing reports are; memory + SQLite | | G1-M3 (same file) | M | no |
 | G1-S8 | **Adjudication and the season grace**: enforce the grace, or record an explicit override reason in the audit | `server/src/http/adminRoutes.ts`, `LadderService.ts` | inside and outside the grace, with and without a reason | | F2-1 (same file) | S | no |
 
-M1 (the pool proof on real clients) is R1 rows 1-3.
+M1, the first scored RA2 match, is R1 row 3.
+
+**Map pool (decision 14: every stock map available, configured on the admin site).** Every web player imports a full game, so every
+stock map is on every client; the pool is the operator's choice.
+
+| Id | Task and sketch | Files | Tests | Verify | Deps | Effort | Client |
+|---|---|---|---|---|---|---|---|
+| MP-1 | **Stock map catalog.** Extend `server/scripts/map-pool-scan.ts` to list every multiplayer map of both editions from a stock install: name, edition, size, digest (`[Digest] 1=`), start count, and a kind (`quick` for two or more starts, `coop` for the co-op missions). First find the names of the maps present only by hash in `MultiMD.mix` (Assumed: the game's multiplayer map lists, `MPMaps.ini`/`MPMapsMD.ini`, name them) and read one `.mmx` to see whether its record form differs. Write the result as `server/src/matchmaking/stockMaps.ts` (data only: names and numbers, no game content). A `quickMatch.pool` entry may then be just `{edition, mode, stem, enabled, weight}`; size, digest and slots come from the catalog, and an upload still works for a custom map | `server/scripts/map-pool-scan.ts`, `server/src/matchmaking/stockMaps.ts`, `quickMatchMaps.ts`, `SettingsService.ts` (pool validation) | the two maps with real records reproduce (`XMP29U2`, `MP32S8`); a pool entry without size and digest resolves from the catalog; an unknown stem is refused with its name; memory + SQLite | run the scan on a stock install, compare its count with the game's map list | | M | no |
+| MP-2 | **Automatic proof per map.** For each map, count matches started, matches that really played (relay traffic past 60 s or a result report) and quick exits (both players gone within 30 s, no traffic). Status: `unproven` (no played match yet), `proven`, `suspect` (quick exits and no played match: the sign of a wrong digest, "scenarios do not match"). Exposed on `GET /admin/quick-match/maps`; `quickMatch.autoDisableSuspect` (default off) switches a suspect map off and audits it | `server/src/matchmaking/mapProof.ts`, `Storage*.ts` (table `map_stats`, additive), `MatchmakingBot.ts` or `NativeRelay.ts` (the events), `adminSettingsRoutes.ts` | played, quick exit, suspect, auto-disable; memory + SQLite | a scratch server with a fake relay | MP-1 | M | no |
+| MP-3 | **Mods and Quick Match.** A player whose active mod replaces a stock map has another digest. The launcher's PLAY says "Quick Match uses the stock maps" when a mod is active, and the game's Quick Match failure message names that cause (wording only) | `web/src/screens/launcher/PlayScreen.tsx`, maybe `src/web/wolapi.c` | Vitest for the notice | | | S | browser |
 
 ## Phase 2: Quick Co-op, on now, then finish
 
@@ -127,7 +136,7 @@ maps screens in `admin/src/main.tsx`; the settings, map pool, audit and admin-lo
 | AW-0 | **Split the console** into one file per screen plus the shared `api.ts`, no behaviour change, so later screens are separate writers | `admin/src/main.tsx` → `admin/src/screens/*.tsx` | typecheck; each existing screen still loads | | S-M | browser |
 | AW-1 | = F2-4 (cookie and CSRF sign-in) | | | F2-3, AW-0 | M | browser |
 | AW-2 | **Settings page**: every key from `GET /admin/settings` grouped by `group`, an editor per kind (bool, int with its range, lines, pool → link to AW-3), default / overridden / "restart required", reset to default, restart-only keys owner-only. New keys appear without console work | `admin/src/screens/Settings.tsx` | typecheck | AW-0 | M | browser |
-| AW-3 | **Map pool page**: per edition and mode, upload a `.MAP` (`POST /admin/quick-match/maps`), weight, enable, remove, size and digest shown, "unproven" until a client run is noted | `admin/src/screens/MapPool.tsx` | typecheck | AW-0 | S-M | browser |
+| AW-3 | **Map pool page**: per edition and mode, the whole stock catalog (MP-1) with a filter by start count and name, a switch and a weight per map, bulk "enable all two-player maps"; upload a custom `.MAP` (`POST /admin/quick-match/maps`); size and digest shown; the proof status from MP-2 (proven, unproven, suspect) with its counts | `admin/src/screens/MapPool.tsx` | typecheck | AW-0; MP-1 for the catalog, MP-2 for the status (the page works without them on today's pool) | M | browser |
 | AW-4 | **Audit view**: paged `GET /admin/audit?limit=&before=`, filter by actor and action (add the filter to the route) | `admin/src/screens/Audit.tsx`, `server/src/http/adminSettingsRoutes.ts` | filter route test; memory + SQLite | AW-0, F2-1 | S | browser |
 | AW-5 | **Admin users page**: create, role, disable, password reset, sign out everywhere, last-owner guard | `admin/src/screens/AdminUsers.tsx` | typecheck | F2-2, AW-0 | S-M | browser |
 | AW-6 | **Kick, mute, ban** from the players screen: `POST /admin/players/{name}/mute\|kick` through `WolServer`, audited | `server/src/http/adminRoutes.ts`, `WolServer.ts`, `admin/src/screens/Players.tsx` | mute and kick reach the socket; audit rows; memory + SQLite | F2-1 (same route file), AW-0 | M | browser |
@@ -229,14 +238,14 @@ order).
 |---|---|
 | `server/src/http/routes.ts` | REG-1 → F5A-1 → F4-1 (`/health`) → SE-3 → SE-4 → GU-1 → G1-M6 |
 | `server/src/config.ts` | C-0, REG-1, F2-3, F4-1, DB2, DB4, MB-2 (one at a time) |
-| `server/src/settings/SettingsService.ts` | C-0, REG-1, F4-1, K1-a, K1-b, SE-2, G1-M3, MB-1, GU-1, AW-12 |
+| `server/src/settings/SettingsService.ts` | C-0, REG-1, F4-1, MP-1, MP-2, K1-a, K1-b, SE-2, G1-M3, MB-1, GU-1, LB-1, AW-12 |
 | `server/src/index.ts` | F4-1 → DB2 → SE-1 → O1-1 |
 | `server/src/http/adminAuthRoutes.ts`, `server/src/auth/adminAuth.ts` | F2-2 → F2-3 → F2-5 |
 | `server/src/http/adminRoutes.ts` | F2-1 → G1-S8 → LB-5 → AW-6 → AW-9 → AW-10 → AW-11 |
 | `server/src/storage/Storage.ts`, `MemoryStorage.ts`, `SqliteStorage.ts` | DB1 → F5A-1 → MB-1 → SE-1 → SE-2 → SE-3; DB3 touches every line, so nothing else runs during it |
 | `server/src/ladder/LadderService.ts` | SE-1 → SE-2 → SE-3 → G1-S8 |
 | `server/src/ladder/Settlement.ts` | G1-M3 → G1-M6 → GU-1 |
-| `server/src/matchmaking/MatchmakingBot.ts` | C-1 → AW-9 or LB-3 (`snapshot`) → G2-S10 |
+| `server/src/matchmaking/MatchmakingBot.ts` | C-1 → MP-2 → AW-9 or LB-3 (`snapshot`) → G2-S10 |
 | `server/src/server/WolServer.ts` | LB-1 → LB-6 → AW-6 → C-2 (if it needs a server answer) |
 | `server/src/bot/LobbyBot.ts` | LB-1 → LB-2 → LB-3 → LB-4 → LB-5 → LB-6 (one at a time; split the command groups into files in LB-1 if they should run in parallel) |
 | `admin/src/main.tsx` | AW-0 first; after it each screen is its own file |
@@ -248,7 +257,8 @@ order).
 
 Groups whose tasks share no file. Start any task of a group once its dependencies are in.
 
-- **Now:** F6-1, F6-2, F2-1, F4-2, AW-0, LW-1 (then LW-2), LW-7a, LB-0 (then LB-1, which writes `config.ts` and
+- **Now:** F6-1, F6-2, F2-1, F4-2, AW-0, MP-1 (after C-0 and REG-1 if they touch `SettingsService.ts` at the same time), LW-1 (then
+  LW-2), LW-7a, LB-0 (then LB-1, which writes `config.ts` and
   `SettingsService.ts` too, so after C-0, REG-1 and F4-1). C-0, REG-1 and F4-1 all write `config.ts` and
   `SettingsService.ts`, so they go one after the other (C-0 first: it is the smallest).
 - **After that:** F2-2 (then F2-3, F2-4), DB1 (then DB2), F5A-1 (then F5A-2, F5A-3), AW-2, AW-3, AW-4.
@@ -272,5 +282,5 @@ none is open. The ones that shape the tasks most:
 | 10 web only | no native tasks |
 | 11 member sign-in by login name or email, claims count, names capped at 9 | MB-1, GU-1, F5A-3 |
 | 12 DB3 after phase 1 | DB3, SE-1, MB-1, LB-5 (written sync first) |
-| 14 prove the five maps before adding more | R1 rows 1-2, M1 task 4 |
+| 14 every stock map available, configured on the admin site; proof automatic | MP-1, MP-2, MP-3, AW-3 |
 | 15-17 lobby bot: `/command` with private replies, linked-nick moderation, `YuriBOT` | LB-0..LB-8 |
