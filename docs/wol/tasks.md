@@ -20,7 +20,7 @@ hour, M about a day, L several days.
 5. **F5A-1**: tickets and redeem on today's accounts.
 
 1, 2 and 4 share no files and can run in parallel. 3 and 5 both write `routes.ts`, so 5 starts after 3. Beside them:
-**C-0** (Quick Co-op on by default, decided), and **LW-1** and **LW-2** (welcome page, install guide), which are web-only.
+~~**C-0**~~ (done, ra2web `4435f8e`), and **LW-1** and **LW-2** (welcome page, install guide), which are web-only.
 **R1** (the real-client session) comes after phase 1 (decision 2).
 
 ---
@@ -119,7 +119,7 @@ in scope, unranked, **on by default now**.
 
 | Id | Task | Files | Tests | Deps | Effort | Client |
 |---|---|---|---|---|---|---|
-| C-0 | **On by default**: `yrCoopEnabled` defaults to true (`YR_COOP_ENABLED=false` or the setting turns it off); the setting's description loses "Experimental"; `co-op.md`, `server/README.md` | `server/src/config.ts`, `server/src/settings/SettingsService.ts`, `test/yrCoop.test.ts`, docs | the default publishes `#Lob_39_0`; `false` hides it; memory + SQLite | | S | no |
+| C-0 | **Done** (ra2web `4435f8e`): `yrCoopEnabled` defaults to true (`YR_COOP_ENABLED=false` or the setting turns it off); the setting's description loses "Experimental"; `server/README.md` lists the variable; `co-op.md` updated | `server/src/config.ts`, `SettingsService.ts`, `quickMatchMaps.ts` (comment), `test/yrCoop.test.ts`, `server/README.md` | the default publishes `#Lob_39_0`; `false` hides it; full run 671 pass, 0 fail | | S | no |
 | C-1 | **Cooperative campaign line.** Not sent today and not needed for `C1A01MD`. Trial: send the VERA20K form `C0,...,-1,<host b64>,<guest b64>` behind a debug flag, play once with and once without, compare | `server/src/matchmaking/MatchmakingBot.ts`, `nativeGameOpts.ts`, `test/yrCoop.test.ts` | record shape with the flag; memory + SQLite | | S-M | 2 clients |
 | C-2 | **"Next Mission"** after the score screen: record what the game asks the server for, and whether the server must answer. From players' `server.log` lines once C-0 is live, or R1 row 8 | docs, maybe `WolServer.ts` | | C-0 | S | 2 clients |
 | C-3 | **Score-screen chat**: read the logging already added (relay `new datagram length`, `wolapi.c` `chat sent`) from a live match or R1 row 8; fix where it is dropped | `server/src/gserv/NativeRelay.ts` or `src/web/wolapi.c` | a relay test for the found case | C-0 | S-M | 2 clients |

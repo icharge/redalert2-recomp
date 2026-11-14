@@ -203,8 +203,8 @@ The lobby `#Lob_39_0` is published only while `queues.yrCoop.enabled` is on and 
 real clients** ([co-op.md](co-op.md)): paired through lobby 39, loaded `C1A01MD`, played to the "Campaign Results" score screen, after
 three record fixes (mode id, countries, starts and AI).
 
-**Decided (decision 4): in scope, unranked, on by default now** (task C-0 flips the default; `YR_COOP_ENABLED=false` or the
-setting still turns it off). Publishing lobby 39 makes the retail button live instead of "Matching Server Not Found", so players will
+**Decided (decision 4): in scope, unranked, on by default**, done in ra2web `4435f8e` (C-0; `YR_COOP_ENABLED=false` or the
+setting turns it off). Publishing lobby 39 makes the retail button live instead of "Matching Server Not Found", so players will
 reach the parts not yet checked. **Left** (C-1..C-4): the cooperative campaign line (not sent, its wire form unknown, not needed for
 `C1A01MD`); "Next Mission" after the score screen (not exercised; a player who presses it may hit a dead end); chat on the score screen
 (a UDP datagram through the relay, logging added, cause open); more missions.

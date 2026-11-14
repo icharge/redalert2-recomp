@@ -1,6 +1,6 @@
 # Quick Co-op (Yuri's Revenge): research and design
 
-Status of 15 Nov 2026: **server side built behind a switch, not run on a real client**. The retail
+Status of 15 Nov 2026: **server side built, on by default since ra2web `4435f8e`; played to the score screen on two real clients**. The retail
 client has the button; the server now has the lobby and queue (see "Built" below). Evidence is from the lifted gamemd and from
 the VERA20K notes (`../vera20k/src/app/shell_wol/quick_match.rs`, `docs/lobby-protocol.md`), which
 port the same handlers. Marked **Seen** (read in code), **Assumed** (from VERA20K, not re-read in
@@ -155,10 +155,10 @@ A message typed on the co-op "Campaign Results" screen showed on the sender's sc
 
 ## Built (15 Nov 2026)
 
-Server side in `ra2web/server`, behind a switch, covered by `test/yrCoop.test.ts` (eight tests):
+Server side in `ra2web/server`, covered by `test/yrCoop.test.ts`:
 
-- **Switch:** `YR_COOP_ENABLED=true`, or the admin setting `queues.yrCoop.enabled` (live). Off by default today; decided
-  14 Nov 2026 to turn it **on by default** (task C-0 in [tasks.md](tasks.md)), unranked.
+- **Switch: on by default** since ra2web `4435f8e` (task C-0, decided 14 Nov 2026). `YR_COOP_ENABLED=false` turns it off,
+  and the admin setting `queues.yrCoop.enabled` overrides it live.
 - **Needs a co-op map:** the lobby is published (`#Lob_39_0` on `LIST 0`, `@matchbot` in its names) only while the
   switch is on **and** the pool (`quickMatch.pool`) has an enabled map with `mode: "coop"` for `yr`. The built-in pool
   has one since ra2web `7f69afc`: `C1A01MD` (163770 bytes, the first Allied co-op mission from a stock `MultiMD.mix`).
@@ -171,6 +171,5 @@ Server side in `ra2web/server`, behind a switch, covered by `test/yrCoop.test.ts
   server logs `quick co-op record: ...` for each match, to compare with a real client.
 - **Shim:** `src/web/wolapi.c` already passes `Lob_39_` for the YR edition.
 
-To do the capture (P9): start the server with `YR_COOP_ENABLED=true`, add a co-op mission to the pool, press Quick
-Co-op in two YR clients, and read `server.log`. Expected failures to watch: "scenarios do not match" (map size or digest
+To try it: start the server (co-op is on by default), press Quick Co-op in two YR clients, and read `server.log`. Expected failures to watch: "scenarios do not match" (map size or digest
 wrong) or the clients loading a Quick Match game instead of co-op (the record needs the cooperative setup).
