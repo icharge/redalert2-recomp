@@ -9,6 +9,35 @@ The native releases (v0.1.0 to v0.1.3) are in the repository's
 [CHANGELOG.md](../CHANGELOG.md); none of them include the browser build. The
 commit after each entry is where to read more.
 
+## [0.3.0] - 2026-11-14
+
+Changes since 0.2.1.
+
+### Added
+
+- **Quick Match and Quick Co-op on a YuriNET server**: the Quick Match
+  button of Yuri's Revenge and of Red Alert 2 finds the server's Quick Match
+  lobby instead of ending in "Matching Server Not Found", and Yuri's Revenge's
+  Quick Co-op button reaches the co-op lobby on a server that turns it on.
+  Two players are paired, play, and a ranked Quick Match settles on the
+  server's ladder. (8f2e3458, d5b2d4f1)
+
+### Changed
+
+- **Match game speed starts at Fastest**: a fresh install, the launcher's
+  reset and its fallback start the skirmish, LAN and internet game speed at
+  the fastest setting. The campaign's game speed is unchanged. (eb525a0f)
+- The Westwood Online menu's title reads "YuriNET Online". (5a1fbdf1)
+
+### Fixed
+
+- A refused Westwood Online login now says the password is wrong or the
+  account is banned, where it always read "Could not connect to Westwood
+  Online". (36a28d78, a6b4fc39)
+- A ranked match's result report is sent to the server and the server's
+  answer (pending, scored, unscored, disputed, incomplete or expired) is
+  understood, instead of being rejected as unknown. (cd1a95e9)
+
 ## [0.2.1] - 2026-11-09
 
 ### Fixed

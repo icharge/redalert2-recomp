@@ -243,24 +243,24 @@ describe("SettingsScreen", () => {
     );
   });
 
-  it("defaults the match speed to 5 when the file has no match section", async () => {
+  it("defaults the match speed to 6 (Fastest) when the file has no match section", async () => {
     setup({ mainIni: "[Options]\nGameSpeed=2\nDifficulty=1\n" });
     await gameplay();
     expect(screen.getByRole("slider", { name: "Game speed" })).toHaveAttribute(
       "aria-valuenow",
-      "5",
+      "6",
     );
   });
 
-  it("resets the match speed to the default 5", async () => {
+  it("resets the match speed to the default 6 (Fastest, stored 0)", async () => {
     const { written } = setup();
     await gameplay();
     fireEvent.keyDown(screen.getByRole("slider", { name: "Game speed" }), { key: "ArrowRight" });
     await waitFor(() => expect(written.length).toBeGreaterThan(0));
     await userEvent.click(screen.getByRole("button", { name: "RESET DEFAULTS" }));
-    await waitFor(() => expect(written.at(-1)?.text).toContain("[Skirmish]\nGameSpeed=1"));
-    expect(written.at(-1)?.text).toContain("[LAN]\nGameSpeed=1");
-    expect(written.at(-1)?.text).toContain("[WonlinePref]\nGameSpeed=1");
+    await waitFor(() => expect(written.at(-1)?.text).toContain("[Skirmish]\nGameSpeed=0"));
+    expect(written.at(-1)?.text).toContain("[LAN]\nGameSpeed=0");
+    expect(written.at(-1)?.text).toContain("[WonlinePref]\nGameSpeed=0");
   });
 
   it("RESET DEFAULTS resets the open tab only", async () => {
@@ -292,7 +292,7 @@ describe("SettingsScreen", () => {
     expect(await screen.findByText(/no settings file yet/i)).toBeInTheDocument();
     expect(screen.getByRole("slider", { name: "Game speed" })).toHaveAttribute(
       "aria-valuenow",
-      "5",
+      "6",
     );
     expect(screen.getByRole("switch", { name: "Show hidden objects" })).toHaveAttribute(
       "aria-checked",
