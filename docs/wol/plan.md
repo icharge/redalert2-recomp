@@ -67,10 +67,11 @@ window in `errorReport.test.ts` (S12) and password hashing in two `nativeQuickMa
 `68318fe`, `7788c8f` (Seen: `adminAuth.test.ts`, 20 tests). Separate `admin_users` with four roles, five-failure lockout for 15
 minutes, per-address login limit, 30 minute idle and 8 hour absolute sessions, cookie (`HttpOnly; SameSite=Strict; Path=/admin`) plus
 CSRF header or Bearer, role per route, restart-only settings owner-only, audited logins, no default credential,
-`ADMIN_LEGACY_AUTH=false` closes the game-account route. **Seen:** only `adminAuth.ts` and `SettingsService.ts` call `insertAudit`; bans,
-season edits, adjudications, map and replay deletes write only a log line.
+`ADMIN_LEGACY_AUTH=false` closes the game-account route. **Every admin change is audited** since ra2web `90fda96` (F2-1): a
+successful non-GET writes an `http.<METHOD> /admin/<area>` row (target, status, role, address; never the body); settings and logins
+keep their own richer rows.
 
-**Left** (tasks F2-1..F2-7): audit every admin change; admin-user routes; Origin check; console onto cookie and CSRF (depends on the
+**Left** (tasks F2-2..F2-7): admin-user routes; Origin check; console onto cookie and CSRF (depends on the
 Origin check, not on the user routes: `GET /admin/auth/me` already exists); TOTP for owners; the cut-over. **Decided (decision 6):
 the console is served on the public site behind TLS, with TOTP for owners.** So it goes public only after F2-3 (Origin), F2-4 (no bearer
 in `localStorage`) and F2-5 (TOTP) are in; until then it stays behind loopback, a VPN or a proxy allow-list. The separate admin
