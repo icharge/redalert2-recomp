@@ -1,7 +1,7 @@
 # Quick Co-op (Yuri's Revenge): research and design
 
-Status of 14 Nov 2026: **researched, designed, not implemented on a real client**. The retail
-client has the button; the server has no queue for it. Evidence is from the lifted gamemd and from
+Status of 15 Nov 2026: **server side built behind a switch, not run on a real client**. The retail
+client has the button; the server now has the lobby and queue (see "Built" below). Evidence is from the lifted gamemd and from
 the VERA20K notes (`../vera20k/src/app/shell_wol/quick_match.rs`, `docs/lobby-protocol.md`), which
 port the same handlers. Marked **Seen** (read in code), **Assumed** (from VERA20K, not re-read in
 the bytes) or **Open** (needs a client).
@@ -115,3 +115,24 @@ real run.
    button does show; today it ends "Matching Server Not Found").
 2. Ranked or not. Recommended: not ranked; a co-op clear-time board later if wanted.
 3. Which missions: the first Allied one only, or a pool, and should the Soviet/Yuri missions be in it.
+
+## Built (15 Nov 2026)
+
+Server side in `ra2web/server`, behind a switch, covered by `test/yrCoop.test.ts` (eight tests):
+
+- **Switch:** `YR_COOP_ENABLED=true`, or the admin setting `queues.yrCoop.enabled` (live). Off by default.
+- **Needs a co-op map:** the lobby is published (`#Lob_39_0` on `LIST 0`, `@matchbot` in its names) only while the
+  switch is on **and** the pool (`quickMatch.pool`) has an enabled map with `mode: "coop"` for `yr`. There is no
+  built-in co-op map: size and digest must come from a real mission file (add it in the admin console or via
+  `config.quickMatchPool`).
+- **Queue:** type `141` (`COOP_QUICK_TYPE`), native family, never ranked (no SKU, no ladder type, no
+  `Settlement.admit`). A co-op player is never paired with a Quick Match player. A player in both `Lob_41` and
+  `Lob_39` is a co-op player.
+- **Record:** the YR Quick Match record with the co-op map, concrete country and colour, speed 6, and team `1` for
+  both humans (allied). The cooperative campaign line is **not sent**: its format on the wire is not known. The
+  server logs `quick co-op record: ...` for each match, to compare with a real client.
+- **Shim:** `src/web/wolapi.c` already passes `Lob_39_` for the YR edition.
+
+To do the capture (P9): start the server with `YR_COOP_ENABLED=true`, add a co-op mission to the pool, press Quick
+Co-op in two YR clients, and read `server.log`. Expected failures to watch: "scenarios do not match" (map size or digest
+wrong) or the clients loading a Quick Match game instead of co-op (the record needs the cooperative setup).
