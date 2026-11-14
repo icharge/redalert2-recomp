@@ -26,8 +26,8 @@ run also had two `nativeQuickMatch.test.ts` "sides and colours" tests hit the 5 
 | Phase | Goal | Items | Why this order |
 |---|---|---|---|
 | **0. Foundations** | An operator can run, change, back up and secure the server without editing code; a launcher can hand the game a login | F6 housekeeping, F2 admin security, F4 scheduled backup, F3 migrations and the auto-migrate tool (DB1, DB2), REG registration switch, F5 slice A tickets | F4 before F3, so real data is backed up before any migration runs. F3 is needed only for **changed** tables; new tables are `CREATE TABLE IF NOT EXISTS` and arrive without it (Seen, `SqliteStorage.ts`), so F5 slice A does not wait for it |
-| **DB. Storage engines** | SQLite by default; Postgres and MySQL when configured | DB3 async storage, DB4 Postgres, DB5 copy tool, DB6 backups, DB7 MySQL | DB3 between phase 0 and phase 1, so the season and member storage of phase 1 is written async once; it touches every storage caller, so nothing else on the server runs during it |
 | **1. Pool, seasons, ranked integrity** | The ladder runs itself, cannot be gamed by quitting, and players can see it | M1 pool proof (R1), SE seasons, G1-M3 quitters, G1-M6 web 2v2, G1-S8 | Seasons need the settlement timer and (for the reset policy) a migration. M3 and M6 are moved here from phase 3, behind settings, because "fully functional ranked" depends on them |
+| **DB. Storage engines** | SQLite by default; Postgres and MySQL when configured | DB3 async storage, DB4 Postgres, DB5 copy tool, DB6 backups, DB7 MySQL | **DB3 after phase 1** (decision 12): phase 1's storage code is written synchronously and converted with the rest. DB3 touches every storage caller, so nothing else on the server runs during it |
 | **R. Real-client session** | Close the **Open** items | R1 (two clients), R2 (browser) | **After phase 1** (decision 2). Until then M1 (no RA2 match has scored), the five unproven pool maps and the co-op follow-ups stay **Open**, and phase 1's rules are proven by tests only |
 | **LW. Web launcher and members** | Welcome, bring-your-own-game guide, guest or member, WOL auto-login | LW-1..LW-8, MB-1..MB-3, GU-1 | The welcome page and the guide need no server and start now; members need slice A's tickets |
 | **2. Co-op** | Quick Co-op on by default, then finish it | C-0 switch on, C-1..C-4 | Turned on now (decision 4); "Next Mission" and score-screen chat are fixed as found, the rest needs R1 |
@@ -132,7 +132,8 @@ quitter rule G1-M3 and the web 2v2 rule G1-M6 as built, a report from a dropped 
 **Decided (decision 3):** SQLite stays the default; Postgres and MySQL are both supported and chosen by configuration
 (`STORAGE_ENGINE=sqlite|postgres|mysql`, `DATABASE_URL`). **Seen:** `Storage` (`server/src/storage/Storage.ts`, about 61 methods) is
 fully synchronous over `bun:sqlite`, with 124 call sites in seven files outside storage plus their callers. Networked drivers are
-asynchronous, so the first step is **DB3: make `Storage` async** (L, mechanical, wide; one connection's WOL lines must stay in order).
+asynchronous, so the first step is **DB3: make `Storage` async** (L, mechanical, wide; one connection's WOL lines must stay in order;
+after phase 1, decision 12).
 Then **DB4** a `PostgresStorage` over `Bun.SQL` (**Assumed:** Bun 1.3.13's `Bun.SQL` has the Postgres and MySQL clients this needs;
 DB4 checks first) with one storage contract suite run on every engine; **DB5** a `db-copy` tool from SQLite to either engine; **DB6**
 backups for networked engines (`pg_dump`, `mysqldump`; the scheduler reports "external"); **DB7** a `MysqlStorage`.
@@ -271,11 +272,12 @@ Taken later the same day, for the lobby bot (numbered on so the open ones keep t
 16. **Moderation through the bot: yes, by game nicks linked to admin accounts**, up to the admin account's role, time-limited, audited.
 17. **The bot's name is `YuriBOT`** (a setting, restart-only, reserved from registration and guest names).
 
-### Still open (the recommendation stands until you say otherwise)
+11. **Member sign-in:** a login name or email, kept apart from the game account's nick; claiming an existing WOL account with its
+    password counts toward the limit of one; game account and guest names capped at the retail login field's width (F5A-3 confirms
+    9 characters; the shim already reads sender nicks as at most 9, `wolapi.c:672`).
+12. **DB3 (async storage) runs after phase 1.** Seasons, members and the bot are written against today's synchronous `Storage` and
+    converted with everything else; Postgres and MySQL (DB4, DB7) follow DB3.
+13. **S7, the Connection slider: left alone.**
+14. **Map pool: prove the five untested maps first** (R1 rows 1-2); more maps only after, one client run each.
 
-11. **Member details.** Recommended: log in with a login name or email, kept apart from the game account's nick; claiming an existing
-    WOL account into a member with its password counts toward the limit of one; game account and guest names capped at the retail
-    login field's width (F5A-3 measures 9 or 10 characters).
-12. **When DB3 (async storage) runs.** Recommended: right after phase 0, as a window with no other server task open.
-13. **S7, the Connection slider.** Recommended: leave it alone.
-14. **Pool size.** Recommended: prove the five untested maps (R1) before adding any; say if you have favourite stock maps.
+No decision is open now.

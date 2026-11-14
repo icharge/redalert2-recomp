@@ -166,4 +166,5 @@ The recommendations in this page were accepted:
 Added 14 Nov 2026 (your direction): the launcher is the recomp web launcher with a welcome page and a
 bring-your-own-game guide; players choose guest or member; **one member, many game accounts, limited to one for now**;
 the game's WOL login is automatic; guests online use any free name, are never scored, and a match with a guest is
-scored for nobody. Still open, in [plan.md](plan.md): member login details and the name width (decision 11).
+scored for nobody; members sign in with a login name or email, kept apart from the nick, a claimed WOL account counts
+toward the limit, and game and guest names are capped at 9 characters (decision 11 in [plan.md](plan.md)).

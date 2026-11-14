@@ -74,7 +74,7 @@ Decision 3: SQLite stays the default; Postgres and MySQL are both supported, cho
 
 | Id | Task and sketch | Files | Tests | Verify | Deps | Effort | Client |
 |---|---|---|---|---|---|---|---|
-| DB3 | **Async `Storage`.** Every method of `Storage` (`server/src/storage/Storage.ts`, about 61, all synchronous today) returns a `Promise`; `MemoryStorage` and `SqliteStorage` wrap their results; every caller awaits (124 call sites in `accountStore.ts`, `adminAuth.ts`, `session.ts`, `index.ts`, `LadderService.ts`, `Settlement.ts`, `SettingsService.ts`, and their callers `WolServer.ts`, `routes.ts`, `adminRoutes.ts`, `nativeResults.ts`). **Care:** one connection's WOL lines must stay in order, so `WolServer.handleMessage` awaits each line before the next; `sessions.validate` (every `session` line) reads through an in-memory cache. Mechanical but wide: run it while no other server task is open | all of the above | the whole suite on memory + SQLite; a new test that two lines sent together are handled in order | the smoke scripts (`bun run smoke`) | phase 0 merged; a single-writer window | L | no |
+| DB3 | **Async `Storage`.** Every method of `Storage` (`server/src/storage/Storage.ts`, about 61, all synchronous today) returns a `Promise`; `MemoryStorage` and `SqliteStorage` wrap their results; every caller awaits (124 call sites in `accountStore.ts`, `adminAuth.ts`, `session.ts`, `index.ts`, `LadderService.ts`, `Settlement.ts`, `SettingsService.ts`, and their callers `WolServer.ts`, `routes.ts`, `adminRoutes.ts`, `nativeResults.ts`). **Care:** one connection's WOL lines must stay in order, so `WolServer.handleMessage` awaits each line before the next; `sessions.validate` (every `session` line) reads through an in-memory cache. Mechanical but wide: run it while no other server task is open | all of the above | the whole suite on memory + SQLite; a new test that two lines sent together are handled in order | the smoke scripts (`bun run smoke`) | phase 1 done (decision 12); a single-writer window | L | no |
 | DB4 | **`PostgresStorage`.** `STORAGE_ENGINE=postgres` and `DATABASE_URL` in `config.ts` and `storage/index.ts`; the class over `Bun.SQL` (first step: confirm Bun 1.3.13's `Bun.SQL` Postgres client covers transactions and prepared statements as needed; **Assumed** until then). Migrations run their `postgres` branch. Plus `server/test/storageContract.test.ts`: one suite over every `Storage` method, run on memory, SQLite and, when `TEST_POSTGRES_URL` is set, Postgres | `server/src/storage/PostgresStorage.ts`, `storage/index.ts`, `config.ts`, `migrations.ts`, `server/test/storageContract.test.ts` | the contract suite on three engines | start the server on a local Postgres, play the smoke scripts, read the leaderboard | DB3, DB2 | L | no |
 | DB5 | **`db-copy` tool.** `bun scripts/db-copy.ts --from sqlite:PATH --to postgres://...\|mysql://...`: refuses a non-empty target, migrates the target to the source's version, copies tables in dependency order in batches, compares row counts and the top of each leaderboard | `server/scripts/db-copy.ts`, a test | copy a fixture database SQLite → SQLite and (with `TEST_POSTGRES_URL`) → Postgres | copy a real database to a local Postgres, compare `GET /leaderboard/...` | DB4 | M | no |
 | DB6 | **Backups on a networked engine.** The scheduler (F4-1) and `/health` say "external" for Postgres/MySQL instead of running `VACUUM INTO`; `operations.md` documents `pg_dump`/`pg_restore` (and `mysqldump`) and the upgrade order | `server/src/ops/backupScheduler.ts`, `docs/wol/operations.md` | the scheduler skips on a non-SQLite engine | | DB4, F4-1 | S | no |
@@ -91,7 +91,7 @@ only**, so there is no native WOL task and the `RA2_LAUNCH_TICKET` delivery is d
 
 | Id | Task and sketch | Files | Tests | Verify | Deps | Effort | Client |
 |---|---|---|---|---|---|---|---|
-| SE-1 | **Season states, scheduler, archive.** `ladder_seasons.status`: `scheduled \| current \| closing \| archived`; new table `season_results(season_id, sku, ladder_type, rank, player, rating, wins, losses, placed)` (additive). `LadderService.advanceSeasons(now)` moves scheduled → current at `start_time`, current → closing at `end_time` or admin close, closing → archived after the grace, writing the snapshot in one transaction; called once a minute from the settlement timer in `index.ts`. **Care:** "current" today is the newest by `start_time`, so a future scheduled season must not become current early (`getRunningSeason`, `getLeaderboard`) | `server/src/ladder/LadderService.ts`, `Storage*.ts`, `server/src/index.ts` | injected clock: each transition; snapshot frozen against a later rescore; late report inside the grace counts, after it not; a scheduled season is not current; memory + SQLite | create a season that starts in two minutes on a scratch server | DB1 (status values on old rows), DB3 if it is scheduled first | M | no |
+| SE-1 | **Season states, scheduler, archive.** `ladder_seasons.status`: `scheduled \| current \| closing \| archived`; new table `season_results(season_id, sku, ladder_type, rank, player, rating, wins, losses, placed)` (additive). `LadderService.advanceSeasons(now)` moves scheduled → current at `start_time`, current → closing at `end_time` or admin close, closing → archived after the grace, writing the snapshot in one transaction; called once a minute from the settlement timer in `index.ts`. **Care:** "current" today is the newest by `start_time`, so a future scheduled season must not become current early (`getRunningSeason`, `getLeaderboard`) | `server/src/ladder/LadderService.ts`, `Storage*.ts`, `server/src/index.ts` | injected clock: each transition; snapshot frozen against a later rescore; late report inside the grace counts, after it not; a scheduled season is not current; memory + SQLite | create a season that starts in two minutes on a scratch server | DB1 (status values on old rows) | M | no |
 | SE-2 | **Reset policy** (decision 7: soft, 0.5, at least 5 games; new seasons default to it). `ladder_seasons.reset_policy` (`hard`, `soft:<factor>`, `carry`), a column change, so a migration. Applied lazily: a player with no standing in the new season starts at `start + (prev - start) * factor` if they had at least N rated games, else `start`; placements restart at 3. Settings `ladder.softResetFactor`, `ladder.softResetMinGames` | `LadderService.ts`, `migrations.ts`, `Storage*.ts`, `SettingsService.ts` | veteran, newcomer, one game short of N, carry, hard; memory + SQLite | | SE-1, DB1 | M | no |
 | SE-3 | **Awards** (decision 8: yes, web page only): `season_awards(season_id, sku, ladder_type, player, kind, rank)` written with the snapshot (`champion`, `top10`, `top100`, `placed`); `GET /players/{name}/awards` | `LadderService.ts`, `Storage*.ts`, `server/src/http/routes.ts` | written once at archive; route shape; memory + SQLite | | SE-1 | S-M | no |
 | SE-4 | **Season routes**: `GET /seasons/{sku}/{id}` (with the final table once archived), `archived` and `snapshotAt` on `GET /leaderboard/{sku}/{type}/{season}` | `server/src/http/routes.ts` | `seasonsApi.test.ts` cases; memory + SQLite | curl | SE-1 | S | no |
@@ -252,19 +252,25 @@ Groups whose tasks share no file. Start any task of a group once its dependencie
   `SettingsService.ts` too, so after C-0, REG-1 and F4-1). C-0, REG-1 and F4-1 all write `config.ts` and
   `SettingsService.ts`, so they go one after the other (C-0 first: it is the smallest).
 - **After that:** F2-2 (then F2-3, F2-4), DB1 (then DB2), F5A-1 (then F5A-2, F5A-3), AW-2, AW-3, AW-4.
-- **Single-writer window:** DB3, once phase 0 is merged. Nothing else on the server meanwhile; web and admin console tasks can continue.
 - **Phase 1 lanes:** seasons (SE-1 → SE-2 → SE-3, SE-4, SE-5) beside integrity (G1-M3 → G1-M6), beside members (MB-1 → MB-2 → MB-3)
   once SE-1 and MB-1 are not both writing `Storage*.ts`. Web: LW-3 → LW-4; LW-7b after F5A-3.
-- **Later:** DB4 → DB5, DB6, DB7; O1-*; AW-5..AW-13; C-1..C-4; R1 after phase 1.
+- **After phase 1:** R1; and the **single-writer window** for DB3 (decision 12). Nothing else on the server meanwhile; web and admin
+  console tasks can continue.
+- **Later:** DB4 → DB5, DB6, DB7; O1-*; AW-5..AW-13; C-1..C-4.
 
-## Open decisions
+## Decisions
 
-"Decision n" in the tables above is decision n of [plan.md](plan.md), "Decisions". Decisions 1-10 were taken on 14 Nov 2026;
-the ones still open, with the recommendation that stands until you say otherwise:
+"Decision n" in the tables above is decision n of [plan.md](plan.md), "Decisions". All seventeen were taken on 14 Nov 2026;
+none is open. The ones that shape the tasks most:
 
-| Decision | Gates | Recommendation |
-|---|---|---|
-| 11 member details, name width | MB-1, GU-1, F5A-3 | login name or email, apart from the nick; a claim counts toward the limit; cap names at the field |
-| 12 when DB3 runs | DB3 | right after phase 0, with no other server task open |
-| 13 the Connection slider (S7) | | leave it alone |
-| 14 pool size | M1 task 4 | prove the five maps in R1 before adding any |
+| Decision | Tasks it shapes |
+|---|---|
+| 2 real-client session after phase 1 | R1, M1, M2, C-2, C-3 |
+| 3 SQLite default, Postgres and MySQL by configuration | DB3-DB7 |
+| 4 co-op on by default, unranked | C-0 |
+| 9 guests: any free name, never scored, a match with a guest scores for nobody | GU-1, LW-4 |
+| 10 web only | no native tasks |
+| 11 member sign-in by login name or email, claims count, names capped at 9 | MB-1, GU-1, F5A-3 |
+| 12 DB3 after phase 1 | DB3, SE-1, MB-1, LB-5 (written sync first) |
+| 14 prove the five maps before adding more | R1 rows 1-2, M1 task 4 |
+| 15-17 lobby bot: `/command` with private replies, linked-nick moderation, `YuriBOT` | LB-0..LB-8 |
