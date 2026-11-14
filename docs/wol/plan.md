@@ -91,12 +91,13 @@ start while any is pending), with a database lock on networked engines.
 `scripts/backup.ts` and `src/ops/backup.ts` (`a363c2f`; Seen: `backup.test.ts`, a run on a real file).
 Left: the daily schedule and its status in `/health` (F4-1), the restore script (F4-2). **F4-1 lands before DB1 runs on real data.**
 
-### REG. Registration switch (new)
+### REG. Registration switch: built
 
-**Seen:** `/register` is open to anyone, limited only per IP (`limits.registerMaxPerHour`, 20 an hour, `routes.ts:198`). The web
-client calls `/register` before every `/login` (`web/src/game/wol.ts:110`), so every web login uses up that IP's registration budget
-(players behind one NAT stop being able to register). REG-1: a live `auth.registrationOpen` and a limiter that counts only accounts
-actually created.
+ra2web `4e96e45` (REG-1): `REGISTRATION_OPEN` and the live setting `auth.registrationOpen` close registration on `/register` and on
+Vera's sign-up (`registration_closed`) while existing accounts still log in. The per-address limit (`limits.registerMaxPerHour`) now
+counts only accounts actually created. Before, the web client's `/register`-before-every-`/login` (`web/src/game/wol.ts:110`) used up
+the budget, so players behind one NAT stopped being able to register. Left: REG-2, the web client shows the login failure instead of
+"registration is closed" to a new player.
 
 ### F5. Members and launcher sign-in
 

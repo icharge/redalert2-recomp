@@ -31,7 +31,9 @@ whether a restart is needed. `PUT /admin/settings/{key}` with `{"value": ...}` s
 | `ladder.placementMatches` | 0-100 | yes | |
 | `ladder.minReportDurationSeconds` | 0-3600 | yes | Shortest game that scores |
 | `ladder.seasonGraceSeconds` | 0-86400 | yes | |
-| `limits.loginMaxPerMin`, `limits.registerMaxPerHour` | 1-10000 | yes | Rebuilds the rate limiters |
+| `queues.yrCoop.enabled` | bool | yes | Yuri's Revenge Quick Co-op lobby and queue, unranked; on by default (`YR_COOP_ENABLED`, ra2web `4435f8e`) |
+| `limits.loginMaxPerMin`, `limits.registerMaxPerHour` | 1-10000 | yes | Rebuilds the rate limiters. The register limit counts only accounts created (ra2web `4e96e45`) |
+| `auth.registrationOpen` | bool | yes | New accounts may be created on `/register` and Vera's sign-up; off answers `registration_closed`, logins keep working (`REGISTRATION_OPEN`, `4e96e45`) |
 | `welcome.motd` | up to 20 lines of 200 | yes | Shown at sign-in (also Vera's welcome) |
 | `quickMatch.pool` | list of maps | yes | See below |
 | `net.wolTcpPort` | 1-65535 | **restart** | Example of a restart-only setting; stored and shown as pending |
