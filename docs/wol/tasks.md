@@ -13,7 +13,7 @@ hour, M about a day, L several days.
 
 ## Start here
 
-1. **F6-1 + F6-2**: a green suite to build on.
+1. ~~**F6-1 + F6-2**: a green suite to build on.~~ Done (ra2web `d5bbe6f`, 664 pass three times).
 2. **F2-1**: audit every admin change.
 3. **REG-1**: registration switch; count only accounts created.
 4. **F4-1**: the scheduled backup, before anything migrates real data.
@@ -29,8 +29,8 @@ hour, M about a day, L several days.
 
 | Id | Task and sketch | Files | Tests | Verify | Deps | Effort | Client |
 |---|---|---|---|---|---|---|---|
-| F6-1 | **Green suite.** Two full runs on 14 Nov gave 661/1 and 659/3 fails. (1) S12, in both runs: `POST /errorreport > two desync reports for the same gameId are diffed and both persisted`. Each `errorReport.test.ts` case gets its own `mkdtempSync` folder instead of the shared `test/tmp-error-reports*`, removed in `afterEach`. (2) In the second run only, `native Quick Match sides and colours > a random country becomes a real one, and the colours differ` and `> a Red Alert 2 record carries concrete sides, limited to its nine countries` hit the 5 s timeout (5016 ms). Find what they wait on (a real timer?) and inject the clock instead of raising the timeout | `server/test/errorReport.test.ts`, `server/test/nativeQuickMatch.test.ts` | the suite itself, three full runs | 0 fail three times | | S-M | no |
-| F6-2 | **`LadderService.updateSettings` applies live**: a test that changes `ladder.startingRating` through `SettingsService` and reads a new player's rating | `server/test/ladderService.test.ts` | memory + SQLite | the test fails without the `onApplied` hook | | S | no |
+| F6-1 | **Done** (ra2web `d5bbe6f`). (1) S12, `two desync reports ... both persisted`: the folders were already per test; the cause was the 30 ms correlation window. In a busy full run report A's window expired while B's archive was still being built, so A was saved alone. The test now uses a 5 s window like its neighbours. (2) The two random "sides and colours" tests pair 20 times and registered two accounts per round (40 password hashes per test), which ran past the 5 s timeout under load; they now log in with a session only | `server/test/errorReport.test.ts`, `server/test/nativeQuickMatch.test.ts` | | three full runs: 664 pass, 0 fail; `tsc` clean | | S | no |
+| F6-2 | **Done** (ra2web `d5bbe6f`): `settings.test.ts` changes `ladder.startingRating` and `ladder.placementMatches` through `SettingsService` with the `onApplied` hook of `index.ts`, and reads them back from `LadderService`; reset too; memory and SQLite | `server/test/settings.test.ts` | memory + SQLite | | | S | no |
 | F2-1 | **Audit every admin change.** One wrapper in `adminRoutes.ts`: after a non-GET under `/admin/` returns below 400, `storage.insertAudit({at, actor, action: "http.<METHOD> /admin/<path>", target, detail: {ip, status}})`. Handlers that know old and new values add their own richer row | `server/src/http/adminRoutes.ts` | each mutation (ban, season edit, adjudicate, map delete, replay delete) then `GET /admin/audit`; memory + SQLite | rows appear with actor and IP | | S | no |
 | F2-2 | **Admin-user routes.** `GET/POST /admin/users`, `POST /admin/users/{name}/role\|disable\|enable\|password`, owner-only. `AdminAuth.setRole(name, role, actor)` revokes live sessions as `setDisabled` does; refuse to demote or disable the last active owner | `server/src/auth/adminAuth.ts`, `server/src/http/adminAuthRoutes.ts` | role gates, last-owner rule, sessions revoked; memory + SQLite | curl with an owner and an admin bearer | | S-M | no |
 | F2-3 | **Origin check.** A cookie session's non-GET must carry `Origin` equal to `EXTERNAL_URL`'s origin or `ADMIN_ORIGIN`; Bearer unaffected | `server/src/http/adminAuthRoutes.ts`, `server/src/config.ts` | forged, missing and right `Origin` with a cookie; bearer without one | | F2-2 (same file) | S | no |

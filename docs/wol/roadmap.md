@@ -85,7 +85,7 @@ What blocks a "fully self-managed" server, in order of value: **P2** (an admin t
 | S8 | Adjudication skips the season-grace check, and a win/loss adjudication needs an explicit `winner` | Assumed (`shared-ranked-server.md`) | S | Documented behaviour; decide whether to enforce the grace |
 | S9 | Vera: the 3-rated-games-per-24h limit is not implemented; `GET /v1/matches/{id}` is memory-only for 10 minutes; rematches in the same paired room rank | Assumed | M | Vera is the sibling client's contract |
 | S10 | The matchbot's countdown is a fixed 10 s even when both players are ready; no gserv at match time requeues no one (`Requeue` and the entries are dropped) | Seen: `matchbot.md` "Known gaps" | S | Cosmetic and a rare failure path |
-| S12 | `errorReport.test.ts` flakes in a full run (shared `tmp-error-reports` folder) | Seen: 1 failure in one full run, 12/12 alone three times | S | Give each test its own `mkdtempSync` folder |
+| S12 | `errorReport.test.ts` flaked in a full run | **Fixed** (ra2web `d5bbe6f`): not the folder (each test had its own) but the 30 ms correlation window, which expired under load before the second report arrived; three full runs 664/0 | S | done |
 | S11 | UDP relay admission/renewal and a native recording (replays) are unconfirmed against real clients | Assumed (`shared-ranked-server.md`) | M, needs clients | Replay playback is not promised across engines |
 
 ## Nice-to-have

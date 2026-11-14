@@ -17,9 +17,9 @@ Paths under `server/` and `admin/` are in the sibling repo `../ra2web` (branch `
 in this work; **Assumed** = from a document, not re-checked; **Open** = needs a real client. Effort: S under an hour, M about a day,
 L several days. "Real client" means a person running two game clients.
 
-**Tests** (`cd ../ra2web/server && bun test`, `bunx tsc --noEmit -p .`), 14 Nov 2026: `tsc` exit 0. Two full runs of 662 tests in 44
-files: **661 pass, 1 fail**, then **659 pass, 3 fail**. The fail in both runs is the known `errorReport.test.ts` flake (S12); the second
-run also had two `nativeQuickMatch.test.ts` "sides and colours" tests hit the 5 s timeout. All three are task F6-1.
+**Tests** (`cd ../ra2web/server && bun test`, `bunx tsc --noEmit -p .`), 14 Nov 2026, after F6 (ra2web `d5bbe6f`): `tsc` exit 0;
+three full runs of 664 tests in 44 files, **664 pass, 0 fail** each time. Before F6, runs gave 661/1 and 659/3: a 30 ms correlation
+window in `errorReport.test.ts` (S12) and password hashing in two `nativeQuickMatch.test.ts` loops.
 
 ## Phase order
 
