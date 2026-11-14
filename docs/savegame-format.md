@@ -125,18 +125,25 @@ browser, as of 2026-11-09:
 | `Sov02T.sav` (Hostile Shore) | No unresolved references; crashes in `sub_007825E8` (heap free) |
 | `Sov12S.sav` | A song id that is really a pointer (`0x30005C1B`), see [web/issues.md](web/issues.md) #16 |
 | Yuri `busy.sav` (made by this build) | Loads in 7.3 s, no prompt |
-| Yuri `Sov03UMD`, `Sov05UMD`, `Sov07TMD` | One prompt (1 to 11 references cleared), then a running mission in about 9 s |
-| Yuri `Sov01UMD`, `Sov02SMD` | One prompt (3 and 1 cleared), then a crash in `sub_005471F0` |
-| Yuri `Sov06LMD` | One prompt (6 cleared), then a crash in `sub_004C1AC0` |
-| Yuri `Sov04DMD` | No prompt; crashes in `sub_007C946E` (heap allocation) |
+| Yuri, all 14 retail saves (`Sov01UMD` to `Sov07TMD`, `All01UMD` to `All07SMD`), as of 2026-11-14 | Load to a running mission in 10 to 15 s, no prompt (the table above was taken before the fix below: unresolved references, crashes in `sub_005471F0`, `sub_004C1AC0`, `sub_007C946E`, and `OleLoadFromStream` for `Sov07TMD`) |
 
-The Yuri runs are in `work/yr-load/<name>/` (`e2e/load-saved-game.mjs --edition ra2md`).
-`Sov04DMD` crashes with no reference cleared, like RA2's `Sov02T`. So clearing
-references is not what breaks the others: the state in these saves doesn't
-match this build.
+The Yuri runs are in `e2e/load-saved-game.mjs --edition ra2md`.
 
-Their header matches this game (`Internal Version` `0x288CC`), but the state
-inside does not: hundreds of pointers with no object, and fields holding
-values of the wrong kind. The likeliest cause is a different `game.exe`
-build that kept the same version number. So the header check above can't
-prove a save will load; loading it is the only test.
+### The retail saves end inside their last sector
+
+The "unresolved references" and the crashes above were first put down to a
+different `game.exe` build. That was wrong, at least for Yuri's Revenge. Every
+retail save (all 38 in `D:\Westwood\RA2`, Yuri and RA2) is an OLE compound file
+that stops inside the last sector of its `CONTENTS` stream: the file size mod
+512 equals the stream size mod 512. Windows reads that sector as far as the
+file goes and zero-fills the rest. The host's `StgOpenStorage` (pcrecomp
+`runtime/win32hle/storage.c`) dropped the sector, so the last 54 to 458 bytes
+of `CONTENTS` read as zeros; the loader then took a count or a class id from
+them and went on with garbage, which gave the changing crash sites and
+reference counts. The host now pads the file to whole sectors before parsing
+(see [web/issues.md](web/issues.md) #21), and every Yuri save loads.
+
+The Red Alert 2 saves share the truncation and most likely the same cure, but
+that edition was not rebuilt and re-tested, so the RA2 rows above stand until
+it is. A header check still can't prove a save will load; loading it is the
+only test.
