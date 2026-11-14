@@ -6,6 +6,9 @@ It supersedes the open items scattered over [quick-match.md](quick-match.md),
 limitations") and [shared-ranked-server-gap-analysis.md](shared-ranked-server-gap-analysis.md)
 (its T0-T14 are implemented; what remains of them is listed here).
 
+**The execution plan is [plan.md](plan.md)**: phase order, per-item status, ordered tasks with files and interfaces, tests, what needs a
+real client, effort and risk, and the decisions needed from you. This page is the evidence register behind it.
+
 Every row says how it is known. **Seen** = observed in code, a log or the database this
 session. **Assumed** = from a document, not re-checked. **Open** = needs a real client.
 Effort: S under an hour, M a day, L several days. Paths under `server/` are in `../ra2web`.

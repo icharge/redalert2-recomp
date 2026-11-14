@@ -15,6 +15,7 @@ documents the client side and the contract between the two.
 | The matchbot: queues, pairing, and every message it sends | [matchbot.md](matchbot.md) |
 | The WOLAPI shim in `src/web/wolapi.c`, Custom Match, what is built and open | [handoff-wolapi.md](handoff-wolapi.md) |
 | The ranked ladder shared by this client and Vera20k | [shared-ranked-server.md](shared-ranked-server.md) |
+| **The plan**: phases, tasks, tests, decisions needed | [plan.md](plan.md) |
 | What is left to make it fully functional, ranked, with evidence | [roadmap.md](roadmap.md) |
 | Settings as data, the map pool, the admin platform, its security design | [admin-and-config.md](admin-and-config.md) |
 | Members and launcher single sign-on (design for your decisions) | [members-and-sso.md](members-and-sso.md) |
