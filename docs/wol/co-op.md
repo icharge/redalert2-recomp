@@ -116,6 +116,25 @@ real run.
 2. Ranked or not. Recommended: not ranked; a co-op clear-time board later if wanted.
 3. Which missions: the first Allied one only, or a pool, and should the Soviet/Yuri missions be in it.
 
+## First real client run (14 Nov 2026): it plays to the end
+
+Two retail YR clients paired through lobby 39, loaded `C1A01MD`, played a full game and reached the co-op score
+screen ("Campaign Results", then "Next Mission: Campaign 1 Map 2"). It took three record fixes, in this order:
+
+1. **Game mode id.** The 12th field of the options record is the mode's `MPModesMD.ini` id (Battle 1, Cooperative 3).
+   With 1 the mission loaded as Battle and crashed on null calls right after the load (exit 3).
+2. **Countries.** The first Allied mission admits only Americans, so both humans are country 0 (a Random country is
+   never resolved on this path).
+3. **Starts and AI.** Humans on starts 0 and 1 (positions 1 and 2), the map's other starts as computer opponents:
+   AI rows `1,<country>,<colour>,<start>,2` (Russians 8, Cubans 7, squad 2), the rest inactive.
+
+Not confirmed: the cooperative campaign line (`C0,...`) is still not sent and nothing needed it for this mission;
+"Next Mission" after the score screen was not exercised.
+
+**Results.** The clients POST their game result to `/native-results/<gameId>`. An unranked instance without a wire SKU was
+answered 404 (not logged), so the two games of this run were not stored. Quick Co-op instances now carry
+`nativeSku` 18688 so the report is kept as unscored history; co-op is still never rated.
+
 ## Built (15 Nov 2026)
 
 Server side in `ra2web/server`, behind a switch, covered by `test/yrCoop.test.ts` (eight tests):
