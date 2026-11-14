@@ -46,7 +46,7 @@ The consequences for a server:
 
 1. **Publish `#Lob_39_0`** with `@matchbot` in its names list, as lobby 40 does. The shim already lets
    `Lob_39_` through its channel filter (`src/web/wolapi.c`).
-2. **A queue of its own** (type, say, `41` for YR co-op) so a co-op player is never paired with a
+2. **A queue of its own** (type `141` for YR co-op; `41` is already the YR main lobby) so a co-op player is never paired with a
    Quick Match player. The queue is chosen by the lobby, like lobby 40 and 38.
 3. **Unranked.** A co-op game is two humans against the computer; there is no loser to rate. If it is
    ever ranked, it would be a "co-op clear time" board, not Elo (decision below).
@@ -54,6 +54,29 @@ The consequences for a server:
    with its own first Allied co-op mission, so the exact name matters less than that the record's
    size/digest pass the joining client's check. Use the same rule as the Quick Match pool
    (size = file length, digest = the map's `[Digest] 1=`).
+
+## Checked in the lifted code (15 Nov 2026)
+
+Re-read in `recomp_0056.c`, `recomp_0037.c`, `recomp_0039.c`, `recomp_0031.c`:
+
+- **Seen: the lobby prefix is the only thing the runner changes.** `sub_0079FC40` starts with `Lob_39_`
+  (`0x84A22C`) and swaps to `Lob_40_` (`0x84A21C`) when the mode word `[0xA8B244]` is not 2 (`0x79FD9E`). The
+  request builder (`COU=`, `COL=`, `MBR=` ...) never reads the mode word, so the line is the same as Quick
+  Match's.
+- **Seen: only two game-side branches test mode word == 2**, both on the match start, so Quick Co-op is decided
+  by the client's own state, not by anything the server sends:
+  - `0x68755E` (load): mode 2 calls `sub_005EE9D0` ("Assigning Starting Points for house %d", the scenario's
+    own start points) instead of the options-driven path (vtable `+0x84`).
+  - `0x657EF2` (ready/start screen): mode 2 skips a per-player update the other modes do.
+- **Seen: the mode word is set by the welcome buttons** (`0x79883F` writes 2; `0x798746` writes 1 for Quick
+  Match).
+- **Not in the code: the co-op map, the cooperative campaign line and the AI setup.** Nothing in the client
+  decides them from the mode word, so they come from the matchbot's record. That is exactly the **Open** list
+  below, and only a capture or a trial record can settle it.
+- **Correction to the design below: queue type `41` is taken.** `41` is the YR main lobby's channel type
+  (`WolServer.ts` maps `channelType === 41` to YR SKU 10496, `MatchmakingBot.ts:949` excludes 33/41 when it
+  picks a queue, and `VeraLobby.ts` uses kind 41). Use a free number such as `141` (RA2 Quick Match uses
+  `135`).
 
 ## Not known (Open)
 
@@ -69,7 +92,7 @@ All three are answered by one capture: press Quick Co-op against a stock server 
 ## Design
 
 ```
-Lob_39 join -> Match (no VRS) -> queue "yr-coop" (type 41, unranked, 2 players)
+Lob_39 join -> Match (no VRS) -> queue "yr-coop" (type 141, unranked, 2 players)
             -> pair -> record with the co-op map, tournament 0, cooperative line
             -> Matched -> STARTG as in Quick Match
 ```
@@ -77,7 +100,7 @@ Lob_39 join -> Match (no VRS) -> queue "yr-coop" (type 41, unranked, 2 players)
 | Piece | Where | Notes |
 |---|---|---|
 | Lobby | `WolServer.handleList` | `COOP_QUICK_LOBBY = 39`, same code path as lobby 40 |
-| Queue | `MatchmakingBot` | new type `41`, `ranked=false`, no `Settlement.admit` |
+| Queue | `MatchmakingBot` | new type `141` (not `41`, the YR main lobby), `ranked=false`, no `Settlement.admit` |
 | Pool | the map-pool store ([admin-and-config.md](admin-and-config.md)) | edition `yr`, mode `coop`, each map has `kind` and `slots` |
 | Switch | setting `queues.yrCoop.enabled` | off by default until a client run confirms the record |
 

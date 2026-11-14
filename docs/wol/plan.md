@@ -257,7 +257,7 @@ and a cooperative campaign line `C0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-1,<host b64>,<g
 line (`web/e2e/wol.mjs --start` logs them). Press Quick Co-op with two clients; keep the log. This answers the three Open questions
 and does not ship anything.
 
-**C2. Queue** (M; after C1 and M1 for the pool): queue type 41, unranked, two players, never paired with Quick Match players
+**C2. Queue** (M; after C1 and M1 for the pool): queue type 141 (41 is the YR main lobby), unranked, two players, never paired with Quick Match players
 (`MatchmakingBot.ts`: extend `isNativeQuickMatchType`-style helpers, add the queue); the record builder in `matchmaking/nativeGameOpts.ts`
 gets a co-op variant (tournament 0, cooperative mode, the campaign line); map chosen from the pool with `mode: coop` (size and digest by
 the same rule); no `Settlement.admit`, so nothing is rated. Tests `nativeCoop.test.ts` modelled on `nativeQuickMatch.test.ts`: lobby

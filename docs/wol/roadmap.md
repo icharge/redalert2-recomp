@@ -47,7 +47,7 @@ Ordered as requested: foundations, then map pool and seasons, then co-op, then t
 | P8 | Leaderboard page and awards (SE2, SE6) | designed | M | P7 |
 | **Co-op** | | | | |
 | P9 | One capture of Quick Co-op against a stub `Lob_39` to learn the real record | **open**, needs a client | S | |
-| P10 | Lobby 39 + co-op queue (type 41), unranked, behind a switch | designed | M | P9, P5 |
+| P10 | Lobby 39 + co-op queue (type 141), unranked, behind a switch | designed | M | P9, P5 |
 | **The rest** | | | | |
 | P11 | Admin web UI screens: settings, map pool, audit, live queues, bans/mutes/kicks, disputes, announcements, health | API partly done | L | P2 |
 | P12 | `/metrics`, health page, `.env.example` generated from config, README checklist | designed | M | |
