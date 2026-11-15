@@ -181,6 +181,17 @@ describe("PlayScreen", () => {
     expect(screen.queryByRole("listbox")).toBeNull();
   });
 
+  it("an active mod shows the Quick Match notice, Vanilla does not", () => {
+    renderPlay({ mods: [mod("Rise")], activeMod: "Rise" });
+    expect(screen.getByText(/Quick Match uses the stock maps/)).toBeVisible();
+    expect(screen.getByText(/another digest/)).toBeInTheDocument();
+  });
+
+  it("no active mod shows no Quick Match notice", () => {
+    renderPlay({ mods: [mod("Rise")], activeMod: "" });
+    expect(screen.queryByText(/Quick Match/)).toBeNull();
+  });
+
   it("Escape closes the profile menu", async () => {
     renderPlay({ mods: [mod("Rise")] });
     await userEvent.click(screen.getByRole("button", { name: /PROFILE/ }));

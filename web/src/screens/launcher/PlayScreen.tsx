@@ -336,6 +336,12 @@ export function PlayScreen({
               onActiveMod={onActiveMod}
             />
           )}
+          {edition && activeMod && (
+            <p className={styles.modNote}>
+              Quick Match uses the stock maps. A mod that replaces a stock map gives it another
+              digest, so Quick Match may not find a match.
+            </p>
+          )}
         </div>
         <OnlineName store={accountStore} name={guestName} onName={changeName} refusal={refusal} />
         <div className={styles.center}>
