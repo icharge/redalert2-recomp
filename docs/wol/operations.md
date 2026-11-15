@@ -34,7 +34,7 @@ This replaces today's "detect by schema shape" checks with one ordered list.
 | Piece | State |
 |---|---|
 | Backup | **Built.** `bun scripts/backup.ts [--to DIR] [--keep N] [--db FILE]` runs `VACUUM INTO 'DIR/ra2web-<UTC time>.sqlite'`, a consistent copy that is safe while the server runs; default folder `data/backups` beside the database (or `BACKUP_DIR`), keeps the newest 14 (or `BACKUP_KEEP`) |
-| Schedule | Not built. Until then run the script from cron or Task Scheduler. Design: the server runs it daily at `BACKUP_AT` (default 04:00 local) when `BACKUP_DIR` is set and logs what it wrote |
+| Schedule | **Built** (ra2web `5e1e6ac`). Set `BACKUP_DIR`: the server runs the same backup daily at `BACKUP_AT` (default 04:00 local), takes a missed one at start, retries a failed one after an hour, keeps `BACKUP_KEEP` (the live setting `backup.keep`), logs and audits each run (`backup.run`), and shows `lastAt`, `lastOk` and `nextAt` under `backup` in `GET /health` |
 | Verify | **Built.** After writing, the copy is opened read-only, `PRAGMA integrity_check` runs and the accounts are counted; a copy that fails is deleted, the run exits 1 and the earlier backups are left alone (pruning happens only after a good copy) |
 | Restore | Stop the server, copy the chosen file over `data/ra2web.sqlite` (and delete `-wal`/`-shm` beside it), start. The restore note belongs here and in `server/README.md` |
 | Off-host | Copy `BACKUP_DIR` with the operator's own tool (rsync, rclone, the host's snapshot); the server does not push data anywhere |
