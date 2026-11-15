@@ -232,8 +232,8 @@ A bot in the chat lobbies, in the spirit of XWIS's: it greets players, answers `
 YuriBOT), and lets a moderator whose game nick is linked to an admin account `/mute`, `/kick` and ban for up to 24 hours from the
 lobby, each audited. **Seen:** `matchbot` is already a virtual user (listed in the Quick Match lobbies' NAMES, private messages to it
 routed in `WolServer.handlePrivmsg`), so YuriBOT follows that pattern, listed in the chat lobbies only and never as operator. The web shim
-reads a sender's nick as at most 9 characters (`wolapi.c:672`), and `/me` actions are stubs. **Open:** whether the retail chat box
-passes a typed `/help` on as text (LB-0); if it does not, paging YuriBOT always works. A game login has no TOTP, so moderation from
+reads a sender's nick as at most 9 characters (`wolapi.c:672`), and `/me` actions are stubs. **Seen (LB-0, both editions):** the chat box sends `/help` and every other `/` line
+verbatim, except lines starting with `/r`, `/on` or `/page` (any case), which the game keeps for reply, locate and page and never sends. So `/rank`, `/rules`, `/report` and `/online` need other names (open decision); a private line to a selected YuriBOT also works, while paging is still a stub in the web shim. A game login has no TOTP, so moderation from
 the lobby is limited to time-limited, moderator-level actions; a permanent ban stays in the console.
 
 ## Phase 3: the rest
