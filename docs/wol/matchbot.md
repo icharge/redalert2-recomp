@@ -82,9 +82,12 @@ ranked queue has waiters.
 2. The room `#matchbot's game <n>` is created. The first matched player is the
    room host (channel operator), because the retail client only accepts the
    start signal from an operator.
-3. A gserv instance is created with a ticket per player. A ranked pair is
-   admitted to settlement; if admission fails the match is played unranked. If
-   no gserv is available both players get `Requeue` instead.
+3. Before anything is announced the bot checks that a gserv is available. If none is,
+   the pair is not made: both entries go back in the queue with their original wait
+   time, each player is told once (`Requeue`, or a sentence in lobby 40), and the
+   2 second recheck tries again. Otherwise a gserv instance is created with a ticket per
+   player, and a ranked pair is admitted to settlement (if admission fails the match is
+   played unranked).
 4. After the 10 second countdown:
    - the host's `JOIN` goes to both players, the guest's only to the guest,
    - then a names list and a `GAMEOPT` slot table `L<name>,...,@Closed@...`,
@@ -101,7 +104,7 @@ ranked queue has waiters.
 |---|---|
 | `Working` | A valid `Match` was queued (also each party member, and a party's first ready member) |
 | `Matched 10` | A pair was found |
-| `Requeue` | No gserv, or a matched player left before the start (web and WDT; lobby 40 gets a sentence) |
+| `Requeue` | No gserv (once, entry stays queued), or a matched player left before the start (web and WDT; lobby 40 gets a sentence) |
 | `Badvers` | Bad version, a web build in lobby 40, a mixed-family party, a bad WDT side or territory |
 | `Badhash` | The mod hash does not match |
 | `Unavailable` | No queue lobby, or World Domination is not configured |
@@ -123,6 +126,7 @@ speaks in sentences (`matchmaking/nativeMessages.ts`) instead of the words above
 | Searching, others in the queue | `Searching for an opponent. <n> other players in the queue...` |
 | Every 15 s while waiting | `Working` (restarts the client's 180 s counter), then `Still searching. ...` with the current count |
 | Pair found | `Match found! Your opponent is <name>.` then `Game begins in 10...` to `1...` |
+| No gserv for a pair (said once) | `No game server is free right now. You stay in the queue...` |
 | Opponent left during the countdown | `Working` again (restarts the client's 180 s timer), then `Your opponent left. Searching for a new opponent...` |
 | Already queued / queue full | `You are already searching for a match.` / `The queue is full. Try again in a moment.` |
 
@@ -175,9 +179,8 @@ Not sent:
   real client for longer than 180 s.
 
 - Lobbies other than 40 still get no progress messages while waiting.
-- The 10 second countdown is fixed and applies even when both players are ready.
-- If no gserv is available at match time, the entries are left as they were and
-  the players get `Requeue`; they are not put back in the queue.
+- The 10 second start delay is kept on purpose (the clients load during it); the retail
+  lobby counts it down 10 to 1, and the web client gets `Matched 10`.
 - The host's options win over the server's only if the host publishes within
   4 seconds; otherwise the server's record is used (a random pool map for Quick Match, see [quick-match.md](quick-match.md); RA2 World Domination keeps `MP32S8`).
 - Parties (`party_*`) are only for the web 2v2 queue; the retail client never
