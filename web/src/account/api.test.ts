@@ -210,3 +210,64 @@ describe("describeAccountError", () => {
     );
   });
 });
+
+describe("AccountClient tickets", () => {
+  async function member() {
+    const { server, client } = setup();
+    const c = client();
+    await c.register("carol", "secret-pass");
+    await c.addGameAccount("Carol", "wol-password");
+    server.calls.length = 0;
+    return { server, client, c };
+  }
+
+  it("launchTicket posts the game account and edition with the bearer", async () => {
+    const { server, c } = await member();
+    const result = await c.launchTicket("Carol", "yr");
+    expect(result).toMatchObject({ edition: "yr", user: "Carol", expiresIn: 60 });
+    expect(server.log()).toEqual(["POST /v1/auth/launch-ticket"]);
+    expect(server.calls[0]?.bearer).not.toBeNull();
+    expect(server.tickets.get(result.ticket)).toMatchObject({ user: "Carol", guest: false });
+  });
+
+  it("launchTicket refreshes once on a 401 and retries", async () => {
+    const { server, c } = await member();
+    server.expireAccessTokens();
+    await expect(c.launchTicket("Carol", "ra2")).resolves.toMatchObject({ edition: "ra2" });
+    expect(server.log()).toEqual([
+      "POST /v1/auth/launch-ticket",
+      "POST /v1/auth/refresh",
+      "POST /v1/auth/launch-ticket",
+    ]);
+  });
+
+  it("launchTicket refuses a game account that is not the member's", async () => {
+    const { c } = await member();
+    await expect(c.launchTicket("Taken", "ra2")).rejects.toMatchObject({
+      status: 403,
+      code: "not_your_game_account",
+    });
+  });
+
+  it("guestTicket sends no credential and no refresh", async () => {
+    const { server, client } = setup();
+    const result = await client().guestTicket("Visitor", "ra2");
+    expect(result).toMatchObject({ user: "Visitor", guest: true, edition: "ra2" });
+    expect(server.log()).toEqual(["POST /v1/auth/guest"]);
+    expect(server.calls[0]?.bearer).toBeNull();
+  });
+
+  it("guestTicket says name_taken (409) and bad_nick (400), in words", async () => {
+    const { client } = setup();
+    const taken = await client()
+      .guestTicket("taken", "ra2")
+      .catch((e: unknown) => e);
+    expect(taken).toMatchObject({ status: 409, code: "name_taken" });
+    expect(describeAccountError(taken)).toBe("That name is taken. Choose another.");
+    const bad = await client()
+      .guestTicket("x", "ra2")
+      .catch((e: unknown) => e);
+    expect(bad).toMatchObject({ status: 400, code: "bad_nick" });
+    expect(describeAccountError(bad)).toMatch(/2 to 9/);
+  });
+});

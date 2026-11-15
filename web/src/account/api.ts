@@ -43,6 +43,19 @@ export interface GameAccountResult {
   maxGameAccounts: number;
 }
 
+/** The server's edition names for a ticket: `ra2` and `yr` (the game's `ra2md`). */
+export type TicketEdition = "ra2" | "yr";
+
+/** What the launch and guest ticket routes answer with. A ticket lives 60 s and is single use. */
+export interface TicketResult {
+  ticket: string;
+  edition: TicketEdition;
+  /** The name the game logs in as: the account's own spelling, or the guest's nick. */
+  user: string;
+  guest?: true;
+  expiresIn: number;
+}
+
 /** A refusal from the server: `{error, errorCode}` with the HTTP status. */
 export class AccountError extends Error {
   constructor(
@@ -220,6 +233,19 @@ export class AccountClient {
   }
 
   /**
+   * `POST /v1/auth/launch-ticket`: a ticket the game redeems to log in as `gameAccount`. Mint it at
+   * the moment of PLAY: it is single use and valid for 60 seconds.
+   */
+  launchTicket(gameAccount: string, edition: TicketEdition): Promise<TicketResult> {
+    return this.bearer<TicketResult>("POST", "v1/auth/launch-ticket", { gameAccount, edition });
+  }
+
+  /** `POST /v1/auth/guest`: a ticket for a guest session under `nick`; no member or password. */
+  guestTicket(nick: string, edition: TicketEdition): Promise<TicketResult> {
+    return this.call<TicketResult>("POST", "v1/auth/guest", { nick, edition }, null);
+  }
+
+  /**
    * Ends this browser's session: `POST /v1/auth/logout` with the cookie (it works after the access
    * token expired, which `/v1/members/logout` does not). The token is dropped even when the server
    * cannot be reached.
@@ -279,6 +305,12 @@ export function describeAccountError(error: unknown): string {
       return "That is not the password of that game account.";
     case "banned":
       return "That game account is banned.";
+    case "name_taken":
+      return "That name is taken. Choose another.";
+    case "bad_nick":
+      return "An online name is 2 to 9 letters, digits, dashes or underscores.";
+    case "not_your_game_account":
+      return "That game account is not linked to your member. Check the Account page.";
     case "no_member":
       return "Your member could not be found. Sign in again.";
     default:

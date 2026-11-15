@@ -394,6 +394,52 @@
   cursor: pointer;
 }
 
+/* The online name: a panel above the right end of the footer, a row of the footer on phones. */
+.online {
+  position: absolute;
+  right: 32px;
+  bottom: calc(100% + 16px);
+  width: 320px;
+  max-width: calc(100% - 64px);
+  box-sizing: border-box;
+  padding: 10px 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: rgba(8, 9, 11, 0.9);
+  border: 1px solid #3a2023;
+}
+.nameInput {
+  height: 40px;
+  box-sizing: border-box;
+  padding: 0 10px;
+  border: 1px solid #3a2023;
+  background: #121317;
+  color: var(--text);
+  font: inherit;
+  font-size: 16px;
+}
+.nameInput:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 1px;
+}
+.nameInput[aria-invalid="true"] {
+  border-color: #ff8a80;
+}
+.onlineHint,
+.onlineFailure {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+.onlineHint a {
+  color: #ff6b5e;
+}
+.onlineFailure {
+  color: #ff8a80;
+}
+
 .failure {
   position: absolute;
   left: 0;
@@ -423,6 +469,11 @@
   .profileButton,
   .menu {
     width: 100%;
+  }
+  .online {
+    position: static;
+    width: auto;
+    max-width: none;
   }
   .play {
     width: 100%;

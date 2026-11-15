@@ -1,11 +1,14 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ActiveInstall } from "../../storage/active-install";
 import type { BuildInfo, GameId } from "../../storage/install";
 import type { GameRecord } from "../../storage/manifest";
 import type { ModRecord } from "../../storage/mods";
+import { AccountClient } from "../../account/api";
+import { FakeServer } from "../../account/fake-server";
+import { AccountStore } from "../../account/store";
 import { PlayScreen } from "./PlayScreen";
 
 const g = (id: GameId, extra: Partial<GameRecord> = {}): GameRecord => ({
@@ -51,6 +54,13 @@ const build = {
   },
 } as unknown as BuildInfo;
 
+/** A store over the fake member server (not restored yet: the page has not asked who is playing). */
+function fakeStore(server: FakeServer = new FakeServer()) {
+  return new AccountStore(
+    new AccountClient({ baseUrl: "https://wol.test", fetch: server.fetch, locks: null }),
+  );
+}
+
 function renderPlay(props: Partial<Parameters<typeof PlayScreen>[0]> = {}) {
   const handlers = {
     onActiveMod: vi.fn(async () => {}),
@@ -70,6 +80,7 @@ function renderPlay(props: Partial<Parameters<typeof PlayScreen>[0]> = {}) {
               mods={[]}
               activeMod=""
               {...handlers}
+              accountStore={fakeStore()}
               {...props}
             />
           }
@@ -130,7 +141,7 @@ describe("PlayScreen", () => {
     const { onPlay } = renderPlay();
     expect(screen.getByRole("status")).toHaveTextContent("Ready");
     await userEvent.click(screen.getByRole("button", { name: "PLAY" }));
-    expect(onPlay).toHaveBeenCalledWith(yr);
+    await waitFor(() => expect(onPlay).toHaveBeenCalledWith(yr, undefined));
   });
 
   it("PLAY is disabled with the readiness reason as the status", () => {
@@ -182,5 +193,170 @@ describe("PlayScreen", () => {
     await userEvent.click(screen.getByRole("button", { name: /PROFILE/ }));
     await userEvent.click(screen.getByRole("link", { name: "MANAGE MODS" }));
     expect(screen.getByText("mods page")).toBeInTheDocument();
+  });
+
+  describe("online play (LW-4)", () => {
+    afterEach(() => localStorage.clear());
+
+    /** A member whose session the store holds (with a game account, or without), then the screen. */
+    async function asMember(
+      game: string | null,
+      props: Partial<Parameters<typeof PlayScreen>[0]> = {},
+    ) {
+      const server = new FakeServer();
+      const store = fakeStore(server);
+      await store.register("carol", "secret-pass");
+      if (game) await store.addGameAccount(game, "wol-password");
+      const handlers = renderPlay({ accountStore: store, ...props });
+      server.calls.length = 0;
+      return { server, store, ...handlers };
+    }
+
+    async function asGuest(props: Partial<Parameters<typeof PlayScreen>[0]> = {}) {
+      const server = new FakeServer();
+      const store = fakeStore(server);
+      await store.restore();
+      const handlers = renderPlay({ accountStore: store, ...props });
+      return { server, store, ...handlers };
+    }
+
+    it("a member with a game account gets a launch ticket for the edition", async () => {
+      const { server, onPlay } = await asMember("Carol");
+      await userEvent.click(screen.getByRole("button", { name: "PLAY" }));
+      await waitFor(() => expect(onPlay).toHaveBeenCalled());
+      const ticket = [...server.tickets.keys()][0]!;
+      expect(onPlay).toHaveBeenCalledWith(yr, ticket);
+      // Yuri's Revenge is the server's `yr`
+      expect(server.tickets.get(ticket)).toEqual({ user: "Carol", edition: "yr", guest: false });
+      expect(screen.queryByLabelText("ONLINE NAME")).toBeNull();
+    });
+
+    it("mints at the moment of PLAY, never ahead", async () => {
+      const { server } = await asMember("Carol");
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(server.log()).toEqual([]);
+    });
+
+    it("an access token that expired refreshes once and the ticket still comes", async () => {
+      const { server, onPlay } = await asMember("Carol", { edition: ra2 });
+      server.expireAccessTokens();
+      await userEvent.click(screen.getByRole("button", { name: "PLAY" }));
+      await waitFor(() => expect(onPlay).toHaveBeenCalled());
+      expect(server.log()).toEqual([
+        "POST /v1/auth/launch-ticket",
+        "POST /v1/auth/refresh",
+        "POST /v1/auth/launch-ticket",
+      ]);
+      const ticket = [...server.tickets.keys()][0]!;
+      expect(onPlay).toHaveBeenCalledWith(ra2, ticket);
+      expect(server.tickets.get(ticket)?.edition).toBe("ra2");
+    });
+
+    it("a member without a game account plays with no ticket and is pointed to /account", async () => {
+      const { server, onPlay } = await asMember(null);
+      expect(screen.getByRole("link", { name: /Add one on the Account page/ })).toHaveAttribute(
+        "href",
+        "/account",
+      );
+      await userEvent.click(screen.getByRole("button", { name: "PLAY" }));
+      await waitFor(() => expect(onPlay).toHaveBeenCalledWith(yr, undefined));
+      expect(server.log()).toEqual([]);
+    });
+
+    it("a refusal of the member's ticket shows, and the next PLAY opens the game without one", async () => {
+      const { server, onPlay } = await asMember("Carol");
+      server.refusals.set("POST /v1/auth/launch-ticket", { status: 403, errorCode: "banned" });
+      await userEvent.click(screen.getByRole("button", { name: "PLAY" }));
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        "That game account is banned. Press PLAY again to play without it.",
+      );
+      expect(onPlay).not.toHaveBeenCalled();
+      server.refusals.clear();
+      await userEvent.click(screen.getByRole("button", { name: "PLAY" }));
+      await waitFor(() => expect(onPlay).toHaveBeenCalledWith(yr));
+      expect(server.tickets.size).toBe(0);
+    });
+
+    it("a guest who gives a name gets a guest ticket, and the name is remembered", async () => {
+      const { server, onPlay } = await asGuest();
+      const user = userEvent.setup();
+      await user.type(screen.getByLabelText("ONLINE NAME"), "Visitor");
+      await user.click(screen.getByRole("button", { name: "PLAY" }));
+      await waitFor(() => expect(onPlay).toHaveBeenCalled());
+      const ticket = [...server.tickets.keys()][0]!;
+      expect(onPlay).toHaveBeenCalledWith(yr, ticket);
+      expect(server.tickets.get(ticket)).toEqual({ user: "Visitor", edition: "yr", guest: true });
+      expect(localStorage.getItem("ra2.guest-name")).toBe("Visitor");
+    });
+
+    it("the remembered name is there next time, capped at 9 characters", async () => {
+      localStorage.setItem("ra2.guest-name", "Visitor");
+      await asGuest();
+      const field = screen.getByLabelText("ONLINE NAME");
+      expect(field).toHaveValue("Visitor");
+      expect(field).toHaveAttribute("maxlength", "9");
+    });
+
+    it("a taken name shows inline and the game does not open", async () => {
+      const { server, onPlay } = await asGuest();
+      const user = userEvent.setup();
+      await user.type(screen.getByLabelText("ONLINE NAME"), "Taken");
+      await user.click(screen.getByRole("button", { name: "PLAY" }));
+      expect(await screen.findByRole("alert")).toHaveTextContent("That name is taken.");
+      expect(onPlay).not.toHaveBeenCalled();
+      expect(server.tickets.size).toBe(0);
+      // typing again clears the message, and PLAY works for a free name
+      await user.clear(screen.getByLabelText("ONLINE NAME"));
+      expect(screen.queryByRole("alert")).toBeNull();
+      await user.type(screen.getByLabelText("ONLINE NAME"), "Free");
+      await user.click(screen.getByRole("button", { name: "PLAY" }));
+      await waitFor(() => expect(onPlay).toHaveBeenCalled());
+    });
+
+    it("a name that cannot be a name (bad_nick) shows inline too", async () => {
+      const { onPlay } = await asGuest();
+      const user = userEvent.setup();
+      await user.type(screen.getByLabelText("ONLINE NAME"), "a b");
+      await user.click(screen.getByRole("button", { name: "PLAY" }));
+      expect(await screen.findByRole("alert")).toHaveTextContent("2 to 9 letters");
+      expect(onPlay).not.toHaveBeenCalled();
+    });
+
+    it("a guest who leaves the name empty plays offline: no ticket, no request", async () => {
+      const { server, onPlay } = await asGuest();
+      await userEvent.click(screen.getByRole("button", { name: "PLAY" }));
+      await waitFor(() => expect(onPlay).toHaveBeenCalledWith(yr, undefined));
+      expect(server.log()).not.toContain("POST /v1/auth/guest");
+    });
+
+    it("with guests off on the server, PLAY opens the game with no ticket", async () => {
+      const { server, onPlay } = await asGuest();
+      server.guestsEnabled = false;
+      const user = userEvent.setup();
+      await user.type(screen.getByLabelText("ONLINE NAME"), "Visitor");
+      await user.click(screen.getByRole("button", { name: "PLAY" }));
+      await waitFor(() => expect(onPlay).toHaveBeenCalledWith(yr, undefined));
+      expect(screen.queryByRole("alert")).toBeNull();
+    });
+
+    it("with the server unreachable from the start, PLAY opens the game with no ticket", async () => {
+      const server = new FakeServer();
+      server.down = true;
+      const store = fakeStore(server);
+      await store.restore();
+      expect(store.getState().status).toBe("offline");
+      const { onPlay } = renderPlay({ accountStore: store });
+      await userEvent.click(screen.getByRole("button", { name: "PLAY" }));
+      await waitFor(() => expect(onPlay).toHaveBeenCalledWith(yr, undefined));
+    });
+
+    it("a server that goes away after the page loaded does not stop a guest", async () => {
+      const { server, onPlay } = await asGuest();
+      const user = userEvent.setup();
+      await user.type(screen.getByLabelText("ONLINE NAME"), "Visitor");
+      server.down = true;
+      await user.click(screen.getByRole("button", { name: "PLAY" }));
+      await waitFor(() => expect(onPlay).toHaveBeenCalledWith(yr, undefined));
+    });
   });
 });

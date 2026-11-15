@@ -6,6 +6,8 @@ import {
   type GameAccount,
   type GameAccountResult,
   type Member,
+  type TicketEdition,
+  type TicketResult,
 } from "./api";
 
 /**
@@ -124,6 +126,21 @@ export class AccountStore {
       this.ended(error);
       throw error;
     }
+  }
+
+  /** A launch ticket for the member's game account; a refused session ends the member's state. */
+  async launchTicket(gameAccount: string, edition: TicketEdition): Promise<TicketResult> {
+    try {
+      return await this.client.launchTicket(gameAccount, edition);
+    } catch (error) {
+      this.ended(error);
+      throw error;
+    }
+  }
+
+  /** A guest ticket for `nick`. */
+  guestTicket(nick: string, edition: TicketEdition): Promise<TicketResult> {
+    return this.client.guestTicket(nick, edition);
   }
 
   /** End this browser's session. The page is a guest even when the server cannot be reached. */

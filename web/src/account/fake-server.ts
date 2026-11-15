@@ -19,6 +19,14 @@ export class FakeServer {
   /** When set, every request fails as if the network were down. */
   down = false;
   maxGameAccounts = 1;
+  /** `false` answers the guest route with `guests_disabled`. */
+  guestsEnabled = true;
+  /** Nicks a guest cannot take, besides every game account (any case): the server's reserved ones. */
+  readonly reserved = new Set<string>(["matchbot"]);
+  /** Routes (`"POST /v1/auth/launch-ticket"`) that answer with this refusal, whatever the request. */
+  readonly refusals = new Map<string, { status: number; errorCode: string }>();
+  /** The tickets minted so far, by ticket: who for and for which edition. */
+  readonly tickets = new Map<string, { user: string; edition: string; guest: boolean }>();
   /** Existing game accounts (WOL accounts) and their passwords, for claims. */
   readonly wolAccounts = new Map<string, string>([["Taken", "wolpassword"]]);
   readonly owned = new Map<string, string>();
@@ -56,6 +64,12 @@ export class FakeServer {
     };
   }
 
+  private ticket(user: string, edition: string, guest: boolean) {
+    const ticket = this.token(guest ? "g" : "t");
+    this.tickets.set(ticket, { user, edition, guest });
+    return { ticket, edition, user, ...(guest ? { guest: true } : {}), expiresIn: 60 };
+  }
+
   private respond(status: number, body: unknown): Response {
     return new Response(JSON.stringify(body), {
       status,
@@ -87,6 +101,9 @@ export class FakeServer {
     if (this.down) throw new TypeError("Failed to fetch");
     const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, string>) : {};
     const who = bearer ? this.access.get(bearer) : undefined;
+
+    const forced = this.refusals.get(`${method} ${route}`);
+    if (forced) return this.refuse(forced.status, forced.errorCode);
 
     switch (`${method} ${route}`) {
       case "POST /v1/members/register": {
@@ -172,6 +189,28 @@ export class FakeServer {
           gameAccounts: entry.games,
           maxGameAccounts: this.maxGameAccounts,
         });
+      }
+      case "POST /v1/auth/launch-ticket": {
+        if (!who) return this.refuse(401, "unauthorized");
+        if (body.edition !== "ra2" && body.edition !== "yr") return this.refuse(400, "bad_edition");
+        const entry = this.members.get(who)!;
+        const game = entry.games.find(
+          (g) => g.username.toLowerCase() === (body.gameAccount ?? "").toLowerCase(),
+        );
+        if (!game) return this.refuse(403, "not_your_game_account");
+        return this.respond(200, this.ticket(game.username, body.edition, false));
+      }
+      case "POST /v1/auth/guest": {
+        if (!this.guestsEnabled) return this.refuse(403, "guests_disabled");
+        if (body.edition !== "ra2" && body.edition !== "yr") return this.refuse(400, "bad_edition");
+        const nick = body.nick ?? "";
+        if (!/^[A-Za-z0-9_-]{2,9}$/.test(nick)) return this.refuse(400, "bad_nick");
+        const key = nick.toLowerCase();
+        const taken =
+          this.reserved.has(key) ||
+          [...this.wolAccounts.keys()].some((n) => n.toLowerCase() === key);
+        if (taken) return this.refuse(409, "name_taken");
+        return this.respond(200, this.ticket(nick, body.edition, true));
       }
       default:
         return this.refuse(404, "not_found");

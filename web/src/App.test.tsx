@@ -4,6 +4,8 @@ import { IDBFactory } from "fake-indexeddb";
 import { Manifest } from "./storage/manifest";
 import userEvent from "@testing-library/user-event";
 import { App } from "./App";
+import { FakeServer } from "./account/fake-server";
+import { account } from "./account/store";
 import { BrowserCheck } from "./components/BrowserCheck";
 import { checkBrowser } from "./components/features";
 
@@ -388,6 +390,84 @@ describe("Launcher routes", () => {
     await waitFor(() => expect(window.location.pathname).toBe("/game"));
     expect(window.location.search).toBe("?edition=ra2md");
     m.close();
+  });
+
+  describe("PLAY hands a launch ticket to the game (LW-4)", () => {
+    afterEach(async () => {
+      vi.restoreAllMocks();
+      // the page's one account store is shared by every test of this file
+      await account.signOut().catch(() => {});
+    });
+
+    /** Answers the member routes from a fake server; everything else goes to the earlier stub. */
+    async function accountServer(): Promise<FakeServer> {
+      const server = new FakeServer();
+      const earlier = globalThis.fetch;
+      vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) =>
+        String(input).includes("/v1/") ? server.fetch(input, init) : earlier(input, init),
+      );
+      await account.retry();
+      return server;
+    }
+
+    /** The addresses the launcher navigated to: the game page removes the ticket as it starts. */
+    function navigations(): string[] {
+      const pushed: string[] = [];
+      const push = window.history.pushState.bind(window.history);
+      vi.spyOn(window.history, "pushState").mockImplementation((state, title, url) => {
+        pushed.push(String(url));
+        push(state, title, url);
+      });
+      return pushed;
+    }
+
+    it("a member's game opens with #ticket= in the fragment, the query kept", async () => {
+      const m = await installed();
+      const server = await accountServer();
+      await account.register("carol", "secret-pass");
+      await account.addGameAccount("Carol", "wol-password");
+      const pushed = navigations();
+      render(<App />);
+      const play = await screen.findByRole("button", { name: "PLAY" });
+      await waitFor(() => expect(play).toBeEnabled());
+      await userEvent.setup().click(play);
+      await waitFor(() => expect(window.location.pathname).toBe("/game"));
+      const ticket = [...server.tickets.keys()][0]!;
+      expect(pushed).toContain(`/game?edition=ra2md#ticket=${ticket}`);
+      expect(server.tickets.get(ticket)).toEqual({ user: "Carol", edition: "yr", guest: false });
+      m.close();
+    });
+
+    it("a guest's game opens with the guest ticket in the fragment", async () => {
+      localStorage.setItem("ra2.guest-name", "Visitor");
+      const m = await installed();
+      const server = await accountServer();
+      const pushed = navigations();
+      render(<App />);
+      const play = await screen.findByRole("button", { name: "PLAY" });
+      await waitFor(() => expect(play).toBeEnabled());
+      await userEvent.setup().click(play);
+      await waitFor(() => expect(window.location.pathname).toBe("/game"));
+      const ticket = [...server.tickets.keys()][0]!;
+      expect(pushed).toContain(`/game?edition=ra2md#ticket=${ticket}`);
+      expect(server.tickets.get(ticket)).toMatchObject({ user: "Visitor", guest: true });
+      expect(window.location.search).not.toContain("ticket");
+      m.close();
+    });
+
+    it("with no name or no server there is no fragment at all", async () => {
+      const m = await installed();
+      await accountServer();
+      const pushed = navigations();
+      render(<App />);
+      const play = await screen.findByRole("button", { name: "PLAY" });
+      await waitFor(() => expect(play).toBeEnabled());
+      await userEvent.setup().click(play);
+      await waitFor(() => expect(window.location.pathname).toBe("/game"));
+      expect(pushed).toContain("/game?edition=ra2md");
+      expect(pushed.some((url) => url.includes("ticket"))).toBe(false);
+      m.close();
+    });
   });
 
   it("with a game installed, /import goes to the Game screen: remove it first", async () => {

@@ -1,9 +1,16 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Link } from "react-router";
+import { prepareLaunch } from "../../account/launch";
+import { account, useAccount, type AccountStore } from "../../account/store";
 import { EDITION_BRAND } from "../../components/brand";
 import { KeyArt } from "../../components/KeyArt";
 import type { ActiveInstall } from "../../storage/active-install";
 import type { BuildInfo, GameId } from "../../storage/install";
+import {
+  GUEST_NAME_MAX,
+  readGuestName,
+  writeGuestName,
+} from "../../storage/guest-name-preferences";
 import type { GameRecord } from "../../storage/manifest";
 import type { ModRecord } from "../../storage/mods";
 import { needsResume, playStatus } from "./readiness";
@@ -135,6 +142,62 @@ function ProfilePicker({
   );
 }
 
+/**
+ * What PLAY says about online play: a guest can give a name (remembered in this browser), a member
+ * without a game account is pointed to the Account page, and a refusal of the ticket shows here.
+ */
+function OnlineName({
+  store,
+  name,
+  onName,
+  refusal,
+}: {
+  store: AccountStore;
+  name: string;
+  onName(name: string): void;
+  refusal: string | null;
+}) {
+  const state = useAccount(store);
+  const id = useId();
+  const guest = state.status === "guest";
+  const needsAccount = state.status === "member" && state.gameAccounts.length === 0;
+  if (!guest && !needsAccount && !refusal) return null;
+  return (
+    <div className={styles.online}>
+      {guest && (
+        <>
+          <label htmlFor={id} className={styles.label}>
+            ONLINE NAME
+          </label>
+          <input
+            id={id}
+            className={styles.nameInput}
+            value={name}
+            maxLength={GUEST_NAME_MAX}
+            placeholder="Optional, for playing online"
+            autoComplete="off"
+            autoCapitalize="off"
+            spellCheck={false}
+            aria-invalid={refusal ? true : undefined}
+            onChange={(event) => onName(event.target.value)}
+          />
+        </>
+      )}
+      {needsAccount && (
+        <p className={styles.onlineHint}>
+          No game account yet. <Link to="/account">Add one on the Account page</Link> to play online
+          as yourself.
+        </p>
+      )}
+      {refusal && (
+        <p className={styles.onlineFailure} role="alert">
+          {refusal}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function PlayScreen({
   install,
   edition,
@@ -145,6 +208,7 @@ export function PlayScreen({
   onPlay,
   onInstall,
   onResume,
+  accountStore = account,
 }: {
   install: ActiveInstall | null;
   edition: GameRecord | null;
@@ -152,10 +216,49 @@ export function PlayScreen({
   mods: ModRecord[];
   activeMod: string;
   onActiveMod(name: string): Promise<void>;
-  onPlay(game: GameRecord): void;
+  /** Opens the game; `ticket` goes into the address as `#ticket=` for the game to log in with. */
+  onPlay(game: GameRecord, ticket?: string): void;
   onInstall(): void;
   onResume(slot: number): void;
+  accountStore?: AccountStore;
 }) {
+  const [guestName, setGuestName] = useState(() => readGuestName());
+  const [refusal, setRefusal] = useState<string | null>(null);
+  const [launching, setLaunching] = useState(false);
+  // after a refusal of the member's own ticket, the next PLAY opens the game without one
+  const skipTicket = useRef(false);
+
+  const changeName = (name: string) => {
+    setGuestName(name);
+    writeGuestName(name.trim());
+    setRefusal(null);
+  };
+
+  /** Mint the ticket now (it lives 60 s), then open the game; a refusal stays on this page. */
+  async function play(game: GameRecord) {
+    if (launching) return;
+    setLaunching(true);
+    setRefusal(null);
+    try {
+      if (skipTicket.current) {
+        skipTicket.current = false;
+        onPlay(game);
+        return;
+      }
+      const plan = await prepareLaunch(accountStore, game.id, guestName);
+      if (plan.kind === "refused") {
+        skipTicket.current = plan.skippable;
+        setRefusal(
+          plan.skippable ? `${plan.message} Press PLAY again to play without it.` : plan.message,
+        );
+        return;
+      }
+      onPlay(game, plan.ticket);
+    } finally {
+      setLaunching(false);
+    }
+  }
+
   if (!install) {
     return (
       <div className={styles.screen}>
@@ -234,13 +337,14 @@ export function PlayScreen({
             />
           )}
         </div>
+        <OnlineName store={accountStore} name={guestName} onName={changeName} refusal={refusal} />
         <div className={styles.center}>
           {edition && edition.complete ? (
             <button
               type="button"
               className={styles.play}
-              disabled={!status?.canPlay}
-              onClick={() => onPlay(edition)}
+              disabled={!status?.canPlay || launching}
+              onClick={() => void play(edition)}
             >
               PLAY
             </button>

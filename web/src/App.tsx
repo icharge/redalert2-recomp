@@ -276,8 +276,9 @@ function Main() {
     writeActiveSlot(next);
     setActiveSlot(next);
   };
-  const play = (game: GameRecord) => {
-    // Asking here keeps the PLAY click as the gesture the browser wants,
+  const play = (game: GameRecord, ticket?: string) => {
+    // PlayScreen mints the launch ticket first (one request, well inside the five seconds a click
+    // stays a gesture); asking here keeps the PLAY click as the gesture the browser wants,
     // before the file check can outlast it; the game page also asks for
     // fullscreen when it mounts, for a direct visit. "Only during matches"
     // waits for the match itself instead.
@@ -292,7 +293,10 @@ function Main() {
     // game's own software cursor (Settings → Cursor Classic, ?cursor=game).
     if (cursorChoice(location.search, game.storage) === "game") flags.set("cursor", "game");
     const suffix = flags.toString();
-    navigate(suffix ? `${path}${path.includes("?") ? "&" : "?"}${suffix}` : path);
+    // The launch ticket goes in the fragment, never the query: the server does not see it, and the
+    // loader removes it from the address (history.replaceState) before anything else runs.
+    const fragment = ticket ? `#ticket=${ticket}` : "";
+    navigate(`${suffix ? `${path}${path.includes("?") ? "&" : "?"}${suffix}` : path}${fragment}`);
   };
   const resumeImport = (at: number) => navigate(`/import?resume=${at}`);
 
