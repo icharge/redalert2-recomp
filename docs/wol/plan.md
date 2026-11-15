@@ -227,13 +227,13 @@ write `SettingsService.ts`. Env-only by design: the storage engine and its URL, 
 
 ## Track LB: the lobby bot, YuriBOT
 
-A bot in the chat lobbies, in the spirit of XWIS's: it greets players, answers `/help`, `/rules`, `/rank`, `/top`, `/season`,
-`/online`, `/queue` and `/maps`, takes `/report`, makes scheduled and event announcements (and the console's announcements go out as
+A bot in the chat lobbies, in the spirit of XWIS's: it greets players, answers `/help`, `/info` (rules), `/stats` (rank), `/top`,
+`/season`, `/who` (online), `/queue` and `/maps`, takes `/flag` (report), makes scheduled and event announcements (and the console's announcements go out as
 YuriBOT), and lets a moderator whose game nick is linked to an admin account `/mute`, `/kick` and ban for up to 24 hours from the
 lobby, each audited. **Seen:** `matchbot` is already a virtual user (listed in the Quick Match lobbies' NAMES, private messages to it
 routed in `WolServer.handlePrivmsg`), so YuriBOT follows that pattern, listed in the chat lobbies only and never as operator. The web shim
 reads a sender's nick as at most 9 characters (`wolapi.c:672`), and `/me` actions are stubs. **Seen (LB-0, both editions):** the chat box sends `/help` and every other `/` line
-verbatim, except lines starting with `/r`, `/on` or `/page` (any case), which the game keeps for reply, locate and page and never sends. So `/rank`, `/rules`, `/report` and `/online` need other names (open decision); a private line to a selected YuriBOT also works, while paging is still a stub in the web shim. A game login has no TOTP, so moderation from
+verbatim, except lines starting with `/r`, `/on` or `/page` (any case), which the game keeps for reply, locate and page and never sends. So `/rank`, `/rules`, `/report` and `/online` became `/stats`, `/info`, `/flag` and `/who` (decision 18); a private line to a selected YuriBOT also works, while paging is still a stub in the web shim. A game login has no TOTP, so moderation from
 the lobby is limited to time-limited, moderator-level actions; a permanent ban stays in the console.
 
 ## Phase 3: the rest
@@ -295,6 +295,9 @@ Taken later the same day, for the lobby bot (numbered on so the open ones keep t
     `/` lines on (LB-0), paging the bot is the way in.
 16. **Moderation through the bot: yes, by game nicks linked to admin accounts**, up to the admin account's role, time-limited, audited.
 17. **The bot's name is `YuriBOT`** (a setting, restart-only, reserved from registration and guest names).
+18. **Command names avoid what the game keeps** (after LB-0): no command starts with `/r`, `/on` or `/page`, in any case. So rank
+    is `/stats [nick]`, rules `/info`, report `/flag <nick> <reason>` and online `/who`; `/help`, `/top`, `/season`, `/queue`,
+    `/maps`, `/motd`, `/mute`, `/unmute`, `/kick` and `/ban` keep their names.
 
 11. **Member sign-in:** a login name or email, kept apart from the game account's nick; claiming an existing WOL account with its
     password counts toward the limit of one; game account and guest names capped at the retail login field's width: 9 characters,
