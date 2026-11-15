@@ -265,6 +265,29 @@ static void copy_text(char *to, size_t capacity, const char *from) {
     to[capacity - 1u] = '\0';
 }
 
+/* The launcher's sign-in (docs/wol/members-and-sso.md, task F5A-3). The page redeems
+ * a launch ticket and gives the shim the game account's nick; the game then logs in as
+ * that nick whatever the dialog sent, so the game and the server agree on who it is.
+ * The page's main thread writes the staged copy and bumps the counter; the game thread
+ * takes it when the game asks to connect. An empty nick ends it (the server refused the
+ * held session) and the dialog's own login applies again.
+ * The dialog's Nickname field is not filled from here: the game takes it from its own
+ * wolinfo.ini / wolinfomd.ini ([DefaultPersona] LastValid=), not from WolChat::GetNick. */
+static char g_launch_staged[32], g_launch_nick[32];
+static uint32_t g_launch_staged_count, g_launch_taken_count;
+
+EMSCRIPTEN_KEEPALIVE void ra2_wolapi_set_launch_login(const char *nick) {
+    copy_text(g_launch_staged, sizeof g_launch_staged, nick);
+    __atomic_add_fetch(&g_launch_staged_count, 1u, __ATOMIC_RELEASE);
+}
+
+static void take_launch_login(void) {
+    uint32_t count = __atomic_load_n(&g_launch_staged_count, __ATOMIC_ACQUIRE);
+    if (count == g_launch_taken_count) return;
+    g_launch_taken_count = count;
+    copy_text(g_launch_nick, sizeof g_launch_nick, g_launch_staged);
+}
+
 static void emit_server_list(void) {
     memset(&g_server, 0, sizeof g_server);
     g_server.gametype = (int32_t)g_product_sku;
@@ -1122,7 +1145,8 @@ static void m_chat_request_connection(void) {
     memset(&g_session, 0, sizeof g_session);
     g_connected = g_starting_game = g_creating_channel = g_joining_channel = 0;
     g_connection_pending = 1;
-    copy_text(g_login, sizeof g_login, server->login);
+    take_launch_login();
+    copy_text(g_login, sizeof g_login, g_launch_nick[0] ? g_launch_nick : server->login);
     copy_text(g_password, sizeof g_password, server->password);
     copy_text(g_nick, sizeof g_nick, g_login);
     if (hle_ws_udp_set_local_ip) hle_ws_udp_set_local_ip(virtual_ip(g_nick));

@@ -659,6 +659,8 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
     let udpRelay: UdpRelay | null = null;
     const wolResultGames = new Map<number, string>();
     let latestResultGame = "";
+    // Set once the runtime is up (ra2_wolapi_set_launch_login); a no-op before.
+    let setLaunchLogin: (nick: string) => void = () => {};
     const wolServer = {
       httpUrl: wolHttpUrl,
       socketUrl: import.meta.env.VITE_WOL_SOCKET_URL ?? toWolSocketUrl(wolHttpUrl),
@@ -710,8 +712,10 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
             launch === held &&
             error instanceof WolLoginError &&
             error.code === "invalid_session"
-          )
+          ) {
             launch = null;
+            setLaunchLogin("");
+          }
           if (wolClient === client) {
             // A refused login carries the HRESULT the game turns into "wrong password"
             // or "banned"; without one the shim reports a generic failure.
@@ -792,6 +796,21 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
         module.ra2WolReceiveLine = (line) => {
           receiveWol(wolLineBytes(line));
         };
+        // The redeemed nick goes to the shim: the game logs in as it whatever the
+        // login dialog sends (F5A-3).
+        const setLaunch = module.cwrap("ra2_wolapi_set_launch_login", null, ["string"]) as (
+          nick: string,
+        ) => void;
+        setLaunchLogin = (nick) => {
+          try {
+            setLaunch(nick);
+          } catch (error) {
+            console.warn(`launch login not set: ${String(error)}`);
+          }
+        };
+        void launch?.then((session) => {
+          if (session && launch) setLaunchLogin(session.user);
+        });
         const udp = {
           ra2_udp_buffer: module.cwrap("ra2_udp_buffer", "number", []) as () => number,
           ra2_udp_pop: module.cwrap("ra2_udp_pop", "number", ["number"]) as (

@@ -434,6 +434,7 @@ describe("startGame", () => {
     const ticket = "T".repeat(43);
     window.history.replaceState(null, "", `/game?edition=ra2md#ticket=${ticket}`);
     const sent: string[] = [];
+    let refuseHeld = false;
     class Socket extends EventTarget {
       readyState = 1;
       send(data: string): void {
@@ -442,10 +443,12 @@ describe("startGame", () => {
           ? ":wol 700 * :ok"
           : data.startsWith("setlocale ")
             ? ":wol 310 * :ok"
-            : data.startsWith("session redeemed")
+            : data.startsWith("session redeemed") && !refuseHeld
               ? ":wol 376 Alice :done"
               : data.startsWith("session ")
-                ? ":wol 378 * :Invalid session token"
+                ? data.startsWith("session typed")
+                  ? ":wol 376 typedname :done"
+                  : ":wol 378 * :Invalid session token"
                 : null;
         if (reply)
           queueMicrotask(() => this.dispatchEvent(new MessageEvent("message", { data: reply })));
@@ -474,7 +477,11 @@ describe("startGame", () => {
     await vi.waitFor(() => expect(window.Module?.onRuntimeInitialized).toBeTypeOf("function"));
     const module = window.Module!;
     module.FS = testFs();
-    module.cwrap = (() => () => 0) as never;
+    const launchLogins: string[] = [];
+    module.cwrap = ((name: string) =>
+      name === "ra2_wolapi_set_launch_login"
+        ? (nick: string) => void launchLogins.push(nick)
+        : () => 0) as never;
     module.callMain = vi.fn();
     module.HEAPU8 = new Uint8Array(2048);
     module.onRuntimeInitialized!();
@@ -494,6 +501,20 @@ describe("startGame", () => {
       await vi.waitFor(() =>
         expect(sent.filter((line) => line === "session redeemed")).toHaveLength(2),
       );
+      // The shim was given the ticket's nick for the dialog and the login (F5A-3).
+      expect(launchLogins).toEqual(["Alice"]);
+      // Once the server refuses the held session, the shim's launch login is cleared
+      // and the next start logs in with the dialog's name and password.
+      refuseHeld = true;
+      receive.mockClear();
+      module.ra2WolStart!("typedname", "password");
+      await vi.waitFor(() =>
+        expect(receive).toHaveBeenCalledWith(expect.stringContaining("@wolapi error")),
+      );
+      expect(launchLogins).toEqual(["Alice", ""]);
+      module.ra2WolStart!("typedname", "password");
+      await vi.waitFor(() => expect(receive).toHaveBeenCalledWith("@wolapi connected"));
+      expect(requests.some((request) => request.url.endsWith("/register"))).toBe(true);
     } finally {
       module.ra2WolStop!();
       warning.mockRestore();
@@ -543,7 +564,11 @@ describe("startGame", () => {
     await vi.waitFor(() => expect(window.Module?.onRuntimeInitialized).toBeTypeOf("function"));
     const module = window.Module!;
     module.FS = testFs();
-    module.cwrap = (() => () => 0) as never;
+    const launchLogins: string[] = [];
+    module.cwrap = ((name: string) =>
+      name === "ra2_wolapi_set_launch_login"
+        ? (nick: string) => void launchLogins.push(nick)
+        : () => 0) as never;
     module.callMain = vi.fn();
     module.HEAPU8 = new Uint8Array(2048);
     module.onRuntimeInitialized!();
@@ -554,6 +579,7 @@ describe("startGame", () => {
       module.ra2WolStart!("typedname", "password");
       await vi.waitFor(() => expect(receive).toHaveBeenCalledWith("@wolapi connected"));
       expect(urls.some((url) => url.endsWith("/register"))).toBe(true);
+      expect(launchLogins).toEqual([]);
       expect(warning).toHaveBeenCalledWith(expect.stringContaining("launch ticket not redeemed"));
     } finally {
       module.ra2WolStop!();
