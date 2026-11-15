@@ -11,6 +11,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <stdio.h>
 #include <emscripten.h>
 #include <emscripten/heap.h>
@@ -269,12 +270,20 @@ static void copy_text(char *to, size_t capacity, const char *from) {
  * a launch ticket and gives the shim the game account's nick; the game then logs in as
  * that nick whatever the dialog sent, so the game and the server agree on who it is.
  * The page's main thread writes the staged copy and bumps the counter; the game thread
- * takes it when the game asks to connect. An empty nick ends it (the server refused the
- * held session) and the dialog's own login applies again.
+ * takes it at its next WolChat::GetNick or connection request. An empty nick ends it
+ * (the server refused the held session) and the dialog's own login applies again.
  * The dialog's Nickname field is not filled from here: the game takes it from its own
- * wolinfo.ini / wolinfomd.ini ([DefaultPersona] LastValid=), not from WolChat::GetNick. */
+ * wolinfo.ini / wolinfomd.ini ([DefaultPersona] LastValid=), not from WolChat::GetNick.
+ *
+ * Auto-login (LW-7b, docs/wol/handoff-wolapi.md): on entering Internet the game reads
+ * [DefaultPersona] AutoLogin= from that file (the page sets it to the launch nick) and
+ * looks the nick up through GetNick, slots 1 to 32 (never 0); on a match it connects
+ * without the dialog. So the launch nick also goes into a saved-nick slot from 1 up,
+ * with a placeholder password: the held session logs in, the password is never sent. */
 static char g_launch_staged[32], g_launch_nick[32];
 static uint32_t g_launch_staged_count, g_launch_taken_count;
+static uint32_t g_launch_slot; /* the slot holding the launch nick, or 0 */
+static const char g_launch_password[] = "launcher";
 
 EMSCRIPTEN_KEEPALIVE void ra2_wolapi_set_launch_login(const char *nick) {
     copy_text(g_launch_staged, sizeof g_launch_staged, nick);
@@ -286,6 +295,29 @@ static void take_launch_login(void) {
     if (count == g_launch_taken_count) return;
     g_launch_taken_count = count;
     copy_text(g_launch_nick, sizeof g_launch_nick, g_launch_staged);
+    if (g_launch_slot) {
+        memset(&g_saved_nicks[g_launch_slot], 0, sizeof g_saved_nicks[g_launch_slot]);
+        g_launch_slot = 0;
+    }
+    /* A slot keeps 9 characters (decision 11 caps game account names there); a longer
+     * nick could never match the persona, so the dialog shows as before. */
+    if (!g_launch_nick[0] || strlen(g_launch_nick) >= sizeof g_saved_nicks[0].nick) return;
+    uint32_t slot = 0;
+    for (uint32_t i = 1; i < 11 && !slot; i++)
+        if (!strcasecmp(g_saved_nicks[i].nick, g_launch_nick)) slot = i;
+    for (uint32_t i = 1; i < 11 && !slot; i++)
+        if (!g_saved_nicks[i].nick[0]) slot = i;
+    if (!slot) return;
+    /* A nick the player saved keeps its password; an empty one gets the placeholder. */
+    if (!g_saved_nicks[slot].nick[0]) {
+        copy_text(g_saved_nicks[slot].nick, sizeof g_saved_nicks[slot].nick, g_launch_nick);
+        copy_text(g_saved_nicks[slot].password, sizeof g_saved_nicks[slot].password,
+                  g_launch_password);
+        g_launch_slot = slot;
+    } else if (!g_saved_nicks[slot].password[0]) {
+        copy_text(g_saved_nicks[slot].password, sizeof g_saved_nicks[slot].password,
+                  g_launch_password);
+    }
 }
 
 static void emit_server_list(void) {
@@ -1451,6 +1483,7 @@ static void m_chat_get_nick(void) {
     uint32_t slot = A32(1);
     if (!A32(2) || !A32(3)) RET(E_POINTER, 4);
     MEM32(A32(2)) = MEM32(A32(3)) = 0;
+    take_launch_login();
     if (slot >= 11 || !g_saved_nicks[slot].nick[0]) RET(1, 4);
     MEM32(A32(2)) = (uint32_t)(uintptr_t)g_saved_nicks[slot].nick;
     MEM32(A32(3)) = (uint32_t)(uintptr_t)g_saved_nicks[slot].password;

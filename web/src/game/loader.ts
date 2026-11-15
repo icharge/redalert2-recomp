@@ -44,6 +44,8 @@ import {
   ticketEdition,
   toWolSocketUrl,
   withBrowserWolPort,
+  withLaunchLogin,
+  wolInfoFile,
   wolLineBytes,
   wolLoginResult,
   WolClient,
@@ -240,6 +242,26 @@ export function createWolDataKey(): Uint8Array {
     }
   }
   return digits;
+}
+
+/** Set up (or, with null, undo) the game's own auto-login for a launch login (LW-7b). */
+export function stageLaunchLogin(fs: FsLike, game: GameId, nick: string | null): void {
+  const wanted = wolInfoFile(game);
+  const name =
+    fs.readdir("/game").find((entry) => entry.toLowerCase() === wanted.toLowerCase()) ?? wanted;
+  const path = `/game/${name}`;
+  let before = new Uint8Array();
+  try {
+    before = fs.readFile(path) as Uint8Array<ArrayBuffer>;
+  } catch {
+    if (nick === null) return;
+  }
+  const after = withLaunchLogin(before, nick);
+  if (after === before) return;
+  // Remove it first: writing over an existing file here appends to it (seen in the
+  // browser build), and the game would then read the old [DefaultPersona] first.
+  if (fs.unlink && before.length) fs.unlink(path);
+  fs.writeFile(path, after);
 }
 
 function stageWolDataKey(fs: EmscriptenFs, game: GameId): void {
@@ -796,8 +818,10 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
         module.ra2WolReceiveLine = (line) => {
           receiveWol(wolLineBytes(line));
         };
-        // The redeemed nick goes to the shim: the game logs in as it whatever the
-        // login dialog sends (F5A-3).
+        // The redeemed nick goes to the shim, which logs in as it whatever the login
+        // dialog sends (F5A-3) and offers it through WolChat::GetNick; the game's own
+        // persona file names it for auto-login, so Internet skips the dialog (LW-7b).
+        // An empty nick undoes both. Set once the game's files are in place (below).
         const setLaunch = module.cwrap("ra2_wolapi_set_launch_login", null, ["string"]) as (
           nick: string,
         ) => void;
@@ -807,10 +831,12 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
           } catch (error) {
             console.warn(`launch login not set: ${String(error)}`);
           }
+          try {
+            stageLaunchLogin(module.FS!, game, nick || null);
+          } catch (error) {
+            console.warn(`launch auto-login not staged: ${String(error)}`);
+          }
         };
-        void launch?.then((session) => {
-          if (session && launch) setLaunchLogin(session.user);
-        });
         const udp = {
           ra2_udp_buffer: module.cwrap("ra2_udp_buffer", "number", []) as () => number,
           ra2_udp_pop: module.cwrap("ra2_udp_pop", "number", ["number"]) as (
@@ -869,6 +895,13 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
           )
           .then((csf) => {
             if (csf.warning) console.warn(`[csf] ${csf.warning}`);
+          })
+          .then(() => {
+            // After the files: a restored persona file must not overwrite the staged one.
+            // The game reads it only on entering Internet, well after the redeem.
+            if (!launch) setLaunchLogin("");
+            else
+              void launch.then((session) => setLaunchLogin(session && launch ? session.user : ""));
           })
           .then(() => {
             if (files.kind === "opfs")

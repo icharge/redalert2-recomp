@@ -13,6 +13,7 @@ import {
   readBody,
   startGame,
   stageBundledLogo,
+  stageLaunchLogin,
   stageVideoSize,
   videoFromQuery,
   withVideoSize,
@@ -476,7 +477,16 @@ describe("startGame", () => {
     expect(location.pathname + location.search).toBe("/game?edition=ra2md");
     await vi.waitFor(() => expect(window.Module?.onRuntimeInitialized).toBeTypeOf("function"));
     const module = window.Module!;
-    module.FS = testFs();
+    const gameFiles = new Map<string, Uint8Array>();
+    module.FS = {
+      ...(testFs(gameFiles) as object),
+      readFile: (path: string) => {
+        const bytes = gameFiles.get(path);
+        if (!bytes) throw new Error("ENOENT");
+        return bytes;
+      },
+    } as never;
+    const persona = () => new TextDecoder().decode(gameFiles.get("/game/wolinfoMD.ini"));
     const launchLogins: string[] = [];
     module.cwrap = ((name: string) =>
       name === "ra2_wolapi_set_launch_login"
@@ -489,6 +499,9 @@ describe("startGame", () => {
     const receive = vi.fn();
     module.ra2WolReceiveLine = receive;
     try {
+      // The game's own auto-login names the ticket's nick (LW-7b).
+      await vi.waitFor(() => expect(launchLogins).toEqual(["Alice"]));
+      expect(persona()).toBe("[DefaultPersona]\nAutoLogin=Alice\nLastValid=Alice\n");
       module.ra2WolStart!("typedname", "password");
       await vi.waitFor(() => expect(receive).toHaveBeenCalledWith("@wolapi connected"));
       const redeem = requests.find((request) => request.url.endsWith("/v1/auth/redeem"))!;
@@ -512,6 +525,7 @@ describe("startGame", () => {
         expect(receive).toHaveBeenCalledWith(expect.stringContaining("@wolapi error")),
       );
       expect(launchLogins).toEqual(["Alice", ""]);
+      expect(persona()).toBe("[DefaultPersona]\nLastValid=Alice\n");
       module.ra2WolStart!("typedname", "password");
       await vi.waitFor(() => expect(receive).toHaveBeenCalledWith("@wolapi connected"));
       expect(requests.some((request) => request.url.endsWith("/register"))).toBe(true);
@@ -579,7 +593,8 @@ describe("startGame", () => {
       module.ra2WolStart!("typedname", "password");
       await vi.waitFor(() => expect(receive).toHaveBeenCalledWith("@wolapi connected"));
       expect(urls.some((url) => url.endsWith("/register"))).toBe(true);
-      expect(launchLogins).toEqual([]);
+      // Without a redeemed session the launch login is set empty once the files are in.
+      expect(launchLogins).toEqual([""]);
       expect(warning).toHaveBeenCalledWith(expect.stringContaining("launch ticket not redeemed"));
     } finally {
       module.ra2WolStop!();
@@ -760,6 +775,65 @@ describe("startGame", () => {
       GameNotBuilt,
     );
     expect(store.getSnapshot().phase).toBe("loading"); // begin() ran; Play shows the not-built message itself
+  });
+});
+
+describe("stageLaunchLogin", () => {
+  const fsWith = (entries: Record<string, string>) => {
+    const files = new Map(
+      Object.entries(entries).map(([path, value]) => [path, new TextEncoder().encode(value)]),
+    );
+    const fs = {
+      readdir: () => [...files.keys()].map((path) => path.slice("/game/".length)),
+      readFile: (path: string) => {
+        const bytes = files.get(path);
+        if (!bytes) throw new Error("ENOENT");
+        return bytes;
+      },
+      // Like the browser build: writing over an existing file appends to it.
+      writeFile: vi.fn((path: string, bytes: Uint8Array) => {
+        const old = files.get(path) ?? new Uint8Array();
+        files.set(path, new Uint8Array([...old, ...bytes]));
+      }),
+      unlink: vi.fn((path: string) => void files.delete(path)),
+      stat: () => ({ mode: 0, size: 0, mtime: new Date(0) }),
+      mkdir: () => {},
+    };
+    return { fs, files };
+  };
+  const read = (files: Map<string, Uint8Array>, path: string) =>
+    new TextDecoder().decode(files.get(path));
+
+  it("replaces the file instead of appending to it", () => {
+    const { fs, files } = fsWith({ "/game/wolinfomd.ini": "[DefaultPersona]\nLastValid=Bob\n" });
+    stageLaunchLogin(fs as never, "ra2md", "Alice");
+    stageLaunchLogin(fs as never, "ra2md", "Alice");
+    expect(fs.unlink).toHaveBeenCalledWith("/game/wolinfomd.ini");
+    expect(read(files, "/game/wolinfomd.ini")).toBe(
+      "[DefaultPersona]\nAutoLogin=Alice\nLastValid=Alice\n",
+    );
+  });
+
+  it("edits the game's own file whatever its case, per edition", () => {
+    const { fs, files } = fsWith({ "/game/wolinfomd.ini": "[DefaultPersona]\nLastValid=Bob\n" });
+    stageLaunchLogin(fs as never, "ra2md", "Alice");
+    expect(read(files, "/game/wolinfomd.ini")).toBe(
+      "[DefaultPersona]\nAutoLogin=Alice\nLastValid=Alice\n",
+    );
+    stageLaunchLogin(fs as never, "ra2", "Alice");
+    expect(read(files, "/game/wolinfo.ini")).toBe(
+      "[DefaultPersona]\nAutoLogin=Alice\nLastValid=Alice\n",
+    );
+  });
+
+  it("writes nothing without a launch login unless an AutoLogin has to go", () => {
+    const { fs, files } = fsWith({ "/game/wolinfo.ini": "[DefaultPersona]\nLastValid=Bob\n" });
+    stageLaunchLogin(fs as never, "ra2", null);
+    stageLaunchLogin(fs as never, "ra2md", null);
+    expect(fs.writeFile).not.toHaveBeenCalled();
+    files.set("/game/wolinfo.ini", new TextEncoder().encode("[DefaultPersona]\nAutoLogin=Bob\n"));
+    stageLaunchLogin(fs as never, "ra2", null);
+    expect(read(files, "/game/wolinfo.ini")).toBe("[DefaultPersona]\n");
   });
 });
 

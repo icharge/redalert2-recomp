@@ -9,7 +9,67 @@ import {
   wolLineBytes,
   WolClient,
   WolLoginError,
+  withLaunchLogin,
+  wolInfoFile,
 } from "./wol";
+
+describe("the game's own auto-login file", () => {
+  const bytes = (value: string) => Uint8Array.from(value, (character) => character.charCodeAt(0));
+  const text = (value: Uint8Array) =>
+    Array.from(value, (byte) => String.fromCharCode(byte)).join("");
+  const saved = [
+    "[iCharge]",
+    "Locale=28",
+    "",
+    "[Ask]",
+    "AutoLogin=no",
+    "",
+    "[DefaultPersona]",
+    "LastValid=iCharge",
+    "",
+    "[iCharge2]",
+    "Locale=\xCA",
+    "",
+  ].join("\r\n");
+
+  it("names the edition's file", () => {
+    expect(wolInfoFile("ra2")).toBe("wolinfo.ini");
+    expect(wolInfoFile("ra2md")).toBe("wolinfoMD.ini");
+  });
+
+  it("sets AutoLogin and LastValid in [DefaultPersona] and keeps the rest byte for byte", () => {
+    expect(text(withLaunchLogin(bytes(saved), "Alice"))).toBe(
+      saved.replace("LastValid=iCharge", "AutoLogin=Alice\r\nLastValid=Alice"),
+    );
+  });
+
+  it("removes only its AutoLogin without a launch login, and leaves a file without one alone", () => {
+    const staged = withLaunchLogin(bytes(saved), "Alice");
+    expect(text(withLaunchLogin(staged, null))).toBe(
+      saved.replace("LastValid=iCharge", "LastValid=Alice"),
+    );
+    const untouched = bytes(saved);
+    expect(withLaunchLogin(untouched, null)).toBe(untouched);
+    const empty = new Uint8Array();
+    expect(withLaunchLogin(empty, null)).toBe(empty);
+  });
+
+  it("adds the section to a new or sectionless file", () => {
+    expect(text(withLaunchLogin(new Uint8Array(), "Alice"))).toBe(
+      "[DefaultPersona]\nAutoLogin=Alice\nLastValid=Alice\n",
+    );
+    expect(text(withLaunchLogin(bytes("[Ask]\nAutoLogin=no"), "Alice"))).toBe(
+      "[Ask]\nAutoLogin=no\n\n[DefaultPersona]\nAutoLogin=Alice\nLastValid=Alice\n",
+    );
+  });
+
+  it("replaces an older launch nick, matching the section in any case", () => {
+    const old = "[defaultpersona]\nlastvalid=Bob\nautologin=Bob\nOther=1\n";
+    expect(text(withLaunchLogin(bytes(old), "Alice"))).toBe(
+      "[defaultpersona]\nAutoLogin=Alice\nLastValid=Alice\nOther=1\n",
+    );
+  });
+});
 
 describe("browser WOL settings", () => {
   const bytes = (value: string) => Uint8Array.from(value, (character) => character.charCodeAt(0));

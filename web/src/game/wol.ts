@@ -47,6 +47,48 @@ export function withBrowserWolPort(bytes: Uint8Array): Uint8Array {
   return Uint8Array.from(lines.join(eol), (character) => character.charCodeAt(0));
 }
 
+/** The game's own WOL persona file in the game folder (docs/wol/handoff-wolapi.md). */
+export function wolInfoFile(game: "ra2" | "ra2md"): string {
+  return game === "ra2md" ? "wolinfoMD.ini" : "wolinfo.ini";
+}
+
+/**
+ * The game's own auto-login, set up for a launch login (LW-7b). On entering Internet
+ * the game reads `[DefaultPersona] AutoLogin=` and, when WolChat::GetNick has that nick
+ * (the shim puts the launch nick there), connects without the login dialog. With a nick
+ * this sets `AutoLogin=` and `LastValid=` (the name the dialog shows) to it; with null it
+ * removes `AutoLogin=`, so a session without a ticket shows the dialog. The rest of the
+ * file, its line ends and its bytes stay as they are.
+ */
+export function withLaunchLogin(bytes: Uint8Array, nick: string | null): Uint8Array {
+  const text = Array.from(bytes, (byte) => String.fromCharCode(byte)).join("");
+  const eol = text.includes("\r\n") ? "\r\n" : "\n";
+  const lines = text.length ? text.split(/\r?\n/) : [];
+  if (lines.length && lines[lines.length - 1] === "") lines.pop();
+  const isHeader = (line: string) => /^\s*\[[^\]]*\]/.test(line);
+  let start = lines.findIndex((line) => /^\s*\[\s*DefaultPersona\s*\]/i.test(line));
+  if (start < 0) {
+    if (nick === null) return bytes;
+    if (lines.length && lines[lines.length - 1]!.trim() !== "") lines.push("");
+    lines.push("[DefaultPersona]");
+    start = lines.length - 1;
+  }
+  let end = start + 1;
+  while (end < lines.length && !isHeader(lines[end]!)) end++;
+  const autoLogin = (line: string) => /^\s*AutoLogin\s*=/i.test(line);
+  if (nick === null && !lines.slice(start + 1, end).some(autoLogin)) return bytes;
+  const body = lines
+    .slice(start + 1, end)
+    .filter((line) => !/^\s*(AutoLogin|LastValid)\s*=/i.test(line) || nick === null);
+  const kept = nick === null ? body.filter((line) => !autoLogin(line)) : body;
+  const added = nick === null ? [] : [`AutoLogin=${nick}`, `LastValid=${nick}`];
+  // Keep a blank line before the next section where there was one.
+  const trailing: string[] = [];
+  while (kept.length && kept[kept.length - 1]!.trim() === "") trailing.unshift(kept.pop()!);
+  lines.splice(start + 1, end - start - 1, ...added, ...kept, ...trailing);
+  return Uint8Array.from(lines.join(eol) + eol, (character) => character.charCodeAt(0));
+}
+
 export interface WolRoom {
   channel: string;
   players: number;
