@@ -77,7 +77,7 @@ the console is served on the public site behind TLS, with TOTP for owners.** So 
 in `localStorage`) and F2-5 (TOTP) are in; until then it stays behind loopback, a VPN or a proxy allow-list. The separate admin
 listener (F2-6) is no longer planned. The cut-over (F2-7) comes last.
 
-### F3. Ordered migrations and the auto-migrate tool: migrations built (DB1), tool left (DB2)
+### F3. Ordered migrations and the auto-migrate tool: built (DB1, DB2)
 
 **DB1 built** (ra2web `d011e4b`): `server/src/storage/migrations.ts`, an append-only list of `{version, name, up(tx, dialect)}`
 (dialect-aware, so the same list serves Postgres and MySQL later) with a `schema_version` table. Version 1 is the schema the
@@ -86,8 +86,8 @@ newer than the code is refused before anything touches it; pending migrations ru
 (`backups/pre-migration-<version>-<time>.sqlite`), each in one transaction with its version row; a failure rolls back and names the
 migration; `/health` shows `schemaVersion`. A copy of the real database opened as version 1 with every table unchanged. From now on a
 changed table (for example `ladder_seasons.reset_policy`, `admin_users.totp_secret`) is a migration; a new table may still be
-`IF NOT EXISTS`. DB2 is the tool: `bun scripts/migrate.ts status|plan|up` and `AUTO_MIGRATE` (apply on start, or refuse to
-start while any is pending), with a database lock on networked engines.
+`IF NOT EXISTS`. **DB2 built** (ra2web `b81685d`), the tool: `bun scripts/migrate.ts status|plan|up` and `AUTO_MIGRATE` (apply on start, or refuse to
+start while any is pending); the database lock for networked engines comes with DB4.
 
 ### F4. Backup schedule and restore: built
 

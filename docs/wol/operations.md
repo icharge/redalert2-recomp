@@ -29,7 +29,9 @@ transaction with its version row), after copying the file to `backups/pre-migrat
 (or into `BACKUP_DIR`). It refuses to start if the database is *newer* than the code (a downgrade: run the newer server, or restore
 the copy). A failed migration rolls back, stops the server and names the migration. The start log prints the version
 (`Schema: version N`), and `GET /health` shows `schemaVersion`. A database from before this has no version; it is stamped as
-version 1. Still to come (DB2): `bun scripts/migrate.ts status|plan|up` and `AUTO_MIGRATE=false` to apply them by hand.
+version 1. To apply them by hand instead (ra2web `b81685d`): set `AUTO_MIGRATE=false`, and the server refuses to start while one is
+pending; with it stopped, `bun scripts/migrate.ts status` and `plan` show what is pending without changing anything, and `up` takes
+the copy and applies it.
 
 ### Backup and restore ([roadmap M7](roadmap.md))
 
