@@ -421,6 +421,107 @@ first. `replaceFile` in `web/src/storage/saves.ts` (used for `RA2.INI` / `RA2MD.
 `stageWolDataKey` and `stageVideoSize`) has the same exposure for files that are not links;
 that is likely where the duplicated profile INIs that `compactProfileIni` cleans up come from.
 
+## Slash lines, chat length and a listed virtual user (LB-0)
+
+For the lobby bot (Track LB in [tasks.md](tasks.md), decisions 15-17). **Seen in the browser,
+both editions, 15 November:** fast builds of this tree, two `?test=1` clients (`lib.mjs`
+`--game ../game`) in `#Lob_33_0` / `#Lob_41_0` against a local ra2web on a private port. Each
+line was typed into the lobby's chat edit and read back from the shim's log, the page's
+WebSocket frames, the other client's frames and screenshots. RA2 and YR behaved the same in
+every case below.
+
+`send_chat` now logs the length and a leading `/` (never the text):
+`[wol] chat sent to #Lob_41_0 (public, 5 chars wide, leading /, part held 0)`.
+
+### 1. What the chat edit does with a `/` line
+
+The lobby edit's Enter handler runs the game's own commands before it sends. The words come from
+the string table, and each one is matched as a **case-insensitive prefix with no word boundary**:
+
+| Order | Command (CSF) | YR routine | RA2 routine | What it calls | Seen |
+|---|---|---|---|---|---|
+| 1 | `/page <nick> <text>` (`TXT_PAGE_COMMAND`) | `0x0078A6B0` | `0x00746480` | `IChat` `+0xF8` `RequestUnicodePage` (YR `0x0078A87A`, RA2 `0x0074664A`) | echoes `[lbzero1 > yuribot] help` locally (nick lowercased); **nothing reaches the server** |
+| 2 | `/reply <text>`, `/r <text>` (`TXT_REPLY_COMMAND`, `_SHORT`) | `0x0078A8F0` | `0x007466C0` | `+0xF8` `RequestUnicodePage` (YR `0x0078AABF`, RA2 `0x0074688F`) to the last pager (YR `0xB77E30`) | with nobody to answer: "You have not been paged yet. Unable to send reply." |
+| 3 | YR only: `TXT_BUDDY_FILTER`, `TXT_CLAN_FILTER` | | | | missing from retail `ra2md.csf` (`***NO_STRING***` logged on every send); no effect |
+| 4 | `/on <nick>` (`TXT_ONLINE_COMMAND`, a locate) | `0x0078A470` | `0x00746240` | `+0x60` `RequestFind` (YR `0x0078A5B2`, RA2 `0x00746382`) | silent; `/On` alone: "You did not specify a valid user name." |
+| 5 | anything else | | | `RequestPublicUnicodeMessage`, or `RequestPrivateUnicodeMessage` to the users selected in the player list | sent **verbatim** |
+
+Every line that starts with `/r` or `/R` is a reply: `/rank alice`, `/Rank alice`, `/R upper`,
+`/rules` and `/report bob cheat` all gave the "not been paged" line and sent nothing. `/online`
+is a silent locate of a user named `line`. `/page` and `/PAGE` both page. VERA20K's
+`src/ui/wol_chat.rs` describes the same order but calls the `/r` and `/on` compares
+case-sensitive; in both editions `/R` and `/On` were taken.
+
+These went to the server unchanged, as public lobby lines, in both editions:
+`/help`, `/top 5`, `/season`, `/queue`, `/maps`, `/motd`, `/mute bob 5`, `/kick bob`,
+`/ban bob 2 x`, `/unmute bob`, `/me waves` (`> privmsg #Lob_41_0 :/help`). Today's server
+broadcasts them: the other player saw `[lbzero1] : /help`.
+
+**Paging does not work at all in the browser build yet, for anyone.** `RequestUnicodePage`
+(and `RequestPage`, `RequestFind`) are `m_stub_*` returning `E_NOTIMPL` in `wolapi.c`. The
+YR Page button's dialog (`0xCF`) does the same as `/page`: it echoes
+`[lbzero1] help via dialog`, sends nothing and shows no status. RA2's lobby has no Page
+button.
+
+### 2. Line length
+
+The chat edit holds **120 characters** in both editions. Typing 300 left
+`000-004-…-116-` in the box, and the shim got 120 (`public, 120 chars wide`). The game cuts
+the line; the shim's limit (1024 out, 4095 in) is never reached. A received line is not cut:
+a 500-character lobby line showed in full under a `[lbzero2] :` header row, wrapped at about
+100 characters per row of the 800×600 lobby (digits and dashes; the font is proportional, so
+wider letters fit fewer).
+
+### 3. A listed virtual user that is not an operator
+
+The server's `matchbot` is listed only in the Quick Match and co-op lobbies and as an operator
+(`WolServer.sendChannelNames`, `entries.unshift("@matchbot,0,0,0")`). For a non-operator bot
+in a chat lobby, both editions were sent the lines LB-1 would send:
+
+- **Listing.** `:YuriBOT!YuriBOT@local JOIN :0,0 #Lob_41_0` put `YuriBOT` in the player list,
+  without an operator mark. A NAMES (`353`) with `YuriBOT,0,0,0` sent while the game
+  already had its list changed only the shim's roster (`users(refresh) n=3 … YuriBOT=…`). The
+  shim raises `OnUserList` only for a NAMES the game asked for (`g_roster_wanted`, set by
+  joining or `RequestUserList`). So the NAMES a player gets on joining should include the bot,
+  and a bot that appears while players are in the lobby needs a JOIN line to them.
+- **Reaching it.** Selecting `YuriBOT` in the list and typing sends a private message:
+  `> privmsg YuriBOT :help` and `> privmsg YuriBOT :/help`
+  (`chat sent to YuriBOT (private, 5 chars wide, leading /…)`), echoed locally as
+  `[lbzero1] /help` in the private colour. Today's server answers `401 … YuriBOT :No such nick`,
+  which the game ignores. The `/page YuriBOT …` path sends nothing (above).
+- **Its reply.** `:YuriBOT!YuriBOT@local PRIVMSG lbzero1 :Commands: /help /rank [nick] /top [n]`
+  shows in the lobby transcript as `YuriBOT : Commands: …` in the private colour, the same as a
+  player's private line (`lbzero2 : selected hi`). It does **not** make the bot the `/reply`
+  target: `/r thanks` afterwards still says "not been paged yet". Only an incoming page does
+  that. VERA20K's notes (unverified here) say only the ANSI page sink (YR `0x007A9200`) keeps the
+  sender at `0xB77E30`; the UTF-16 one (`0x007A9550`) does not.
+
+### What LB-1 should do
+
+- **Command names must not start with `/r`, `/on`, or `/page`, in any case.** In the planned set,
+  `/rank`, `/rules`, `/report` (and `/R…`) are taken by reply, and `/online` by locate. They never
+  reach the server. Rename them, e.g. `/stats [nick]` or `/ladder [nick]` for rank, `/info` for
+  rules, `/flag <nick> <reason>` for report, `/who` or `/players` for online. Keep LB-3's
+  `/help`, `/top`, `/season`, `/queue`, `/maps`, `/motd` and LB-6's `/mute`, `/unmute`, `/kick`,
+  `/ban`: they arrive verbatim. `/me` is not a game command here either: it arrives as text.
+- **Public `/` lines arrive verbatim**, so the planned interception in `handlePrivmsg` (a `/` line
+  is a command and is not broadcast) works as designed.
+- **The second way in is a private line to the selected bot**, which already works:
+  `privmsg YuriBOT :<text>`, with or without the `/`. List the bot in each chat lobby's NAMES
+  (not as `@`) and send a JOIN when it appears. Route a private message to `lobbyBot.nick`
+  instead of answering 401.
+- **Replies:** private `PRIVMSG <nick> :…` lines of at most about 90 characters, so each fits on
+  one row (never more than the 120 a player can type), a few lines per answer.
+- **Paging is a separate shim task.** `/page`, `/r` and YR's Page dialog fail silently for every
+  user until `RequestUnicodePage` (and `RequestPage`) send `privmsg <nick> :<text>` and report the
+  result, and an incoming page reaches the game's page sink. That is what would make `/r` answer
+  the bot. LB-1 does not need it, but decision 15's "page the bot" fallback depends on it, and
+  players already expect `/page` to work.
+
+**Also seen:** in YR, the login dialog's Login button did nothing with a 7-character password
+(nothing sent, no message); 8 and 9 characters logged in. Test passwords should be 8-9
+characters.
+
 ## Still open after the playable RA2/YR POC
 
 ### Public endpoint checkpoint and user testing (25 October)

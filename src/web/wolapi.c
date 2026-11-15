@@ -1298,7 +1298,10 @@ static uint32_t send_chat(const wol_user *user, const void *message, int wide, i
         }
         if (user) return E_FAIL;
     } else copy_text(targets, sizeof targets, g_current_channel);
-    fprintf(stderr, "[wol] chat sent to %s (%s, part held %d)\n", targets, private ? "private" : "public", g_match_part_held);
+    /* The length and a leading '/' show what the chat box hands on (LB-0); the text itself stays out of the log. */
+    uint32_t first = wide ? ((const uint16_t *)message)[0] : ((const unsigned char *)message)[0];
+    fprintf(stderr, "[wol] chat sent to %s (%s, %zu chars%s%s, part held %d)\n", targets, private ? "private" : "public",
+        length, wide ? " wide" : "", first == '/' ? ", leading /" : "", g_match_part_held);
     char line[WOL_LINE_CAP];
     snprintf(line, sizeof line, "privmsg %s :", targets);
     if (wide) browser_send_unicode(line, message);
