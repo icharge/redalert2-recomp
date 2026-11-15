@@ -14,6 +14,9 @@ const HEADING: Record<GameId, string[]> = {
   ra2md: ["YURI’S", "REVENGE"],
 };
 
+const EMPTY_HEADING = ["BRING YOUR", "OWN GAME"];
+const STEPS = ["Choose your game folder", "Pick what to install, about 2 to 3 GB", "Play"];
+
 function ModSwatch({ mod, edition }: { mod: string; edition: GameId }) {
   if (mod) return <span className={`${styles.swatch} ${styles.modSwatch}`} aria-hidden="true" />;
   const brand = EDITION_BRAND[edition];
@@ -156,12 +159,45 @@ export function PlayScreen({
   if (!install) {
     return (
       <div className={styles.screen}>
-        <KeyArt edition={null} />
-        <div className={styles.empty}>
-          <button type="button" className={styles.play} onClick={onInstall}>
-            INSTALL THE GAME
-          </button>
+        <KeyArt edition={null} dim={0.35} />
+        <div className={styles.title}>
+          <p className={`${styles.kicker} ${styles.emptyKicker}`}>NOTHING INSTALLED YET</p>
+          <h1 className={styles.heading}>
+            {EMPTY_HEADING.map((line, index) => (
+              <span key={line}>
+                {index > 0 ? " " : null}
+                <span className={styles.line}>{line}</span>
+              </span>
+            ))}
+          </h1>
+          <p className={styles.intro}>
+            Red Alert 2 and Yuri’s Revenge run here from your own copy: the CDs, The First Decade,
+            the EA App or Steam. Nothing is uploaded.
+          </p>
         </div>
+        <footer className={`${styles.footer} ${styles.emptyFooter}`}>
+          <ol className={styles.steps} aria-label="How it works">
+            {STEPS.map((step, index) => (
+              <li key={step}>
+                <span className={styles.stepNumber}>{index + 1}</span>
+                {step}
+              </li>
+            ))}
+          </ol>
+          <div className={`${styles.center} ${styles.emptyCenter}`}>
+            <button
+              type="button"
+              className={`${styles.play} ${styles.install}`}
+              onClick={onInstall}
+            >
+              INSTALL THE GAME
+            </button>
+          </div>
+          <Link to="/install/guide" className={styles.guide}>
+            <span className={styles.guideHint}>Files not ready?</span>
+            <span className={styles.guideLink}>READ THE INSTALL GUIDE</span>
+          </Link>
+        </footer>
       </div>
     );
   }

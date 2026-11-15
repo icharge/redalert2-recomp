@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { describe, expect, it, vi } from "vitest";
@@ -87,6 +87,31 @@ describe("PlayScreen", () => {
     expect(screen.queryByRole("button", { name: "PLAY" })).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: "INSTALL THE GAME" }));
     expect(onInstall).toHaveBeenCalled();
+  });
+
+  it("nothing installed says to bring your own game", () => {
+    renderPlay({ install: null, edition: null });
+    expect(screen.getByRole("heading", { level: 1, name: /BRING YOUR\s*OWN GAME/ })).toBeVisible();
+    expect(screen.getByText("NOTHING INSTALLED YET")).toBeInTheDocument();
+    expect(screen.getByText(/Nothing is uploaded\./)).toBeInTheDocument();
+  });
+
+  it("nothing installed lists the three steps", () => {
+    renderPlay({ install: null, edition: null });
+    const steps = within(screen.getByRole("list", { name: "How it works" })).getAllByRole(
+      "listitem",
+    );
+    expect(steps).toHaveLength(3);
+    expect(steps[0]).toHaveTextContent("Choose your game folder");
+    expect(steps[2]).toHaveTextContent("Play");
+  });
+
+  it("nothing installed links to the install guide", () => {
+    renderPlay({ install: null, edition: null });
+    expect(screen.getByRole("link", { name: /READ THE INSTALL GUIDE/ })).toHaveAttribute(
+      "href",
+      "/install/guide",
+    );
   });
 
   it("YR shows EXPANSION and YURI’S REVENGE", () => {

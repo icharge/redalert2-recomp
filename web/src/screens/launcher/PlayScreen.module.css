@@ -3,14 +3,6 @@
   inset: 0;
 }
 
-.empty {
-  position: absolute;
-  inset: var(--stage-top, 64px) 0 0 var(--rail-w, 88px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
 .title {
   position: absolute;
   left: calc(var(--rail-w, 88px) + 64px);
@@ -28,6 +20,18 @@
   font-weight: 600;
   letter-spacing: 0.24em;
   color: var(--yuri-light);
+}
+
+.emptyKicker {
+  color: var(--amber);
+}
+.intro {
+  max-width: 620px;
+  margin: 8px 0 0;
+  font-size: 18px;
+  line-height: 1.5;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.8);
+  animation: reveal 0.9s var(--ease) 0.6s backwards;
 }
 
 .heading {
@@ -133,9 +137,109 @@
   color: #c9c6c0;
   cursor: not-allowed;
 }
-.empty .play,
 .center .play:not(:only-child) {
   font-size: 28px;
+}
+
+/* nothing installed: the steps, the one button, the guide */
+.emptyFooter {
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 24px;
+}
+.install {
+  width: 440px;
+  max-width: 100%;
+  font-size: 28px;
+  letter-spacing: 0.14em;
+}
+.steps {
+  justify-self: start;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 15px;
+  color: var(--muted);
+}
+.steps li {
+  display: flex;
+  gap: 10px;
+}
+.stepNumber {
+  width: 14px;
+  flex: none;
+  font-family: var(--font-label);
+  font-weight: 700;
+  color: var(--text);
+}
+.guide {
+  justify-self: end;
+  min-height: 44px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-end;
+  gap: 2px;
+  text-align: right;
+  color: var(--text);
+  text-decoration: none;
+}
+.guide:hover {
+  color: #fff;
+}
+.guideHint {
+  font-size: 14px;
+  color: var(--muted);
+}
+.guideLink {
+  font-family: var(--font-label);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+/* Under 900px the empty footer stacks: the button, the steps, the link. */
+@media (max-width: 900px) {
+  .emptyFooter {
+    height: auto;
+    padding: 16px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+  .emptyFooter .emptyCenter {
+    order: 1;
+    justify-self: stretch;
+  }
+  .emptyFooter .steps {
+    order: 2;
+  }
+  .emptyFooter .guide {
+    order: 3;
+    justify-self: start;
+    align-items: flex-start;
+    text-align: left;
+  }
+  .install {
+    width: 100%;
+    min-width: 0;
+    height: 64px;
+    font-size: 24px;
+  }
+  .screen:has(.emptyFooter) .title {
+    left: calc(var(--rail-w, 88px) + 16px);
+    right: 16px;
+    bottom: 280px;
+  }
+  .screen:has(.emptyFooter) .heading {
+    font-size: 48px;
+  }
+  .screen:has(.emptyFooter) .intro {
+    font-size: 16px;
+  }
 }
 
 .profile {
@@ -335,11 +439,6 @@
   }
   .heading {
     font-size: 48px;
-  }
-  .empty .play {
-    width: auto;
-    padding: 0 24px;
-    font-size: 22px;
   }
 }
 
