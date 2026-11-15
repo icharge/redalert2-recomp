@@ -184,6 +184,13 @@ export interface RunOptions {
   manifest: Manifest;
   target: CopyTarget;
   onProgress?(progress: CopyProgress): void;
+  /** Called once, as soon as the installation is known (created or resumed), before any file is copied. */
+  onSlot?(slot: number): void;
+  /**
+   * Called with the `plan.copy` path of every file that is in place: each file an earlier run
+   * finished, and each file as its copy completes. A file two games read can be reported twice.
+   */
+  onFileDone?(path: string): void;
   signal?: AbortSignal;
   /** Resume this unfinished installation; otherwise create the installation. */
   slot?: number;
@@ -208,6 +215,7 @@ export async function runImport(options: RunOptions): Promise<number> {
   const installation =
     resumed ?? (await manifest.createInstallation(prepared.name, prepared.plan.games));
   const slot = installation.slot;
+  options.onSlot?.(slot);
   const existing = await manifest.listGames(slot);
   const expected = installation.editions ?? existing.map((game) => game.id);
   // A record's done flag is only as good as the copy it names: a browser can drop storage under
@@ -267,6 +275,7 @@ export async function runImport(options: RunOptions): Promise<number> {
     );
     // what an earlier run already finished counts toward the bar, once
     for (const name of resume.done) {
+      options.onFileDone?.(name);
       if (counted.has(name)) continue;
       counted.add(name);
       doneBytes += record.files[name]?.size ?? 0;
@@ -298,7 +307,10 @@ export async function runImport(options: RunOptions): Promise<number> {
       signal,
       alreadyBytes: before.bytes,
       alreadyFiles: before.files,
-      markDone: (name) => manifest.markFileDone(id, name, slot),
+      markDone: async (name) => {
+        await manifest.markFileDone(id, name, slot);
+        options.onFileDone?.(name);
+      },
       onProgress: (progress) =>
         options.onProgress?.({
           ...progress,

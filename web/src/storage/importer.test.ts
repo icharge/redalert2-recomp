@@ -218,6 +218,55 @@ describe("runImport", () => {
     expect((await manifest.getGame("ra2md"))?.complete).toBe(true);
   });
 
+  it("reports the installation's slot before copying", async () => {
+    const manifest = await Manifest.open(new IDBFactory());
+    const target = memoryTarget();
+    const prepared = await prepareImport(source(folder()), build, all, roomy);
+    const events: string[] = [];
+    const slots: number[] = [];
+    const slot = await run(prepared, manifest, target, {
+      onSlot: (each: number) => {
+        slots.push(each);
+        events.push("slot");
+      },
+      onProgress: () => events.push("progress"),
+    });
+    expect(slots).toEqual([slot]);
+    expect(events[0]).toBe("slot");
+    expect(events.filter((each) => each === "slot")).toHaveLength(1);
+  });
+
+  it("reports each file as it is copied", async () => {
+    const manifest = await Manifest.open(new IDBFactory());
+    const target = memoryTarget();
+    const prepared = await prepareImport(source(folder()), build, all, roomy);
+    const done = new Set<string>();
+    await run(prepared, manifest, target, { onFileDone: (path: string) => done.add(path) });
+    expect(done).toEqual(new Set(prepared.plan.copy.map((entry) => entry.path)));
+  });
+
+  it("a resume reports the files an earlier run finished", async () => {
+    const manifest = await Manifest.open(new IDBFactory());
+    const target = memoryTarget();
+    const prepared = await prepareImport(source(folder()), build, all, roomy);
+    const controller = new AbortController();
+    let marked = 0;
+    const counting = {
+      ...target,
+      write: async (path: string, stream: ReadableStream<Uint8Array>, signal?: AbortSignal) => {
+        await target.write(path, stream, signal);
+        if (++marked === 1) controller.abort();
+      },
+    };
+    await expect(run(prepared, manifest, counting, { signal: controller.signal })).rejects.toThrow(
+      /cancelled/,
+    );
+    const again = await prepareImport(source(folder()), build, all, roomy);
+    const done = new Set<string>();
+    await run(again, manifest, target, { slot: 1, onFileDone: (path: string) => done.add(path) });
+    expect(done).toEqual(new Set(again.plan.copy.map((entry) => entry.path)));
+  });
+
   it("copies again a file a stopped import recorded but the copy no longer has", async () => {
     const manifest = await Manifest.open(new IDBFactory());
     const target = memoryTarget();

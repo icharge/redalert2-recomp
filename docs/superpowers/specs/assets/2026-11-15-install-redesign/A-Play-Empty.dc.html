@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Launcher, Play with no game installed</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&amp;family=Barlow+Condensed:wght@500;600;700&amp;family=Russo+One&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#f1ede6;text-decoration:none}a:hover{color:#fff}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; position: relative; overflow: hidden; background: #07080b; color: #f1ede6; font-family: Barlow, system-ui, sans-serif">
+<div style="position: absolute; inset: 0">
+<dc-import name="KeyArt" edition="ra2" hint-size="1440px,900px"></dc-import>
+</div>
+<div aria-hidden="true" style="position: absolute; inset: 0; background: rgba(7, 8, 11, 0.35)"></div>
+
+<nav aria-label="Games" style="position: absolute; top: 64px; left: 0; bottom: 0; width: 88px; background: rgba(8, 9, 11, 0.94); border-right: 1px solid #2c1517; display: flex; flex-direction: column; align-items: center; padding: 16px 0; gap: 8px; box-sizing: border-box">
+<div style="flex: 1"></div>
+<a href="A-Settings.dc.html" aria-label="Settings" style="width: 88px; height: 64px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #a7a29a; font-family: 'Barlow Condensed', sans-serif; font-size: 12px; font-weight: 600; letter-spacing: 0.08em">
+<svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><circle cx="8" cy="8" r="2.2"></circle><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4"></path></svg>
+SETTINGS
+</a>
+</nav>
+
+<header style="position: absolute; z-index: 2; top: 0; left: 0; right: 0; height: 64px; background: rgba(8, 9, 11, 0.82); border-bottom: 1px solid #2c1517; display: flex; align-items: stretch; justify-content: space-between; padding: 0 32px 0 168px; box-sizing: border-box">
+<img src="/_blob/d585d83a53a8afb0bdf9acb9bf391235" alt="YuriNet" style="position: absolute; left: 20px; top: 3px; height: 58px; width: auto">
+<div role="tablist" style="display: flex; gap: 32px; font-family: 'Barlow Condensed', sans-serif; font-size: 19px; font-weight: 700; letter-spacing: 0.14em">
+<a href="A-Play-Empty.dc.html" role="tab" aria-selected="true" style="display: flex; align-items: center; border-bottom: 3px solid #d3262b; color: #f1ede6">PLAY</a>
+<a href="A-Mods-Empty.dc.html" role="tab" aria-selected="false" style="display: flex; align-items: center; border-bottom: 3px solid transparent; color: #a7a29a">MODS</a>
+<a href="A-Maps.dc.html" role="tab" aria-selected="false" style="display: flex; align-items: center; border-bottom: 3px solid transparent; color: #a7a29a">MAPS</a>
+<a href="A-Ladder.dc.html" role="tab" aria-selected="false" style="display: flex; align-items: center; border-bottom: 3px solid transparent; color: #a7a29a">LADDER</a>
+<a href="A-Game-Empty.dc.html" role="tab" aria-selected="false" style="display: flex; align-items: center; border-bottom: 3px solid transparent; color: #a7a29a">GAME</a>
+</div>
+<div style="display: flex; align-items: center; gap: 10px; font-size: 13px; color: #a7a29a">
+<div aria-hidden="true" style="width: 80px; height: 4px; background: #2a2b30"></div>
+0 / 60 GB
+</div>
+</header>
+
+<div style="position: absolute; left: 152px; bottom: 176px; max-width: 620px; display: flex; flex-direction: column; gap: 12px">
+<p style="margin: 0; font-family: 'Barlow Condensed', sans-serif; font-size: 16px; font-weight: 600; letter-spacing: 0.24em; color: #f2b134">NOTHING INSTALLED YET</p>
+<h1 style="margin: 0; font-family: 'Russo One', sans-serif; font-size: 88px; line-height: 0.95; font-weight: 400; letter-spacing: 0.02em; text-shadow: 0 4px 24px rgba(0, 0, 0, 0.7)">BRING YOUR<br>OWN GAME</h1>
+<p style="margin: 8px 0 0; font-size: 18px; line-height: 1.5; text-shadow: 0 2px 12px rgba(0, 0, 0, 0.8)">Red Alert 2 and Yuri’s Revenge run here from your own copy: the CDs, The First Decade, the EA App or Steam. Nothing is uploaded.</p>
+</div>
+
+<footer style="position: absolute; left: 88px; right: 0; bottom: 0; height: 120px; background: rgba(8, 9, 11, 0.95); border-top: 2px solid #8b1a1a; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 24px; padding: 0 32px; box-sizing: border-box">
+<ol aria-label="How it works" style="justify-self: start; margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; font-size: 15px; color: #a7a29a">
+<li style="display: flex; gap: 10px"><span style="width: 14px; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; color: #f1ede6">1</span>Choose your game folder</li>
+<li style="display: flex; gap: 10px"><span style="width: 14px; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; color: #f1ede6">2</span>Pick what to install, about 2 to 3 GB</li>
+<li style="display: flex; gap: 10px"><span style="width: 14px; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; color: #f1ede6">3</span>Play</li>
+</ol>
+<a href="A-Install.dc.html" style="width: 440px; height: 76px; display: flex; align-items: center; justify-content: center; background: #d3262b; color: #fff; font-family: 'Russo One', sans-serif; font-size: 28px; letter-spacing: 0.14em; clip-path: polygon(16px 0, 100% 0, 100% calc(100% - 16px), calc(100% - 16px) 100%, 0 100%, 0 16px); box-shadow: inset 0 -4px 0 #8b1a1a">INSTALL THE GAME</a>
+<a href="#" style="justify-self: end; min-height: 44px; display: flex; flex-direction: column; justify-content: center; align-items: flex-end; gap: 2px; text-align: right"><span style="font-size: 14px; color: #a7a29a">Files not ready?</span><span style="font-family: 'Barlow Condensed', sans-serif; font-size: 16px; font-weight: 700; letter-spacing: 0.12em; text-decoration: underline; text-underline-offset: 4px">READ THE INSTALL GUIDE</span></a>
+</footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>
