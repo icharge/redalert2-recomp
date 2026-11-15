@@ -86,11 +86,11 @@ transaction per step and a downgrade guard. It is **dialect-aware from the start
 Postgres and MySQL later. DB2 is the tool: `bun scripts/migrate.ts status|plan|up` and `AUTO_MIGRATE` (apply on start, or refuse to
 start while any is pending), with a database lock on networked engines.
 
-### F4. Backup schedule and restore: schedule built, restore left
+### F4. Backup schedule and restore: built
 
-`scripts/backup.ts` and `src/ops/backup.ts` (`a363c2f`), and the daily schedule with its status in `/health` (`5e1e6ac`, F4-1:
-`BACKUP_DIR`, `BACKUP_AT`, `BACKUP_KEEP` / `backup.keep`, an audit row per run). Left: the restore script (F4-2). F4-1 is in, so DB1
-may now run on real data.
+`scripts/backup.ts` and `src/ops/backup.ts` (`a363c2f`), the daily schedule with its status in `/health` (`5e1e6ac`, F4-1:
+`BACKUP_DIR`, `BACKUP_AT`, `BACKUP_KEEP` / `backup.keep`, an audit row per run), and `scripts/restore.ts` (`84788cc`, F4-2: refuses
+while the server answers, checks the backup, keeps the replaced files aside). F4 is in, so DB1 may now run on real data.
 
 ### REG. Registration switch: built
 
