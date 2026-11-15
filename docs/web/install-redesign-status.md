@@ -16,7 +16,7 @@ They belong to the session that owns the Cursor setting and are left alone.
 ## Tasks
 
 - [x] 1. `runImport` reports its slot and each finished file.
-- [ ] 2. Per-part progress.
+- [x] 2. Per-part progress.
 - [ ] 3. Empty Play tab.
 - [ ] 4. Install frame.
 - [ ] 5. Choose step.
