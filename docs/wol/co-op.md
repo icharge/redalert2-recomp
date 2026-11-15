@@ -131,6 +131,11 @@ screen ("Campaign Results", then "Next Mission: Campaign 1 Map 2"). It took thre
 Not confirmed: the cooperative campaign line (`C0,...`) is still not sent and nothing needed it for this mission;
 "Next Mission" after the score screen was not exercised.
 
+Debug flag (C-1, 16 Nov 2026): `COOP_CAMPAIGN_LINE=true` on the server sends the campaign line as its own `GAMEOPT`
+before the options, to the room and to each player from the other (off by default, the options are unchanged). The names
+use the game's `=HH` encoding (`0x0049D680`: letters and digits as they are, any other byte as `=` and two hex digits),
+which VERA20K ports, not base64 as the table above says. The two-client trial with and without the flag is still open.
+
 **Results.** The clients POST their game result to `/native-results/<gameId>`. An unranked instance without a wire SKU was
 answered 404 (not logged), so the two games of this run were not stored. Quick Co-op instances now carry
 `nativeSku` 18688 so the report is kept as unscored history; co-op is still never rated.
