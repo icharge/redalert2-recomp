@@ -400,12 +400,35 @@ describe("Launcher routes", () => {
     m.close();
   });
 
-  it("nothing installed offers INSTALL THE GAME", async () => {
+  it("nothing installed opens on the welcome page until it is dismissed", async () => {
     vi.stubGlobal("crossOriginIsolated", true);
     vi.stubGlobal("indexedDB", new IDBFactory());
     vi.stubGlobal("fetch", () => Promise.resolve(new Response(JSON.stringify({ games: {} }))));
     render(<App />);
-    await userEvent.setup().click(await screen.findByRole("button", { name: "INSTALL THE GAME" }));
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "DON'T SHOW THIS AGAIN" }));
+    expect(window.location.pathname).toBe("/");
+    await user.click(await screen.findByRole("button", { name: "INSTALL THE GAME" }));
     expect(window.location.pathname).toBe("/import");
+  });
+
+  it("with a game installed, / opens on PLAY, not the welcome page", async () => {
+    const m = await installed();
+    render(<App />);
+    expect(await screen.findByRole("button", { name: "PLAY" })).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/");
+    m.close();
+  });
+
+  it.each([
+    ["/install/guide", "INSTALL GUIDE"],
+    ["/account", "ACCOUNT"],
+  ])("%s is a launcher page", async (path, heading) => {
+    const m = await installed();
+    window.history.replaceState({}, "", path);
+    render(<App />);
+    expect(await screen.findByRole("heading", { name: heading })).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "Launcher" })).toBeInTheDocument();
+    m.close();
   });
 });

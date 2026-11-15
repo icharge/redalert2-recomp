@@ -6,6 +6,8 @@ import { checkBrowser, missingRequired } from "./components/features";
 import { UpdateStrip } from "./components/UpdateStrip";
 import { videoFromQuery, type FileSource } from "./game/loader";
 import { Import, browserDeps } from "./screens/Import";
+import { InstallGuide } from "./screens/InstallGuide";
+import { AccountScreen } from "./screens/launcher/AccountScreen";
 import { GameScreen } from "./screens/launcher/GameScreen";
 import { ModsScreen } from "./screens/launcher/ModsScreen";
 import { PlayScreen } from "./screens/launcher/PlayScreen";
@@ -15,6 +17,7 @@ import {
   SettingsScreen,
 } from "./screens/launcher/settings/SettingsScreen";
 import { Shell } from "./screens/launcher/Shell";
+import { WELCOME_REDIRECT, WelcomeScreen } from "./screens/launcher/WelcomeScreen";
 import { Play } from "./screens/Play";
 import {
   pickActiveInstall,
@@ -26,6 +29,7 @@ import {
   type ActiveInstall,
 } from "./storage/active-install";
 import { readActiveMod, writeActiveMod } from "./storage/active-mod";
+import { showWelcome } from "./storage/welcome-preferences";
 import { loadBuildInfo, type BuildInfo } from "./storage/install";
 import { Manifest, type GameRecord, type InstallationRecord } from "./storage/manifest";
 import { listMods, type ModRecord } from "./storage/mods";
@@ -306,23 +310,31 @@ function Main() {
         <Route
           path="/"
           element={
-            <PlayScreen
-              install={active}
-              edition={edition}
-              build={build}
-              mods={edition ? (modState.mods[edition.storage] ?? []) : []}
-              activeMod={edition ? (modState.active[edition.storage] ?? "") : ""}
-              onActiveMod={async (name) => {
-                if (!edition) return;
-                await writeActiveMod(edition, name);
-                setModsVersion((n) => n + 1);
-              }}
-              onPlay={play}
-              onInstall={() => navigate("/import")}
-              onResume={resumeImport}
-            />
+            // a first run, and every visit while nothing is installed, opens on the welcome page
+            showWelcome(!!active) ? (
+              <Navigate to="/welcome" replace state={WELCOME_REDIRECT} />
+            ) : (
+              <PlayScreen
+                install={active}
+                edition={edition}
+                build={build}
+                mods={edition ? (modState.mods[edition.storage] ?? []) : []}
+                activeMod={edition ? (modState.active[edition.storage] ?? "") : ""}
+                onActiveMod={async (name) => {
+                  if (!edition) return;
+                  await writeActiveMod(edition, name);
+                  setModsVersion((n) => n + 1);
+                }}
+                onPlay={play}
+                onInstall={() => navigate("/import")}
+                onResume={resumeImport}
+              />
+            )
           }
         />
+        <Route path="/welcome" element={<WelcomeScreen installed={!!active} />} />
+        <Route path="/install/guide" element={<InstallGuide />} />
+        <Route path="/account" element={<AccountScreen />} />
         <Route
           path="/mods"
           element={
