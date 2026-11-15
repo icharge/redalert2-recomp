@@ -105,9 +105,10 @@ nick and the session token.
    uses it for `g_login`, `g_nick` and the virtual IP whatever was typed. Without this the game and the server would
    disagree on the nick. The dialog's Nickname field does not come from `WolChat::GetNick`: the game fills it from its
    own `wolinfo.ini` / `wolinfomd.ini` (`[DefaultPersona] LastValid=`), so the dialog still shows the last nick used.
-3. The dialog itself is skipped either through the game's own auto-login path (task LW-7a; that same file has
-   `[Ask] AutoLogin=no`, the first lead), or by the shim completing the dialog through the browser build's dialog hooks
-   (LW-7b).
+3. The dialog itself is skipped through the game's own auto-login (found in LW-7a): on entering Internet the game
+   reads `[DefaultPersona] AutoLogin=<nick>` from that same file and, when `WolChat::GetNick` has that nick in a slot
+   from 1 up, connects with it and its saved password without the dialog. LW-7b stages that key and fills that slot
+   for a launch login (details in [handoff-wolapi.md](handoff-wolapi.md)).
 
 Steps 1 and 2 are done (F5A-2, F5A-3) and checked in both editions. The retail field keeps 9 characters and the game
 lowercases what is typed (measured in F5A-3), so game account nicks are capped at 9, below the server's general 15.

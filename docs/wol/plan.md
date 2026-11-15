@@ -196,9 +196,9 @@ It gets:
   **game accounts** (WOL nicks, today's `accounts` rows, which keep the ratings), at most **one** for now (`members.maxGameAccounts`
   = 1). See [members-and-sso.md](members-and-sso.md);
 - **WOL auto-login**: PLAY hands the game a ticket (`#ticket=`), the loader redeems it, the shim uses the ticket's nick, and the game
-  goes from Internet to the welcome screen without the login dialog. The first three steps are done (F5A-1, F5A-2, F5A-3). LW-7a first
-  looks for the game's own auto-login path (lead: `[Ask] AutoLogin` in the game's `wolinfo(md).ini`, which also gives the dialog its
-  nickname); otherwise LW-7b completes the dialog from the shim. Without a ticket nothing changes, so retail-style login, bots and Vera keep
+  goes from Internet to the welcome screen without the login dialog. The first three steps are done (F5A-1, F5A-2, F5A-3). LW-7a found
+  the game's own auto-login (`[DefaultPersona] AutoLogin=<nick>` in its `wolinfo(md).ini` plus that nick in a `GetNick` slot from 1
+  up; seen working in the browser), so LW-7b sets those two up for a launch login instead of driving the dialog. Without a ticket nothing changes, so retail-style login, bots and Vera keep
   working.
 
 ## Phase 2: Yuri's Revenge Quick Co-op
@@ -258,7 +258,7 @@ are observations in R1; S7 (the Connection slider) is a decision, left alone by 
 | `Bun.SQL` covers Postgres and MySQL in Bun 1.3.13 | **Assumed** (DB4 checks) |
 | A native build can reach the server | **Seen: no.** `wolapi.c` is web-only; `host.c` has no WOL code; the server takes only `session <token>` before login. Not planned (decision 10) |
 | A retail install can log in through the TCP gateway | **Open**, likely not for the same reason; not planned (web only) |
-| The game's own auto-login path exists | **Open** (LW-7a) |
+| The game's own auto-login path exists | **Seen** (LW-7a): `[DefaultPersona] AutoLogin` + a `GetNick` slot from 1 up skipped the dialog in YR in the browser; RA2's code is the same shape, not run |
 | The admin console works with the new login in a browser | **Assumed**: typechecked and the API is tested, the UI was not run |
 | `LadderService.updateSettings` applies live | **Assumed** (F6-2 adds the test) |
 | Migrations, scheduled backup, season lifecycle, members, launcher pages | **Not started** |

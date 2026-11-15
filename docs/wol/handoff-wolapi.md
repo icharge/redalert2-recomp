@@ -367,6 +367,50 @@ address compare 0x5235D0 / 0x523690, FrameSync receive handler near 0x626800,
 OnGameStart `CChatEventSink__virtual_23` 0x761570. Native game-ID fields: 0xB2A7FC
 (RA2), 0xB779D4 (YR).
 
+## The game's own WOL auto-login (LW-7a, 15 November)
+
+Both editions can skip the login dialog by themselves. No shim or lift change is
+needed for the mechanism; the launcher only has to set it up (task LW-7b).
+
+**Where the game keeps it.** `wolinfo.ini` (RA2) / `wolinfoMD.ini` (YR) in the
+game folder, through the `PlayerProfile` code (`WOLPersonaInformation.cpp`):
+
+| Key | Read / written by (YR; RA2) | Meaning |
+|---|---|---|
+| `[DefaultPersona] LastValid=` | | the nick the login dialog shows (not `WolChat::GetNick`) |
+| `[DefaultPersona] AutoLogin=` | get `0x00779B50`, set `0x00779C90`; RA2 `0x007390B0` | the nick to log in as without the dialog |
+| `[Ask] AutoLogin=` | get `0x00779730`, set `0x00779830`; RA2 `0x00738CB0` | whether to ask "log in automatically next time?" after a login (default yes; `no` = don't ask) |
+| `[<nick>]` | | per-persona stats and locale (`Server`, `Locale`, `Wins`, ...); no password |
+
+**The check, on entering Internet** (YR `wonline.cpp` near `0x0078710F`; RA2 near `0x007430CF`):
+
+1. Registry gate: `HKLM\SOFTWARE\Westwood\WOLAPI\Options` (DWORD) read at
+   `0x005175F0` (RA2 `0x004FF200`); `0x005176A0` (RA2 `0x004FF2B0`) returns true when bit 0
+   is clear. A missing value counts as 0, so the gate is open in the browser build.
+2. Read `[DefaultPersona] AutoLogin`. Empty: show the dialog as usual.
+3. Otherwise call `WolChat::GetNick` (vtable `+0x90`) for **slots 1 to 32** (slot 0 is
+   never asked) and compare each nick with the persona, case-insensitively
+   (`0x7C8D20`). On a match the nick goes to `0xB73E40` and its password to
+   `0xB7778C` (RA2 `0xB26CB8` and `0xB2A63C`), and the game connects with them, no
+   dialog. No match: the dialog.
+
+**Seen in the browser (YR, `?test=1`, local ra2web, 15 November):** log in once with
+"Remember Account Information" ticked (the game stores the nick and password through
+`WolChat::SetNick`, which the shim keeps in `g_saved_nicks`, and writes
+`LastValid=` and a `[carol]` section); add `[DefaultPersona] AutoLogin=carol` to
+`/game/wolinfomd.ini`; Main Menu, Internet: the menu (`0x10E`) went straight to the lobby
+(`0x113`) without the login dialog (`0x10F`), and the server logged a fresh `/login`
+for carol with the remembered password. The game did not ask about auto-login after
+the first login because that folder's file has `[Ask] AutoLogin=no`.
+
+**Limits found on the way.** The dialog's Nickname and Password fields keep 9
+characters, and the nick is lowercased (`password123` was cut and refused;
+`ABCDEFGHIJKL` became `abcdefghi`).
+
+**Not checked yet** (LW-7b): RA2 in the browser (the code is the same shape); whether a
+launch session needs `[Ask] AutoLogin=no` to avoid the question after each login; which
+slot the game's own `SetNick` used.
+
 ## Still open after the playable RA2/YR POC
 
 ### Public endpoint checkpoint and user testing (25 October)
