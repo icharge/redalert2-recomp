@@ -101,15 +101,18 @@ nick and the session token.
 
 1. The loader redeems the ticket and keeps `{user, sessionToken}`; `WolClient` uses that session and skips
    `/register`/`/login`.
-2. `wolapi.c` gets the nick through a new export (`ra2_wolapi_set_launch_login`). It fills the saved-nick slot the
-   dialog reads (`WolChat::GetNick`), and `m_chat_request_connection` uses it for `g_login`, `g_nick` and the virtual IP
-   whatever was typed. Without this the game and the server would disagree on the nick.
-3. The dialog itself is skipped either through the game's own auto-login path, if the lifted code has one (task LW-7a
-   looks), or by the shim completing the dialog through the browser build's dialog hooks (LW-7b).
+2. `wolapi.c` gets the nick through a new export (`ra2_wolapi_set_launch_login`), and `m_chat_request_connection`
+   uses it for `g_login`, `g_nick` and the virtual IP whatever was typed. Without this the game and the server would
+   disagree on the nick. The dialog's Nickname field does not come from `WolChat::GetNick`: the game fills it from its
+   own `wolinfo.ini` / `wolinfomd.ini` (`[DefaultPersona] LastValid=`), so the dialog still shows the last nick used.
+3. The dialog itself is skipped either through the game's own auto-login path (task LW-7a; that same file has
+   `[Ask] AutoLogin=no`, the first lead), or by the shim completing the dialog through the browser build's dialog hooks
+   (LW-7b).
 
-The retail field holds 10 bytes (`nick[10]`), so game account nicks are capped at what it shows (9 or 10
-characters, measured in F5A-3), below the server's general 15. Without a ticket nothing changes: the typed nick and
-password still go to `/register`/`/login`. That keeps retail-style login, bots and Vera working.
+Steps 1 and 2 are done (F5A-2, F5A-3) and checked in both editions. The retail field keeps 9 characters and the game
+lowercases what is typed (measured in F5A-3), so game account nicks are capped at 9, below the server's general 15.
+Without a ticket nothing changes: the typed nick and password still go to `/register`/`/login`. That keeps
+retail-style login, bots and Vera working.
 
 ## Expiry, refresh, revocation
 

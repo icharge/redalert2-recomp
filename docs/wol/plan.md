@@ -196,8 +196,9 @@ It gets:
   **game accounts** (WOL nicks, today's `accounts` rows, which keep the ratings), at most **one** for now (`members.maxGameAccounts`
   = 1). See [members-and-sso.md](members-and-sso.md);
 - **WOL auto-login**: PLAY hands the game a ticket (`#ticket=`), the loader redeems it, the shim uses the ticket's nick, and the game
-  goes from Internet to the welcome screen without the login dialog. LW-7a first looks for the game's own auto-login path in the lifted
-  code; otherwise LW-7b completes the dialog from the shim. Without a ticket nothing changes, so retail-style login, bots and Vera keep
+  goes from Internet to the welcome screen without the login dialog. The first three steps are done (F5A-1, F5A-2, F5A-3). LW-7a first
+  looks for the game's own auto-login path (lead: `[Ask] AutoLogin` in the game's `wolinfo(md).ini`, which also gives the dialog its
+  nickname); otherwise LW-7b completes the dialog from the shim. Without a ticket nothing changes, so retail-style login, bots and Vera keep
   working.
 
 ## Phase 2: Yuri's Revenge Quick Co-op
@@ -295,8 +296,8 @@ Taken later the same day, for the lobby bot (numbered on so the open ones keep t
 17. **The bot's name is `YuriBOT`** (a setting, restart-only, reserved from registration and guest names).
 
 11. **Member sign-in:** a login name or email, kept apart from the game account's nick; claiming an existing WOL account with its
-    password counts toward the limit of one; game account and guest names capped at the retail login field's width (F5A-3 confirms
-    9 characters; the shim already reads sender nicks as at most 9, `wolapi.c:672`).
+    password counts toward the limit of one; game account and guest names capped at the retail login field's width: 9 characters,
+    measured in F5A-3 (the field keeps 9 and the game lowercases them; the shim also reads sender nicks as at most 9).
 12. **DB3 (async storage) runs after phase 1.** Seasons, members and the bot are written against today's synchronous `Storage` and
     converted with everything else; Postgres and MySQL (DB4, DB7) follow DB3.
 13. **S7, the Connection slider: left alone.**
