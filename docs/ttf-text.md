@@ -87,6 +87,10 @@ been checked. The Linux i386 core archive cross-compiled at an earlier
 core revision in the initial worktree; the current Linux host and Linux
 desktop/Wine/CrossOver runtime have not been verified.
 
+On 2026-11-15 a sixth harness, `text_web_input` (the browser's typing
+mapping, `src/web/text_input.h`), was added; all six passed on Windows x86
+and under Emscripten.
+
 An independent Chrome run of the gamemd browser module reached the real
 800×600 main menu and Single Player submenu with TTF off and on, using
 the same rebuilt module and local retail files. Pixel bounds for all six
@@ -100,15 +104,18 @@ The current fast-link gamemd module is approximately 168.4 MB of Wasm,
 31.7 MB Brotli, and 40.4 MB gzip. These are iteration build sizes, not release
 sizes or a measured feature delta.
 
-## Input work remains separate
+## Typing
 
-No Unicode text entry, IME composition, browser text box, network encoding,
-or guest edit storage has been added. The browser TYPE control remains as
-before. Those changes require the separate edit-owner and encoding
-inventory, including distinct tactical-chat and menu/lobby input styles.
+With `--ttf-text`, text committed in the page's TYPE box reaches the game's
+edit controls as Unicode: each code point in the Basic Multilingual Plane is
+posted as its own `WM_CHAR` value, which the game's edit control stores as
+one UTF-16 unit. Without the flag, typing sends Windows-874 bytes as before,
+for the Thai FNT. See [the input diagnosis](thai-input-diagnosis.md) for the
+edit control's contract and the probe results.
 
-The 2026-11-11 browser probe confirmed that Thai typing in the Skirmish name,
-LAN lobby name, and LAN chat draft is still broken with TTF enabled: `การ`
-arrives as widened CP874 bytes (`¡ÒÃ`) rather than Thai Unicode. See the
-[input diagnosis](thai-input-diagnosis.md). Font coverage alone does not fix
-this input conversion.
+This covers the game's wide edit fields, such as the LAN lobby chat draft,
+which the 2026-11-15 probe confirmed holds and draws Thai. Player name fields
+are byte-only in the game and refuse characters past `0xFF`, so Thai names
+are still not possible. No IME composition display, physical Thai keyboard
+layout, network encoding or saved-setting change has been added. Tactical
+chat and the RA2 edition were not checked.
