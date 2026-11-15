@@ -101,6 +101,21 @@ it("asks for raw (unadjusted) mouse movement under Pointer Lock", async () => {
   control.dispose();
 });
 
+it("keeps the OS pointer acceleration on a Mac, where raw movement is far too slow", async () => {
+  Object.defineProperty(navigator, "platform", { configurable: true, value: "MacIntel" });
+  try {
+    const { canvas, request, control } = setup();
+    control.update(true);
+    await settle();
+    expect(request).toHaveBeenCalledOnce();
+    expect(request).toHaveBeenCalledWith();
+    expect(document.pointerLockElement).toBe(canvas);
+    control.dispose();
+  } finally {
+    Reflect.deleteProperty(navigator, "platform");
+  }
+});
+
 it("still locks when the browser refuses raw mouse movement", async () => {
   const { canvas, request, control } = setup();
   request.mockRejectedValueOnce(

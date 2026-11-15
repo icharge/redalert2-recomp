@@ -42,6 +42,14 @@ export async function leaveFullscreen(): Promise<void> {
  * fast flick into an edge can arrive as one large delta - the cursor jumps. */
 type PointerLockRequest = (options?: { unadjustedMovement?: boolean }) => Promise<void> | void;
 
+/** macOS has no desktop-edge recentre to guard against, and its pointer
+ * acceleration is what makes a mouse or trackpad usable: raw counts under the
+ * lock move the cursor several times slower than the player is used to. */
+function isMac(): boolean {
+  const nav = navigator as Navigator & { userAgentData?: { platform?: string } };
+  return /^(mac|iphone|ipad)/i.test(nav.userAgentData?.platform || navigator.platform || "");
+}
+
 export function lockPointer(canvas: HTMLCanvasElement): Promise<void> {
   canvas.focus();
   if (document.pointerLockElement === canvas) return Promise.resolve();
@@ -75,7 +83,9 @@ export function lockPointer(canvas: HTMLCanvasElement): Promise<void> {
     document.addEventListener("pointerlockchange", changed);
     document.addEventListener("pointerlockerror", failed);
     try {
-      const result = request.call(canvas, { unadjustedMovement: true });
+      const result = isMac()
+        ? request.call(canvas)
+        : request.call(canvas, { unadjustedMovement: true });
       // Older browsers return void and report the result through events.
       result?.then?.(() => done(), rawDenied);
     } catch (error) {
