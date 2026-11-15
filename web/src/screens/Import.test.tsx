@@ -9,6 +9,7 @@ import { Manifest } from "../storage/manifest";
 import { listMods } from "../storage/mods";
 import type { CopyTarget } from "../storage/opfs";
 import { Import, type ImportDeps } from "./Import";
+import { SOURCES } from "./InstallGuide";
 
 const STAMP = 0x3bdf544e;
 const build: BuildInfo = {
@@ -124,13 +125,45 @@ describe("Import", () => {
     expect(screen.getByRole("heading", { name: "INSTALL THE GAME" })).toBeInTheDocument();
     expect(
       screen.getByText(
-        "Pick your Red Alert 2 folder, or an archive or installer of it. Nothing is uploaded.",
+        "Use your own copy of Red Alert 2 or Yuri’s Revenge. The files are copied into this browser. Nothing is uploaded.",
       ),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "CHOOSE FOLDER" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Use file picker" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Use an archive or installer" })).toBeInTheDocument();
-    expect(screen.getByText("Drop the folder or archive here")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Folder button not working?" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "USE AN ARCHIVE OR INSTALLER" })).toBeInTheDocument();
+    expect(screen.getByText("Drop your game folder here")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Needs about 2 GB free, or 3 GB with the movies\./),
+    ).toBeInTheDocument();
+  });
+
+  it("says where each copy of the game puts its folder", async () => {
+    const { user } = await setup(folder());
+    const where = screen.getByRole("complementary", { name: "WHERE IS MY GAME?" });
+    const buttons = within(where).getAllByRole("button");
+    expect(buttons.map((button) => button.textContent)).toEqual(SOURCES.map((entry) => entry.name));
+    expect(buttons[0]).toHaveAttribute("aria-expanded", "true");
+    expect(within(where).getByText(SOURCES[0]!.folders[0]!)).toBeInTheDocument();
+    const steam = within(where).getByRole("button", { name: "Steam" });
+    const steamEntry = SOURCES.find((entry) => entry.id === "steam")!;
+    expect(steam).toHaveAttribute("aria-expanded", "false");
+    expect(within(where).queryByText(steamEntry.folders[0]!)).toBeNull();
+    await user.click(steam);
+    expect(steam).toHaveAttribute("aria-expanded", "true");
+    expect(within(where).getByText(steamEntry.folders[0]!)).toBeInTheDocument();
+    expect(within(where).getByText(steamEntry.pick)).toBeInTheDocument();
+    expect(buttons[0]).toHaveAttribute("aria-expanded", "false");
+    expect(within(where).queryByText(SOURCES[0]!.folders[0]!)).toBeNull();
+    await user.click(steam);
+    expect(steam).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("offers the file picker when the folder button does not work", async () => {
+    const { user } = await setup(folder());
+    const input = screen.getByLabelText("Game folder");
+    const click = vi.spyOn(input, "click");
+    await user.click(screen.getByRole("button", { name: "Folder button not working?" }));
+    expect(click).toHaveBeenCalled();
   });
 
   it("opens an archive or installer with 7-Zip, then checks it like a folder", async () => {
@@ -199,7 +232,7 @@ describe("Import", () => {
       </Theme>,
     );
     expect(screen.getByRole("button", { name: "CHOOSE FOLDER" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Use file picker" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Folder button not working?" })).toBeNull();
   });
 
   it("goes back when asked", async () => {

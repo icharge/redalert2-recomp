@@ -27,6 +27,7 @@ import {
 } from "../storage/install";
 import type { Manifest } from "../storage/manifest";
 import { CopyCancelled, type CopyProgress, type CopyTarget } from "../storage/opfs";
+import { SOURCES } from "./InstallGuide";
 import styles from "./Import.module.css";
 
 /** What the screen needs of the browser, so a test can give it fakes. */
@@ -345,54 +346,73 @@ function Chooser(props: {
   const archive = useRef<HTMLInputElement>(null);
   const pickFiles = () => input.current?.click();
   return (
-    <div className={styles.body}>
-      <div className={styles.intro}>
-        <h1 className={styles.title}>INSTALL THE GAME</h1>
-        <p className={styles.muted}>
-          Pick your Red Alert 2 folder, or an archive or installer of it. Nothing is uploaded.
-        </p>
-      </div>
-      {props.message && (
-        <p className={styles.warn} role="status">
-          {props.message}
-        </p>
-      )}
-      <div
-        className={styles.drop}
-        data-over={props.over || undefined}
-        onDragOver={(event) => {
-          event.preventDefault();
-          props.setOver(true);
-        }}
-        onDragLeave={() => props.setOver(false)}
-        onDrop={props.onDrop}
-      >
-        <svg
-          width="28"
-          height="28"
-          viewBox="0 0 16 16"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.2"
-          aria-hidden="true"
-        >
-          <path d="M8 10.5V2.5M5 5.5l3-3 3 3M2.5 10v3.5h11V10" />
-        </svg>
-        <span>Drop the folder or archive here</span>
-      </div>
-      <div className={styles.actions}>
-        <button
-          type="button"
-          className={styles.primary}
-          onClick={props.deps.pickDirectory ? props.onPick : pickFiles}
-        >
-          CHOOSE FOLDER
-        </button>
-        {props.deps.pickDirectory && (
-          <button type="button" className={styles.link} onClick={pickFiles}>
-            Use file picker
-          </button>
+    <div className={styles.choose}>
+      <div className={styles.body}>
+        <div className={styles.intro}>
+          <h1 className={styles.title}>INSTALL THE GAME</h1>
+          <p className={styles.lead}>
+            Use your own copy of Red Alert 2 or Yuri’s Revenge. The files are copied into this
+            browser. Nothing is uploaded.
+          </p>
+        </div>
+        {props.message && (
+          <p className={styles.warn} role="status">
+            {props.message}
+          </p>
         )}
+        <div
+          className={styles.drop}
+          data-over={props.over || undefined}
+          onDragOver={(event) => {
+            event.preventDefault();
+            props.setOver(true);
+          }}
+          onDragLeave={() => props.setOver(false)}
+          onDrop={props.onDrop}
+        >
+          <svg
+            width="34"
+            height="34"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.1"
+            aria-hidden="true"
+          >
+            <path d="M1.5 4h5l1.5 1.5h6.5v8h-13z" />
+          </svg>
+          <span className={styles.dropTitle}>Drop your game folder here</span>
+          <span className={styles.dropOr}>or</span>
+          <button
+            type="button"
+            className={styles.primary}
+            onClick={props.deps.pickDirectory ? props.onPick : pickFiles}
+          >
+            CHOOSE FOLDER
+          </button>
+        </div>
+        <div className={styles.actions}>
+          <button
+            type="button"
+            className={styles.secondary}
+            onClick={() => archive.current?.click()}
+          >
+            USE AN ARCHIVE OR INSTALLER
+          </button>
+          <span className={styles.caption}>.7z · .zip · .rar · installer .exe</span>
+          <InfoTip text="A .7z, .zip or .rar of the game folder, or an installer 7-Zip can open. Some installers cannot be opened: install the game, then pick its folder." />
+        </div>
+        <p className={styles.caption}>
+          Needs about 2 GB free, or 3 GB with the movies.
+          {props.deps.pickDirectory && (
+            <>
+              {" "}
+              <button type="button" className={styles.link} onClick={pickFiles}>
+                Folder button not working?
+              </button>
+            </>
+          )}
+        </p>
         <input
           ref={input}
           type="file"
@@ -404,10 +424,6 @@ function Chooser(props: {
           multiple
           onChange={(event) => event.target.files && props.onFiles(event.target.files)}
         />
-        <button type="button" className={styles.link} onClick={() => archive.current?.click()}>
-          Use an archive or installer
-        </button>
-        <InfoTip text="A .7z, .zip or .rar of the game folder, or an installer 7-Zip can open. Some installers cannot be opened: install the game, then pick its folder." />
         <input
           ref={archive}
           type="file"
@@ -422,7 +438,55 @@ function Chooser(props: {
           }}
         />
       </div>
+      <WhereIsMyGame />
     </div>
+  );
+}
+
+/** Where each copy of the game puts its folder: one entry open at a time, the first at the start. */
+function WhereIsMyGame() {
+  const [open, setOpen] = useState(0);
+  return (
+    <aside className={styles.where} aria-labelledby="install-where">
+      <h2 id="install-where" className={styles.asideTitle}>
+        WHERE IS MY GAME?
+      </h2>
+      {SOURCES.map((source, index) => {
+        const expanded = index === open;
+        return (
+          <div key={source.id} className={styles.source}>
+            <button
+              type="button"
+              className={styles.sourceButton}
+              aria-expanded={expanded}
+              aria-controls={`install-source-${source.id}`}
+              onClick={() => setOpen(expanded ? -1 : index)}
+            >
+              {source.name}
+              <svg
+                className={styles.chevron}
+                width="14"
+                height="14"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                aria-hidden="true"
+                data-open={expanded || undefined}
+              >
+                <path d="M4 6l4 4 4-4" />
+              </svg>
+            </button>
+            {expanded && (
+              <div className={styles.sourceBody} id={`install-source-${source.id}`}>
+                <code className={styles.path}>{source.folders[0]}</code>
+                <p className={styles.caption}>{source.pick}</p>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </aside>
   );
 }
 
