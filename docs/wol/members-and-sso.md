@@ -1,6 +1,6 @@
 # Members and launcher single sign-on: design
 
-Status of 14 Nov 2026: **design; decisions taken (end of page); nothing built yet.** Nothing here
+Status of 15 Nov 2026: **design; decisions taken (end of page); the server's ticket redeem is built** (F5A-1, ra2web `4c46ba8`: `POST /v1/auth/redeem`, `scripts/ticket.ts`). Nothing here
 changes how a client logs in today. The launcher is the recomp **web launcher** (`web/src`, which exists:
 Play, Mods, Game, Settings, Install); it gains a welcome page, an install guide, guest or member sign-in and
 WOL auto-login ([tasks.md](tasks.md), track LW). An external launcher can use the same ticket contract later.

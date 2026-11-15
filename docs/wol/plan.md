@@ -105,7 +105,7 @@ the budget, so players behind one NAT stopped being able to register. Left: REG-
 
 ### F5. Members and launcher sign-in
 
-**Slice A: tickets on today's accounts** (tasks F5A-1..F5A-3; no migration, the table is additive). Server: `TicketService`, `POST
+**Slice A: tickets on today's accounts** (tasks F5A-1..F5A-3; no migration, the table is additive). **Server built** (F5A-1, ra2web `4c46ba8`): `TicketService`, `POST
 /v1/auth/redeem`, a mint script. Web: the loader reads and clears `#ticket=`, redeems, and `WolClient` uses the held session.
 **The gap the earlier plan missed (Seen):** the game's nick comes from the dialog. `m_chat_request_connection`
 (`src/web/wolapi.c:1118`) copies the typed login into `g_login` and then `g_nick` (line 1127) and sets the virtual IP from it, while
