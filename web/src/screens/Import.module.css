@@ -327,38 +327,100 @@
   opacity: 0;
 }
 
+.review {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 32px;
+  align-items: start;
+}
+.foundLine {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  font-size: 15px;
+}
+.ready {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--green);
+}
+
 .sorted {
   display: flex;
   flex-direction: column;
+  border-top: 1px solid var(--line);
 }
 .kind {
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) auto 72px;
+  grid-template-columns: 22px minmax(0, 1fr) auto 72px;
   align-items: center;
-  gap: 12px;
-  padding: 9px 0;
+  gap: 14px;
+  min-height: 60px;
+  box-sizing: border-box;
+  padding: 8px 0;
   border-bottom: 1px solid var(--line);
 }
 label.kind {
   cursor: pointer;
 }
-.kind input {
-  width: 18px;
-  height: 18px;
+.box {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.boxFixed {
+  background: #3a3b40;
+  color: var(--text);
+}
+/* the native checkbox, drawn as the board's 22px box */
+.check {
+  appearance: none;
+  width: 22px;
+  height: 22px;
   margin: 0;
-  accent-color: var(--red);
+  box-sizing: border-box;
+  border: 2px solid var(--red);
+  background: var(--red) center / 12px 12px no-repeat
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23fff' stroke-width='2.4'%3E%3Cpath d='M2.5 8.5l3.5 3.5 7.5-8'/%3E%3C/svg%3E");
+  cursor: pointer;
+}
+.check:not(:checked) {
+  border-color: #8a8c92;
+  background-image: none;
+  background-color: transparent;
+}
+.check:disabled {
+  border-color: #55565c;
+  background-image: none;
+  background-color: transparent;
+  cursor: not-allowed;
+}
+.check:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
 }
 .kind[data-off] .kindName,
 .kind[data-off] .size {
   color: var(--muted);
 }
-.lock {
+.always {
+  margin-left: 6px;
+  font-family: var(--font-label);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
   color: var(--muted);
 }
 .kindText {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   min-width: 0;
 }
 .kindName {
@@ -366,7 +428,7 @@ label.kind {
   font-weight: 600;
 }
 .kindHint {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--muted);
 }
 .count {
@@ -374,16 +436,17 @@ label.kind {
   color: var(--muted);
 }
 .size {
-  font-size: 14px;
+  font-size: 15px;
   text-align: right;
 }
 .expand {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 8px;
-  margin: -4px -8px;
-  border: 1px solid transparent;
+  min-height: 44px;
+  padding: 0 10px;
+  margin: 0 -10px;
+  border: 1px solid #55565c;
   background: transparent;
   color: var(--text);
   font: inherit;
@@ -392,11 +455,79 @@ label.kind {
 }
 .expand:hover,
 .expand:focus-visible {
-  border-color: #3a3b40;
+  border-color: var(--text);
 }
-.expand svg {
-  transition: transform 0.15s;
+
+.leftOut {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
+.disclosure {
+  align-self: flex-start;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.leftOut .caption {
+  line-height: 1.5;
+}
+
+.space {
+  box-sizing: border-box;
+  background: #121317;
+  border: 1px solid var(--line);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.space .asideTitle {
+  margin: 0;
+}
+.total {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 40px;
+  line-height: 1;
+}
+.meterBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.meter {
+  height: 8px;
+  background: var(--line);
+}
+.meter > div {
+  height: 8px;
+  background: var(--red);
+}
+.note {
+  margin: 0;
+  padding: 10px 12px;
+  border-left: 3px solid var(--amber);
+  background: rgba(242, 177, 52, 0.08);
+  font-size: 14px;
+  line-height: 1.45;
+}
+.install {
+  height: 56px;
+  font-size: 20px;
+  padding: 0 16px;
+}
+
 .modsDialog {
   background: #121317 !important;
   border: 1px solid #3a2023;
@@ -541,7 +672,8 @@ label.kind {
 }
 
 @media (max-width: 900px) {
-  .choose {
+  .choose,
+  .review {
     grid-template-columns: minmax(0, 1fr);
   }
 }
@@ -562,9 +694,7 @@ label.kind {
     font-size: 26px;
   }
   .kind {
-    grid-template-columns: 24px minmax(0, 1fr) auto;
-  }
-  .size {
-    display: none;
+    grid-template-columns: 22px minmax(0, 1fr) auto auto;
+    gap: 10px;
   }
 }

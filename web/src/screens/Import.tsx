@@ -73,12 +73,19 @@ export function browserDeps(build: BuildInfo, manifest: Manifest, target: CopyTa
 type Stage =
   | { name: "choose"; message?: string }
   | { name: "looking"; folder: string }
-  | { name: "review"; source: FolderSource; options: ImportOptions; prepared: Prepared }
+  | {
+      name: "review";
+      source: FolderSource;
+      options: ImportOptions;
+      prepared: Prepared;
+      /** what the browser allows, if it says */
+      quota?: number | undefined;
+    }
   | { name: "copying"; progress: CopyProgress | null; persistent: boolean | null }
   | { name: "failed"; message: string };
 
 const FIRST: ImportOptions = {
-  movies: false,
+  movies: true,
   saves: true,
   settings: false,
   mods: true,
@@ -127,8 +134,9 @@ export function Import({
   async function look(source: FolderSource, options: ImportOptions) {
     setStage({ name: "looking", folder: source.name });
     try {
-      const prepared = await prepareImport(source, deps.build, options, await deps.estimate());
-      setStage({ name: "review", source, options, prepared });
+      const estimate = await deps.estimate();
+      const prepared = await prepareImport(source, deps.build, options, estimate);
+      setStage({ name: "review", source, options, prepared, quota: estimate.quota });
     } catch (error) {
       setStage({ name: "failed", message: errorText(error) });
     }
@@ -503,7 +511,7 @@ const GROUPS: { id: Choosable; label: string; hint: string; unit: [string, strin
   {
     id: "movies",
     label: "Movies",
-    hint: "Without them, cutscenes are black",
+    hint: "Campaign cutscenes. Without them, cutscenes are black",
     unit: ["file", "files"],
   },
   {
@@ -567,6 +575,22 @@ function ModList({ mods }: { mods: FoundMod[] }) {
   );
 }
 
+function Check({ size = 12 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.4"
+      aria-hidden="true"
+    >
+      <path d="M2.5 8.5l3.5 3.5 7.5-8" />
+    </svg>
+  );
+}
+
 function Review({
   stage,
   onOptions,
@@ -578,7 +602,7 @@ function Review({
   onStart(): void;
   onBack(): void;
 }) {
-  const { prepared, options } = stage;
+  const { prepared, options, quota } = stage;
   const { plan } = prepared;
   const stopped = blocker(prepared);
   const ids = Object.keys(plan.readiness) as GameId[];
@@ -589,34 +613,20 @@ function Review({
   };
   const chosen = (id: Choosable) => options[id] ?? true;
   const [modsOpen, setModsOpen] = useState(false);
+  const [leftOpen, setLeftOpen] = useState(false);
   const leftOut = plan.skipped.filter((file) => !file.reason.endsWith("not brought")).length;
+  const total = formatBytes(plan.bytes);
+  // a browser can decline to say how much it allows
+  const allowed = typeof quota === "number" && Number.isFinite(quota) && quota > 0 ? quota : null;
+  const share = allowed === null ? 0 : Math.min(100, Math.max(2, (plan.bytes / allowed) * 100));
+  const cutscenesBlack = plan.found.movies.count > 0 && !chosen("movies");
   return (
-    <div className={styles.body}>
-      <h1 className={styles.title}>READY TO INSTALL</h1>
-      {stopped && (
-        <p className={styles.failure} role="alert">
-          {stopped}
-        </p>
-      )}
-      <div role="group" aria-label="What the folder has" className={styles.sorted}>
-        <div className={styles.kind}>
-          <svg
-            className={styles.lock}
-            width="18"
-            height="18"
-            viewBox="0 0 16 16"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.4"
-            role="img"
-            aria-label="Always installed"
-          >
-            <rect x="3.5" y="7" width="9" height="6.5" />
-            <path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" />
-          </svg>
-          <span className={styles.kindText}>
-            <span className={styles.kindName}>Game content</span>
-            <ul className={styles.editions}>
+    <div className={styles.review}>
+      <div className={styles.body}>
+        <div className={styles.intro}>
+          <h1 className={styles.title}>CHOOSE WHAT TO INSTALL</h1>
+          <div className={styles.foundLine}>
+            <ul className={styles.editions} aria-label="Games found">
               {ids.map((id) => {
                 const readiness = plan.readiness[id];
                 if (!readiness) return null;
@@ -638,123 +648,202 @@ function Review({
                       }
                     />
                     {brand.title}
-                    <span className={ready ? styles.dotReady : styles.dotWait} aria-hidden="true" />
-                    <span className={ready ? styles.srOnly : styles.notReady}>
-                      {readinessText(readiness)}
-                    </span>
+                    {ready ? (
+                      <span className={styles.ready}>
+                        <Check />
+                        {readinessText(readiness)}
+                      </span>
+                    ) : (
+                      <span className={styles.notReady}>{readinessText(readiness)}</span>
+                    )}
                   </li>
                 );
               })}
             </ul>
-          </span>
-          <span className={styles.count}>{counted(found.game.count, ["file", "files"])}</span>
-          <span className={styles.size}>{formatBytes(found.game.bytes)}</span>
+            <span className={styles.muted}>in {stage.source.name}</span>
+          </div>
         </div>
-        {GROUPS.map((group) => {
-          const { count, bytes } = found[group.id];
-          const expandable = group.id === "mods" && plan.mods.length > 0;
-          return (
-            <Fragment key={group.id}>
-              <label className={styles.kind} data-off={!chosen(group.id) || undefined}>
-                <input
-                  type="checkbox"
-                  aria-label={group.label}
-                  checked={count > 0 && chosen(group.id)}
-                  disabled={count === 0}
-                  onChange={(event) => onOptions({ ...options, [group.id]: event.target.checked })}
-                />
-                <span className={styles.kindText}>
-                  <span className={styles.kindName}>{group.label}</span>
-                  <span className={styles.kindHint}>{group.hint}</span>
-                </span>
-                {expandable ? (
-                  <button
-                    type="button"
-                    className={styles.expand}
-                    aria-haspopup="dialog"
-                    onClick={(event) => {
-                      // a click inside the label would also tick the checkbox
-                      event.preventDefault();
-                      setModsOpen((open) => !open);
-                    }}
-                  >
-                    {counted(count, group.unit)}
-                    <svg
-                      width="12"
-                      height="12"
-                      viewBox="0 0 16 16"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.8"
-                      aria-hidden="true"
-                    >
-                      <path d="M6 4l4 4-4 4" />
-                    </svg>
-                  </button>
-                ) : (
-                  <span className={styles.count}>{counted(count, group.unit)}</span>
-                )}
-                <span className={styles.size}>{count > 0 ? formatBytes(bytes) : ""}</span>
-              </label>
-              {expandable && (
-                <Dialog.Root open={modsOpen} onOpenChange={setModsOpen}>
-                  <Dialog.Content maxWidth="520px" className={styles.modsDialog}>
-                    <Flex align="start" justify="between" gap="3">
-                      <Dialog.Title className={styles.dialogTitle}>MODS IN THE FOLDER</Dialog.Title>
-                      <Dialog.Close>
-                        <button type="button" className={styles.dialogClose} aria-label="Close">
-                          <Cross2Icon />
-                        </button>
-                      </Dialog.Close>
-                    </Flex>
-                    <Dialog.Description size="2">
-                      Each folder in Mods becomes a mod on the MODS tab.{" "}
-                      {counted(count, group.unit)} · {formatBytes(bytes)}
-                    </Dialog.Description>
-                    <ModList mods={plan.mods} />
-                    <div className={styles.dialogActions}>
-                      <Dialog.Close>
-                        <button type="button" className={styles.primary}>
-                          DONE
-                        </button>
-                      </Dialog.Close>
-                    </div>
-                  </Dialog.Content>
-                </Dialog.Root>
-              )}
-            </Fragment>
-          );
-        })}
-      </div>
-      {plan.mods
-        .filter((mod) => mod.problem)
-        .map((mod) => (
-          <p key={mod.name} className={styles.warn}>
-            {mod.name} is left out: it patches the game (Ares or Phobos), which cannot run here.
+        {stopped && (
+          <p className={styles.failure} role="alert">
+            {stopped}
+          </p>
+        )}
+        {plan.mods
+          .filter((mod) => mod.problem)
+          .map((mod) => (
+            <p key={mod.name} className={styles.warn}>
+              {mod.name} is left out: it patches the game (Ares or Phobos), which cannot run here.
+            </p>
+          ))}
+        {plan.warnings.map((warning) => (
+          <p key={warning} className={styles.warn}>
+            {warning}
           </p>
         ))}
-      {plan.warnings.map((warning) => (
-        <p key={warning} className={styles.warn}>
-          {warning}
-        </p>
-      ))}
-      <p className={styles.small}>
-        From {stage.source.name}. {leftOut} left out
-        <InfoTip text="Tools, the game's exe and DLLs, and files the game does not read are not copied." />
-      </p>
-      <div className={styles.actions}>
+        <div role="group" aria-label="What to install" className={styles.sorted}>
+          <div className={styles.kind}>
+            <span className={`${styles.box} ${styles.boxFixed}`} aria-hidden="true">
+              <Check />
+            </span>
+            <span className={styles.kindText}>
+              <span className={styles.kindName}>
+                Game content <span className={styles.always}>ALWAYS</span>
+              </span>
+              <span className={styles.kindHint}>
+                {ids.map((id) => EDITION_BRAND[id].title).join(" and ")}
+              </span>
+            </span>
+            <span className={styles.count}>{counted(found.game.count, ["file", "files"])}</span>
+            <span className={styles.size}>{formatBytes(found.game.bytes)}</span>
+          </div>
+          {GROUPS.map((group) => {
+            const { count, bytes } = found[group.id];
+            const expandable = group.id === "mods" && plan.mods.length > 0;
+            return (
+              <Fragment key={group.id}>
+                <label className={styles.kind} data-off={!chosen(group.id) || undefined}>
+                  <input
+                    type="checkbox"
+                    className={styles.check}
+                    aria-label={group.label}
+                    checked={count > 0 && chosen(group.id)}
+                    disabled={count === 0}
+                    onChange={(event) =>
+                      onOptions({ ...options, [group.id]: event.target.checked })
+                    }
+                  />
+                  <span className={styles.kindText}>
+                    <span className={styles.kindName}>{group.label}</span>
+                    <span className={styles.kindHint}>{group.hint}</span>
+                  </span>
+                  {expandable ? (
+                    <button
+                      type="button"
+                      className={styles.expand}
+                      aria-haspopup="dialog"
+                      onClick={(event) => {
+                        // a click inside the label would also tick the checkbox
+                        event.preventDefault();
+                        setModsOpen((open) => !open);
+                      }}
+                    >
+                      {counted(count, group.unit)}
+                      <svg
+                        width="12"
+                        height="12"
+                        viewBox="0 0 16 16"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        aria-hidden="true"
+                      >
+                        <path d="M6 4l4 4-4 4" />
+                      </svg>
+                    </button>
+                  ) : (
+                    <span className={styles.count}>{counted(count, group.unit)}</span>
+                  )}
+                  <span className={styles.size}>{count > 0 ? formatBytes(bytes) : ""}</span>
+                </label>
+                {expandable && (
+                  <Dialog.Root open={modsOpen} onOpenChange={setModsOpen}>
+                    <Dialog.Content maxWidth="520px" className={styles.modsDialog}>
+                      <Flex align="start" justify="between" gap="3">
+                        <Dialog.Title className={styles.dialogTitle}>
+                          MODS IN THE FOLDER
+                        </Dialog.Title>
+                        <Dialog.Close>
+                          <button type="button" className={styles.dialogClose} aria-label="Close">
+                            <Cross2Icon />
+                          </button>
+                        </Dialog.Close>
+                      </Flex>
+                      <Dialog.Description size="2">
+                        Each folder in Mods becomes a mod on the MODS tab.{" "}
+                        {counted(count, group.unit)} · {formatBytes(bytes)}
+                      </Dialog.Description>
+                      <ModList mods={plan.mods} />
+                      <div className={styles.dialogActions}>
+                        <Dialog.Close>
+                          <button type="button" className={styles.primary}>
+                            DONE
+                          </button>
+                        </Dialog.Close>
+                      </div>
+                    </Dialog.Content>
+                  </Dialog.Root>
+                )}
+              </Fragment>
+            );
+          })}
+        </div>
+        {leftOut > 0 && (
+          <div className={styles.leftOut}>
+            <button
+              type="button"
+              className={styles.disclosure}
+              aria-expanded={leftOpen}
+              onClick={() => setLeftOpen((open) => !open)}
+            >
+              {leftOut === 1
+                ? "1 other file is left out"
+                : `${leftOut.toLocaleString("en-US")} other files are left out`}
+              <svg
+                className={styles.chevron}
+                width="12"
+                height="12"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                aria-hidden="true"
+                data-open={leftOpen || undefined}
+              >
+                <path d="M4 6l4 4 4-4" />
+              </svg>
+            </button>
+            {leftOpen && (
+              <p className={styles.caption}>
+                Tools, the game’s exe and DLLs, and files the game does not read are not copied.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+      <aside className={styles.space} aria-label="Space">
+        <h2 className={styles.asideTitle}>SPACE NEEDED</h2>
+        <p className={styles.total}>{total}</p>
+        {allowed !== null && (
+          <div className={styles.meterBlock}>
+            <div
+              className={styles.meter}
+              role="img"
+              aria-label={`${total} of ${formatBytes(allowed)}`}
+            >
+              <div style={{ width: `${share}%` }} />
+            </div>
+            <span className={styles.caption}>
+              of the {formatBytes(allowed)} this browser allows
+            </span>
+          </div>
+        )}
+        {cutscenesBlack && (
+          <p className={styles.note}>
+            Cutscenes will be black. You can add the movies later on the GAME tab.
+          </p>
+        )}
         <button
           type="button"
-          className={styles.primary}
+          className={`${styles.primary} ${styles.install}`}
           disabled={stopped !== null}
           onClick={onStart}
         >
-          INSTALL {formatBytes(plan.bytes)}
+          INSTALL {total}
         </button>
         <button type="button" className={styles.secondary} onClick={onBack}>
-          OTHER FOLDER
+          CHOOSE ANOTHER FOLDER
         </button>
-      </div>
+      </aside>
     </div>
   );
 }

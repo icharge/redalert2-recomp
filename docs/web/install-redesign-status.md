@@ -20,13 +20,14 @@ They belong to the session that owns the Cursor setting and are left alone.
 - [x] 3. Empty Play tab.
 - [x] 4. Install frame.
 - [x] 5. Choose step.
-- [ ] 6. Review step.
+- [x] 6. Review step.
 - [ ] 7. Installing and failed steps.
 - [ ] 8. Browser check.
 
 ## Decisions
 
-(none yet)
+- Task 6: the left-out disclosure reads "1 other file is left out" for one file, and "{n} other files are left out" otherwise (the plan's wording is the plural only).
+- Task 6: a browser whose `estimate()` gives no quota still gets the existing "not enough room" block from `checkSpace` (`storage/install.ts`, not touched here): with no quota, free space counts as 0. The meter is hidden as the plan says; the INSTALL button is disabled by that existing check. Not changed.
 
 ## Left
 
