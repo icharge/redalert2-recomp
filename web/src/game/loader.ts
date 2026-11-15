@@ -38,7 +38,18 @@ import {
   shouldLoadImportedGameFile,
   type ThaiFontPreference,
 } from "../storage/thai-fonts";
-import { toWolSocketUrl, withBrowserWolPort, wolLineBytes, wolLoginResult, WolClient } from "./wol";
+import {
+  redeemTicket,
+  takeLaunchTicket,
+  ticketEdition,
+  toWolSocketUrl,
+  withBrowserWolPort,
+  wolLineBytes,
+  wolLoginResult,
+  WolClient,
+  WolLoginError,
+  type HeldSession,
+} from "./wol";
 import { UdpRelay, parseStartHandoff } from "./udp-relay";
 
 /** The two edition bundles share /game and use edition-specific filenames. */
@@ -588,8 +599,23 @@ function createHandle(module: Ra2Module, saves: SaveSync | null, game: GameId): 
  * (presenter.ts).
  */
 export async function startGame(options: StartOptions): Promise<GameHandle> {
+  // Before any request: take the launcher's ticket out of the address, then redeem it
+  // while the game loads (it is valid only 60 s). docs/wol/members-and-sso.md.
+  const ticket = takeLaunchTicket();
   const store = options.store ?? gameStore;
   const game = sourceGame(options.files);
+  // Only the operator's build settings choose where game credentials go.
+  // HTTP auth and the WOL socket can live at different paths behind a proxy.
+  const wolHttpUrl = import.meta.env.VITE_WOL_HTTP_URL ?? "http://127.0.0.1:9090";
+  let launch: Promise<HeldSession | null> | null = ticket
+    ? redeemTicket(wolHttpUrl, ticket, ticketEdition(game), fetch).catch((error: unknown) => {
+        // A spent or expired ticket leaves the game's own login dialog working as before.
+        console.warn(
+          `launch ticket not redeemed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        return null;
+      })
+    : null;
   const thaiFontFix = options.thaiFontFix ?? { enabled: false, fontId: "" };
   const baseScriptUrl = gameScript(game);
   const moduleBase = baseScriptUrl.slice(0, baseScriptUrl.lastIndexOf("/") + 1);
@@ -633,9 +659,6 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
     let udpRelay: UdpRelay | null = null;
     const wolResultGames = new Map<number, string>();
     let latestResultGame = "";
-    // Only the operator's build settings choose where game credentials go.
-    // HTTP auth and the WOL socket can live at different paths behind a proxy.
-    const wolHttpUrl = import.meta.env.VITE_WOL_HTTP_URL ?? "http://127.0.0.1:9090";
     const wolServer = {
       httpUrl: wolHttpUrl,
       socketUrl: import.meta.env.VITE_WOL_SOCKET_URL ?? toWolSocketUrl(wolHttpUrl),
@@ -645,7 +668,18 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
       wolClient?.close();
       wolResultGames.clear();
       latestResultGame = "";
-      const client = new WolClient(wolServer, username, password);
+      // A redeemed launch session logs in as the ticket's nick; it stays for a
+      // reconnect until the server refuses it, then the dialog's login is used.
+      const held = launch;
+      const client = new WolClient(
+        wolServer,
+        username,
+        password,
+        fetch,
+        undefined,
+        undefined,
+        held,
+      );
       wolClient = client;
       client.onLine((line) => {
         if (wolClient !== client) return;
@@ -671,6 +705,13 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
           if (wolClient === client) module.ra2WolReceiveLine?.("@wolapi connected");
         },
         (error: unknown) => {
+          if (
+            held &&
+            launch === held &&
+            error instanceof WolLoginError &&
+            error.code === "invalid_session"
+          )
+            launch = null;
           if (wolClient === client) {
             // A refused login carries the HRESULT the game turns into "wrong password"
             // or "banned"; without one the shim reports a generic failure.

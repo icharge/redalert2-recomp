@@ -1,5 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
-import { parseWolRoom, toWolSocketUrl, withBrowserWolPort, wolLineBytes, WolClient } from "./wol";
+import {
+  parseWolRoom,
+  redeemTicket,
+  takeLaunchTicket,
+  ticketEdition,
+  toWolSocketUrl,
+  withBrowserWolPort,
+  wolLineBytes,
+  WolClient,
+  WolLoginError,
+} from "./wol";
 
 describe("browser WOL settings", () => {
   const bytes = (value: string) => Uint8Array.from(value, (character) => character.charCodeAt(0));
@@ -581,5 +591,158 @@ describe("WolClient", () => {
     client.sendRaw("list 45 45");
     expect(socket.sent.at(-1)).toBe("list 45 45");
     client.close();
+  });
+});
+
+describe("launch tickets", () => {
+  const TICKET = "A".repeat(20) + "b-_" + "9".repeat(20);
+
+  it("takes #ticket= out of the address and keeps the rest of the fragment", () => {
+    const replaceState = vi.fn();
+    const place = { hash: `#ticket=${TICKET}&x=1`, pathname: "/game", search: "?edition=ra2md" };
+    expect(takeLaunchTicket(place, { replaceState, state: { k: 1 } })).toBe(TICKET);
+    expect(replaceState).toHaveBeenCalledWith({ k: 1 }, "", "/game?edition=ra2md#x=1");
+    replaceState.mockClear();
+    expect(
+      takeLaunchTicket({ ...place, hash: `#ticket=${TICKET}` }, { replaceState, state: null }),
+    ).toBe(TICKET);
+    expect(replaceState).toHaveBeenCalledWith(null, "", "/game?edition=ra2md");
+  });
+
+  it("removes a malformed ticket too, and leaves an address without one alone", () => {
+    const replaceState = vi.fn();
+    const place = { hash: "#ticket=short", pathname: "/game", search: "" };
+    expect(takeLaunchTicket(place, { replaceState, state: null })).toBeNull();
+    expect(replaceState).toHaveBeenCalledWith(null, "", "/game");
+    replaceState.mockClear();
+    expect(takeLaunchTicket({ ...place, hash: "#x=1" }, { replaceState, state: null })).toBeNull();
+    expect(takeLaunchTicket({ ...place, hash: "" }, { replaceState, state: null })).toBeNull();
+    expect(replaceState).not.toHaveBeenCalled();
+  });
+
+  it("maps the launcher's editions to the server's", () => {
+    expect(ticketEdition("ra2")).toBe("ra2");
+    expect(ticketEdition("ra2md")).toBe("yr");
+  });
+
+  it("redeems at /v1/auth/redeem under the HTTP prefix, and reports the server's refusal", async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    let reply: Response = Response.json({ user: "Alice", sessionToken: "s1" });
+    const fetcher = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ url: String(input), init });
+      return reply;
+    }) as typeof fetch;
+    await expect(redeemTicket("https://wol.test/service", TICKET, "yr", fetcher)).resolves.toEqual({
+      user: "Alice",
+      sessionToken: "s1",
+    });
+    expect(calls[0]!.url).toBe("https://wol.test/service/v1/auth/redeem");
+    expect(calls[0]!.init?.method).toBe("POST");
+    expect(JSON.parse(String(calls[0]!.init?.body))).toEqual({ ticket: TICKET, edition: "yr" });
+    reply = Response.json(
+      { error: "Invalid ticket", errorCode: "invalid_ticket" },
+      { status: 401 },
+    );
+    const refused = redeemTicket("https://wol.test/service", TICKET, "yr", fetcher);
+    await expect(refused).rejects.toBeInstanceOf(WolLoginError);
+    await expect(refused).rejects.toMatchObject({ code: "invalid_ticket" });
+  });
+
+  class SessionSocket extends EventTarget {
+    readyState = 1;
+    readonly sent: string[] = [];
+    constructor(private readonly session = ":wol 376 Alice :done") {
+      super();
+    }
+    send(data: string): void {
+      this.sent.push(data.trim());
+      const reply = data.startsWith("cvers ")
+        ? ":wol 700 * :ok"
+        : data.startsWith("setlocale ")
+          ? ":wol 310 * :ok"
+          : data.startsWith("session ")
+            ? this.session
+            : data.startsWith("joingame ")
+              ? `:Alice!u@h JOINGAME 1 2 45 0 0 0 0 :${data.split(" ")[1]}`
+              : null;
+      if (reply)
+        queueMicrotask(() => this.dispatchEvent(new MessageEvent("message", { data: reply })));
+      if (data.startsWith("joingame "))
+        queueMicrotask(() =>
+          this.dispatchEvent(
+            new MessageEvent("message", { data: `:wol 353 Alice = ${data.split(" ")[1]} :@Alice` }),
+          ),
+        );
+    }
+    close(): void {
+      this.readyState = 3;
+    }
+  }
+
+  it("a held session skips /register and /login and acts as its user", async () => {
+    const fetcher = vi.fn(async () =>
+      Response.json({ sessionToken: "typed" }),
+    ) as unknown as typeof fetch;
+    const socket = new SessionSocket();
+    const client = new WolClient(
+      "http://wol.test",
+      "typedname",
+      "password123",
+      fetcher,
+      () => socket,
+      100,
+      Promise.resolve({ user: "Alice", sessionToken: "redeemed" }),
+    );
+    try {
+      await client.connect({ joinLobby: false });
+      expect(fetcher).not.toHaveBeenCalled();
+      expect(socket.sent).toContain("session redeemed");
+      expect(client.nick).toBe("Alice");
+      await expect(client.createGame("duel", 2)).resolves.toBe("#Alice-duel");
+    } finally {
+      client.close();
+    }
+  });
+
+  it("a held session that resolves to null logs in with the dialog's name and password", async () => {
+    const fetcher = vi.fn(async () =>
+      Response.json({ sessionToken: "typed" }),
+    ) as unknown as typeof fetch;
+    const socket = new SessionSocket(":wol 376 typedname :done");
+    const client = new WolClient(
+      "http://wol.test",
+      "typedname",
+      "password123",
+      fetcher,
+      () => socket,
+      100,
+      Promise.resolve(null),
+    );
+    try {
+      await client.connect({ joinLobby: false });
+      expect(fetcher).toHaveBeenCalledTimes(1);
+      expect(socket.sent).toContain("session typed");
+      expect(client.nick).toBe("typedname");
+    } finally {
+      client.close();
+    }
+  });
+
+  it("a refused session (378) fails at once with invalid_session, not after the timeout", async () => {
+    const socket = new SessionSocket(":wol 378 * :Invalid session token");
+    const client = new WolClient(
+      "http://wol.test",
+      "typedname",
+      "password123",
+      fetch,
+      () => socket,
+      10_000,
+      Promise.resolve({ user: "Alice", sessionToken: "stale" }),
+    );
+    const started = Date.now();
+    await expect(client.connect({ joinLobby: false })).rejects.toMatchObject({
+      code: "invalid_session",
+    });
+    expect(Date.now() - started).toBeLessThan(1000);
   });
 });

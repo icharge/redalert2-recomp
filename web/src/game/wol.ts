@@ -138,6 +138,72 @@ async function sessionToken(
   return result.sessionToken;
 }
 
+/** The game session a launch ticket was redeemed for: the same pair POST /login returns. */
+export interface HeldSession {
+  user: string;
+  sessionToken: string;
+}
+
+/** The server's edition names for a launch ticket. */
+export function ticketEdition(game: "ra2" | "ra2md"): "ra2" | "yr" {
+  return game === "ra2md" ? "yr" : "ra2";
+}
+
+/**
+ * Take the launcher's `#ticket=` out of the address (docs/wol/members-and-sso.md). The
+ * fragment is removed with `history.replaceState` before anything else runs, so the ticket
+ * is not left in the address bar, the history entry or a copied link. Other fragment
+ * parameters are kept.
+ */
+export function takeLaunchTicket(
+  place: Pick<Location, "hash" | "pathname" | "search"> | undefined = globalThis.location,
+  history: Pick<History, "replaceState" | "state"> | undefined = globalThis.history,
+): string | null {
+  if (!place?.hash || place.hash.length < 2) return null;
+  const params = new URLSearchParams(place.hash.slice(1));
+  if (!params.has("ticket")) return null;
+  const ticket = params.get("ticket") ?? "";
+  params.delete("ticket");
+  const rest = params.toString();
+  history?.replaceState(
+    history.state,
+    "",
+    `${place.pathname}${place.search}${rest ? `#${rest}` : ""}`,
+  );
+  return /^[A-Za-z0-9_-]{43}$/.test(ticket) ? ticket : null;
+}
+
+/**
+ * Redeem a launch ticket (POST /v1/auth/redeem). A ticket is single use and valid 60 s,
+ * so the loader redeems it as the page starts, not when the game reaches its login. A
+ * refusal is a WolLoginError with the server's code (`invalid_ticket`, `rate_limited`).
+ */
+export async function redeemTicket(
+  server: string,
+  ticket: string,
+  edition: "ra2" | "yr",
+  fetcher: typeof fetch = fetch,
+): Promise<HeldSession> {
+  const response = await fetcher(new URL("v1/auth/redeem", ensureSlash(server)), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ticket, edition }),
+  });
+  const result = (await response.json().catch(() => ({}))) as {
+    user?: unknown;
+    sessionToken?: unknown;
+    error?: unknown;
+    errorCode?: unknown;
+  };
+  if (!response.ok || typeof result.user !== "string" || typeof result.sessionToken !== "string") {
+    throw new WolLoginError(
+      typeof result.error === "string" ? result.error : "The launch ticket was refused.",
+      typeof result.errorCode === "string" ? result.errorCode : undefined,
+    );
+  }
+  return { user: result.user, sessionToken: result.sessionToken };
+}
+
 /** A refused register/login, with the server's `errorCode` when it gave one. */
 export class WolLoginError extends Error {
   constructor(
@@ -200,16 +266,30 @@ export class WolClient {
   private readonly disconnectListeners = new Set<() => void>();
   private readonly timeoutMs: number;
   private authToken: string | null = null;
+  private username: string;
 
+  /**
+   * `held` is a session the launcher already has (a redeemed launch ticket). When it
+   * resolves to one, connect() skips /register and /login and the client acts as its
+   * user, whatever name the game's dialog sent; when it resolves to null the dialog's
+   * name and password log in as before.
+   */
   constructor(
     private readonly server: string | WolServer,
-    private readonly username: string,
+    username: string,
     private readonly password: string,
     private readonly fetcher: typeof fetch = fetch,
     private readonly createSocket: (url: string) => WolSocket = (url) => new WebSocket(url),
     timeoutMs = DEFAULT_TIMEOUT_MS,
+    private readonly held: Promise<HeldSession | null> | null = null,
   ) {
+    this.username = username;
     this.timeoutMs = timeoutMs;
+  }
+
+  /** The nick the server knows this client by once connected. */
+  get nick(): string {
+    return this.username;
   }
 
   get connected(): boolean {
@@ -235,7 +315,12 @@ export class WolClient {
       const socketUrl = toWolSocketUrl(
         typeof this.server === "string" ? this.server : this.server.socketUrl,
       );
-      const token = await sessionToken(httpUrl, this.username, this.password, this.fetcher);
+      const launch = this.held ? await this.held : null;
+      if (generation !== this.generation) throw new Error("WOL connection closed.");
+      if (launch) this.username = launch.user;
+      const token =
+        launch?.sessionToken ??
+        (await sessionToken(httpUrl, this.username, this.password, this.fetcher));
       if (generation !== this.generation) throw new Error("WOL connection closed.");
       this.authToken = token;
       const socket = this.createSocket(socketUrl);
@@ -249,7 +334,10 @@ export class WolClient {
       this.send("setlocale 2");
       await this.waitFor((line) => /\s310\s/.test(line), "locale acceptance");
       this.send(`session ${token}`);
-      await this.waitFor((line) => /\s376\s/.test(line), "authenticated MOTD");
+      // 378 is the server's "Invalid session token" (an expired or revoked session).
+      const motd = await this.waitFor((line) => /\s37[68]\s/.test(line), "authenticated MOTD");
+      if (/\s378\s/.test(motd))
+        throw new WolLoginError("The WOL session was refused.", "invalid_session");
 
       if (options.joinLobby !== false) await this.joinLobby();
       // The game can issue a command while the HTTP login is still in flight

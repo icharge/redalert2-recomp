@@ -430,6 +430,138 @@ describe("startGame", () => {
     }
   });
 
+  it("takes #ticket= from the address before any request and logs in with the redeemed session", async () => {
+    const ticket = "T".repeat(43);
+    window.history.replaceState(null, "", `/game?edition=ra2md#ticket=${ticket}`);
+    const sent: string[] = [];
+    class Socket extends EventTarget {
+      readyState = 1;
+      send(data: string): void {
+        sent.push(data.trim());
+        const reply = data.startsWith("cvers ")
+          ? ":wol 700 * :ok"
+          : data.startsWith("setlocale ")
+            ? ":wol 310 * :ok"
+            : data.startsWith("session redeemed")
+              ? ":wol 376 Alice :done"
+              : data.startsWith("session ")
+                ? ":wol 378 * :Invalid session token"
+                : null;
+        if (reply)
+          queueMicrotask(() => this.dispatchEvent(new MessageEvent("message", { data: reply })));
+      }
+      close(): void {
+        this.readyState = 3;
+        this.dispatchEvent(new Event("close"));
+      }
+    }
+    vi.stubGlobal("WebSocket", Socket);
+    const requests: { url: string; body?: string; hash: string }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      await runtimeFetch((input, init) => {
+        requests.push({ url: String(input), body: init?.body as string, hash: location.hash });
+        if (String(input).endsWith("/v1/auth/redeem"))
+          return Promise.resolve(Response.json({ user: "Alice", sessionToken: "redeemed" }));
+        return Promise.resolve(Response.json({ sessionToken: "typed" }));
+      }),
+    );
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const startup = startGame({ files: { kind: "already-there" }, store: new GameStore() });
+    // Gone from the address at once, before the first request of the start-up.
+    expect(location.hash).toBe("");
+    expect(location.pathname + location.search).toBe("/game?edition=ra2md");
+    await vi.waitFor(() => expect(window.Module?.onRuntimeInitialized).toBeTypeOf("function"));
+    const module = window.Module!;
+    module.FS = testFs();
+    module.cwrap = (() => () => 0) as never;
+    module.callMain = vi.fn();
+    module.HEAPU8 = new Uint8Array(2048);
+    module.onRuntimeInitialized!();
+    await startup;
+    const receive = vi.fn();
+    module.ra2WolReceiveLine = receive;
+    try {
+      module.ra2WolStart!("typedname", "password");
+      await vi.waitFor(() => expect(receive).toHaveBeenCalledWith("@wolapi connected"));
+      const redeem = requests.find((request) => request.url.endsWith("/v1/auth/redeem"))!;
+      expect(JSON.parse(redeem.body!)).toEqual({ ticket, edition: "yr" });
+      expect(requests.every((request) => !request.hash.includes("ticket"))).toBe(true);
+      expect(requests.some((request) => /\/(register|login)$/.test(request.url))).toBe(false);
+      expect(sent).toContain("session redeemed");
+      // A reconnect reuses the held session.
+      module.ra2WolStart!("typedname", "password");
+      await vi.waitFor(() =>
+        expect(sent.filter((line) => line === "session redeemed")).toHaveLength(2),
+      );
+    } finally {
+      module.ra2WolStop!();
+      warning.mockRestore();
+      window.history.replaceState(null, "", "/");
+    }
+  });
+
+  it("falls back to the dialog's login when the ticket is refused", async () => {
+    window.history.replaceState(null, "", `/game#ticket=${"T".repeat(43)}`);
+    class Socket extends EventTarget {
+      readyState = 1;
+      readonly sent: string[] = [];
+      send(data: string): void {
+        const reply = data.startsWith("cvers ")
+          ? ":wol 700 * :ok"
+          : data.startsWith("setlocale ")
+            ? ":wol 310 * :ok"
+            : data.startsWith("session ")
+              ? ":wol 376 typedname :done"
+              : null;
+        if (reply)
+          queueMicrotask(() => this.dispatchEvent(new MessageEvent("message", { data: reply })));
+      }
+      close(): void {
+        this.readyState = 3;
+        this.dispatchEvent(new Event("close"));
+      }
+    }
+    vi.stubGlobal("WebSocket", Socket);
+    const urls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      await runtimeFetch((input) => {
+        urls.push(String(input));
+        if (String(input).endsWith("/v1/auth/redeem"))
+          return Promise.resolve(
+            Response.json(
+              { error: "Invalid ticket", errorCode: "invalid_ticket" },
+              { status: 401 },
+            ),
+          );
+        return Promise.resolve(Response.json({ sessionToken: "typed" }));
+      }),
+    );
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const startup = startGame({ files: { kind: "already-there" }, store: new GameStore() });
+    await vi.waitFor(() => expect(window.Module?.onRuntimeInitialized).toBeTypeOf("function"));
+    const module = window.Module!;
+    module.FS = testFs();
+    module.cwrap = (() => () => 0) as never;
+    module.callMain = vi.fn();
+    module.HEAPU8 = new Uint8Array(2048);
+    module.onRuntimeInitialized!();
+    await startup;
+    const receive = vi.fn();
+    module.ra2WolReceiveLine = receive;
+    try {
+      module.ra2WolStart!("typedname", "password");
+      await vi.waitFor(() => expect(receive).toHaveBeenCalledWith("@wolapi connected"));
+      expect(urls.some((url) => url.endsWith("/register"))).toBe(true);
+      expect(warning).toHaveBeenCalledWith(expect.stringContaining("launch ticket not redeemed"));
+    } finally {
+      module.ra2WolStop!();
+      warning.mockRestore();
+      window.history.replaceState(null, "", "/");
+    }
+  });
+
   it("uses the operator's build setting for WOL authentication", async () => {
     vi.stubEnv("VITE_WOL_HTTP_URL", "https://wol.test/service/");
     vi.stubEnv("VITE_WOL_SOCKET_URL", "wss://wol.test/service/wol");
