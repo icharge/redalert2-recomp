@@ -66,12 +66,10 @@ describe("WelcomeScreen", () => {
     expect(screen.queryByRole("link", { name: "I HAVE MY GAME FOLDER" })).toBeNull();
   });
 
-  it("member sign-in is not here yet: the button is off and says so", () => {
+  it("SIGN IN goes to the account page", () => {
     show();
     const member = within(screen.getByRole("article", { name: "MEMBER" }));
-    const signIn = member.getByRole("button", { name: "SIGN IN" });
-    expect(signIn).toBeDisabled();
-    expect(signIn).toHaveAccessibleDescription(/later update/);
+    expect(member.getByRole("link", { name: "SIGN IN" })).toHaveAttribute("href", "/account");
   });
 
   it("DON'T SHOW THIS AGAIN remembers the dismissal and goes to PLAY", async () => {

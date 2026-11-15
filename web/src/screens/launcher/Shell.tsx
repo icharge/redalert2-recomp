@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router";
+import { account, useAccount, type AccountStore } from "../../account/store";
 import { BrandImage } from "../../components/BrandImage";
 import { EDITION_BRAND, LOGO_SRC } from "../../components/brand";
 import { appPath } from "../../paths";
@@ -51,6 +52,32 @@ function StorageFigure({ estimate }: { estimate: Estimate }) {
   );
 }
 
+/** Who is playing: "Guest", or the member and their game name; it links to the account page. */
+export function Identity({ store }: { store: AccountStore }) {
+  const state = useAccount(store);
+  const member = state.status === "member" ? state : null;
+  const nick = member?.gameAccounts[0]?.username;
+  return (
+    <Link
+      to="/account"
+      className={styles.identity}
+      data-member={member ? "true" : undefined}
+      aria-label={
+        member ? `Account: ${member.member.login}${nick ? `, ${nick}` : ""}` : "Account: guest"
+      }
+    >
+      {member ? (
+        <>
+          <span className={styles.who}>{member.member.login}</span>
+          {nick && <span className={styles.nick}>{nick}</span>}
+        </>
+      ) : (
+        <span className={styles.who}>Guest</span>
+      )}
+    </Link>
+  );
+}
+
 /** The edition's icon, or its short name on a colored tile when the image is missing. */
 export function EditionIcon({ game, className }: { game: GameRecord; className?: string }) {
   const brand = EDITION_BRAND[game.id];
@@ -78,12 +105,14 @@ export function Shell({
   onEdition,
   children,
   estimate = browserEstimate,
+  accountStore = account,
 }: {
   editions: GameRecord[];
   edition: GameRecord | null;
   onEdition(game: GameRecord): void;
   children: ReactNode;
   estimate?: Estimate;
+  accountStore?: AccountStore;
 }) {
   const inSettings = useLocation().pathname.startsWith("/settings");
   const navigate = useNavigate();
@@ -159,7 +188,10 @@ export function Shell({
             </NavLink>
           ))}
         </nav>
-        <StorageFigure estimate={estimate} />
+        <div className={styles.barEnd}>
+          <StorageFigure estimate={estimate} />
+          <Identity store={accountStore} />
+        </div>
       </header>
     </div>
   );

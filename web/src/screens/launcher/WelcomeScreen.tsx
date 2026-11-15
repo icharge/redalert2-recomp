@@ -10,7 +10,7 @@ export const WELCOME_REDIRECT = { welcome: "redirect" } as const;
 
 /**
  * The first page a new player sees: what this is, that they bring their own copy of the game, and
- * the choice to play as a guest or (later, LW-3) sign in as a member.
+ * the choice to play as a guest or sign in as a member.
  */
 export function WelcomeScreen({ installed }: { installed: boolean }) {
   const navigate = useNavigate();
@@ -86,17 +86,9 @@ export function WelcomeScreen({ installed }: { installed: boolean }) {
               A member account keeps your online name and signs you in to the game&apos;s online
               lobby without typing.
             </p>
-            <p id="welcome-member-soon" className={page.status}>
-              Member sign-in comes in a later update. Until then, play as a guest.
-            </p>
-            <button
-              type="button"
-              className={page.outline}
-              disabled
-              aria-describedby="welcome-member-soon"
-            >
+            <Link to="/account" className={page.outline}>
               SIGN IN
-            </button>
+            </Link>
           </article>
         </section>
 

@@ -2,6 +2,7 @@ import "@radix-ui/themes/styles.css";
 import "./styles/tokens.css";
 import "./styles/global.css";
 import { createRoot } from "react-dom/client";
+import { account } from "./account/store";
 import { App } from "./App";
 import { gameStore } from "./game/store";
 import { registerServiceWorker } from "./pwa";
@@ -18,6 +19,9 @@ if (
   new URLSearchParams(window.location.search).get("test") === "1"
 )
   (window as unknown as { ra2Store: typeof gameStore }).ra2Store = gameStore;
+
+// one refresh from the cookie restores a signed-in member; with no server the launcher stays a guest
+void account.restore();
 
 createRoot(root).render(<App />);
 
