@@ -15,6 +15,18 @@ are in `../ra2web`. Status of 14 Nov 2026.
 | Health | `GET /health`. There is no `/metrics` yet ([roadmap M8](roadmap.md)) |
 | Logs | `data/server.log`, rotated by size and day (`LOG_MAX_BYTES`, `LOG_MAX_FILES`, `LOG_ROTATE_DAILY`); level `LOG_LEVEL` |
 
+## Run as a service
+
+Service definitions live in `../ra2web/server/deploy/`:
+
+- `ra2web-server.service`: systemd unit (dedicated `ra2web` user, `server/.env` as `EnvironmentFile`, `Restart=on-failure`,
+  read-only filesystem except `data/`, `replays/`, `error-reports/`); `systemctl reload` is a `SIGHUP`. The install commands are in
+  its header. `server/install-service.sh` does the same in one step on Ubuntu.
+- `windows-service.md`: the Windows service with NSSM, exact commands (no `SIGHUP` there: restart after editing `.env`).
+- `README.md`: what both have in common.
+
+No logrotate is needed: the server rotates `data/server.log` itself (`LOG_MAX_BYTES` 100 MiB, `LOG_MAX_FILES` 5, `LOG_ROTATE_DAILY` true).
+
 ## Data
 
 Everything lives in one SQLite file, `data/ra2web.sqlite` (`DB_PATH`), plus replays in `server/replays/` and uploaded
