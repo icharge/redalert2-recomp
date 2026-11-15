@@ -56,3 +56,24 @@ The dev server was `web-dev-ipv4` from `.claude/launch.json` (`pnpm --dir web de
 - `docs/web/frontend.md` (step 5, "Install") still describes the old steps 1 FOLDER, 2 CHECK, 3 COPY: the session that owns that file needs to update it. `docs/web/storage.md` also says "CHECK sorts it".
 - The existing space check blocks INSTALL when `navigator.storage.estimate()` gives no quota (see Decisions).
 - The info tip beside the archive button is 24px, below the 44px rule (shared component).
+
+## Review after the build (15 November 2026)
+
+The session that wrote the plan checked the eight commits and then looked at every screen in the
+built-in browser at 1440 x 900, with `?mute`, on the dev server (port 5175).
+
+- `pnpm test`: 1009 pass, and the same 3 fail as before the work started. `pnpm typecheck` is
+  clean. `pnpm lint` has 0 errors.
+- Seen on screen: the empty Play tab, step 1, step 2, the installing screen, and the failed screen.
+  Step 1 was also seen at 390 wide, with no sideways scroll.
+- The copy was driven for real with 12 small fake files put into the folder input from the console.
+  Reading was slowed and made to fail on `movies01.mix` by wrapping `Blob.prototype.stream` in the
+  page. The failed screen showed "1.34 MB of 3.07 MB was copied and is kept". TRY AGAIN then
+  finished the copy, and the manifest held one installation with two games. The fake install was
+  removed afterwards with REMOVE EVERYTHING.
+- Two display fixes came out of this: the archive types and their hint now stay together on one
+  line, and the found line leaves out "in" when the folder has no name.
+
+Not seen in a browser: the real folder picker, real drag and drop, an archive or installer, the
+mods dialog, and steps 2 to 4 at phone width.
+

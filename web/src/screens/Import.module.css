@@ -812,3 +812,11 @@ label.kind {
     gap: 10px;
   }
 }
+
+/* the archive types and their hint stay on one line, so the hint never wraps alone */
+.formats {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}

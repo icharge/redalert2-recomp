@@ -467,8 +467,10 @@ function Chooser(props: {
           >
             USE AN ARCHIVE OR INSTALLER
           </button>
-          <span className={styles.caption}>.7z · .zip · .rar · installer .exe</span>
-          <InfoTip text="A .7z, .zip or .rar of the game folder, or an installer 7-Zip can open. Some installers cannot be opened: install the game, then pick its folder." />
+          <span className={styles.formats}>
+            <span className={styles.caption}>.7z · .zip · .rar · installer .exe</span>
+            <InfoTip text="A .7z, .zip or .rar of the game folder, or an installer 7-Zip can open. Some installers cannot be opened: install the game, then pick its folder." />
+          </span>
         </div>
         <p className={styles.caption}>
           Needs about 2 GB free, or 3 GB with the movies.
@@ -720,7 +722,7 @@ function Review({
                 );
               })}
             </ul>
-            <span className={styles.muted}>in {stage.source.name}</span>
+            {stage.source.name && <span className={styles.muted}>in {stage.source.name}</span>}
           </div>
         </div>
         {stopped && (

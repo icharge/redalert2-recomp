@@ -441,6 +441,13 @@ describe("Import", () => {
     expect(screen.getByText("in RA2")).toBeInTheDocument();
   });
 
+  it("leaves the folder out of the found line when it has no name", async () => {
+    const { user } = await setup({ ...folder(), name: "" });
+    await user.click(screen.getByRole("button", { name: "CHOOSE FOLDER" }));
+    await screen.findByRole("group", { name: "What to install" });
+    expect(screen.queryByText(/^in\s*$/)).toBeNull();
+  });
+
   it("names one game when the folder has one", async () => {
     const both: BuildInfo = {
       games: {
