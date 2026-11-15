@@ -15,8 +15,8 @@ import styles from "./SettingsScreen.module.css";
 export const SETTINGS_TABS = [
   "launcher",
   "gameplay",
-  "audio",
   "video",
+  "audio",
   "keyboard",
   "about",
 ] as const;
@@ -28,8 +28,8 @@ export const isSettingsTab = (value: string | undefined): value is SettingsTab =
 const TABS = {
   launcher: LauncherTab,
   gameplay: GameplayTab,
-  audio: AudioTab,
   video: VideoTab,
+  audio: AudioTab,
   keyboard: KeyboardTab,
   about: AboutTab,
 };

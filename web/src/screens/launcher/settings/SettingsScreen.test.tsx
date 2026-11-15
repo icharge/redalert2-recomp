@@ -111,6 +111,19 @@ describe("SettingsScreen", () => {
     expect(screen.getByRole("link", { name: "LAUNCHER" })).not.toHaveAttribute("aria-current");
   });
 
+  it("lists the sections in the menu's order, Video before Audio", () => {
+    setup();
+    const links = within(screen.getByRole("navigation", { name: "Settings" })).getAllByRole("link");
+    expect(links.map((link) => link.textContent)).toEqual([
+      "LAUNCHER",
+      "GAMEPLAY",
+      "VIDEO",
+      "AUDIO",
+      "KEYBOARD",
+      "ABOUT",
+    ]);
+  });
+
   it("ends the sections with About, which shows the launcher's version", async () => {
     setup();
     const links = within(screen.getByRole("navigation", { name: "Settings" })).getAllByRole("link");

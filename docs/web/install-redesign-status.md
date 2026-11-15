@@ -53,7 +53,7 @@ The dev server was `web-dev-ipv4` from `.claude/launch.json` (`pnpm --dir web de
 
 ## Left
 
-- `docs/web/frontend.md` (step 5, "Install") still describes the old steps 1 FOLDER, 2 CHECK, 3 COPY: the session that owns that file needs to update it. `docs/web/storage.md` also says "CHECK sorts it".
+- `docs/web/frontend.md` (step 5, "Install") and `docs/web/storage.md` now use the new step names (done 15 November 2026).
 - The existing space check blocks INSTALL when `navigator.storage.estimate()` gives no quota (see Decisions).
 - The info tip beside the archive button is 24px, below the 44px rule (shared component).
 

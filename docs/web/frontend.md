@@ -143,16 +143,20 @@ is never reused for another slot. Mod/font restarts reload the same game URL.
    mods are kept), SAVED GAMES… (the saves of each edition, by title, with download, remove and the
    .ZIP buttons) and REMOVE… (the REMOVE FROM THIS BROWSER dialog: tick the parts to remove, with
    REMOVE EVERYTHING asking inline first). OLDER COPIES stays below.
-5. **Install** (`/import`, full screen). Steps 1 FOLDER, 2 CHECK, 3 COPY: the folder picker
-   (`showDirectoryPicker`, Chromium), the file picker, Use an archive or installer (7-Zip, see
-   [storage.md](storage.md#archives)) and a drop zone that takes either; then CHECK sorts the folder
-   (`plan.found`, [storage.md](storage.md)): game content (always, with each edition's readiness),
-   then movies, mods, custom maps, saved games, and settings and hotkeys, each with a count, a
-   size and a checkbox; a group the folder lacks says None. The mod count opens the MODS IN THE FOLDER
-   dialog, a list of each mod with its game, size and files. A mod that patches the exe is named and
-   left out. Then the copy with CANCEL, and the mods after the game. It's resumable: a reload
-   continues from the manifest.
-6. **Settings.** Launcher, Gameplay, Audio, Video and Keyboard (below), then About: the launcher's
+5. **Install** (`/import`, full screen), with LAUNCHER and INSTALL GUIDE links at the top. Steps
+   1 CHOOSE, 2 REVIEW, 3 INSTALL. CHOOSE has a drop zone around CHOOSE FOLDER (`showDirectoryPicker`,
+   Chromium; else the file picker, also behind "Folder button not working?"), USE AN ARCHIVE OR
+   INSTALLER (7-Zip, see [storage.md](storage.md#archives)), and a WHERE IS MY GAME? panel built from
+   the install guide's `SOURCES`. REVIEW names the editions found and the folder, then sorts it
+   (`plan.found`, [storage.md](storage.md)): game content (always), then movies (ticked by default),
+   mods, custom maps, saved games, and settings and hotkeys, each a whole-row checkbox with a count
+   and a size; a group the folder lacks says None. The mod count opens the MODS IN THE FOLDER
+   dialog; a mod that patches the exe is named and left out. A SPACE NEEDED panel shows the total
+   against the browser's quota and holds INSTALL. INSTALL shows the bar and each part as DONE,
+   COPYING or WAITING (`import-progress.ts`), then the mods after the game. It's resumable: a reload
+   continues from the manifest, and after a failed copy TRY AGAIN carries on in the same
+   installation (`runImport`'s `onSlot`).
+6. **Settings.** Launcher, Gameplay, Video, Audio and Keyboard (below), then About: the launcher's
    version (`web/package.json`, imported by `src/version.ts`) and the build id from `build.json`,
    what's new (the newest section of [web/CHANGELOG.md](../../web/CHANGELOG.md), read at build time
    by `changelog.ts`), the credits with their GitHub links, and the legal notes and licences. About

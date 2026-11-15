@@ -25,7 +25,7 @@ cannot be opened: the screen says to install the game and pick the installed fol
 - The worker mounts the picked file with Emscripten's WORKERFS, which reads it where it is: a
   3 GB archive is never held in memory.
 - `7z l -slt` lists it (`sevenzip.ts`). The game folder inside is the one that holds `ra2.mix`, at
-  any depth (`gameRoot`); from there the archive is a folder like any other, and CHECK sorts it.
+  any depth (`gameRoot`); from there the archive is a folder like any other, and REVIEW sorts it.
 - The copy asks the source for its order (`FolderSource.order`) and reads the files in it. One
   `7z x -so` pass streams them out in the archive's own order, so a solid archive is decompressed
   once, not once per file. Its stdout is a device that hands whole buffers to the worker, which
