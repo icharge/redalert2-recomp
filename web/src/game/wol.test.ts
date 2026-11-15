@@ -352,6 +352,51 @@ describe("WolClient", () => {
     }
   });
 
+  describe("with registration closed on the server", () => {
+    const closed = () =>
+      Response.json({ error: "closed", errorCode: "registration_closed" }, { status: 403 });
+    const connectWith = (login: () => Response) => {
+      const fetcher = vi.fn(async (input: RequestInfo | URL) =>
+        String(input).endsWith("/register") ? closed() : login(),
+      ) as unknown as typeof fetch;
+      const client = new WolClient("http://wol.test", "test", "password123", fetcher, () => {
+        throw new Error("socket reached");
+      });
+      return { fetcher, client };
+    };
+
+    it("tells a new name that registration is closed", async () => {
+      const { fetcher, client } = connectWith(() =>
+        Response.json({ error: "unknown user", errorCode: "bad_login" }, { status: 401 }),
+      );
+      const failure = await client.connect({ joinLobby: false }).catch((error: unknown) => error);
+      expect(failure).toBeInstanceOf(WolLoginError);
+      expect((failure as WolLoginError).message).toBe("Registration is closed on this server");
+      expect((failure as WolLoginError).code).toBe("registration_closed");
+      expect(fetcher).toHaveBeenCalledTimes(2);
+    });
+
+    it("logs an existing name in", async () => {
+      const { client } = connectWith(() => Response.json({ sessionToken: "token" }));
+      // Login succeeded, so the failure is the socket stub, not the login.
+      await expect(client.connect({ joinLobby: false })).rejects.toThrow("socket reached");
+    });
+  });
+
+  it("keeps the login error when registration is open", async () => {
+    const fetcher = vi.fn(async (input: RequestInfo | URL) =>
+      String(input).endsWith("/register")
+        ? Response.json({ error: "already registered", errorCode: "name_taken" }, { status: 409 })
+        : Response.json({ error: "wrong password", errorCode: "bad_login" }, { status: 401 }),
+    ) as unknown as typeof fetch;
+    const client = new WolClient("http://wol.test", "test", "password123", fetcher, () => {
+      throw new Error("socket reached");
+    });
+    const failure = await client.connect({ joinLobby: false }).catch((error: unknown) => error);
+    expect((failure as WolLoginError).message).toBe("wrong password");
+    expect((failure as WolLoginError).code).toBe("bad_login");
+  });
+
   it("rejects a connection closed during the handshake without a second disconnect event", async () => {
     class Socket extends EventTarget {
       readyState = 1;

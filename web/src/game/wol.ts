@@ -159,6 +159,7 @@ async function sessionToken(
     error?: unknown;
     errorCode?: unknown;
   };
+  const registerCode = typeof result.errorCode === "string" ? result.errorCode : undefined;
   if (typeof result.sessionToken !== "string") {
     response = await fetcher(new URL("login", ensureSlash(server)), {
       method: "POST",
@@ -172,6 +173,9 @@ async function sessionToken(
     };
   }
   if (!response.ok || typeof result.sessionToken !== "string") {
+    // A new name on a server with registration closed is not a login failure.
+    if (registerCode === "registration_closed")
+      throw new WolLoginError("Registration is closed on this server", "registration_closed");
     throw new WolLoginError(
       typeof result.error === "string" ? result.error : "WOL register/login failed.",
       typeof result.errorCode === "string" ? result.errorCode : undefined,
