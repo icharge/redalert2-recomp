@@ -198,7 +198,8 @@ It gets:
 - **WOL auto-login**: PLAY hands the game a ticket (`#ticket=`), the loader redeems it, the shim uses the ticket's nick, and the game
   goes from Internet to the welcome screen without the login dialog. The first three steps are done (F5A-1, F5A-2, F5A-3). LW-7a found
   the game's own auto-login (`[DefaultPersona] AutoLogin=<nick>` in its `wolinfo(md).ini` plus that nick in a `GetNick` slot from 1
-  up; seen working in the browser), so LW-7b sets those two up for a launch login instead of driving the dialog. Without a ticket nothing changes, so retail-style login, bots and Vera keep
+  up; seen working in the browser), and LW-7b uses it: a launch ticket now goes from Internet to the lobby with no dialog in both editions
+  (recomp `2ec3cde9`). Left in this track: the launcher side (MB-1..3, GU-1, LW-3, LW-4) and the end-to-end check (LW-8). Without a ticket nothing changes, so retail-style login, bots and Vera keep
   working.
 
 ## Phase 2: Yuri's Revenge Quick Co-op

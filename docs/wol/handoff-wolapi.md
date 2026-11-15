@@ -407,9 +407,19 @@ the first login because that folder's file has `[Ask] AutoLogin=no`.
 characters, and the nick is lowercased (`password123` was cut and refused;
 `ABCDEFGHIJKL` became `abcdefghi`).
 
-**Not checked yet** (LW-7b): RA2 in the browser (the code is the same shape); whether a
-launch session needs `[Ask] AutoLogin=no` to avoid the question after each login; which
-slot the game's own `SetNick` used.
+**Used for launch tickets (LW-7b, recomp `2ec3cde9`).** The loader writes `AutoLogin=` and
+`LastValid=` for the launch nick into the persona file once the game's files are in place
+(and removes `AutoLogin=` without one); the shim puts the nick in a `GetNick` slot from 1 up
+with a placeholder password. Seen in the browser in **both editions**: Internet went to the
+lobby as the ticket's nick with no login dialog. With `[Ask] AutoLogin` back at its default
+the game did not ask anything after the auto-login, so the launcher leaves `[Ask]` alone.
+Without a ticket the dialog shows as before.
+
+**File writes append in the browser build.** `FS.writeFile` on an existing file adds to it
+(`"AAAAAA"` then `"BB"` reads back `"AAAAAABB"`), so the launch staging removes the file
+first. `replaceFile` in `web/src/storage/saves.ts` (used for `RA2.INI` / `RA2MD.INI` by
+`stageWolDataKey` and `stageVideoSize`) has the same exposure for files that are not links;
+that is likely where the duplicated profile INIs that `compactProfileIni` cleans up come from.
 
 ## Still open after the playable RA2/YR POC
 
