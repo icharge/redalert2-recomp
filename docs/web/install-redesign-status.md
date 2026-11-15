@@ -22,7 +22,7 @@ They belong to the session that owns the Cursor setting and are left alone.
 - [x] 5. Choose step.
 - [x] 6. Review step.
 - [x] 7. Installing and failed steps.
-- [ ] 8. Browser check.
+- [x] 8. Browser check.
 
 ## Decisions
 
@@ -33,7 +33,26 @@ They belong to the session that owns the Cursor setting and are left alone.
 - Task 7: "Parts" progress treats the files as finished also when every `plan.copy` path is in `done`, not only when `doneFiles >= totalFiles` (a resume with nothing left to copy sends no progress event).
 - Task 7: a part that is copying shows "{done} of {size}" only once some bytes are done; before that it shows the size, so the mods (no progress events) do not read "0 B of 140 MB".
 - Task 7: the renamed controls broke `src/App.test.tsx` (BACK is now LAUNCHER) and the Playwright harness (`e2e/lib.mjs`, `e2e/import.mjs`, `e2e/load-saved-game.mjs` waited for the heading READY TO INSTALL, and `--movies` clicked a Movies box that is now ticked at first). Fixed: the test name, and a new `awaitReview` helper in `e2e/lib.mjs` that waits for CHOOSE WHAT TO INSTALL and unticks the movies unless `movies` is set. The e2e scripts need the game files and a real browser; they were syntax-checked (`node --check`) but not run.
+- Task 8: the install screen's top row class was named `.bar`, which the progress bar's `.bar` rule later in the same stylesheet overrode (height 14px, a border); renamed `.topbar`. Found in the browser, fixed in the Task 8 commit.
+
+## Checked in a browser (Task 8)
+
+The dev server was `web-dev-ipv4` from `.claude/launch.json` (`pnpm --dir web dev --host 127.0.0.1 --port 5175`, the dev server of `docs/web/testing.md`), opened with `?mute`, on the Browser pane. Nothing was signed in to. The pane's window was hidden, so screenshots timed out and animations did not run: everything below was read from the DOM (`read_page`, sizes from `getBoundingClientRect`, scroll widths, focus order from `focusin` events), not seen.
+
+- Nothing was installed in that browser, so the Play tab is the empty one. At 1280x720: heading, kicker in amber `#f2b134`, three steps, the 440px INSTALL THE GAME button and the guide link are laid out; the title block ends 56px above the footer; no sideways scroll. At 390x844: the footer stacks (button, steps, link), controls are 64px and 47px tall, no sideways scroll, the title ends above the footer. A first run opens on the welcome page; its key (`ra2.welcome-dismissed`) was set in that pane's local storage to reach PLAY.
+- Step 1 at 1280x800: the panel is 920px wide and starts 104px from the top; LAUNCHER and INSTALL GUIDE sit in the top row at 44px; the two columns are 320px apart at the right. At 390x844: one column, no sideways scroll, every button at least 44px except the info tip (24px, the existing `InfoTip` component, not changed here). WHERE IS MY GAME? opens one entry at a time (the first open at the start) and closes on a second click, at 390px with the long path inside the box. Tab reaches every control, in order.
+- Step 2 (review) was reached with fake small files put into the folder input from the page's console (a `DataTransfer` of `File` objects with `webkitRelativePath`); INSTALL was never pressed, so nothing was copied or written to OPFS. At 1280px: the found line, the Game content row naming both games, the rows at 64px, the 280px Space panel with its meter (`16.4 KB of 22.0 GB`, 2% wide), the cutscene note after unticking Movies, and the left-out disclosure open and shut. At 390px: one column, no sideways scroll, rows 64 to 85px, buttons at least 44px.
+
+## Not checked in a browser
+
+- Step 3 (installing) and the failed screen: they need a copy to run, and this would have written a game into the pane's OPFS. They are covered by the Vitest tests only (parts list, keep-the-tab-open note, failed copy, TRY AGAIN in the same installation, CHOOSE ANOTHER FOLDER, a failure before the copy).
+- The real folder picker and a real drag and drop of a folder: they cannot be driven from the automated browser.
+- Colours and spacing against the design were read from the CSS, not compared by eye. No screenshot of any screen was taken (the window was hidden).
+- A resume where most files are already there, in a browser: the importer reports them in the first progress event (importer test), the parts list is built from that set; there is no component test for it.
+- `e2e/lib.mjs`, `e2e/import.mjs`, `e2e/load-saved-game.mjs`: edited for the new heading and the movies default, syntax-checked only.
 
 ## Left
 
-`docs/web/frontend.md` still needs its install section updated by the session that owns it.
+- `docs/web/frontend.md` (step 5, "Install") still describes the old steps 1 FOLDER, 2 CHECK, 3 COPY: the session that owns that file needs to update it. `docs/web/storage.md` also says "CHECK sorts it".
+- The existing space check blocks INSTALL when `navigator.storage.estimate()` gives no quota (see Decisions).
+- The info tip beside the archive button is 24px, below the 44px rule (shared component).

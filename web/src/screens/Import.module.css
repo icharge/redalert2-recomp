@@ -8,12 +8,13 @@
 }
 
 /* LAUNCHER at the left, INSTALL GUIDE at the right; the logo sits between them on a wide screen */
-.bar {
+.topbar {
   position: absolute;
   z-index: 2;
   top: 30px;
   left: 32px;
   right: 32px;
+  height: 44px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -793,7 +794,7 @@ label.kind {
 
 @media (max-width: 720px) {
   /* the buttons take a row of their own above the logo */
-  .bar {
+  .topbar {
     position: static;
     width: 100%;
   }

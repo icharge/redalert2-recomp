@@ -254,7 +254,7 @@ export function Import({
       <KeyArt edition={edition} dim={0.45} />
       <div className={styles.column}>
         {stage.name !== "copying" && (onBack || onGuide) && (
-          <div className={styles.bar}>
+          <div className={styles.topbar}>
             {onBack ? (
               <button type="button" className={styles.barButton} onClick={onBack}>
                 <svg
