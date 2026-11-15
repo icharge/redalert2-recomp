@@ -22,12 +22,14 @@ maps in `data/maps/`. Tables are created on start (`CREATE TABLE IF NOT EXISTS`)
 the first time it runs; a change to an existing table is a code-driven migration in `SqliteStorage` (the SKU migration
 copies the file to a `.bak` first).
 
-### Migrations (target)
+### Migrations (built, ra2web `d011e4b`)
 
-Add a `schema_version` table and number each step. Each migration is a function that runs in a transaction and writes the new
-version; on start the server applies the missing ones in order and refuses to start if the database is *newer* than the code
-(a downgrade). Before any migration that changes existing rows the server copies the file to `data/backups/pre-<version>.sqlite`.
-This replaces today's "detect by schema shape" checks with one ordered list.
+The database carries a `schema_version` table. On start the server applies the missing migrations in order (each in a
+transaction with its version row), after copying the file to `backups/pre-migration-<version>-<time>.sqlite` beside the database
+(or into `BACKUP_DIR`). It refuses to start if the database is *newer* than the code (a downgrade: run the newer server, or restore
+the copy). A failed migration rolls back, stops the server and names the migration. The start log prints the version
+(`Schema: version N`), and `GET /health` shows `schemaVersion`. A database from before this has no version; it is stamped as
+version 1. Still to come (DB2): `bun scripts/migrate.ts status|plan|up` and `AUTO_MIGRATE=false` to apply them by hand.
 
 ### Backup and restore ([roadmap M7](roadmap.md))
 
