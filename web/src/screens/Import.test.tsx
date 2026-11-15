@@ -169,12 +169,16 @@ describe("Import", () => {
   it("marks the current step", async () => {
     const { user } = await setup(folder());
     const steps = screen.getByRole("list", { name: "Steps" });
-    expect(steps).toHaveTextContent("1 FOLDER2 CHECK3 COPY");
-    expect(screen.getByText("1 FOLDER").closest("li")).toHaveAttribute("aria-current", "step");
+    expect(steps).toHaveTextContent("1 CHOOSE2 REVIEW3 INSTALL");
+    const step = (label: string) => screen.getByText(label).closest("li");
+    expect(step("1 CHOOSE")).toHaveAttribute("aria-current", "step");
+    expect(step("1 CHOOSE")).toHaveAttribute("data-state", "current");
+    expect(step("2 REVIEW")).toHaveAttribute("data-state", "next");
     await user.click(screen.getByRole("button", { name: "CHOOSE FOLDER" }));
     await screen.findByRole("heading", { name: "READY TO INSTALL" });
-    expect(screen.getByText("2 CHECK").closest("li")).toHaveAttribute("aria-current", "step");
-    expect(screen.getByText("1 FOLDER").closest("li")).not.toHaveAttribute("aria-current");
+    expect(step("2 REVIEW")).toHaveAttribute("aria-current", "step");
+    expect(step("1 CHOOSE")).not.toHaveAttribute("aria-current");
+    expect(step("1 CHOOSE")).toHaveAttribute("data-state", "done");
   });
 
   it("without a folder picker, CHOOSE FOLDER uses the file picker", async () => {
@@ -217,8 +221,35 @@ describe("Import", () => {
         />
       </Theme>,
     );
-    await userEvent.click(screen.getByRole("button", { name: "BACK" }));
+    await userEvent.click(screen.getByRole("button", { name: "LAUNCHER" }));
     expect(onBack).toHaveBeenCalled();
+  });
+
+  it("opens the install guide when asked", async () => {
+    const manifest = await Manifest.open(new IDBFactory());
+    const deps: ImportDeps = {
+      build,
+      manifest,
+      target: memoryTarget(),
+      estimate: async () => ({}),
+      persist: async () => true,
+      pickDirectory: null,
+    };
+    const onGuide = vi.fn();
+    const { unmount } = render(
+      <Theme>
+        <Import deps={deps} onDone={() => {}} onGuide={onGuide} />
+      </Theme>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "INSTALL GUIDE" }));
+    expect(onGuide).toHaveBeenCalled();
+    unmount();
+    render(
+      <Theme>
+        <Import deps={deps} onDone={() => {}} />
+      </Theme>,
+    );
+    expect(screen.queryByRole("button", { name: "INSTALL GUIDE" })).toBeNull();
   });
 
   it("reviews a good folder, then copies it and says when it is done", async () => {
@@ -430,7 +461,7 @@ describe("Import", () => {
     expect(screen.getByRole("progressbar", { name: "Copying the game" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "CANCEL" })).toBeInTheDocument();
     expect(await screen.findByText(/may clear this copy/)).toBeInTheDocument();
-    expect(screen.getByText("3 COPY").closest("li")).toHaveAttribute("aria-current", "step");
+    expect(screen.getByText("3 INSTALL").closest("li")).toHaveAttribute("aria-current", "step");
     release();
   });
 

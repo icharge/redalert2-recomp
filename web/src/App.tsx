@@ -466,6 +466,7 @@ function Main() {
                 {...(resume ? { slot: resume } : {})}
                 {...(edition ? { edition: edition.id } : {})}
                 onBack={() => navigate("/")}
+                onGuide={() => navigate("/install/guide")}
                 onDone={(done) => {
                   if (done !== undefined) switchInstall(done);
                   void reload().then(() => navigate("/"));

@@ -84,7 +84,7 @@ const FIRST: ImportOptions = {
   maps: true,
 };
 
-const STEPS = ["1 FOLDER", "2 CHECK", "3 COPY"];
+const STEPS = ["CHOOSE", "REVIEW", "INSTALL"];
 
 function stepOf(stage: Stage): number {
   if (stage.name === "review") return 1;
@@ -96,6 +96,7 @@ export function Import({
   deps,
   onDone,
   onBack,
+  onGuide,
   slot,
   edition = "ra2",
 }: {
@@ -106,6 +107,8 @@ export function Import({
   onDone: (slot?: number) => void;
   /** back to the launcher; no BACK button without it */
   onBack?: () => void;
+  /** to the install guide; no INSTALL GUIDE button without it */
+  onGuide?: () => void;
   slot?: number;
 }) {
   const [stage, setStage] = useState<Stage>({ name: "choose" });
@@ -187,23 +190,46 @@ export function Import({
   return (
     <div className={styles.screen}>
       <KeyArt edition={edition} dim={0.45} />
-      {onBack && stage.name !== "copying" && (
-        <button type="button" className={styles.back} onClick={onBack}>
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 16 16"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            aria-hidden="true"
-          >
-            <path d="M10 3L5 8l5 5" />
-          </svg>
-          BACK
-        </button>
-      )}
       <div className={styles.column}>
+        {stage.name !== "copying" && (onBack || onGuide) && (
+          <div className={styles.bar}>
+            {onBack ? (
+              <button type="button" className={styles.barButton} onClick={onBack}>
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  aria-hidden="true"
+                >
+                  <path d="M10 3L5 8l5 5" />
+                </svg>
+                LAUNCHER
+              </button>
+            ) : (
+              <span />
+            )}
+            {onGuide && (
+              <button type="button" className={styles.barButton} onClick={onGuide}>
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.3"
+                  aria-hidden="true"
+                >
+                  <circle cx="8" cy="8" r="6.5" />
+                  <path d="M6.2 6.3a1.9 1.9 0 1 1 2.6 1.8c-.5.3-.8.7-.8 1.3M8 11.6v.1" />
+                </svg>
+                INSTALL GUIDE
+              </button>
+            )}
+          </div>
+        )}
         <BrandImage
           src={appPath(LOGO_SRC)}
           alt="YuriNet"
@@ -219,7 +245,22 @@ export function Import({
                 data-state={index < current ? "done" : index === current ? "current" : "next"}
               >
                 <span aria-hidden="true" />
-                {label}
+                <span className={styles.stepLabel}>
+                  {index + 1} {label}
+                  {index < current && (
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 16 16"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.4"
+                      aria-hidden="true"
+                    >
+                      <path d="M2.5 8.5l3.5 3.5 7.5-8" />
+                    </svg>
+                  )}
+                </span>
               </li>
             ))}
           </ol>

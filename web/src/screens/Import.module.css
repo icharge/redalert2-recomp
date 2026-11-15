@@ -7,15 +7,25 @@
   font-family: var(--font-body);
 }
 
-.back {
+/* LAUNCHER at the left, INSTALL GUIDE at the right; the logo sits between them on a wide screen */
+.bar {
   position: absolute;
   z-index: 2;
-  top: 20px;
-  left: 20px;
-  height: 40px;
-  padding: 0 14px;
-  border: 1px solid #3a3b40;
-  background: rgba(8, 9, 11, 0.8);
+  top: 30px;
+  left: 32px;
+  right: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  pointer-events: none;
+}
+.barButton {
+  pointer-events: auto;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
   color: var(--text);
   font-family: var(--font-label);
   font-size: 15px;
@@ -26,21 +36,25 @@
   gap: 8px;
   cursor: pointer;
 }
+.barButton:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.06);
+}
 
 .column {
   position: relative;
   min-height: 100%;
   box-sizing: border-box;
-  padding: 40px 16px;
+  padding: 16px 16px 40px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 24px;
+  justify-content: flex-start;
+  gap: 16px;
 }
 
 .logo {
-  height: 120px;
+  height: 72px;
   width: auto;
 }
 .logoText {
@@ -50,17 +64,17 @@
 }
 
 .panel {
-  width: 600px;
+  width: 920px;
   max-width: 100%;
   box-sizing: border-box;
-  padding: 40px;
+  padding: 32px 40px 36px;
   background: rgba(12, 13, 16, 0.96);
   border: 1px solid #3a2023;
   border-top: 3px solid var(--red);
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.7);
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 26px;
 }
 
 .steps {
@@ -76,20 +90,33 @@
   letter-spacing: 0.14em;
 }
 .steps li {
+  --tone: #8a8c92;
+  --bar: #3a3b40;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  color: #6d6e74;
+  color: var(--tone);
 }
-.steps li > span {
+.steps li > span:first-child {
   height: 3px;
-  background: currentColor;
+  background: var(--bar);
+}
+.stepLabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 .steps li[data-state="done"] {
-  color: var(--red);
+  --tone: #a7a29a;
+  --bar: #8b1a1a;
 }
 .steps li[data-state="current"] {
-  color: var(--text);
+  --tone: #f1ede6;
+  --bar: #d3262b;
+}
+.steps li[data-state="failed"] {
+  --tone: #ff8a80;
+  --bar: #ff8a80;
 }
 
 .body {
@@ -428,6 +455,11 @@ label.kind {
 }
 
 @media (max-width: 720px) {
+  /* the buttons take a row of their own above the logo */
+  .bar {
+    position: static;
+    width: 100%;
+  }
   .panel {
     padding: 24px 16px;
   }
