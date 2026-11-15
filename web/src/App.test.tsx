@@ -116,7 +116,7 @@ describe("App", () => {
       [{ name: "ra2.mix", size: 1, lastModified: 1, needs: ["ra2md"] }],
       installation.slot,
     );
-    await userEvent.setup().click(screen.getByRole("button", { name: "BACK" }));
+    await userEvent.setup().click(screen.getByRole("button", { name: "LAUNCHER" }));
     expect(await screen.findByRole("button", { name: "RESUME INSTALL" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("YURI’S REVENGE");
     m.close();

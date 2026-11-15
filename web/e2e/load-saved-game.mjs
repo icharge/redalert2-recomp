@@ -6,6 +6,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import {
+  awaitReview,
   chooseEdition,
   openInstall,
   options,
@@ -43,7 +44,7 @@ try {
   if (!(await t.page.getByRole("navigation", { name: "Games" }).getByRole("button").count())) {
     await openInstall(t.page);
     await t.page.getByLabel("Game folder", { exact: true }).setInputFiles(gameDir);
-    await t.page.getByRole("heading", { name: "READY TO INSTALL" }).waitFor({ timeout: 180_000 });
+    await awaitReview(t.page);
     await t.page.getByRole("button", { name: /^INSTALL \d/ }).click();
     await t.page
       .getByRole("navigation", { name: "Games" })

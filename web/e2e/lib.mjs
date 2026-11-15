@@ -313,6 +313,19 @@ export async function answerExit(page, leave = true) {
   await page.getByRole("button", { name: leave ? "EXIT GAME" : "STAY", exact: true }).click();
 }
 
+/**
+ * Waits for the install screen's review step. The movies are ticked at first; the harness plays without
+ * them (a copy of several GB) unless `movies` is set.
+ */
+export async function awaitReview(page, { timeout = 180_000, movies = false } = {}) {
+  await page.getByRole("heading", { name: "CHOOSE WHAT TO INSTALL" }).waitFor({ timeout });
+  const box = page.getByRole("checkbox", { name: /^Movies/ });
+  if (!movies && (await box.isChecked())) {
+    await box.click();
+    await page.getByRole("checkbox", { name: /^Movies/, checked: false }).waitFor({ timeout });
+  }
+}
+
 /** Installs `gameDir` through the Install screen unless the launcher already has a game. */
 export async function installIfMissing(page, gameDir, timeout = 900_000) {
   await waitForLauncher(page, 180_000);
@@ -320,7 +333,7 @@ export async function installIfMissing(page, gameDir, timeout = 900_000) {
     return false;
   await openInstall(page);
   await page.locator('input[type="file"]').setInputFiles(gameDir);
-  await page.getByRole("heading", { name: "READY TO INSTALL" }).waitFor({ timeout: 180_000 });
+  await awaitReview(page);
   await page.getByRole("button", { name: /^INSTALL \d/ }).click();
   await page
     .getByRole("navigation", { name: "Games" })

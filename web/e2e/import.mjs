@@ -12,6 +12,7 @@ import { createServer } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import {
+  awaitReview,
   chooseEdition,
   openInstall,
   openTab,
@@ -123,7 +124,7 @@ await openInstall(page);
 check(true, "a browser with nothing imported offers INSTALL THE GAME");
 
 await page.locator('input[type="file"]').setInputFiles(gameDir);
-await page.getByRole("heading", { name: "READY TO INSTALL" }).waitFor({ timeout: 120_000 });
+await awaitReview(page, { timeout: 120_000, movies: argv.includes("--movies") });
 console.log(
   "    " +
     (await page.getByRole("region", { name: "Install the game" }).innerText()).replace(
@@ -133,7 +134,6 @@ console.log(
 );
 check(true, "the folder is read, and each available exe passes the build check");
 
-if (argv.includes("--movies")) await page.getByRole("checkbox", { name: /^Movies/ }).click();
 // this check reads the imported RA2MD.INI, so bring the folder's settings once
 const settingsBox = page.getByRole("checkbox", { name: "Settings and hotkeys" });
 if (await settingsBox.isEnabled()) await settingsBox.click();

@@ -24,7 +24,9 @@ import {
   type GameId,
   type FoundMod,
   type ImportOptions,
+  type ImportPlan,
 } from "../storage/install";
+import { partProgress, type PartProgress } from "../storage/import-progress";
 import type { Manifest } from "../storage/manifest";
 import { CopyCancelled, type CopyProgress, type CopyTarget } from "../storage/opfs";
 import { SOURCES } from "./InstallGuide";
@@ -81,8 +83,20 @@ type Stage =
       /** what the browser allows, if it says */
       quota?: number | undefined;
     }
-  | { name: "copying"; progress: CopyProgress | null; persistent: boolean | null }
-  | { name: "failed"; message: string };
+  | {
+      name: "copying";
+      plan: ImportPlan;
+      /** the `plan.copy` paths already in place */
+      done: ReadonlySet<string>;
+      progress: CopyProgress | null;
+      persistent: boolean | null;
+    }
+  | {
+      name: "failed";
+      message: string;
+      /** a copy that stopped: its source is still open, and TRY AGAIN carries on in the same installation */
+      retry?: { prepared: Prepared; progress: CopyProgress | null };
+    };
 
 const FIRST: ImportOptions = {
   movies: true,
@@ -96,7 +110,7 @@ const STEPS = ["CHOOSE", "REVIEW", "INSTALL"];
 
 function stepOf(stage: Stage): number {
   if (stage.name === "review") return 1;
-  if (stage.name === "copying") return 2;
+  if (stage.name === "copying" || (stage.name === "failed" && stage.retry)) return 2;
   return 0;
 }
 
@@ -121,6 +135,8 @@ export function Import({
 }) {
   const [stage, setStage] = useState<Stage>({ name: "choose" });
   const abort = useRef<AbortController | null>(null);
+  // the installation this screen is making or resuming: set as soon as the import knows it
+  const running = useRef<number | undefined>(slot);
   const [over, setOver] = useState(false);
   // the source being looked at or copied: an archive's holds a worker until it is let go
   const opened = useRef<FolderSource | null>(null);
@@ -157,18 +173,40 @@ export function Import({
   async function start(prepared: Prepared) {
     const controller = new AbortController();
     abort.current = controller;
-    setStage({ name: "copying", progress: null, persistent: null });
+    const { plan } = prepared;
+    const finished = new Set<string>();
+    const seen: { progress: CopyProgress | null } = { progress: null };
+    let persistent: boolean | null = null;
+    // each event puts a fresh copy of the set on the stage, so the screen redraws
+    const show = () =>
+      setStage({
+        name: "copying",
+        plan,
+        done: new Set(finished),
+        progress: seen.progress,
+        persistent,
+      });
+    let keepSource = false;
+    show();
     try {
-      const persistent = await deps.persist();
-      setStage({ name: "copying", progress: null, persistent });
+      persistent = await deps.persist();
+      show();
       const done = await runImport({
         prepared,
         build: deps.build,
         manifest: deps.manifest,
         target: deps.target,
         signal: controller.signal,
-        ...(slot === undefined ? {} : { slot }),
-        onProgress: (progress) => setStage({ name: "copying", progress, persistent }),
+        // a second attempt carries on in the installation the first one made
+        ...(running.current === undefined ? {} : { slot: running.current }),
+        onSlot: (each) => {
+          running.current = each;
+        },
+        onFileDone: (path) => finished.add(path),
+        onProgress: (progress) => {
+          seen.progress = progress;
+          show();
+        },
       });
       onDone(done);
     } catch (error) {
@@ -177,9 +215,24 @@ export function Import({
           name: "choose",
           message: "Cancelled. What was copied is kept: RESUME INSTALL carries on.",
         });
-      else setStage({ name: "failed", message: errorText(error) });
+      else {
+        // the source stays open for TRY AGAIN; what is kept is the files that were finished
+        keepSource = true;
+        const last = seen.progress;
+        const keptBytes = plan.copy
+          .filter((file) => finished.has(file.path))
+          .reduce((sum, file) => sum + file.size, 0);
+        setStage({
+          name: "failed",
+          message: errorText(error),
+          retry: {
+            prepared,
+            progress: last ? { ...last, doneBytes: keptBytes, doneFiles: finished.size } : null,
+          },
+        });
+      }
     } finally {
-      release();
+      if (!keepSource) release();
     }
   }
 
@@ -251,7 +304,15 @@ export function Import({
               <li
                 key={label}
                 aria-current={index === current ? "step" : undefined}
-                data-state={index < current ? "done" : index === current ? "current" : "next"}
+                data-state={
+                  index < current
+                    ? "done"
+                    : index === current
+                      ? stage.name === "failed" && stage.retry
+                        ? "failed"
+                        : "current"
+                      : "next"
+                }
               >
                 <span aria-hidden="true" />
                 <span className={styles.stepLabel}>
@@ -307,6 +368,8 @@ export function Import({
 
           {stage.name === "copying" && (
             <Copying
+              plan={stage.plan}
+              done={stage.done}
               progress={stage.progress}
               persistent={stage.persistent}
               onCancel={() => abort.current?.abort()}
@@ -314,21 +377,18 @@ export function Import({
           )}
 
           {stage.name === "failed" && (
-            <div className={styles.body}>
-              <h1 className={styles.title}>THAT DID NOT WORK</h1>
-              <p className={styles.failure} role="alert">
-                {stage.message}
-              </p>
-              <div className={styles.actions}>
-                <button
-                  type="button"
-                  className={styles.primary}
-                  onClick={() => setStage({ name: "choose" })}
-                >
-                  TRY AGAIN
-                </button>
-              </div>
-            </div>
+            <Failed
+              stage={stage}
+              onRetry={() => {
+                if (stage.retry) void start(stage.retry.prepared);
+                else setStage({ name: "choose" });
+              }}
+              onChoose={() => {
+                release();
+                setStage({ name: "choose" });
+              }}
+              onGuide={onGuide}
+            />
           )}
         </section>
       </div>
@@ -848,11 +908,21 @@ function Review({
   );
 }
 
+const STATE_WORD: Record<PartProgress["state"], string> = {
+  done: "DONE",
+  copying: "COPYING",
+  waiting: "WAITING",
+};
+
 function Copying({
+  plan,
+  done,
   progress,
   persistent,
   onCancel,
 }: {
+  plan: ImportPlan;
+  done: ReadonlySet<string>;
   progress: CopyProgress | null;
   persistent: boolean | null;
   onCancel(): void;
@@ -861,34 +931,128 @@ function Copying({
     progress && progress.totalBytes > 0
       ? Math.round((progress.doneBytes / progress.totalBytes) * 100)
       : 0;
+  // the mods are brought after the files, and send no progress of their own
+  const filesFinished =
+    (progress !== null && progress.doneFiles >= progress.totalFiles) ||
+    (plan.copy.length > 0 && plan.copy.every((file) => done.has(file.path)));
+  const parts = partProgress(plan, done, progress?.file ?? null, filesFinished);
   return (
-    <div className={styles.body}>
-      <h1 className={styles.title}>INSTALLING</h1>
-      <div
-        role="progressbar"
-        aria-label="Copying the game"
-        aria-valuenow={percent}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        className={styles.bar}
-      >
-        <div style={{ width: `${percent}%` }} />
-      </div>
-      <div className={styles.progressLine}>
-        <span>
-          {progress
-            ? `${formatBytes(progress.doneBytes)} of ${formatBytes(progress.totalBytes)}`
-            : "Starting…"}
+    <div className={styles.copying}>
+      <div className={styles.copyHead}>
+        <h1 className={styles.title}>INSTALLING</h1>
+        <span className={styles.percent} aria-hidden="true">
+          {percent}%
         </span>
-        {progress && <span className={styles.muted}>{progress.file}</span>}
       </div>
+      <div className={styles.body}>
+        <div
+          role="progressbar"
+          aria-label="Copying the game"
+          aria-valuenow={percent}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          className={styles.bar}
+        >
+          <div style={{ width: `${percent}%` }} />
+        </div>
+        <div className={styles.progressLine}>
+          <span>
+            {progress
+              ? `${formatBytes(progress.doneBytes)} of ${formatBytes(progress.totalBytes)}`
+              : "Starting…"}
+          </span>
+          {progress && <span className={styles.file}>{progress.file}</span>}
+        </div>
+      </div>
+      <ul className={styles.parts} aria-label="Parts">
+        {parts.map((part) => (
+          <li key={part.id} data-state={part.state}>
+            <span className={styles.dot} aria-hidden="true" />
+            <span className={styles.partLabel}>{part.label}</span>
+            <span className={styles.partNote}>
+              {part.state === "copying" && part.doneBytes > 0
+                ? `${formatBytes(part.doneBytes)} of ${formatBytes(part.bytes)}`
+                : formatBytes(part.bytes)}
+            </span>
+            <span className={styles.partState}>{STATE_WORD[part.state]}</span>
+          </li>
+        ))}
+      </ul>
       {persistent === false && (
-        <p className={styles.warn}>The browser may clear this copy if it runs low on space.</p>
+        <p className={styles.note}>The browser may clear this copy if it runs low on space.</p>
       )}
-      <div className={styles.actions}>
+      <div className={styles.cancelLine}>
         <button type="button" className={styles.secondary} onClick={onCancel}>
           CANCEL
         </button>
+        <p className={styles.caption}>
+          Keep this tab open until it finishes. If you cancel, what was copied is kept and RESUME
+          INSTALL carries on.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function Failed({
+  stage,
+  onRetry,
+  onChoose,
+  onGuide,
+}: {
+  stage: Extract<Stage, { name: "failed" }>;
+  onRetry(): void;
+  onChoose(): void;
+  onGuide?: (() => void) | undefined;
+}) {
+  const kept = stage.retry?.progress ?? null;
+  const share =
+    kept && kept.totalBytes > 0
+      ? Math.min(100, Math.round((kept.doneBytes / kept.totalBytes) * 100))
+      : 0;
+  return (
+    <div className={styles.failed} role="alert">
+      <div className={styles.failedHead}>
+        <svg
+          width="30"
+          height="30"
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="#ff8a80"
+          strokeWidth="1.4"
+          aria-hidden="true"
+        >
+          <path d="M8 1.5l6.5 12h-13z" />
+          <path d="M8 6v3.5M8 11.5v.1" />
+        </svg>
+        <h1 className={styles.title}>THAT DID NOT WORK</h1>
+      </div>
+      <p className={styles.failedMessage}>{stage.message}</p>
+      {kept && kept.doneBytes > 0 && (
+        <div className={styles.body}>
+          <div className={styles.keptBar} role="img" aria-label={`${share} percent was copied`}>
+            <div style={{ width: `${share}%` }} />
+          </div>
+          <p className={styles.caption}>
+            {formatBytes(kept.doneBytes)} of {formatBytes(kept.totalBytes)} was copied and is kept.
+            TRY AGAIN carries on from there.
+          </p>
+        </div>
+      )}
+      <div className={styles.actions}>
+        <button type="button" className={styles.primary} onClick={onRetry}>
+          TRY AGAIN
+        </button>
+        {stage.retry && (
+          <button type="button" className={styles.secondary} onClick={onChoose}>
+            CHOOSE ANOTHER FOLDER
+          </button>
+        )}
+        {onGuide && (
+          <button type="button" className={styles.link} onClick={onGuide}>
+            Read the install guide
+          </button>
+        )}
       </div>
     </div>
   );

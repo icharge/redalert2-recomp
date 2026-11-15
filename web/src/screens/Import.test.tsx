@@ -647,6 +647,172 @@ describe("Import", () => {
     release();
   });
 
+  /** Renders the screen over a target that `write` can hold open or fail, and starts the install. */
+  async function install(
+    write: (path: string, stream: ReadableStream<Uint8Array>) => Promise<void>,
+    extra: { source?: FolderSource; onDone?: () => void } = {},
+  ) {
+    const manifest = await Manifest.open(new IDBFactory());
+    const target = memoryTarget();
+    const wrapped: CopyTarget = {
+      ...target,
+      write: async (path, stream) => {
+        await write(path, stream);
+        await target.write(path, stream);
+      },
+    };
+    const onDone = extra.onDone ?? vi.fn();
+    render(
+      <Theme>
+        <Import
+          deps={{
+            build,
+            manifest,
+            target: wrapped,
+            estimate: async () => ({ quota: 1e12, usage: 0 }),
+            persist: async () => true,
+            pickDirectory: async () => extra.source ?? folder(),
+          }}
+          onDone={onDone}
+        />
+      </Theme>,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "CHOOSE FOLDER" }));
+    await user.click(await screen.findByRole("button", { name: /^INSTALL / }));
+    return { manifest, onDone, user };
+  }
+
+  it("shows each part of the copy and where it stands", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    // the empty stand-ins go through; the game's own archive waits
+    await install(async (path) => {
+      if (path.endsWith("ra2.mix")) await gate;
+    });
+    const parts = await screen.findByRole("list", { name: "Parts" });
+    await waitFor(() =>
+      expect(within(parts).getByText("Game content").closest("li")).toHaveTextContent("COPYING"),
+    );
+    expect(within(parts).getByText("Movies").closest("li")).toHaveTextContent("WAITING");
+    expect(within(parts).getByText("Saved games").closest("li")).toHaveTextContent("WAITING");
+    release();
+    await waitFor(() =>
+      expect(within(parts).getByText("Game content").closest("li")).not.toHaveTextContent(
+        "COPYING",
+      ),
+    );
+  });
+
+  it("says to keep the tab open", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    await install(() => gate);
+    expect(await screen.findByText(/Keep this tab open until it finishes/)).toBeInTheDocument();
+    expect(screen.getByText(/RESUME INSTALL carries on\./)).toBeInTheDocument();
+    release();
+  });
+
+  it("a failed copy says what was kept and tries again in the same installation", async () => {
+    let writes = 0;
+    let failing = true;
+    const { manifest, onDone, user } = await install(async () => {
+      if (failing && ++writes === 2) throw new Error("The disk is full.");
+    });
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("THAT DID NOT WORK");
+    expect(alert).toHaveTextContent("The disk is full.");
+    expect(alert).toHaveTextContent(/was copied and is kept/);
+    expect(alert).toHaveTextContent("TRY AGAIN carries on from there.");
+    expect(screen.getByText("3 INSTALL").closest("li")).toHaveAttribute("data-state", "failed");
+    failing = false;
+    await user.click(screen.getByRole("button", { name: "TRY AGAIN" }));
+    await waitFor(() => expect(onDone).toHaveBeenCalled());
+    expect(await manifest.listInstallations()).toHaveLength(1);
+    expect((await manifest.getGame("ra2md"))?.complete).toBe(true);
+  });
+
+  it("a failed copy can go back to choose another folder", async () => {
+    const close = vi.fn();
+    let writes = 0;
+    const { user } = await install(
+      async () => {
+        if (++writes === 2) throw new Error("The disk is full.");
+      },
+      { source: { ...folder(), close } },
+    );
+    await screen.findByRole("alert");
+    expect(close).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "CHOOSE ANOTHER FOLDER" }));
+    expect(await screen.findByRole("heading", { name: "INSTALL THE GAME" })).toBeInTheDocument();
+    expect(close).toHaveBeenCalled();
+  });
+
+  it("a failure before the copy only offers to try again from the start", async () => {
+    const manifest = await Manifest.open(new IDBFactory());
+    render(
+      <Theme>
+        <Import
+          deps={{
+            build,
+            manifest,
+            target: memoryTarget(),
+            estimate: async () => ({ quota: 1e12, usage: 0 }),
+            persist: async () => true,
+            pickDirectory: async () => {
+              throw new Error("The folder could not be read.");
+            },
+          }}
+          onDone={() => {}}
+        />
+      </Theme>,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "CHOOSE FOLDER" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("The folder could not be read.");
+    expect(alert).not.toHaveTextContent(/was copied/);
+    expect(screen.queryByRole("button", { name: "CHOOSE ANOTHER FOLDER" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "TRY AGAIN" }));
+    expect(await screen.findByRole("heading", { name: "INSTALL THE GAME" })).toBeInTheDocument();
+  });
+
+  it("a failed copy offers the install guide when it can", async () => {
+    let writes = 0;
+    const manifest = await Manifest.open(new IDBFactory());
+    const target = memoryTarget();
+    const onGuide = vi.fn();
+    render(
+      <Theme>
+        <Import
+          deps={{
+            build,
+            manifest,
+            target: {
+              ...target,
+              write: async () => {
+                if (++writes === 1) throw new Error("The disk is full.");
+              },
+            },
+            estimate: async () => ({ quota: 1e12, usage: 0 }),
+            persist: async () => true,
+            pickDirectory: async () => folder(),
+          }}
+          onDone={() => {}}
+          onGuide={onGuide}
+        />
+      </Theme>,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "CHOOSE FOLDER" }));
+    await user.click(await screen.findByRole("button", { name: /^INSTALL \d/ }));
+    await screen.findByRole("alert");
+    // nothing was copied yet, so there is no line about what was kept
+    expect(screen.getByRole("alert")).not.toHaveTextContent(/was copied/);
+    await user.click(screen.getByRole("button", { name: "Read the install guide" }));
+    expect(onGuide).toHaveBeenCalled();
+  });
+
   it("goes back to the start when what was picked is not a folder", async () => {
     const { user } = await setup(null);
     await user.click(screen.getByRole("button", { name: "CHOOSE FOLDER" }));
