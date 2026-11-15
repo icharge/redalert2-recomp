@@ -42,12 +42,15 @@ web/
     styles/tokens.css       colours, fonts and shapes as CSS variables
     screens/
       launcher/
-        Shell.tsx           the top bar (logo, PLAY / MODS / GAME, storage) and the game rail
-        PlayScreen.tsx      the edition's art and title, the mod (PROFILE) picker, PLAY, the status
+        Shell.tsx           the top bar (logo, PLAY / MODS / GAME, storage, who is signed in) and the game rail
+        PlayScreen.tsx      the edition's art and title, the mod (PROFILE) picker, a guest's online name, PLAY, the status
+        WelcomeScreen.tsx   `/welcome`: what this is, bring your own game, guest or member
+        AccountScreen.tsx   `/account`: member sign-in, the member's game account (nick), sign out
         ModsScreen.tsx      every mod of the install, install / play / remove
         GameScreen.tsx      the install: editions, files, saved games, storage, older copies, remove
         settings/           SettingsScreen and one file per tab; controls.tsx (Toggle, Segmented, PipBar, Row)
       Import.tsx            the Install screen: pick or drop the folder, check it, copy it
+      InstallGuide.tsx      `/install/guide`: where each edition of the game keeps its folder
       Play.tsx              the canvas, the page controls (GameTray), the dialogs over the game
       GameTray.tsx          the red star and the bar of page controls in game
       LoadingScreen.tsx     the copy and start-up screen over the edition's art
@@ -73,6 +76,10 @@ web/
       volume.ts             the volume, kept in the manifest's settings
       sound-preferences.ts  "mute when the window loses focus" and "menu music", kept the same way
       attention.ts          `useAttention`: the tab shows and the window has the focus
+    account/
+      api.ts                the server's member routes: sign-in, refresh (one at a time, a Web Lock across tabs), tickets
+      store.ts              guest, offline or member, for React; one refresh on load
+      launch.ts             what PLAY sends the game: a member's or a guest's launch ticket, or none
     storage/
       opfs.ts               copying into OPFS, reading back, removing
       manifest.ts           what is imported (IndexedDB)
@@ -91,8 +98,8 @@ the game isn't built.
 
 ## Screens
 
-The app uses clean routes under its deployment base: `/` (Play), `/mods`, `/manage` (Game) and
-`/settings/<tab>` are the launcher; `/import` installs a folder; `/game` launches the active
+The app uses clean routes under its deployment base: `/` (Play), `/mods`, `/manage` (Game),
+`/settings/<tab>`, `/welcome`, `/install/guide` and `/account` are the launcher; `/import` installs a folder; `/game` launches the active
 installation, with `?edition=ra2` or `?edition=ra2md` naming the edition. Old `/game/:slot` links
 select that installation and replace the URL with `/game`. `/settings` and an unknown tab go to
 `/settings/launcher`. Invalid or unfinished installations explain the problem and link back to the
@@ -134,7 +141,19 @@ is never reused for another slot. Mod/font restarts reload the same game URL.
    WebGL2, or OPFS. It says what, and which browsers have it.
 2. **Play.** The edition's art and title, the PROFILE (mod) picker, PLAY and a status line
    ("Ready", or what is missing). With nothing installed, one INSTALL THE GAME button. An
-   unfinished import offers RESUME INSTALL.
+   unfinished import offers RESUME INSTALL. PLAY hands the game a launch ticket in the URL fragment
+   (`/game?edition=…#ticket=…`, minted at the click, 60 s, single use; `account/launch.ts`): a
+   signed-in member's for their game account, or a guest's for the ONLINE NAME typed above the
+   footer (kept in `localStorage`, at most 9 characters; "name taken" shows inline and the game
+   stays closed). With no name, no server, guests switched off or a refused member ticket, the game
+   opens without one and its own login dialog works as before. The loader clears and redeems the
+   ticket, and the game's own auto-login then takes Internet straight to the lobby
+   ([members-and-sso.md](../wol/members-and-sso.md); end to end: `web/e2e/launch-login.mjs`).
+   **Welcome** (`/welcome`) explains bring-your-own-game and the choice of guest or member;
+   **Account** (`/account`) signs a member in (login name or email), creates or claims their one
+   game account ("1 of 1"), and signs out here or everywhere. The bar shows "Guest" or
+   `member · nick`. The access token stays in memory; the refresh token is the server's `HttpOnly`
+   cookie, and refreshes run one at a time across tabs (two at once would read as a stolen token).
 3. **Mods.** Every mod of the install with its edition and size, filtered by edition; IN USE marks
    the active one. INSTALL MOD (or a dropped folder) asks which edition when there are two.
 4. **Game.** The install's editions and their readiness, RESUME INSTALL and ADD MOVIES. The MANAGE

@@ -21,6 +21,13 @@ Changes since 0.2.1.
   Quick Co-op button reaches the co-op lobby on a server that turns it on.
   Two players are paired, play, and a ranked Quick Match settles on the
   server's ladder. (8f2e3458, d5b2d4f1)
+- **Members, guests and automatic online login**: a welcome page and an
+  install guide open the launcher, and its ACCOUNT screen signs a member in
+  and creates or claims their online nick (up to 9 letters). PLAY then gives
+  the game a one-time ticket, so Internet goes straight to the lobby as that
+  nick with no login dialog. A guest can give an online name instead; with
+  none, the game's own login works as before. Needs a server with member
+  support. (71911aca, 2ec3cde9, e1b17652, 55dd593c)
 
 ### Changed
 

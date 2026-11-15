@@ -591,6 +591,18 @@ redacted WebSocket captures are saved under
 `{"client":"host","click":[720,557],"shot":"back"}` and `{"quit":true}`;
 send carriage return when driving an interactive Windows PTY.
 
+A launch ticket's automatic login, end to end (LW-8): the script mints a ticket the way the
+launcher's PLAY does (a new member with a new game account, or `--guest` with a guest name),
+opens the game with `#ticket=`, presses Internet and checks the lobby JOIN carries that nick, with
+no login dialog and no `/register` or `/login` from the page. `pnpm wol-server` lets the dev
+origins (5173, 5175) call the launcher routes (`LAUNCHER_ORIGINS`). Seen passing in both editions,
+member and guest, on 15 November with `--game ../game` and Vite on 5175:
+
+```powershell
+node e2e/launch-login.mjs --url 'http://127.0.0.1:5175/?target=game' --game ../game
+node e2e/launch-login.mjs --url 'http://127.0.0.1:5175/' --game ../game --guest
+```
+
 Do not build while another `run_lift.py` is regenerating the same edition's
 sources. If compiling all objects with `EMCC_DEBUG=1` is slow, compile object
 targets with it disabled, then enable it for the final link; debug mode avoids

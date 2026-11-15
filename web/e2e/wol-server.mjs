@@ -26,6 +26,10 @@ const server = spawn("bun", ["--no-env-file", "run", "src/index.ts"], {
     EXTERNAL_URL: process.env.EXTERNAL_URL ?? `ws://127.0.0.1:${port}`,
     WOL_URL_PATH: process.env.WOL_URL_PATH ?? "",
     CORS_ALLOWED_ORIGINS: process.env.CORS_ALLOWED_ORIGINS ?? "*",
+    // The launcher's member and ticket routes answer only these (credentialed CORS, Origin check).
+    LAUNCHER_ORIGINS:
+      process.env.LAUNCHER_ORIGINS ??
+      ["5173", "5175"].flatMap((p) => [`http://127.0.0.1:${p}`, `http://localhost:${p}`]).join(","),
   },
 });
 server.on("error", (error) => {
