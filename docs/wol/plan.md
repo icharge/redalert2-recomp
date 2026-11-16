@@ -302,8 +302,12 @@ Taken later the same day, for the lobby bot (numbered on so the open ones keep t
 11. **Member sign-in:** a login name or email, kept apart from the game account's nick; claiming an existing WOL account with its
     password counts toward the limit of one; game account and guest names capped at the retail login field's width: 9 characters,
     measured in F5A-3 (the field keeps 9 and the game lowercases them; the shim also reads sender nicks as at most 9).
-12. **DB3 (async storage) runs after phase 1.** Seasons, members and the bot are written against today's synchronous `Storage` and
-    converted with everything else; Postgres and MySQL (DB4, DB7) follow DB3.
+12. **DB3: a write-through mirror, not async storage** (changed 2026-11-16; first answer: make `Storage` async after phase 1).
+    `Storage` stays synchronous. With `STORAGE=postgres|mysql` the server runs on a SQLite cache whose triggers log every row
+    change, shipped in order to `DATABASE_URL`, which is the source of truth (the cache is rebuilt from it at start). Reason: the
+    async conversion touched 91 methods, ~200 call sites and the WOL line order for no gain at one server process per database.
+    Cost: one process per database, the whole dataset in memory/cache, a write the database refuses is logged and retried, not
+    rolled back locally. ra2web `7482626`; `server/README.md` "Postgres and MySQL".
 13. **S7, the Connection slider: left alone.**
 14. **Map pool: every stock map is available and configurable on the admin site** (changed the same day; first answer was "prove the
     five first"). Every web player has the full game, so the server ships a catalog of all stock maps, the operator switches them on
