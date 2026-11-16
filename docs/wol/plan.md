@@ -282,7 +282,8 @@ are observations in R1; S7 (the Connection slider) is a decision, left alone by 
 5. **Ranked integrity:** a quitter loses only when gserv saw the drop and the other player reported a win (`ranked.quitterWin`);
    web 2v2 scores only when every report agrees on the winning team (`ranked.web2v2Agreement`).
 6. **Admin console on the public site, with TOTP for owners.** Public only once the Origin check, the cookie console and TOTP are in;
-   no separate admin listener.
+   no separate admin listener. **Changed 16 Nov 2026:** for now the console signs in with username and password (console accounts);
+   TOTP is built and optional per owner, and `ADMIN_TOTP_REQUIRED` stays false until the operator turns it on.
 7. **Season reset: soft, factor 0.5, at least 5 rated games**, placements restart at 3.
 8. **Awards yes** (web page only), **one 1v1 board per edition**. Season length: a quarter if the ladder is active, otherwise 365 days.
 9. **Guests** play offline at once, and online under **any name that no account and no player online already uses**, never scored;
