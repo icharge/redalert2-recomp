@@ -840,6 +840,7 @@ int main(int argc, char **argv) {
 #else
     ra2_wolapi_set_no_router_flag(0x00A8E2C8u);   /* Session (0xA8B238) + 0x3090 */
     ra2_wolapi_set_ipx_manager(0x00A8E9C0u);
+    ra2_wolapi_set_game_name(0x00A8D610u);        /* UTF-16 game name, checked by the chat receiver (0x0048D8DD) */
 #endif
     ra2_wolapi_register();
     ra2_net_tuning_init(&g_net_addrs, !g_classic_latency, g_net_delay_ms);

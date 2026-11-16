@@ -32,6 +32,12 @@ void ra2_wolapi_set_no_router_flag(uint32_t guest_address);
  * The bridge zeroes that word in every connection once they exist. */
 void ra2_wolapi_set_ipx_manager(uint32_t guest_address);
 
+/* Guest address of the game's UTF-16 game name (0xA8D610 in Yuri's Revenge), or 0. The bridge sets it
+ * to the room operator's name once a match starts: the receiver of an IPX chat message compares the
+ * sender's hash of it with its own, and a room the matchbot made would otherwise leave each player
+ * holding the other's name. */
+void ra2_wolapi_set_game_name(uint32_t guest_address);
+
 /* Called from the game thread's message pump; applies the two patches above while
  * a match is being set up or played. The game stops calling into the bridge once it
  * leaves its online screens, so the patches cannot ride on those calls. */

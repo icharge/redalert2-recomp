@@ -141,6 +141,59 @@ async function clipOf(run, [x, y, w, h]) {
 const chatListPixels = async (run) =>
   (await run.page.screenshot({ clip: await clipOf(run, CHAT_LIST) })).toString("base64");
 
+// Guest memory (the wasm heap is flat: a guest address is the heap offset), as hex. The game runs in a
+// worker on the same shared memory, so the page can read it while the game runs.
+const hex = (bytes) => Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+const guestRead = (run, addr, len) =>
+  run.page
+    .evaluate(
+      async ([a, n]) => {
+        const handle = await window.ra2Session;
+        return Array.from(handle.memory().HEAPU8.slice(a, a + n));
+      },
+      [addr, len],
+    )
+    .then((v) => Uint8Array.from(v));
+const le32 = (b, at = 0) =>
+  (b[at] | (b[at + 1] << 8) | (b[at + 2] << 16) | (b[at + 3] << 24)) >>> 0;
+const cstring = (b) => {
+  const end = b.indexOf(0);
+  return Buffer.from(b.slice(0, end < 0 ? b.length : end)).toString("latin1");
+};
+/** Keeps a copy of the game's incoming packet buffer (0xA8D638) each time it changes. */
+const watchPacket = (run) =>
+  run.page.evaluate(async () => {
+    const handle = await window.ra2Session;
+    const heap = handle.memory().HEAPU8;
+    window.coopPackets = [];
+    let last = "";
+    window.coopPoll = setInterval(() => {
+      const now = heap.slice(0xa8d638, 0xa8d638 + 0x130);
+      const text = now.join(",");
+      if (text !== last) {
+        last = text;
+        window.coopPackets.push({ t: Date.now(), bytes: Array.from(now) });
+        if (window.coopPackets.length > 200) window.coopPackets.shift();
+      }
+    }, 1);
+  });
+/** The game's name check: gate byte, name, its hash, and the hash the last packet carried. */
+async function nameState(run) {
+  const gate = await guestRead(run, 0xa8d60d, 4);
+  const name = await guestRead(run, 0xa8d610, 0x40);
+  const mode = await guestRead(run, 0xa8b238, 4);
+  const flags = await guestRead(run, 0xa8dba0, 4);
+  const lastHash = await guestRead(run, 0xa8d74c, 4);
+  return {
+    gate: gate[0],
+    name: cstring(name),
+    nameHex: hex(name.slice(0, 24)),
+    mode: le32(mode),
+    a8dba0: flags[0],
+    lastPacketHash: le32(lastHash).toString(16),
+  };
+}
+
 async function toWelcome(run) {
   await run.waitFor(`${run.nick} main menu`, (s) => s?.phase === "running", 300);
   await run.page.waitForTimeout(1500);
@@ -236,6 +289,13 @@ try {
   await a.page.waitForTimeout(4000);
   await Promise.all([a.shot("score"), b.shot("score")]);
 
+  // ---- C-3: what the game compares (the lead: the game name hash of message 0x0C)
+  for (const run of [a, b]) {
+    const st = await nameState(run);
+    info(`${run.nick} memory: ${JSON.stringify(st)}`);
+    await watchPacket(run);
+  }
+
   // ---- C-3: chat on the score screen
   const mark = { t: Date.now(), log: readServerLog().length, a: a.relay.length, b: b.relay.length };
   const bLogMark = b.all.length;
@@ -279,6 +339,20 @@ try {
         .slice(0, 300) || "none"
     }`,
   );
+  for (const run of [a, b]) {
+    const packets = await run.page.evaluate(() => window.coopPackets ?? []);
+    const chat = packets.filter((p) => p.bytes[0] === 0xc);
+    info(
+      `${run.nick} packet buffer changes: ${packets.length}; with type 0x0C at +0: ${chat.length}`,
+    );
+    for (const p of (chat.length ? chat : packets).slice(-2)) {
+      const bytes = Uint8Array.from(p.bytes);
+      info(
+        `  name hash at +0x114: ${le32(bytes, 0x114).toString(16)}; first 0x120 bytes ${hex(bytes.slice(0, 0x120))}`,
+      );
+    }
+    info(`  ${run.nick} after the line: ${JSON.stringify(await nameState(run))}`);
+  }
   const udpTrace = b.lines.filter((l) => l.includes("[udp-relay] recv from")).slice(-1)[0] ?? "";
   info(`B's last relay receive: ${udpTrace.slice(0, 120)}`);
   assert.ok(ownChanged, "A's own chat list shows the typed line (the control)");
@@ -317,7 +391,7 @@ try {
     const m = run === a ? next.a : next.b;
     const lines = run.all.slice(m).filter((l) => !noisy.test(l));
     info(`${run.nick} native lines after Continue: ${lines.length ? "" : "none"}`);
-    for (const l of lines.slice(0, 25)) info(`  ${l.slice(0, 140)}`);
+    for (const l of lines.slice(0, 60)) info(`  ${l.slice(0, 140)}`);
     const wire = run.wire
       .slice(run === a ? next.aw : next.bw)
       .filter((w) => !/^(PING|PONG)/.test(w.line));
@@ -333,6 +407,40 @@ try {
       `${run.nick} relay datagrams after Continue (dir+length: count): ${[...lengths].map(([k, v]) => `${k}:${v}`).join(" ")}`,
     );
   }
+  // Does the next mission start? Frame lines after the click, up to 120 s more.
+  const framesSince = (run, from) => {
+    const frames = run.all
+      .slice(from)
+      .map((l) => /^\[game\] Frame (\d+),/.exec(l)?.[1])
+      .filter(Boolean)
+      .map(Number);
+    return frames.length ? Math.max(...frames) : 0;
+  };
+  const deadline = Date.now() + 120000;
+  while (Date.now() < deadline && !(framesSince(a, next.a) >= 100 && framesSince(b, next.b) >= 100))
+    await a.page.waitForTimeout(1000);
+  const loaded = [a, b].map((run) =>
+    run.all
+      .slice(run === a ? next.a : next.b)
+      .filter((l) => /Loading|Map|Scenario|\.MAP|mission/i.test(l) && !noisy.test(l)),
+  );
+  info(
+    `after Continue, frames reached: A ${framesSince(a, next.a)}, B ${framesSince(b, next.b)} (next mission ${framesSince(a, next.a) >= 100 && framesSince(b, next.b) >= 100 ? "RUNS" : "did not start"})`,
+  );
+  for (const [i, run] of [a, b].entries())
+    info(
+      `${run.nick} map/mission lines after Continue: ${loaded[i].slice(-6).join(" | ").slice(0, 400) || "none"}`,
+    );
+  info(
+    `dialogs after Continue: A ${a.all
+      .slice(next.a)
+      .filter((l) => l.startsWith("[dialog]"))
+      .join(", ")}; B ${b.all
+      .slice(next.b)
+      .filter((l) => l.startsWith("[dialog]"))
+      .join(", ")}`,
+  );
+  await Promise.all([a.shot("next-a"), b.shot("next-b")]);
   const changed = !beforeScreen.equals(await a.page.screenshot());
   const dialogs = a.all.slice(next.a).filter((l) => l.startsWith("[dialog]"));
   info(`A's screen changed after Continue: ${changed}; dialogs: ${dialogs.join(", ") || "none"}`);

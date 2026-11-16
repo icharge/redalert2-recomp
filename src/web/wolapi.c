@@ -597,6 +597,27 @@ static int32_t parse_ping(const char *text, char separator, unsigned index) {
     long ping = strtol(text, NULL, 10);
     return ping > 0 ? (int32_t)ping : -1;
 }
+static uint32_t g_game_name;
+static char g_host_name[32];
+/* The game's "game name": a UTF-16 string (0xA8D610 in Yuri's Revenge, room for 21 characters) that
+ * the host's own Create copies its name into and a guest's user-list sink fills with the first other
+ * user. Each IPX chat message (type 0x0C) carries its hash and the receiver drops a message whose
+ * hash differs from its own (0x0048D8DD, gate byte 0xA8D60D). A game the matchbot made has no
+ * client that ran Create: its host (the room operator) is a guest to the game like the other
+ * player, so each player's name is the other's and no message from one is ever drawn by the
+ * other (the score screen chat). Put the room operator's name there on every player. */
+static void apply_game_name(void) {
+    if (!g_game_name || !g_host_name[0]) return;
+    uint16_t wide[22] = { 0 };
+    for (uint32_t i = 0; i < 20 && g_host_name[i]; i++) wide[i] = (uint8_t)g_host_name[i];
+    for (uint32_t i = 0; i < 22; i++) {
+        if (MEM16(g_game_name + 2 * i) == wide[i]) continue;
+        fprintf(stderr, "[wol] game name set to the room host %s\n", g_host_name);
+        for (uint32_t j = 0; j < 22; j++) MEM16(g_game_name + 2 * j) = wide[j];
+        return;
+    }
+}
+
 static void parse_roster(const char *line) {
     char channel[48];
     if (sscanf(line, ":%*s 353 %*s %*s %47s", channel) != 1 || strcmp(channel, g_current_channel)) return;
@@ -940,6 +961,10 @@ static void handle_line(const char *line) {
         g_session = session;
         g_match_leave_requested = g_match_part_held = g_pending_match_part = 0;
         log_users("startg");
+        g_host_name[0] = '\0';
+        for (uint32_t i = 0; i < g_user_count; i++)
+            if (g_users[i].flags & 1u) { copy_text(g_host_name, sizeof g_host_name, g_users[i].name); break; }
+        apply_game_name();
         g_starting_game = 0;
         wol_channel *channel = current_channel();
         uint32_t values[] = { S_OK, (uint32_t)(uintptr_t)channel,
@@ -951,6 +976,7 @@ static void handle_line(const char *line) {
 static uint32_t g_no_router_flag, g_ipx_manager;
 void ra2_wolapi_set_no_router_flag(uint32_t guest_address) { g_no_router_flag = guest_address; }
 void ra2_wolapi_set_ipx_manager(uint32_t guest_address) { g_ipx_manager = guest_address; }
+void ra2_wolapi_set_game_name(uint32_t guest_address) { g_game_name = guest_address; }
 
 /* IPXManagerClass: connection pointers from +0x28, their count at +0x44; each
  * connection keeps its peer's address object at +0x4C, whose first word is a port. */
@@ -967,6 +993,7 @@ void ra2_wolapi_poll(void) {
     if (!g_session.game_id[0]) return;
     if (g_no_router_flag) MEM8(g_no_router_flag) = 0;
     if (g_ipx_manager) clear_connection_ports();
+    apply_game_name();
 }
 
 static void pump_lines(void) {

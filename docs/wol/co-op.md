@@ -129,7 +129,7 @@ screen ("Campaign Results", then "Next Mission: Campaign 1 Map 2"). It took thre
    AI rows `1,<country>,<colour>,<start>,2` (Russians 8, Cubans 7, squad 2), the rest inactive.
 
 Not confirmed: the cooperative campaign line (`C0,...`) is still not sent and nothing needed it for this mission;
-"Next Mission" after the score screen was not exercised.
+"Next Mission" after the score screen: Continue works since the game name fix (C-2 below); a won mission was not tried.
 
 Debug flag (C-1, 16 Nov 2026): `COOP_CAMPAIGN_LINE=true` on the server sends the campaign line as its own `GAMEOPT`
 before the options, to the room and to each player from the other (off by default, the options are unchanged). The names
@@ -141,7 +141,7 @@ which VERA20K ports, not base64 as the table above says. The two-client trial wi
 answered 404 (not logged), so the two games of this run were not stored. Quick Co-op instances now carry
 `nativeSku` 18688 so the report is kept as unscored history; co-op is still never rated.
 
-## Chat on the Campaign Results screen (open, 14 Nov 2026)
+## Chat on the Campaign Results screen (fixed, see "Two-client run" below)
 
 A message typed on the co-op "Campaign Results" screen showed on the sender's screen and not on the partner's.
 
@@ -159,7 +159,8 @@ A message typed on the co-op "Campaign Results" screen showed on the sender's sc
 - **To read:** play to the score screen, type a line on each side, then compare `server.log` (a `new datagram length`
   line from the sender means the game sent it) with the receiver's browser console.
 - **Answered on 16 Nov 2026** ("Two-client run" below): the sender's game sends it, the relay delivers it, the
-  partner's Winsock gets all 475 bytes, and the partner's game does not draw it.
+  partner's Winsock gets all 475 bytes, and the partner's game did not draw it: the game-name hash check (each client
+  held the other's name). Fixed in `wolapi.c`, see "C-3" below.
 
 ## Built (15 Nov 2026)
 
@@ -202,7 +203,8 @@ partner copy):
 So the game accepts the line from the matchbot and decodes it without an error, and the match plays the same. What
 the line does for "Next Mission" is not known (see C-2). The flag stays off by default.
 
-**C-3, chat on the score screen: FOUND, not fixed (the cause is in the game).** A types `coop<tag>` in the edit `0x540`:
+**C-3, chat on the score screen: FOUND and FIXED (16 Nov 2026).** A types
+`coop<tag>` in the edit `0x540`:
 
 - A's own list shows it.
 - A's relay socket sends one 483 byte frame (8 byte header, 475 byte payload: the `0x1C7` message plus framing);
@@ -210,24 +212,47 @@ the line does for "Next Mission" is not known (see C-2). The flag stays off by d
   (no `no target` or closed socket line).
 - B's page receives it: `[udp-relay] recv from 10.212.36.163 ports 1234->1234 475 bytes 01785c15...`, and B's Winsock
   hands it to the game: `[net] recvfrom 10.212.36.163:1234 475 bytes`. The same with the flag off (`(packet 465)`).
-- B's list stays empty and the game logs nothing about it.
+- B's list stayed empty and the game logged nothing about it. So `NativeRelay.ts` and the page's relay do not drop it;
+  the loss was after `recvfrom`, in the game.
 
-So `NativeRelay.ts` and the page's relay do not drop it (no server change was made). The loss is after `recvfrom`, in
-the game. The lead, not yet checked in memory: the receiver of the `0x0C` message (`recomp_0008.c` near `0x0048D8DD`)
-compares the game name hash at `+0x114` of the packet with the one at `0x00A8D610` (gated by the byte at `0x00A8D60D`)
-and drops it on a mismatch. If the native shim leaves that name empty or different on the two sides, the chat is
-ignored although the datagram arrived. To confirm, read `0x00A8D60D` and `0x00A8D610` on both clients at the score
-screen. A fix would be in `wolapi.c` (publish the same game name on both) and needs a rebuild, so it is not made here.
+Cause, confirmed in memory with `coop.mjs` (it reads the guest heap through `handle.memory().HEAPU8`; a guest address is
+the heap offset): the message `0x0C` the chat sends carries, at `+0x114` of the packet (`0x00A8D74C` once received), the
+hash of the game name, UTF-16 at `0x00A8D610` (hash `0x005DAC00`: upper-cases ASCII, folds each unit). The receiver
+(`0x0048D8DD`) compares it with the hash of its own `0x00A8D610` when the byte `0x00A8D60D` is set, and ends on a
+mismatch without drawing. Measured on the score screen of the unfixed build (gate `0x00A8D60D` = 1 on both clients):
 
-**C-2, Continue on the score screen: nothing is asked of the server, and the clients do not leave the screen.** After
-Continue on both, for 25 seconds, each client sends no WOL frame and no HTTP request, and the server log shows nothing
-(flag off and on). Only relay keepalives continue, 75 and 28 byte frames each way, as before the click. The only change
-on screen is the greyed Continue and a ready star next to the player's row. The game logs no native line and stays on
-`0xBC6` (a first probe waited 60 seconds with the same result). VERA20K (`docs/Networking.md`) describes Continue as a
-return to the kept room, with the host starting the next stage over the same game datagrams. The relay forwards those,
-so the missing step is on the game's side of the datagrams (the same name check as C-3 would stop every message
-here as well) or needs a room kept after STARTG, which the matchbot does not do. Next: the memory read above, then see
-whether the host's Continue sends any datagram at all (after the click only the 28 and 75 byte keepalives were seen).
+    A (za72be6): [0xA8D610] = "zb72be6"        B (zb72be6): [0xA8D610] = "za72be6"
+
+Each client held the other player's name. In a game a player created, the host's own Create copies its name there
+(`0x0078A0A9`) and a guest's user-list sink stores the first other user (`0x007A7627`), the host, so every player holds
+the host's name and the hashes agree. In a matchbot room nobody ran Create: the operator A is a guest to the game like
+B, its first other user is B, and the two names differ. The hash in the dump (`+0x114`) was the sender's own.
+
+Fix, in `src/web/wolapi.c` (`apply_game_name`, with `ra2_wolapi_set_game_name(0x00A8D610)` from `src/web/main.c`, Yuri's
+Revenge only): at STARTG the shim takes the room operator's name (the `@` entry of the room's NAMES list) and keeps
+`0x00A8D610` equal to it, at STARTG and on every `ra2_wolapi_poll` while the session lasts (the game empties it again
+between rounds; the log shows `[wol] game name set to the room host <name>`). In a room a player hosted the operator is
+the host, which already holds its own name there, so nothing changes for it. After the fix both clients read
+`[0xA8D610] = "zab63fc"` (the operator), the chat line's hash is `0x260b` on both, and B draws A's line
+(`coop.mjs`: `C-3 step 3: B's game drew the chat line`). It applies to every matchbot game of Yuri's Revenge, so it
+also covers in-game chat of a Quick Match. `game.exe` is not touched (its address is not known and it has no co-op).
+
+**C-2, Continue on the score screen: works after the same fix.** Before it: nothing asked of the server and the
+clients stayed on `0xBC6` for 25 s and for 60 s (only 28 and 75 byte relay keepalives; the greyed Continue and a ready
+star were the only change), because the host's own messages after Continue met the same name check. After it, with
+Continue on B first and on A second (`--a-first` for the other order; with A first the game showed no ready mark for
+A), the host sends a `483` byte datagram to the guest and both log:
+
+    A: [game] Sending Campaign Options... / Processing Random Assignments... / Sending to <B> /
+       Init random number, Seed is ..., Setup Rematch: Random Seed = 1897192559 / Max ping is 17 ms
+    B: [game] Decoding Campaign Options... / Sending to <A> / Init random number / Setup Rematch /
+       [dialog] closed 0xBC6 / Pregame setup for 2 players / ----- Starting scnenario: C1A01MD.MAP -----
+
+Both then run the scenario again (frames A 590, B 590 within the 25 s plus the wait) with no WOL frame and no HTTP
+request: Continue is a round of game datagrams (the host's `Sending Campaign Options`, the guest decodes them), as VERA20K
+says. The server is not asked. Note it was a lost mission (Abort Mission, Observe), so Continue
+replays `C1A01MD` ("Setup Rematch"); the next map of the campaign after a won mission is not exercised, and a
+second map would need to be on both clients (stock `MultiMD.mix`) and in the pool.
 
 Side finding: the clients' `POST /native-results/<gameId>` for a co-op instance is answered 400 `Match context mismatch`
 (`nativeResults.ts`, around lines 70 and 72), so these results are still not stored. Not looked into here.
