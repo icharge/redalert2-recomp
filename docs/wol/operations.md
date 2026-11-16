@@ -112,9 +112,37 @@ external checker at `/health` and the settlement-age metric (a stuck timer shows
 | Match relay (UDP) | with the game server | public for players |
 
 Put the HTTP port behind a reverse proxy with TLS. To keep the admin API off the public internet, have the proxy refuse
-`/admin/*` from outside, or serve it on a separate listener ([admin-and-config.md](admin-and-config.md)). Set `ADMIN_USERNAMES`
-to the smallest list you need. Better: create real console accounts (`bun scripts/admin-user.ts create <name> --role owner`)
-and then set `ADMIN_LEGACY_AUTH=false`, so a game-account password is no longer an admin key ([admin-and-config.md](admin-and-config.md)).
+`/admin/*` from outside, or serve it on a separate listener ([admin-and-config.md](admin-and-config.md)). Console accounts
+(`bun scripts/admin-user.ts create <name> --role owner`) are the only way into the console: `ADMIN_LEGACY_AUTH` is off by default,
+so a game-account password is not an admin key, and the console no longer offers a game login (F2-7). Before `/admin` leaves the
+allow-list, follow [Going public](#going-public-cut-over) ([admin-and-config.md](admin-and-config.md)).
+
+## Going public (cut-over)
+
+Until every step below is done, keep `/admin/` behind loopback, a VPN or the proxy allow-list. Run these on the server, from the
+`server/` directory of `ra2web` (the commands read the same `.env` files as the server):
+
+1. **Make the key** that seals the authenticator secrets: `openssl rand -hex 32`. Put it in `.env.local` as `ADMIN_TOTP_KEY=<value>`
+   and keep it apart from the database backups (a copy of both opens every secret).
+2. **Create the owners**: `bun scripts/admin-user.ts create <name> --role owner` for each person (the password comes from a prompt,
+   `--password-file` or `ADMIN_PASSWORD`; at least 12 characters). Create a second owner so one lost phone does not lock you out.
+3. **Give each owner an authenticator**: `bun scripts/admin-user.ts totp <name>`. It prints the secret and the `otpauth://` URI;
+   add it to the app, type the code it shows, and store the recovery codes (each works once). A lost phone is
+   `bun scripts/admin-user.ts totp-reset <name>`, then step 3 again.
+4. **Set the environment** in `.env.local`: `ADMIN_TOTP_REQUIRED=true`, `ADMIN_LEGACY_AUTH=false` (the default; delete the line if
+   it says `true`) and no `ADMIN_USERNAMES` (delete the line or leave it empty).
+5. **Restart** (`systemctl restart ra2web`, or restart the Windows service). If `ADMIN_LEGACY_AUTH` is still on with
+   `ADMIN_USERNAMES` set, the log shows a warning at start.
+6. **Check**: `bun scripts/admin-user.ts check`. Every line must say `OK` (an enabled owner exists, every owner has a confirmed
+   authenticator, `ADMIN_TOTP_KEY` is set and valid, `ADMIN_TOTP_REQUIRED` is true, `ADMIN_LEGACY_AUTH` is false,
+   `ADMIN_USERNAMES` is empty). It exits 1 when anything says `NOT`; fix that line and run it again.
+7. **Sign in once from the allow-listed address** with the password and the code, and open the authenticator page. A game account
+   (even one that was in `ADMIN_USERNAMES`) must now get `401` from `/admin/settings`.
+8. **Open the proxy**: in `server/nginx.conf`, in `location ^~ /admin/`, delete the `allow ...;` and `deny all;` lines (that is the
+   allow-list) and reload: `nginx -t && systemctl reload nginx`. If the console is served from another origin, that origin must be in `ADMIN_ORIGIN`.
+
+To go back, put the `allow`/`deny` lines in again and reload nginx; nothing else needs to change. `ADMIN_LEGACY_AUTH=true`
+exists only for a migration and `check` reports it as `NOT`.
 
 ## Setup checklist for a new operator
 
