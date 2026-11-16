@@ -113,9 +113,8 @@ migration backup restore.
 - A client-controlled `ended_ago` can force a non-adjudicable `too_short`.
 - Adjudication skips the season grace check, and a win/loss adjudication needs
   an explicit `winner`.
-- The Vera 3-rated-games-per-24h limit is not implemented.
-- `GET /v1/matches/{id}` is memory-only and lasts 10 minutes.
-- Rematches in the same paired Vera room rank.
+- Vera pair limit (G2-S9, done): the Vera contract (`vera20k/docs/lobby-protocol.md`, "Ranked games") allows the same two players three rated games against each other in 24 hours. The fourth start plays unranked with `unranked_reason: "pair_limit"`, counted from the scored history rows (`countRatedGamesTogether`), so it slides with the clock and survives a restart. A rematch in the same room is a fresh match and counts like any other, so the same rule covers it; there is no separate room rule. The contract also says the pairing sends an `Info This match will not be ranked: <why>.` line before the match; that line and the post-game "was not ranked" chat are still not sent.
+- `GET /v1/matches/{id}` (roster members only) reads memory first, then the durable record: a ranked admission answers `ranked: true`, an archived Vera match without one answers `ranked: false` with `unranked_reason: "unknown"` (the reason of an unranked match is not stored). The Vera client does not call this route and the contract does not name it, so this is our choice.
 - `replayPath` is still exposed in public `/matches`.
 - Unconfirmed against real clients: `FINI=0` semantics,
   retail native version 1.006 and lobby channel mapping, UDP relay
