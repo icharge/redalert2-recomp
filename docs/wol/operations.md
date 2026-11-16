@@ -57,6 +57,35 @@ the copy and applies it.
 
 Until this exists, a manual backup while stopped is a file copy of `data/ra2web.sqlite`.
 
+### Postgres or MySQL
+
+With `STORAGE=postgres` or `mysql` the server runs on a SQLite cache (`DB_PATH`, default `data/ra2web-cache.sqlite`) and mirrors
+every write to `DATABASE_URL`; the database is the source of truth and the cache can be thrown away. The scheduled backup and
+`scripts/backup.ts` stay off, and `GET /health` says `backup: "external"` and shows `storage.mirror` (`pending`, `lastShippedAt`,
+`lastError`); `status` is `degraded` while a ship error persists or more than 1000 changes wait. `/metrics` has
+`ra2web_mirror_pending` and `ra2web_mirror_last_ship_seconds`; alert on either growing. Back up the database with its own tools,
+or the provider's managed backups, from a schedule you run:
+
+```sh
+# Postgres (custom format, restorable with pg_restore)
+pg_dump --format=custom --file=ra2web-$(date -u +%Y%m%dT%H%M%SZ).dump "$DATABASE_URL"
+# MySQL (consistent snapshot without locking the tables)
+mysqldump --single-transaction --routines --result-file=ra2web-$(date -u +%Y%m%dT%H%M%SZ).sql -h HOST -u USER -p DBNAME
+```
+
+Restore, in this order:
+
+1. Stop the server (`systemctl stop ra2web`).
+2. Restore the database: `pg_restore --clean --if-exists --no-owner --dbname="$DATABASE_URL" ra2web-<time>.dump`, or
+   `mysql -h HOST -u USER -p DBNAME < ra2web-<time>.sql`.
+3. Delete the cache file (`data/ra2web-cache.sqlite` with its `-wal` and `-shm`) to get exactly what was restored. Leaving it is
+   safe, since the start rebuilds it from the database, but changes it still holds unshipped are shipped first and land on top
+   of the restored data.
+4. Start the server; the log's `Storage:` and `mirror` lines say it reached the database, and `/health` shows the mirror.
+
+Upgrade: back up the database first, then update and start. A schema migration runs on the cache and then pushes the whole
+cache to the database, so the database is rewritten in one start; a downgrade cannot undo it, only the backup can.
+
 ## Upgrade
 
 1. Take a backup.
