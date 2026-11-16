@@ -7,8 +7,8 @@ in [protocol.md](protocol.md); the ranked rules are in
 
 Status: **works end to end for the YR client in this repo** (checked 13 Nov 2026
 with two driven clients, then played out by a person: pending, then scored). Not
-verified: a retail install that is not the recomp, `FINI=0`, a real map pool,
-Red Alert 2's own Quick Match, and lobby 39.
+verified: a retail install that is not the recomp, and lobby 39. Since 16 Nov 2026 two web clients
+have played all six pool maps and a scored RA2 match (R1, `web/e2e/quickmatch.mjs`).
 
 ## What the game does
 
@@ -129,7 +129,7 @@ install: `bun server/scripts/map-pool-scan.ts <game dir> --probe XMP29U2.MAP` (i
 is two-player maps so a random start cannot land on a slot with no opponent. `QUICK_MATCH_MAPS=XMP21S2`
 restricts the pool (a name that matches nothing is ignored). The server logs `quick match map <name>`.
 The pool is data: an admin adds, removes, weights and switches maps from the console (`quickMatch.pool` setting, size and digest read from the uploaded file); see [admin-and-config.md](admin-and-config.md).
-Only `XMP29U2` has been loaded by a real client; the others are verified by rule only (see [roadmap.md](roadmap.md), M2).
+All six maps have been loaded by two web clients and run past frame 3000 (R1 rows 1 and 2, 16 Nov 2026; roadmap M2).
 
 ## Red Alert 2
 
@@ -165,7 +165,7 @@ icon on the loading screen instead of a flag. The server writes concrete values 
 - It writes the side into the record's second field per player (YR and RA2 Quick Match only; World Domination
   records are unchanged). The server log line `quick match sides ...` shows what each player asked for.
 
-Not checked: that `COU` uses the same numbering as the record's side field. It is the same `-2` for random,
+Not checked (R1 row 6: the dialog has no side control, so no explicit pick was sent): that `COU` uses the same numbering as the record's side field. For random picks the written sides matched the sides the game loaded. It is the same `-2` for random,
 so it should; read the log of a game where a player picked a country. The random start position (the
 fourth field, `-2`) is left as it was.
 
@@ -211,11 +211,10 @@ tabs or two profiles, and press Quick Match in each.
 
 ## Not verified
 
-- **`FINI=0`.** What the retail client does when a game finishes without a
-  result is not traced; the server scores whatever `FINI` the reports agree on.
+- **`FINI=0`.** Not produced by a dropped game: the stayer reports `FINI=1`, `CMPn=2` (ConnectionLost in
+  every row) after about 100 s (R1 rows 4 and 5). The server reads that as `connection_lost`, which counts only
+  through the quitter rule.
 - **Retail clients.** Only the recomp's lifted YR has played it. A real install
   that uses the original `wol.dll` is not checked.
-- **The pool maps other than `XMP29U2`** on a real client.
-- **Red Alert 2 end to end.** The server side is tested; the play-through is not (see
-  "Red Alert 2" above).
+- **A side picked in the game** (S2, no side control in the dialog).
 - **Lobby 39** (mode word 2).

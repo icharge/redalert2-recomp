@@ -53,17 +53,17 @@ hour, M about a day, L several days.
 **R1** needs a person with two clients (one YR pair, one RA2 pair). **It runs after phase 1** (decision 2), so rows 4 and 5 check
 the new rules as built. Keep the `server.log` of the sitting and record the result of each row in the row's topic page.
 
-| Row | Check | Closes |
-|---|---|---|
-| 1 | Spot check (not a gate, decision 14): a YR Quick Match on a few enabled maps that MP-2 still shows as unproven, past the first frame | M2 |
-| 2 | Same for RA2 | M2 |
-| 3 | RA2 Quick Match over two minutes, both report | M1 (first scored RA2 match) |
-| 4 | A match left early by one player (no report), with `ranked.quitterWin` on: the stayer wins only when gserv saw the drop | G1-M3 on clients |
-| 5 | A match ended by a disconnect, keep the report | M5 (`FINI=0`) |
-| 6 | Pick Soviet in the dialog, compare the log's side line with the game | S2 |
-| 7 | Frame counter against log timestamps in YR | S3 |
-| 8 | Quick Co-op: **win** `C1A01MD` with two people, press "Next Mission" on both, and see `C1A02MD` start (score-screen chat and Continue after a loss are done, C-3 and C-2) | C-2 |
-| 9 | A guest and a member in one Quick Match: nobody is scored | GU-1 on clients |
+| Row | Check | Closes | Result (16 Nov 2026, two web clients, `web/e2e/quickmatch.mjs`, recomp `85f1201b`) |
+|---|---|---|---|
+| 1 | Spot check (not a gate, decision 14): a YR Quick Match on a few enabled maps that MP-2 still shows as unproven, past the first frame | M2 | **Pass.** `XMP29U2` and `XMP21S2` (the two the proof showed unproven): both clients paired, the options record named the map, both ran past frame 300 and on to about frame 3000 in the 65 s hold; the proof row went `unproven` to `proven`. |
+| 2 | Same for RA2 | M2 | **Pass.** The RA2 pool maps the same way; with row 1 all six maps read `proven` in `GET /admin/quick-match/maps`. `MP21S2`, `MP29U2` and `MP31S2` also carried rows 3, 4 and 9. |
+| 3 | RA2 Quick Match over two minutes, both report | M1 (first scored RA2 match) | **Pass.** `MP21S2`, 202 s: both POSTed `/native-results` (200; `FINI=1`, `DURA=202`, CMP 256 and 512, `GSKU=8448`); admission `pending` then `scored (agreed)`; the winner went to 1030 points, the loser to 970 (`GET /players/<name>`). |
+| 4 | A match left early by one player (no report), with `ranked.quitterWin` on: the stayer wins only when gserv saw the drop | G1-M3 on clients | **Pass, after two server fixes** (ra2web `f7ab7fb`). Closing A's page at 150 s: the first run showed the relay never fed `Settlement.noteDrop`, and the stayer's report was refused (400 `Unrecognized result`, `CMP=2`). Fixed; the rerun scored `pending -> scored (quitter)` (stayer 1 win, leaver 970). Negative case: A's page frozen (socket kept open, no drop) scored nothing in the 200 s watched. |
+| 5 | A match ended by a disconnect, keep the report | M5 (`FINI=0`) | **Pass, with a different finding.** The stayer's game freezes about 100 s, then reports `FINI=1`, `CMP0=CMP1=2` (ConnectionLost in every row), `DURA=284`: not `FINI=0`. The server refused it until ra2web `f7ab7fb`; now kept (200, a `connection_lost` claim). |
+| 6 | Pick Soviet in the dialog, compare the log's side line with the game | S2 | **Not driven.** The Quick Match dialog has no side control (`COU=` is read from the player profile, `-2` unless the game's own settings changed it), and no way to change it from the harness was found in the time-box. Random picks were compared instead (roadmap S2). |
+| 7 | Frame counter against log timestamps in YR | S3 | **Done.** `XMP31S2`, 200 s: `DURA=200` against 200.7 s between the relay join and the report; the frame counter ran at 40 to 44 frames/s in headless Chrome with two clients, so it shows no 60 fps (roadmap S3). |
+| 8 | Quick Co-op: **win** `C1A01MD` with two people, press "Next Mission" on both, and see `C1A02MD` start (score-screen chat and Continue after a loss are done, C-3 and C-2) | C-2 | Open (not part of the 16 Nov sitting). |
+| 9 | A guest and a member in one Quick Match: nobody is scored | GU-1 on clients | **Pass.** `MP31S2`: A a guest, B a member. Both reports got 404 `Unknown native match` (the instance is not ranked), no `settlement: admitted` line, both profiles unchanged. |
 
 **R2** (browser only, as soon as F5A-3 and LW-7b exist; it does not wait for R1): the web client with `#ticket=` reaches the lobby
 as the ticket's nick, then with auto-login reaches the welcome screen with no typing.
@@ -98,11 +98,11 @@ only**, so there is no native WOL task and the `RA2_LAUNCH_TICKET` delivery is d
 | SE-4 | **Done** (ra2web `46cee97`; `snapshotAt` is null for seasons archived before migration 4). **Season routes**: `GET /seasons/{sku}/{id}` (with the final table once archived), `archived` and `snapshotAt` on `GET /leaderboard/{sku}/{type}/{season}` | `server/src/http/routes.ts` | `seasonsApi.test.ts` cases; memory + SQLite | curl | SE-1 | S | no |
 | SE-5 | **Done** (ra2web `5d30fee`, `204e55a`; the page is ra2web's in-game `LadderScreen`, recomp has none; other WOL realms fall back to the old screen; not opened in a browser). **Leaderboard page**: first find the existing `/ladder` pages seasons.md mentions; then a season picker from `GET /seasons`, edition and mode tabs, search by name, the player's season history; read-only over public routes | the web client that holds `/ladder` (locate first) | that client's unit tests | browser | SE-4 | M | browser |
 | SE-6 | ~~Per-mode boards~~: **not planned** (decision 8: one 1v1 board per edition) | | | | | | |
-| G1-M3 | **Done** (ra2web `c539716`; `ranked.quitterWin` on by default; gserv drops are kept in memory only, so a restart leaves such a match unscored, which fails safe). **Quitter rule** (decision 5) behind `ranked.quitterWin` (off until its tests pass, then on): score a win when one player reports a win, the other left before the end and never reported, **and** gserv saw the drop. Change `Settlement.expire` (`one_report`/`no_reports` paths) and `docs/ranked-ladder.md` in ra2web | `server/src/ladder/Settlement.ts`, `SettingsService.ts`, `../ra2web/docs/ranked-ladder.md` | winner reports, loser disconnects (gserv drop recorded), grace passes → scored; without the drop → unscored; off → unchanged; memory + SQLite | tests now; R1 row 4 after phase 1 | | M | no |
+| G1-M3 | **Done** (ra2web `c539716`; `ranked.quitterWin` on by default; gserv drops are kept in memory only, so a restart leaves such a match unscored, which fails safe). **Quitter rule** (decision 5) behind `ranked.quitterWin` (off until its tests pass, then on): score a win when one player reports a win, the other left before the end and never reported, **and** gserv saw the drop. Change `Settlement.expire` (`one_report`/`no_reports` paths) and `docs/ranked-ladder.md` in ra2web | `server/src/ladder/Settlement.ts`, `SettingsService.ts`, `../ra2web/docs/ranked-ladder.md` | winner reports, loser disconnects (gserv drop recorded), grace passes → scored; without the drop → unscored; off → unchanged; memory + SQLite | tests now; R1 row 4 done 16 Nov 2026 (ra2web `f7ab7fb`: the relay now feeds `noteDrop`, and a `connection_lost` stayer report counts), see the R1 table | | M | no |
 | G1-M6 | **Done** (ra2web `cc82613`; on by default; roster team by team; all four agreeing scores at once, one agreeing report per team scores at the deadline as `partial`, one team alone ends `incomplete`/`one_team`; `web2v2Agreement.test.ts`). **Web 2v2 agreement** (decision 5) behind `ranked.web2v2Agreement`: web 2v2 through `Settlement` with a roster-wide rule (every reporter agrees on the winning team) | `Settlement.ts`, the web 2v2 report path in `routes.ts` | a lone winner report is not scored; agreeing reports are; memory + SQLite | | G1-M3 (same file) | M | no |
 | G1-S8 | **Done** (ra2web `c5fe6b4`; past the grace an adjudication needs `overrideReason`, else 409 and a refused audit row; an archived snapshot is never rewritten; a void is never gated). **Adjudication and the season grace**: enforce the grace, or record an explicit override reason in the audit | `server/src/http/adminRoutes.ts`, `LadderService.ts` | inside and outside the grace, with and without a reason | | F2-1 (same file) | S | no |
 
-M1, the first scored RA2 match, is R1 row 3.
+M1, the first scored RA2 match, is R1 row 3: done 16 Nov 2026.
 
 **Map pool (decision 14: every stock map available, configured on the admin site).** Every web player imports a full game, so every
 stock map is on every client; the pool is the operator's choice.

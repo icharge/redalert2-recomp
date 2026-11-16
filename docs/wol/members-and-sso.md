@@ -56,7 +56,7 @@ LAN need no account). Online, the guest types **any name that no account and no 
 a ticket; a taken name gets one clear "name taken". The guest holds the name only while its session lives: no
 `accounts` row, the session carries `guest: true`, and `POST /register` refuses the name while a guest is on it.
 A guest is never scored, and **a match with any guest in its roster is scored for nobody** (the admission is
-refused). `auth.guestEnabled` switches guests off.
+refused). `auth.guestEnabled` switches guests off. Seen with two web clients on 16 Nov 2026 (R1 row 9): a guest and a member in one Quick Match are not admitted (the reports get 404), and neither standing changes.
 
 **Nickname rules** (the WOL protocol is IRC-like and the retail lobby lists render a narrow charset):
 2-15 characters (already `MIN/MAX_USERNAME_LENGTH`), `A-Z a-z 0-9 _ - [ ]`, must start with a letter, unique
