@@ -19,7 +19,7 @@ are in `../ra2web`. Status of 14 Nov 2026.
 
 Service definitions live in `../ra2web/server/deploy/`:
 
-- `ra2web-server.service`: systemd unit (dedicated `ra2web` user, `server/.env` as `EnvironmentFile`, `Restart=on-failure`,
+- `ra2web.service`: systemd unit (dedicated `ra2web` user, `server/.env` as `EnvironmentFile`, `Restart=on-failure`,
   read-only filesystem except `data/`, `replays/`, `error-reports/`); `systemctl reload` is a `SIGHUP`. The install commands are in
   its header. `server/install-service.sh` does the same in one step on Ubuntu.
 - `windows-service.md`: the Windows service with NSSM, exact commands (no `SIGHUP` there: restart after editing `.env`).
