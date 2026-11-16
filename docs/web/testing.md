@@ -603,6 +603,18 @@ node e2e/launch-login.mjs --url 'http://127.0.0.1:5175/?target=game' --game ../g
 node e2e/launch-login.mjs --url 'http://127.0.0.1:5175/' --game ../game --guest
 ```
 
+The lobby bot, end to end (LB-8): `e2e/lobby-bot.mjs` opens two pages (two guests, tickets as above),
+presses Internet in both and checks YuriBOT in both NAMES lists, a typed `/help` answered privately with
+nothing on the other player's socket, a private line to YuriBOT (selected in the Players list) answered,
+and `/who` naming both. Typing goes through the game's own lobby chat edit (native keys), the checks read
+the chat socket's frames and the log; no screenshots. Run it once per edition against `pnpm wol-server`
+(`STORAGE=memory` keeps it clean):
+
+```powershell
+node e2e/lobby-bot.mjs --url 'http://127.0.0.1:5175/?target=game' --game ../game
+node e2e/lobby-bot.mjs --url 'http://127.0.0.1:5175/' --game ../game
+```
+
 Do not build while another `run_lift.py` is regenerating the same edition's
 sources. If compiling all objects with `EMCC_DEBUG=1` is slow, compile object
 targets with it disabled, then enable it for the final link; debug mode avoids
