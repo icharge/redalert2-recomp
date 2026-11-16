@@ -170,8 +170,9 @@ Server side in `ra2web/server`, covered by `test/yrCoop.test.ts`:
   and the admin setting `queues.yrCoop.enabled` overrides it live.
 - **Needs a co-op map:** the lobby is published (`#Lob_39_0` on `LIST 0`, `@matchbot` in its names) only while the
   switch is on **and** the pool (`quickMatch.pool`) has an enabled map with `mode: "coop"` for `yr`. The built-in pool
-  has one since ra2web `7f69afc`: `C1A01MD` (163770 bytes, the first Allied co-op mission from a stock `MultiMD.mix`).
-  Further missions take their size and digest from the real file (admin console or `config.quickMatchPool`).
+  has ten since ra2web `2a173d9` (task C-4): `C1A01MD` (163770 bytes, the first Allied co-op mission from a stock
+  `MultiMD.mix`, ra2web `7f69afc`) and nine more, see "More missions (C-4)" below. Any further mission takes its size and
+  digest from the real file (admin console or `config.quickMatchPool`).
 - **Queue:** type `141` (`COOP_QUICK_TYPE`), native family, never ranked (no SKU, no ladder type, no
   `Settlement.admit`). A co-op player is never paired with a Quick Match player. A player in both `Lob_41` and
   `Lob_39` is a co-op player.
@@ -182,6 +183,46 @@ Server side in `ra2web/server`, covered by `test/yrCoop.test.ts`:
 
 To try it: start the server (co-op is on by default), press Quick Co-op in two YR clients, and read `server.log`. Expected failures to watch: "scenarios do not match" (map size or digest
 wrong) or the clients loading a Quick Match game instead of co-op (the record needs the cooperative setup).
+
+## More missions (C-4, 16 Nov 2026)
+
+The built-in pool holds all ten YR co-op missions the game's own list (`MISSIONSMD.PKT`) names, in campaign order, each
+`mode: "coop"`, enabled, 4 start positions, size and digest as `scripts/map-pool-scan.ts` reads them from the stock files
+(the same values `stockMaps.ts` lists; `quickMatchMaps.test.ts` checks the two agree). `C3Y02MD` is in `MultiMD.mix`, the
+others in `ExpandMD01.mix`:
+
+| Mission | Size | Digest |
+|---|---|---|
+| `C1A01MD` | 163770 | `qSt1w6I0r+9EWkfWl7XFZMt0Vo4=` |
+| `C1A02MD` | 337896 | `lnBiQssDlKrsAArpu7ReGyis8Fs=` |
+| `C1A03MD` | 237231 | `meqVVPoA3xnT/6Ke9JoI8kV/5mM=` |
+| `C2S01MD` | 248872 | `/EUn3S1sU9B/ZFmg4XwNErmjQyY=` |
+| `C2S02MD` | 236298 | `00AUAtOwp1NFQCggb0Xg4CktH1E=` |
+| `C2S03MD` | 291033 | `sLd/Wc9zIogtq4auhs8rlWcW2U4=` |
+| `C3Y01MD` | 233850 | `DVPzHfdBla4MIrFteMWr3p4jMuA=` |
+| `C3Y02MD` | 223889 | `/fcII93re+hKiM36cwwnWDXq6Fc=` |
+| `C3Y03MD` | 276487 | `4H9pBuZS9f/oMyp5SZXOPhZuGvI=` |
+| `C4W01MD` | 238834 | `eePHMaqvnWG3iCEhrnWF2E9aqzk=` |
+
+Quick Co-op picks one of the ten at random per match (the pool weights apply). **One two-client run per mission** with
+`coop.mjs --map STEM --short`, against a scratch server started with `QUICK_MATCH_MAPS=STEM` (the allow list narrows the
+co-op pool to that mission), `STORAGE=memory`, on the production YR bundle of 16 Nov 2026. Each: both clients paired
+through `#Lob_39_0`, the options record named `STEM.MAP`, no "do not match" line, both ran 300+ frames, Esc, Abort Mission,
+Observe, both reached `0xBC6` (about one minute each):
+
+| Mission | Paired | Loaded (frames) | Score screen |
+|---|---|---|---|
+| `C1A02MD` | yes | yes (710, 710) | yes |
+| `C1A03MD` | yes | yes (840, 840) | yes |
+| `C2S01MD` | yes | yes (660, 656) | yes |
+| `C2S02MD` | yes | yes (820, 820) | yes |
+| `C2S03MD` | yes | yes (800, 800) | yes |
+| `C3Y01MD` | yes | yes (830, 830) | yes |
+| `C3Y02MD` | yes | yes (700, 700) | yes |
+| `C3Y03MD` | yes | yes (700, 698) | yes |
+| `C4W01MD` | yes | yes (650, 650) | yes |
+
+`C1A01MD` is the mission of the full runs below. Not exercised: playing a mission to its end, and "Next Mission" (C-2).
 
 ## Two-client run (16 Nov 2026)
 

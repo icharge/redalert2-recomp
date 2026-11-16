@@ -20,6 +20,10 @@
 // ("[udp-relay] recv from ...", with the first bytes) are in the log.
 // Options: --server http://127.0.0.1:9090, --server-log FILE (the server's stdout, for the relay lines),
 // --strict (the partner's screen must show the chat line), --label NAME, plus --game, --shots, --headed.
+// C-4, one run per mission: start the scratch server with QUICK_MATCH_MAPS=<STEM> (the pool then holds only that
+// mission) and pass --map <STEM> --short. --map checks that the options record the clients receive names
+// <STEM>.MAP (and that the game logs no "do not match"), --short stops at the score screen (about two minutes)
+// and prints one line: `MAP <STEM>: paired yes/no, loaded yes/no (frames), score screen yes/no`.
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { readFileSync, existsSync } from "node:fs";
@@ -33,6 +37,14 @@ const server = option("--server", "http://127.0.0.1:9090");
 const serverLog = option("--server-log", null);
 const label = option("--label", "run");
 const strict = argv.includes("--strict");
+const wantMap = option("--map", null);
+const short = argv.includes("--short");
+const reached = { paired: false, loaded: false, score: false };
+const mapLine = () => {
+  const yes = (v) => (v ? "yes" : "no");
+  const frames = Object.values(clients).map((run) => frameOf(run));
+  return `MAP ${wantMap ?? "(any)"}: paired ${yes(reached.paired)}, loaded ${yes(reached.loaded)} (frames ${frames.join(", ")}), score screen ${yes(reached.score)}`;
+};
 const origin = new URL(opts.url).origin;
 const tag = randomBytes(4).toString("hex").slice(0, 5);
 
@@ -238,6 +250,7 @@ try {
       run.wire.some((w) => w.dir === "<" && w.line.includes("Match found!")),
     );
   check("both found a partner through #Lob_39_0 (Quick Co-op)");
+  reached.paired = true;
   // STARTG follows the options records, so they are all in by then
   for (const run of [a, b])
     await until(
@@ -265,7 +278,19 @@ try {
     );
   }
 
+  if (wantMap)
+    for (const run of [a, b]) {
+      assert.ok(
+        gameOpts(run).some((o) => o.includes(`,${wantMap}.MAP,`)),
+        `${run.nick}: the options record names ${wantMap}.MAP`,
+      );
+      assert.ok(
+        !run.all.some((l) => /do not match/i.test(l)),
+        `${run.nick}: the game reports mismatching scenarios`,
+      );
+    }
   for (const run of [a, b]) await until(run, "game frame 300", () => frameOf(run) >= 300, 180000);
+  reached.loaded = true;
   check(`the match started and ran: frames A ${frameOf(a)}, B ${frameOf(b)}`);
   await a.page.waitForTimeout(3000);
   assert.deepEqual((await a.state()).size, { w: 1280, h: 960 }, "match coordinates need 1280x960");
@@ -286,6 +311,12 @@ try {
   }
   for (const run of [a, b]) await waitNative(run, "[dialog] open 0xBC6", 0, 90000);
   check("both reached the score screen (Campaign Results, dialog 0xBC6)");
+  reached.score = true;
+  if (short) {
+    console.log(`PASS ${label}: ${mapLine()}`);
+    for (const run of Object.values(clients)) await run.browser.close().catch(() => {});
+    process.exit(0);
+  }
   await a.page.waitForTimeout(4000);
   await Promise.all([a.shot("score"), b.shot("score")]);
 
@@ -459,6 +490,7 @@ try {
   );
 } catch (error) {
   console.error("FAIL:", error?.message ?? error);
+  if (wantMap) console.error(`FAIL ${label}: ${mapLine()}`);
   for (const [name, run] of Object.entries(clients)) {
     console.error(`--- ${name} ${run.nick}: last WOL frames`);
     console.error(
