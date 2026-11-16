@@ -129,7 +129,7 @@ screen ("Campaign Results", then "Next Mission: Campaign 1 Map 2"). It took thre
    AI rows `1,<country>,<colour>,<start>,2` (Russians 8, Cubans 7, squad 2), the rest inactive.
 
 Not confirmed: the cooperative campaign line (`C0,...`) is still not sent and nothing needed it for this mission;
-"Next Mission" after the score screen: Continue works since the game name fix (C-2 below); a won mission was not tried.
+"Next Mission" after the score screen: Continue works since the game name fix (C-2 below); a won mission starts `C1A02MD` (R1 row 8, "Won mission" at the end).
 
 Debug flag (C-1, 16 Nov 2026): `COOP_CAMPAIGN_LINE=true` on the server sends the campaign line as its own `GAMEOPT`
 before the options, to the room and to each player from the other (off by default, the options are unchanged). The names
@@ -222,7 +222,7 @@ Observe, both reached `0xBC6` (about one minute each):
 | `C3Y03MD` | yes | yes (700, 698) | yes |
 | `C4W01MD` | yes | yes (650, 650) | yes |
 
-`C1A01MD` is the mission of the full runs below. Not exercised: playing a mission to its end, and "Next Mission" (C-2).
+`C1A01MD` is the mission of the full runs below. A won mission's "Next Mission" is "Won mission" at the end (forced win, R1 row 8).
 
 ## Two-client run (16 Nov 2026)
 
@@ -292,8 +292,30 @@ A), the host sends a `483` byte datagram to the guest and both log:
 Both then run the scenario again (frames A 590, B 590 within the 25 s plus the wait) with no WOL frame and no HTTP
 request: Continue is a round of game datagrams (the host's `Sending Campaign Options`, the guest decodes them), as VERA20K
 says. The server is not asked. Note it was a lost mission (Abort Mission, Observe), so Continue
-replays `C1A01MD` ("Setup Rematch"); the next map of the campaign after a won mission is not exercised, and a
-second map would need to be on both clients (stock `MultiMD.mix`) and in the pool.
+replays `C1A01MD` ("Setup Rematch"); the next map after a won mission is "Won mission" below (R1 row 8).
 
 Side finding: the clients' `POST /native-results/<gameId>` for a co-op instance is answered 400 `Match context mismatch`
 (`nativeResults.ts`, around lines 70 and 72), so these results are still not stored. Not looked into here.
+
+**Won mission, "Next Mission" (R1 row 8, 16 Nov 2026): works, the server is still not asked.** `coop.mjs --map C1A01MD
+--win` (scratch server with `QUICK_MATCH_MAPS=C1A01MD`) wins the mission instead of aborting it. Nobody can play it to a
+win in a test, so the harness writes what the map's win action leaves behind. That action calls
+`HouseClass::Flag_To_Win` (`0x004FC9E0`) on every human House; the lifted code shows the bytes. Read from the guest heap
+(a guest address is the heap offset): House array items `[0xA8022C]`, count `[0xA80238]`; in a House human `+0x1EC`,
+Defeated `+0x1F5`, Flag_To_Die `+0x1F6`, Won `+0x1F7`, Lost `+0x1F8`, and the result timer (CdTimer) `+0x298` (start
+frame), `+0x2A0` (duration); the frame counter is `[0xA8ED84]`. Flag_To_Win returns early when `+0x1F7`, `+0x1F6` or
+`+0x1F8` is set, otherwise sets `+0x1F7 = 1` and starts the timer at the frame counter for SavourDelay (in a network game
+rounded so the expiry falls on a multiple of ten frames; `+0x29C` is stack garbage in the original). The harness does the
+same in both pages for both human Houses: it polls the frame counter (MessageChannel loop) to a target frame 90 frames
+ahead, then writes `+0x298 = target`, `+0x2A0 = duration` and `+0x1F7 = 1` with the same values on both clients, so
+the two lockstep games see the same state from the same frame (both pages saw frame 638 in the first run, 610 in the
+second). What Flag_To_Win does besides (EVA line, input lock, on-screen text) is not reproduced; nothing needed it.
+
+Result, twice: after the timer expired (about 120 frames) both games ended the mission themselves and opened
+`0xBC6` (Campaign Results, kills/losses/built/score rows for both players, "Next Mission: Campaign 1 Map 2" and the
+briefing of the next mission). Continue on B first and A second: the host logs `Sending Campaign Options...`, both log
+`Setup Rematch` (the game's word for it), `[dialog] closed 0xBC6` and `----- Starting scnenario: C1A02MD.MAP -----`
+(the game's spelling), and run (A 350, B 340 frames in the first run; 240 and 240 in the second). No WOL frame and no
+HTTP request after Continue: the next mission is a round of game datagrams, as after a loss. `C1A02MD` came from the
+stock files on both clients and from the pool (C-4), so nothing was added. Not looked into: the final `POST
+/native-results` of this win (the same 400 `Match context mismatch` noted above is expected).

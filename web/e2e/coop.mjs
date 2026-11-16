@@ -20,6 +20,12 @@
 // ("[udp-relay] recv from ...", with the first bytes) are in the log.
 // Options: --server http://127.0.0.1:9090, --server-log FILE (the server's stdout, for the relay lines),
 // --strict (the partner's screen must show the chat line), --label NAME, plus --game, --shots, --headed.
+// R1 row 8, --win: win the mission instead of aborting it (a won mission's "Next Mission", C1A02MD after C1A01MD).
+// Nobody plays the mission to a win here, so the harness does what the map's win action does: it writes
+// HouseClass::Flag_To_Win's state (0x004FC9E0) into every human House of both games, on the same game frame
+// (see forceWin). Needs the scratch server to hold only the mission (QUICK_MATCH_MAPS=C1A01MD) and C1A02MD
+// in the pool; --map C1A01MD checks the first map. Prints `WIN` lines and, after Continue on both, the
+// "Starting scnenario: C1A02MD.MAP" line each client logged. --win-frames N picks the lead (default 90).
 // C-4, one run per mission: start the scratch server with QUICK_MATCH_MAPS=<STEM> (the pool then holds only that
 // mission) and pass --map <STEM> --short. --map checks that the options record the clients receive names
 // <STEM>.MAP (and that the game logs no "do not match"), --short stops at the score screen (about two minutes)
@@ -39,6 +45,8 @@ const label = option("--label", "run");
 const strict = argv.includes("--strict");
 const wantMap = option("--map", null);
 const short = argv.includes("--short");
+const win = argv.includes("--win");
+const nextMap = option("--next-map", "C1A02MD");
 const reached = { paired: false, loaded: false, score: false };
 const mapLine = () => {
   const yes = (v) => (v ? "yes" : "no");
@@ -206,6 +214,64 @@ async function nameState(run) {
   };
 }
 
+// ---- --win: what the map's win action does (TAction win -> HouseClass::Flag_To_Win 0x004FC9E0 on every human House)
+// House array: items pointer [0xA8022C], count [0xA80238]. In a House: human +0x1EC, Defeated +0x1F5, Flag_To_Die
+// +0x1F6, Won +0x1F7, Lost +0x1F8, the result timer CdTimer +0x298 (start frame, +4 left alone, duration +0x2A0).
+// Flag_To_Win refuses when +0x1F7, +0x1F6 or +0x1F8 is set, else sets +0x1F7 = 1 and starts the timer at the
+// frame counter [0xA8ED84] for SavourDelay (rounded up to ten frames in a network game). The page polls the
+// frame counter and writes when it reaches `at`, on both clients, with the same start frame and duration, so
+// the two games see the same state from the same frame. The game thread runs on the shared heap meanwhile.
+const FRAME = 0xa8ed84;
+const HOUSES = [0xa8022c, 0xa80238];
+const forceWin = (run, at, duration) =>
+  run.page.evaluate(
+    async ([frameAt, savour, FRAME_ADDR, [ARRAY, COUNT]]) => {
+      const handle = await window.ra2Session;
+      const u32 = (a) => {
+        const h = handle.memory().HEAPU8;
+        return (h[a] | (h[a + 1] << 8) | (h[a + 2] << 16) | (h[a + 3] << 24)) >>> 0;
+      };
+      const put32 = (a, v) => {
+        const h = handle.memory().HEAPU8;
+        for (let i = 0; i < 4; i++) h[a + i] = (v >>> (8 * i)) & 0xff;
+      };
+      const houses = () => {
+        const items = u32(ARRAY);
+        return Array.from({ length: u32(COUNT) }, (_, i) => u32(items + 4 * i));
+      };
+      const dump = () =>
+        houses().map((h) => ({
+          h: h.toString(16),
+          human: handle.memory().HEAPU8[h + 0x1ec],
+          defeated: handle.memory().HEAPU8[h + 0x1f5],
+          toDie: handle.memory().HEAPU8[h + 0x1f6],
+          won: handle.memory().HEAPU8[h + 0x1f7],
+          lost: handle.memory().HEAPU8[h + 0x1f8],
+          timer: [u32(h + 0x298), u32(h + 0x29c), u32(h + 0x2a0)],
+        }));
+      const before = dump();
+      // wait for the frame without hogging the main thread (MessageChannel has no 4 ms clamp)
+      const channel = new MessageChannel();
+      const tick = () =>
+        new Promise((r) => ((channel.port1.onmessage = r), channel.port2.postMessage(0)));
+      while (u32(FRAME_ADDR) < frameAt) await tick();
+      const seen = u32(FRAME_ADDR);
+      const wrote = [];
+      for (const h of houses()) {
+        const bytes = handle.memory().HEAPU8;
+        if (!bytes[h + 0x1ec]) continue; // human Houses only
+        if (bytes[h + 0x1f7] || bytes[h + 0x1f6] || bytes[h + 0x1f8]) continue; // Flag_To_Win refuses
+        put32(h + 0x298, frameAt);
+        put32(h + 0x2a0, savour);
+        bytes[h + 0x1f7] = 1;
+        wrote.push(h.toString(16));
+      }
+      return { seen, wrote, before, after: dump() };
+    },
+    [at, duration, FRAME, HOUSES],
+  );
+const guestFrame = async (run) => le32(await guestRead(run, FRAME, 4));
+
 async function toWelcome(run) {
   await run.waitFor(`${run.nick} main menu`, (s) => s?.phase === "running", 300);
   await run.page.waitForTimeout(1500);
@@ -295,21 +361,60 @@ try {
   await a.page.waitForTimeout(3000);
   assert.deepEqual((await a.state()).size, { w: 1280, h: 960 }, "match coordinates need 1280x960");
 
-  // ---- end it fast: Esc, Abort Mission, Observe, on both
-  const size = (await a.state()).size;
-  for (const run of [a, b]) {
-    await run.page.keyboard.press("Escape");
-    await run.page.waitForTimeout(1500);
-    await run.clickGame(...sidebar(size, 264)); // Abort Mission
-    await waitNative(run, "[dialog] open 0xB6", 0, 20000).catch(() => {});
-    await run.page.waitForTimeout(1500);
+  if (win) {
+    // ---- R1 row 8: both Houses win on the same frame, the game ends the mission and shows Campaign Results
+    await a.page.waitForTimeout(3000);
+    const lead = Number(option("--win-frames", "90"));
+    const at = Math.max(await guestFrame(a), await guestFrame(b)) + lead;
+    const duration = Math.ceil((at + 120) / 10) * 10 - at; // like the game: expiry on a multiple of ten frames
+    info(
+      `WIN: frames A ${await guestFrame(a)}, B ${await guestFrame(b)}; writing at frame ${at}, timer ${duration}`,
+    );
+    const before = [a.all.length, b.all.length];
+    const [ra, rb] = await Promise.all([forceWin(a, at, duration), forceWin(b, at, duration)]);
+    for (const [run, r] of [
+      [a, ra],
+      [b, rb],
+    ]) {
+      info(`WIN ${run.nick}: frame seen ${r.seen}, wrote Houses ${r.wrote.join(", ") || "none"}`);
+      info(`  Houses before: ${JSON.stringify(r.before)}`);
+      info(`  Houses after:  ${JSON.stringify(r.after)}`);
+      assert.ok(r.wrote.length >= 2, `${run.nick}: both human Houses took the win`);
+    }
+    check(
+      `both clients wrote the win into ${ra.wrote.length} human Houses (frames ${ra.seen} / ${rb.seen})`,
+    );
+    for (const run of [a, b]) {
+      await run.page.waitForTimeout(500);
+      info(`${run.nick} frame ${await guestFrame(run)}`);
+    }
+    for (const [i, run] of [a, b].entries()) {
+      await waitNative(run, "[dialog] open 0xBC6", before[i], 120000).catch(async () => {
+        const lines = run.all
+          .slice(before[i])
+          .filter((l) => !/fps|Frame \d|sendto|\[net\]|Sound /.test(l));
+        info(`${run.nick} lines since the write: ${lines.slice(-30).join(" | ").slice(0, 1500)}`);
+        await run.shot("win-timeout");
+        throw new Error(`${run.nick}: no Campaign Results after the win`);
+      });
+    }
+  } else {
+    // ---- end it fast: Esc, Abort Mission, Observe, on both
+    const size = (await a.state()).size;
+    for (const run of [a, b]) {
+      await run.page.keyboard.press("Escape");
+      await run.page.waitForTimeout(1500);
+      await run.clickGame(...sidebar(size, 264)); // Abort Mission
+      await waitNative(run, "[dialog] open 0xB6", 0, 20000).catch(() => {});
+      await run.page.waitForTimeout(1500);
+    }
+    for (const run of [a, b]) {
+      const from = run.all.length;
+      await run.clickGame(...sidebar(size, 264)); // Observe
+      if (run === a) await waitNative(run, "OBIWAN MODE", from, 30000);
+    }
+    for (const run of [a, b]) await waitNative(run, "[dialog] open 0xBC6", 0, 90000);
   }
-  for (const run of [a, b]) {
-    const from = run.all.length;
-    await run.clickGame(...sidebar(size, 264)); // Observe
-    if (run === a) await waitNative(run, "OBIWAN MODE", from, 30000);
-  }
-  for (const run of [a, b]) await waitNative(run, "[dialog] open 0xBC6", 0, 90000);
   check("both reached the score screen (Campaign Results, dialog 0xBC6)");
   reached.score = true;
   if (short) {
@@ -319,82 +424,84 @@ try {
   }
   await a.page.waitForTimeout(4000);
   await Promise.all([a.shot("score"), b.shot("score")]);
-
-  // ---- C-3: what the game compares (the lead: the game name hash of message 0x0C)
-  for (const run of [a, b]) {
-    const st = await nameState(run);
-    info(`${run.nick} memory: ${JSON.stringify(st)}`);
-    await watchPacket(run);
-  }
-
-  // ---- C-3: chat on the score screen
   const mark = { t: Date.now(), log: readServerLog().length, a: a.relay.length, b: b.relay.length };
-  const bLogMark = b.all.length;
-  const bBefore = await chatListPixels(b);
-  const aBefore = await chatListPixels(a);
-  await a.clickGame(...CHAT_EDIT);
-  await a.page.waitForTimeout(300);
-  const line = `coop${tag}`;
-  await a.page.keyboard.type(line, { delay: 60 });
-  await a.page.waitForTimeout(250);
-  await a.page.keyboard.press("Enter");
-  await a.page.waitForTimeout(5000);
-  const sentBy = a.relay.slice(mark.a).filter((f) => f.dir === ">" && f.len > 200);
-  const gotBy = b.relay.slice(mark.b).filter((f) => f.dir === "<" && f.len > 200);
-  const ownChanged = (await chatListPixels(a)) !== aBefore;
-  const partnerChanged = (await chatListPixels(b)) !== bBefore;
-  const newRelayLines = readServerLog()
-    .slice(mark.log)
-    .split("\n")
-    .filter((l) => /native relay: .* (new datagram length|has no target|not delivered)/.test(l));
-  await Promise.all([a.shot("chat-a"), b.shot("chat-b")]);
-  info(`A typed "${line}"; A's own chat list changed: ${ownChanged}`);
-  info(`relay frames out of A (>200 bytes): ${sentBy.map((f) => f.len).join(", ") || "none"}`);
-  info(`relay frames into B (>200 bytes): ${gotBy.map((f) => f.len).join(", ") || "none"}`);
-  for (const l of newRelayLines) info(`server: ${l.replace(/^\[[^\]]*\] /, "")}`);
-  // the game's own recvfrom on B (Winsock trace): the chat datagram is the one over 100 bytes
-  const netIn = b.all
-    .slice(bLogMark)
-    .filter(
-      (l) => /^\[net\] recvfrom .* \d+ bytes/.test(l) && Number(/ (\d+) bytes/.exec(l)[1]) > 100,
-    );
-  info(`B's recvfrom with more than 100 bytes after the line: ${netIn.join(" | ") || "none"}`);
-  const quiet =
-    /fps|Frame \d|sendto|global ack|Sound |NO_STRING|\[net\]|^@ra2|NET_PORT|Response time|IPX Manager|MaxAhead|Timing Event|Send_Packets|NumSendAck|ACK for|Sending ACK/;
-  info(
-    `B's other native lines after the line: ${
-      b.all
-        .slice(bLogMark)
-        .filter((l) => !quiet.test(l))
-        .join(" | ")
-        .slice(0, 300) || "none"
-    }`,
-  );
-  for (const run of [a, b]) {
-    const packets = await run.page.evaluate(() => window.coopPackets ?? []);
-    const chat = packets.filter((p) => p.bytes[0] === 0xc);
-    info(
-      `${run.nick} packet buffer changes: ${packets.length}; with type 0x0C at +0: ${chat.length}`,
-    );
-    for (const p of (chat.length ? chat : packets).slice(-2)) {
-      const bytes = Uint8Array.from(p.bytes);
-      info(
-        `  name hash at +0x114: ${le32(bytes, 0x114).toString(16)}; first 0x120 bytes ${hex(bytes.slice(0, 0x120))}`,
-      );
+  let partnerChanged = false;
+  if (!win) {
+    // ---- C-3: what the game compares (the lead: the game name hash of message 0x0C)
+    for (const run of [a, b]) {
+      const st = await nameState(run);
+      info(`${run.nick} memory: ${JSON.stringify(st)}`);
+      await watchPacket(run);
     }
-    info(`  ${run.nick} after the line: ${JSON.stringify(await nameState(run))}`);
+
+    // ---- C-3: chat on the score screen
+    const bLogMark = b.all.length;
+    const bBefore = await chatListPixels(b);
+    const aBefore = await chatListPixels(a);
+    await a.clickGame(...CHAT_EDIT);
+    await a.page.waitForTimeout(300);
+    const line = `coop${tag}`;
+    await a.page.keyboard.type(line, { delay: 60 });
+    await a.page.waitForTimeout(250);
+    await a.page.keyboard.press("Enter");
+    await a.page.waitForTimeout(5000);
+    const sentBy = a.relay.slice(mark.a).filter((f) => f.dir === ">" && f.len > 200);
+    const gotBy = b.relay.slice(mark.b).filter((f) => f.dir === "<" && f.len > 200);
+    const ownChanged = (await chatListPixels(a)) !== aBefore;
+    partnerChanged = (await chatListPixels(b)) !== bBefore;
+    const newRelayLines = readServerLog()
+      .slice(mark.log)
+      .split("\n")
+      .filter((l) => /native relay: .* (new datagram length|has no target|not delivered)/.test(l));
+    await Promise.all([a.shot("chat-a"), b.shot("chat-b")]);
+    info(`A typed "${line}"; A's own chat list changed: ${ownChanged}`);
+    info(`relay frames out of A (>200 bytes): ${sentBy.map((f) => f.len).join(", ") || "none"}`);
+    info(`relay frames into B (>200 bytes): ${gotBy.map((f) => f.len).join(", ") || "none"}`);
+    for (const l of newRelayLines) info(`server: ${l.replace(/^\[[^\]]*\] /, "")}`);
+    // the game's own recvfrom on B (Winsock trace): the chat datagram is the one over 100 bytes
+    const netIn = b.all
+      .slice(bLogMark)
+      .filter(
+        (l) => /^\[net\] recvfrom .* \d+ bytes/.test(l) && Number(/ (\d+) bytes/.exec(l)[1]) > 100,
+      );
+    info(`B's recvfrom with more than 100 bytes after the line: ${netIn.join(" | ") || "none"}`);
+    const quiet =
+      /fps|Frame \d|sendto|global ack|Sound |NO_STRING|\[net\]|^@ra2|NET_PORT|Response time|IPX Manager|MaxAhead|Timing Event|Send_Packets|NumSendAck|ACK for|Sending ACK/;
+    info(
+      `B's other native lines after the line: ${
+        b.all
+          .slice(bLogMark)
+          .filter((l) => !quiet.test(l))
+          .join(" | ")
+          .slice(0, 300) || "none"
+      }`,
+    );
+    for (const run of [a, b]) {
+      const packets = await run.page.evaluate(() => window.coopPackets ?? []);
+      const chat = packets.filter((p) => p.bytes[0] === 0xc);
+      info(
+        `${run.nick} packet buffer changes: ${packets.length}; with type 0x0C at +0: ${chat.length}`,
+      );
+      for (const p of (chat.length ? chat : packets).slice(-2)) {
+        const bytes = Uint8Array.from(p.bytes);
+        info(
+          `  name hash at +0x114: ${le32(bytes, 0x114).toString(16)}; first 0x120 bytes ${hex(bytes.slice(0, 0x120))}`,
+        );
+      }
+      info(`  ${run.nick} after the line: ${JSON.stringify(await nameState(run))}`);
+    }
+    const udpTrace = b.lines.filter((l) => l.includes("[udp-relay] recv from")).slice(-1)[0] ?? "";
+    info(`B's last relay receive: ${udpTrace.slice(0, 120)}`);
+    assert.ok(ownChanged, "A's own chat list shows the typed line (the control)");
+    assert.ok(sentBy.length > 0, "the game on A sent a datagram for the chat line");
+    check("C-3 step 1: A's game sent a datagram for the chat line");
+    assert.ok(gotBy.length > 0, "the relay delivered a datagram to B's page");
+    check("C-3 step 2: the relay delivered it to B's page");
+    console.log(
+      `${partnerChanged ? "ok  " : "FOUND"} C-3 step 3: B's game ${partnerChanged ? "drew" : "did NOT draw"} the chat line`,
+    );
+    if (strict) assert.ok(partnerChanged, "the partner's score screen shows the chat line");
   }
-  const udpTrace = b.lines.filter((l) => l.includes("[udp-relay] recv from")).slice(-1)[0] ?? "";
-  info(`B's last relay receive: ${udpTrace.slice(0, 120)}`);
-  assert.ok(ownChanged, "A's own chat list shows the typed line (the control)");
-  assert.ok(sentBy.length > 0, "the game on A sent a datagram for the chat line");
-  check("C-3 step 1: A's game sent a datagram for the chat line");
-  assert.ok(gotBy.length > 0, "the relay delivered a datagram to B's page");
-  check("C-3 step 2: the relay delivered it to B's page");
-  console.log(
-    `${partnerChanged ? "ok  " : "FOUND"} C-3 step 3: B's game ${partnerChanged ? "drew" : "did NOT draw"} the chat line`,
-  );
-  if (strict) assert.ok(partnerChanged, "the partner's score screen shows the chat line");
 
   // ---- C-2: Continue on both, then watch 20 s
   const next = {
@@ -485,8 +592,28 @@ try {
         .join(" | ") || "nothing"
     }`,
   );
+  if (win) {
+    const wanted = `Starting scnenario: ${nextMap}.MAP`;
+    for (const run of [a, b]) {
+      const lines = run.all
+        .slice(run === a ? next.a : next.b)
+        .filter((l) => l.includes("Starting scnenario"));
+      info(`${run.nick} scenario lines after Continue: ${lines.join(" | ") || "none"}`);
+      assert.ok(
+        lines.some((l) => l.includes(wanted)),
+        `${run.nick}: the game logged "${wanted}"`,
+      );
+      assert.ok(
+        framesSince(run, run === a ? next.a : next.b) >= 100,
+        `${run.nick}: frames advance in ${nextMap}`,
+      );
+    }
+    check(
+      `WIN: both clients started ${nextMap}.MAP after Continue (frames A ${framesSince(a, next.a)}, B ${framesSince(b, next.b)})`,
+    );
+  }
   console.log(
-    `PASS ${label} (${results.length} checks, C-3 step 3 ${partnerChanged ? "ok" : "FOUND: the partner never draws it"})`,
+    `PASS ${label} (${results.length} checks${win ? ", won mission" : `, C-3 step 3 ${partnerChanged ? "ok" : "FOUND: the partner never draws it"}`})`,
   );
 } catch (error) {
   console.error("FAIL:", error?.message ?? error);
