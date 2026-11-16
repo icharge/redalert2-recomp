@@ -134,7 +134,8 @@ Not confirmed: the cooperative campaign line (`C0,...`) is still not sent and no
 Debug flag (C-1, 16 Nov 2026): `COOP_CAMPAIGN_LINE=true` on the server sends the campaign line as its own `GAMEOPT`
 before the options, to the room and to each player from the other (off by default, the options are unchanged). The names
 use the game's `=HH` encoding (`0x0049D680`: letters and digits as they are, any other byte as `=` and two hex digits),
-which VERA20K ports, not base64 as the table above says. The two-client trial with and without the flag is still open.
+which VERA20K ports, not base64 as the table above says. The two-client trial with and without the flag was done on
+16 Nov 2026, see "Two-client run" below (both reach the score screen; the game decodes the line).
 
 **Results.** The clients POST their game result to `/native-results/<gameId>`. An unranked instance without a wire SKU was
 answered 404 (not logged), so the two games of this run were not stored. Quick Co-op instances now carry
@@ -157,6 +158,8 @@ A message typed on the co-op "Campaign Results" screen showed on the sender's sc
   `chat sent` / `chat not sent` / `chat ... ignored` on the `[wol]` console channel.
 - **To read:** play to the score screen, type a line on each side, then compare `server.log` (a `new datagram length`
   line from the sender means the game sent it) with the receiver's browser console.
+- **Answered on 16 Nov 2026** ("Two-client run" below): the sender's game sends it, the relay delivers it, the
+  partner's Winsock gets all 475 bytes, and the partner's game does not draw it.
 
 ## Built (15 Nov 2026)
 
@@ -178,3 +181,53 @@ Server side in `ra2web/server`, covered by `test/yrCoop.test.ts`:
 
 To try it: start the server (co-op is on by default), press Quick Co-op in two YR clients, and read `server.log`. Expected failures to watch: "scenarios do not match" (map size or digest
 wrong) or the clients loading a Quick Match game instead of co-op (the record needs the cooperative setup).
+
+## Two-client run (16 Nov 2026)
+
+`web/e2e/coop.mjs` drives two YR pages (no rebuild, `web/public/game/` as it was) against a fresh local WOL server
+(`STORAGE=memory`): guest tickets, Internet, Quick Co-op on both, the match, Esc, Abort Mission, Observe on both, then
+the Campaign Results screen (`0xBC6`). `?udptrace` adds the Winsock `[net]` and `[udp-relay]` lines. One run takes
+about five minutes: `node e2e/coop.mjs --url http://127.0.0.1:5175/ --game ../game --label line-off --server-log <file>`.
+Run with `COOP_CAMPAIGN_LINE` unset and with `=true`.
+
+**C-1, the campaign line.** Both settings: both clients are paired through `#Lob_39_0`, load `C1A01MD`, run (300 to 304
+frames each) and reach `0xBC6`. Flag off: 8 `GAMEOPT` lines to A and 6 to B (a slots line, then options), no `C0` line,
+and the game logs only `Init Campaigns`. Flag on: 10 and 8, the `C0` line twice on each side (the room copy and the
+partner copy):
+
+    C0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-1,za296bd,zb296bd
+    [game] @@@@ Decoding cooperative campaign game options C0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-1,za296bd,zb296bd
+    [game] Setting Campaign info for Mode 1: Battle
+
+So the game accepts the line from the matchbot and decodes it without an error, and the match plays the same. What
+the line does for "Next Mission" is not known (see C-2). The flag stays off by default.
+
+**C-3, chat on the score screen: FOUND, not fixed (the cause is in the game).** A types `coop<tag>` in the edit `0x540`:
+
+- A's own list shows it.
+- A's relay socket sends one 483 byte frame (8 byte header, 475 byte payload: the `0x1C7` message plus framing);
+  the server logs `native relay: za296bd new datagram length 483 (packet 476) dst=10.219.249.32` and delivers it to B
+  (no `no target` or closed socket line).
+- B's page receives it: `[udp-relay] recv from 10.212.36.163 ports 1234->1234 475 bytes 01785c15...`, and B's Winsock
+  hands it to the game: `[net] recvfrom 10.212.36.163:1234 475 bytes`. The same with the flag off (`(packet 465)`).
+- B's list stays empty and the game logs nothing about it.
+
+So `NativeRelay.ts` and the page's relay do not drop it (no server change was made). The loss is after `recvfrom`, in
+the game. The lead, not yet checked in memory: the receiver of the `0x0C` message (`recomp_0008.c` near `0x0048D8DD`)
+compares the game name hash at `+0x114` of the packet with the one at `0x00A8D610` (gated by the byte at `0x00A8D60D`)
+and drops it on a mismatch. If the native shim leaves that name empty or different on the two sides, the chat is
+ignored although the datagram arrived. To confirm, read `0x00A8D60D` and `0x00A8D610` on both clients at the score
+screen. A fix would be in `wolapi.c` (publish the same game name on both) and needs a rebuild, so it is not made here.
+
+**C-2, Continue on the score screen: nothing is asked of the server, and the clients do not leave the screen.** After
+Continue on both, for 25 seconds, each client sends no WOL frame and no HTTP request, and the server log shows nothing
+(flag off and on). Only relay keepalives continue, 75 and 28 byte frames each way, as before the click. The only change
+on screen is the greyed Continue and a ready star next to the player's row. The game logs no native line and stays on
+`0xBC6` (a first probe waited 60 seconds with the same result). VERA20K (`docs/Networking.md`) describes Continue as a
+return to the kept room, with the host starting the next stage over the same game datagrams. The relay forwards those,
+so the missing step is on the game's side of the datagrams (the same name check as C-3 would stop every message
+here as well) or needs a room kept after STARTG, which the matchbot does not do. Next: the memory read above, then see
+whether the host's Continue sends any datagram at all (after the click only the 28 and 75 byte keepalives were seen).
+
+Side finding: the clients' `POST /native-results/<gameId>` for a co-op instance is answered 400 `Match context mismatch`
+(`nativeResults.ts`, around lines 70 and 72), so these results are still not stored. Not looked into here.
