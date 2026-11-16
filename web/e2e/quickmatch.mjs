@@ -23,9 +23,10 @@
 //               B is the stayer. Prints what B's game does and whether the match is scored for B.
 //               --freeze freezes A's page instead of closing it (no socket close, so gserv sees no drop).
 //   --row 5     a match ended by a disconnect: as row 4 (the stayer's report is printed: FINI, CMPn, DURA).
-//   --row 6     not driven: the Quick Match dialog has no side control, COU= is read from the player profile
-//               (docs/wol/quick-match.md, "Side and colour"). Rows 3, 4 and 7 print the server's
-//               `quick match sides` line for each match, for comparing with the loading screen.
+//   --row 6     --countries A,B writes Country= into each client's persona section (wolinfo.ini, section
+//               named by the lowercased nick) before Quick Match; the server's `quick match sides ... (asked:
+//               ...)` line is compared with the side the game loaded (the sidebar and the loading screen).
+//               The match is played --minutes (default 1), then B quits.
 //   --row 7     the frame counter of each client against the server log's timestamps.
 //   --row 9     one guest and one member in one Quick Match; the match is played, one side surrenders, and
 //               nobody is scored (ladder unchanged; the reports get 404 "Unknown native match").
@@ -56,6 +57,8 @@ const adminPass = option("--admin-pass", "qmadminpass1");
 const origin = new URL(opts.url).origin;
 const ra2 = new URL(opts.url).searchParams.get("target") === "game";
 const edition = ra2 ? "ra2" : "yr";
+// --countries A,B: the persona file's Country= for client A and B (row 6; -2 random)
+const countries = option("--countries", "").split(",").filter(Boolean).map(Number);
 const tag = randomBytes(4).toString("hex").slice(0, 5);
 
 // Game pixels (800x600 menus; the match itself runs at the options' 1280x960).
@@ -220,9 +223,61 @@ const gameOpts = (run) =>
     .map((w) => w.line.slice(w.line.indexOf(" :", w.line.indexOf("GAMEOPT")) + 2));
 
 /** Both clients on the welcome screen: Quick Match, paired, loaded, past frame 300. */
+/**
+ * The game's own persona file holds the player's Country= and Color= (the Quick Match request's COU and
+ * COL come from the section named by the lowercased nick). Rewritten in the game's file system, the
+ * way the loader's stageLaunchLogin writes it: unlink first, because a write over a file appends.
+ */
+async function setPersona(run, country) {
+  const file = ra2 ? "wolinfo.ini" : "wolinfoMD.ini";
+  const result = await run.page.evaluate(
+    ({ file, nick, country }) => {
+      const FS = window.Module.FS;
+      const name = FS.readdir("/game").find((e) => e.toLowerCase() === file.toLowerCase()) ?? file;
+      const path = "/game/" + name;
+      let text = "";
+      try {
+        text = new TextDecoder().decode(FS.readFile(path));
+      } catch {
+        /* no file yet */
+      }
+      const cr = String.fromCharCode(13);
+      const lf = String.fromCharCode(10);
+      const eol = text.includes(cr + lf) ? cr + lf : lf;
+      const lines = text.length ? text.split(lf).map((l) => l.split(cr).join("")) : [];
+      if (lines.length && lines.at(-1) === "") lines.pop();
+      const header = "[" + nick.toLowerCase() + "]";
+      let start = lines.findIndex((l) => l.trim().toLowerCase() === header);
+      if (start < 0) {
+        lines.push(header);
+        start = lines.length - 1;
+      }
+      let end = start + 1;
+      while (end < lines.length && !lines[end].trim().startsWith("[")) end++;
+      const body = lines
+        .slice(start + 1, end)
+        .filter((l) => !l.trim().toLowerCase().startsWith("country"));
+      lines.splice(start + 1, end - start - 1, "Country=" + country, ...body);
+      try {
+        FS.unlink(path);
+      } catch {
+        /* nothing to remove */
+      }
+      FS.writeFile(path, new TextEncoder().encode(lines.join(eol) + eol));
+      return path + ": " + lines.slice(start, start + 4).join(" | ");
+    },
+    { file, nick: run.nick, country },
+  );
+  info(`persona file ${result}`);
+}
+
 async function startMatch(a, b, { map } = {}) {
   const logMark = readServerLog().length;
   await Promise.all([toWelcome(a), toWelcome(b)]);
+  if (countries.length === 2) {
+    await setPersona(a, countries[0]);
+    await setPersona(b, countries[1]);
+  }
   await a.clickGame(...QUICK_MATCH);
   await b.clickGame(...QUICK_MATCH);
   for (const run of [a, b])
@@ -248,10 +303,14 @@ async function startMatch(a, b, { map } = {}) {
   check(`both ran past the first frame: frames A ${frameOf(a)}, B ${frameOf(b)}`);
   for (const run of [a, b]) sampleFrames(run);
   const lines = logLines(logMark);
-  const sides = /quick match sides (\d+),(\d+)/.exec(lines.join(String.fromCharCode(10)));
+  const text = lines.join(String.fromCharCode(10));
+  const sides = /quick match sides (\d+),(\d+)/.exec(text);
+  // The record lists the players in the order the matchbot paired them, which is not always A then B.
+  const roster = /created \(ranked 1v1\) for (\w+), (\w+)/.exec(text);
   if (sides) {
-    a.country = Number(sides[1]);
-    b.country = Number(sides[2]);
+    const byNick = roster ? { [roster[1]]: Number(sides[1]), [roster[2]]: Number(sides[2]) } : {};
+    a.country = byNick[a.nick] ?? Number(sides[1]);
+    b.country = byNick[b.nick] ?? Number(sides[2]);
     info(`the server wrote the countries ${a.country} (${a.nick}) and ${b.country} (${b.nick})`);
   }
   return { stem, logMark, lines };
@@ -551,7 +610,16 @@ async function rowQuit() {
     );
 }
 
-const ROWS = { 1: rowMaps, 2: rowMaps, 3: rowPlay, 4: rowQuit, 5: rowQuit, 7: rowPlay, 9: rowPlay };
+const ROWS = {
+  1: rowMaps,
+  2: rowMaps,
+  3: rowPlay,
+  4: rowQuit,
+  5: rowQuit,
+  6: rowPlay,
+  7: rowPlay,
+  9: rowPlay,
+};
 
 try {
   const run = ROWS[row];

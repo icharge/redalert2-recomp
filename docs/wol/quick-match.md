@@ -165,8 +165,8 @@ icon on the loading screen instead of a flag. The server writes concrete values 
 - It writes the side into the record's second field per player (YR and RA2 Quick Match only; World Domination
   records are unchanged). The server log line `quick match sides ...` shows what each player asked for.
 
-Not checked (R1 row 6: the dialog has no side control, so no explicit pick was sent): that `COU` uses the same numbering as the record's side field. For random picks the written sides matched the sides the game loaded. It is the same `-2` for random,
-so it should; read the log of a game where a player picked a country. The random start position (the
+Checked on 16 Nov 2026 (R1 row 6): the Quick Match request's `COU` comes from `Country=` in the player's section of `wolinfo.ini` / `wolinfoMD.ini` (the section is the lowercased nick), not from the dialog, and its number is the record's side number (RA2 `8` and `2` gave a Soviet and an Allied game, YR `9` gave Yuri). To try one, `web/e2e/quickmatch.mjs --row 6 --countries A,B`. It is the same `-2` for random,It is the same `-2` for random,
+The random start position (the
 fourth field, `-2`) is left as it was.
 
 ## Game speed
@@ -216,5 +216,5 @@ tabs or two profiles, and press Quick Match in each.
   through the quitter rule.
 - **Retail clients.** Only the recomp's lifted YR has played it. A real install
   that uses the original `wol.dll` is not checked.
-- **A side picked in the game** (S2, no side control in the dialog).
+
 - **Lobby 39** (mode word 2).
