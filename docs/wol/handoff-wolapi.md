@@ -646,3 +646,63 @@ Where the game list reads the Players list's clan tag: `0x00783C80` (VERA `WolPl
 
 Evidence: `web/e2e/wol-icons.mjs --kind observer|tournament|clan|normal` (RA2: `?target=game`; YR without it),
 two or three clients against `node e2e/wol-server.mjs`. The selftest covers the seat and tournament word.
+
+## Ladder and high-score records, rank in the lobby, the welcome's stats (21 November)
+
+`INetUtil` (the shim's `WolChannel` object) now answers `RequestLadderList` (slot 5), `RequestLocaleLadderList` (12),
+`RequestLadderSearch` (4), `RequestLocaleLadderSearch` (13) and `RequestHighscore` (14); they were `E_NOTIMPL`. The
+signatures and both record layouts come from the embedded type library of `Wolapi.dll` (read with `ITypeLib` from a
+64-bit PowerShell: oVft / 8 is the slot, 64-bit record offsets are shrunk by hand).
+
+| Method | Arguments after `this` | Seen |
+|---|---|---|
+| `RequestLadderList` slot 5 | host str, port, keys str, SKU, team, cond, sort | RA2 lobby: `keys="rkone:yuribot:"` (**names each followed by a colon**), SKU `0x2100`; one call per user-list event, in batches |
+| `RequestHighscore` slot 14 | host, port, keys, SKU | YR only (RA2's lobby never asks) |
+| `RequestLadderSearch` slot 4 | host, port, key, SKU, team, cond, sort, number, leading | the ladder screen; not seen in the lobby |
+| `OnLadderList` event slot 4 | res, `Ladder*` list, totalCount, timeStamp (time_t), keyRung | |
+| `OnHighscore` event slot 9 | res, `Highscore*` list, totalCount, timeStamp, keyRung | |
+
+Records are singly linked through `next` (guest addresses of the shim's static arrays; the game copies them inside the call).
+
+```
+Ladder, 0x6C bytes: +00 SKU, +04 team_no, +08 wins, +0C losses, +10 points, +14 kills, +18 rank,
+  +1C rung, +20 disconnects, +24 team_rung, +28 provisional, +2C last_game_date, +30 win_streak,
+  +34/+38 reserved, +3C next, +40 login_name[40], +68 Locale
+Highscore, 0x44 bytes: +00 SKU, +04 wins, +08 losses, +0C points, +10 rank, +14 accomplishments
+  (one bit per finished co-op campaign), +18 next, +1C login_name[40]
+```
+
+VERA20K reads the lobby's rank from `+0x1C` (`rung`) and the high-score points from `+0x0C`, the rank digits from `+0x10`
+(`WolLadderRecord`, `score_icons`, `0x00783C80`). The shim fills `rank` and `rung` with the same place. A record with
+`points == -1` is skipped by the ladder sink, and a player still placing has no record at all (no rank shown).
+
+**What shows (RA2, `web/e2e/wol-icons.mjs --kind ranked`, two clients that the server seeded as ranks 1 and 2):** the
+Players list reads `rkone (Rank 1)`, `rktwo (Rank 2)`. YR's Players list has Alpha / Clan / Rank columns and shows the
+plain numbers `1` and `2` in the Rank column (`yr-ranked/icons-b/lobby-ranks.png`); no badge PCX is drawn in the lobby list there,
+although both answers reach the sink (`[wol] list answer: 2 records, status 0x0` and `[wol] score answer: ...` in the log).
+The game refills its player list only when the ladder answer arrives, so the page sends a high-score answer before the ladder
+answer for the same names (`LadderSession`).
+
+**Where the numbers come from.** The page (`web/src/game/wol-ladder.ts`, called from `WolClient.sendRaw`) turns the shim's
+`@ladder <list|score|self|search> <id> <sku> ...` lines into `POST /ladder/{sku}/1v1/current/listsearch` (`{players, locale}`) and
+`.../rungsearch` (`{ladderId, start, count}`), keeps each player's record for 20 s (the game's ladder request and its
+high-score request for the same names cost one round trip), and answers `@wolapi ladder <kind> <id> <status> <total> <keyRung>
+<name|rank|points|wins|losses|disconnects|badgePoints>...`. The shim builds the lists from that and calls the sink from its pump.
+`listsearch` carries `badgePoints` now (ra2web `LadderService.listSearch`: the OS projection's native badge points, Private 0,
+Corporal 32, ..., Commander in Chief 2001 for place 1); a standings row without it falls back to its rank type's badge.
+The SKU is the edition's own (RA2 16640, YR 18688), not the one the game passes (`0x2100`).
+Only the 1v1 ladder and the current season are asked for; a clan ladder's SKU is not handled.
+
+**The welcome screen's stats (`0x10E`: Wins, Losses, Disconnects, Rank, Points).** The game reads them from the persona file
+(`wolinfo.ini` / `wolinfoMD.ini`, section `[<lowercased nick>]`, keys `Rank`, `Points`, `Wins`, `Losses`, `Disconnects`), loading it
+afresh whenever it shows the screen; nothing native writes them in this build. The shim therefore asks for the player's own record
+(`@ladder self`) when the connection is up, when RA2Web pushes a `730` game report, and 8, 25 and 60 s after a result report was
+stored (`OnGameresSent`), and writes the five keys into the file (`persona_store_stats`, in place: the rest of the file, its
+line ends and a missing section are kept or made). Seen: a player seeded at rank 1 shows `Wins 24, Losses 0, Disconnects 0,
+Rank 1, Points 1459` at the welcome. A player who has not finished placement keeps `?`. Not done: stats **before the first
+login** of a page load (the page has no client yet; the launch ticket's session could fetch them) and the update line's date.
+`disconnects` is always 0 (the server does not count them).
+
+Test: `web/e2e/wol-icons.mjs --kind ranked` against `LADDER_DEV_SEED=rkone,rktwo,rkthree STORAGE=memory node e2e/wol-server.mjs`
+(the seed is a dev-only hook in ra2web's `src/index.ts`; guests can use each name once per server start). After a scored match:
+`quickmatch.mjs --row 3 --placed` (server with `PLACEMENT_MATCHES=1`) checks both personas against the match.

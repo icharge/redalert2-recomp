@@ -33,8 +33,8 @@ const check = (what) => {
   console.log(`ok  ${what}`);
 };
 const clients = {};
-async function open(name) {
-  const minted = await guestTicket(`i${name}${tag}`);
+async function open(name, nick = `i${name}${tag}`) {
+  const minted = await guestTicket(nick);
   const url = new URL(opts.url);
   url.hash = `ticket=${minted.ticket}`;
   const run = await startPage({
@@ -83,6 +83,47 @@ async function toLobby(run) {
 try {
   const SEP = String.fromCharCode(10);
   const kind = option("--kind", "observer"); // observer | tournament | clan | normal
+  if (kind === "ranked") {
+    // Two players the server seeded as placed (LADDER_DEV_SEED=rkone,rktwo,rkthree: rank 1, 2, 3).
+    const a = await open("a", "rkone");
+    const b = await open("b", "rktwo");
+    await Promise.all([toLobby(a), toLobby(b)]);
+    for (const run of [a, b]) {
+      await waitNative(run, "RequestLadderList", 0, 30000);
+      if (!ra2) await waitNative(run, "RequestHighscore", 0, 30000);
+      await waitNative(run, "[wol] persona", 0, 30000);
+    }
+    await a.page.waitForTimeout(3000);
+    for (const run of [a, b]) await run.shot("lobby-ranks");
+    const personaLine = (run) => run.all.find((l) => l.includes("[wol] persona"));
+    console.log(a.nick + ": " + personaLine(a) + "  " + b.nick + ": " + personaLine(b));
+    console.log(b.all.filter((l) => l.includes(" answer: ")).join(" | "));
+    assert.match(personaLine(a), /persona rkone: rank 1 /);
+    assert.match(personaLine(b), /persona rktwo: rank 2 /);
+    check(
+      "both lobbies asked for ladder and high-score records and the own record reached the persona file",
+    );
+    // back to the welcome screen: the profile shows the real numbers
+    for (const run of [a, b]) {
+      const at = run.all.length;
+      await run.clickGame(719, 556);
+      await run.page.waitForTimeout(3500);
+      await run.shot("welcome-stats");
+      void at;
+    }
+    console.log("PASS ranked");
+    process.exit(0);
+  }
+  if (kind === "welcome") {
+    const solo = await open("s");
+    await solo.waitFor("main menu", (st) => st?.phase === "running", 300);
+    await solo.page.waitForTimeout(1500);
+    await solo.clickGame(720, 263);
+    await waitNative(solo, "[dialog] open 0x10E");
+    await solo.page.waitForTimeout(2500);
+    await solo.shot("welcome");
+    process.exit(0);
+  }
   const host = await open("h");
   await toLobby(host);
   if (kind === "clan")
@@ -170,6 +211,14 @@ try {
   );
 } catch (error) {
   console.error("FAIL:", error?.message ?? error);
+  for (const run of Object.values(clients))
+    console.error(
+      run.nick +
+        String.fromCharCode(10) +
+        run.all
+          .filter((l) => /Request(Ladder|Highscore|Locale)|persona|answer:/.test(l))
+          .join(String.fromCharCode(10)),
+    );
   process.exitCode = 1;
 } finally {
   for (const run of Object.values(clients)) await run.browser.close().catch(() => {});

@@ -13,6 +13,8 @@
 #include <string.h>
 #include <strings.h>
 #include <stdio.h>
+#include <time.h>
+#include <dirent.h>
 #include <emscripten.h>
 #include <emscripten/heap.h>
 
@@ -792,12 +794,323 @@ static void receive_chat(const char *line) {
     }
 }
 
+/* ---- Ladder and high-score records (INetUtil slots 4, 5, 12-14; INetUtilEvent slots 4 and 9) ----
+ * The game asks the ladder service for the records of the names its lobby lists
+ * (RequestLadderList with up to 20 names, then RequestHighscore for the same names) and for the
+ * records around a name (RequestLadderSearch, the ladder screen). The page answers from RA2Web's
+ * ladder routes (web/src/game/wol-ladder.ts); the answer line is turned into the game's own
+ * record lists here and delivered from the game thread's pump through OnLadderList (slot 4) or
+ * OnHighscore (slot 9). Layouts are the embedded type library's, in x86 offsets
+ * (docs/wol/handoff-wolapi.md, "Ladder and high-score records"). */
+typedef struct {
+    int32_t sku, team_no, wins, losses, points, kills, rank, rung, disconnects, team_rung,
+        provisional, last_game_date, win_streak, reserved1, reserved2;
+    uint32_t next;
+    char login_name[40];
+    int32_t locale;
+} wol_ladder;
+typedef struct {
+    int32_t sku, wins, losses, points, rank, accomplishments;
+    uint32_t next;
+    char login_name[40];
+} wol_highscore;
+_Static_assert(sizeof(wol_ladder) == 0x6C, "WOLAPI x86 Ladder layout");
+_Static_assert(sizeof(wol_highscore) == 0x44, "WOLAPI x86 Highscore layout");
+
+#define WOL_LADDER_MAX 64u
+#ifdef RA2_TARGET_GAME
+#define WOL_LADDER_SKU 16640u
+#define WOL_INFO_FILE "wolinfo.ini"
+#else
+#define WOL_LADDER_SKU 18688u
+#define WOL_INFO_FILE "wolinfoMD.ini"
+#endif
+static wol_ladder g_ladder_records[WOL_LADDER_MAX];
+static wol_highscore g_score_records[WOL_LADDER_MAX];
+static uint32_t g_ladder_id;
+/* The player's own record is read again after a scored match: soon after the result was
+ * stored, and again while the other players' reports can still arrive. */
+static double g_self_refresh_due[3];
+
+static void request_own_stats(void) {
+    if (!g_connected || !g_nick[0]) return;
+    char line[96];
+    if (!++g_ladder_id) ++g_ladder_id;
+    snprintf(line, sizeof line, "@ladder self %u %u %s", g_ladder_id, WOL_LADDER_SKU, g_nick);
+    browser_send(line);
+}
+
+static void schedule_own_stats(void) {
+    double now = emscripten_get_now();
+    g_self_refresh_due[0] = now + 8000.0;
+    g_self_refresh_due[1] = now + 25000.0;
+    g_self_refresh_due[2] = now + 60000.0;
+}
+
+static void poll_own_stats(void) {
+    double now = emscripten_get_now();
+    for (unsigned i = 0; i < 3; i++) {
+        if (!g_self_refresh_due[i] || now < g_self_refresh_due[i]) continue;
+        g_self_refresh_due[i] = 0;
+        request_own_stats();
+    }
+}
+
+/* The game's keys are one string of names, each followed by a colon ("rkone:yuribot:"); hand
+ * them on comma-separated, lower-cased. */
+static void ladder_names(const char *keys, char *out, size_t capacity) {
+    size_t used = 0;
+    int pending_separator = 0;
+    for (const char *p = keys ? keys : ""; *p && used + 2 < capacity; p++) {
+        if (*p == ':' || *p == ',' || *p == ';' || *p == ' ' || *p == '\t' || *p == '\r' || *p == '\n') {
+            pending_separator = used > 0;
+            continue;
+        }
+        if (pending_separator) { out[used++] = ','; pending_separator = 0; }
+        out[used++] = (*p >= 'A' && *p <= 'Z') ? (char)(*p + 32) : *p;
+    }
+    out[used] = '\0';
+}
+
+static void request_ladder(const char *method, const char *keys, uint32_t sku, int high_score) {
+    char names[WOL_LINE_CAP / 2], line[WOL_LINE_CAP];
+    ladder_names(keys, names, sizeof names);
+    fprintf(stderr, "[wol] %s sku=0x%x keys=\"%s\"\n", method, sku, names);
+    if (!++g_ladder_id) ++g_ladder_id;
+    snprintf(line, sizeof line, "@ladder %s %u %u %s", high_score ? "score" : "list", g_ladder_id,
+        WOL_LADDER_SKU, names);
+    browser_send(line);
+}
+
+/* INetUtil::RequestLadderList(host, port, keys, SKU, team, cond, sort) */
+static void m_net_ladder_list(void) {
+    request_ladder("RequestLadderList", ASTR(3), A32(4), 0);
+    RET(S_OK, 8);
+}
+/* INetUtil::RequestLocaleLadderList(..., Locale): the same records; the locale is not used */
+static void m_net_ladder_list_locale(void) {
+    request_ladder("RequestLocaleLadderList", ASTR(3), A32(4), 0);
+    RET(S_OK, 9);
+}
+/* INetUtil::RequestHighscore(host, port, keys, SKU) */
+static void m_net_highscore(void) {
+    request_ladder("RequestHighscore", ASTR(3), A32(4), 1);
+    RET(S_OK, 5);
+}
+/* INetUtil::RequestLadderSearch(host, port, key, SKU, team, cond, sort, number, leading) */
+static void ladder_search(const char *key_text, uint32_t sku, uint32_t number, uint32_t leading) {
+    char key[40], line[WOL_LINE_CAP];
+    ladder_names(key_text, key, sizeof key);
+    fprintf(stderr, "[wol] RequestLadderSearch sku=0x%x key=\"%s\" number=%u leading=%u\n", sku, key, number, leading);
+    if (!++g_ladder_id) ++g_ladder_id;
+    snprintf(line, sizeof line, "@ladder search %u %u %u %u %s", g_ladder_id, WOL_LADDER_SKU,
+        number > 100u ? 100u : number, leading > 100u ? 100u : leading, key);
+    browser_send(line);
+}
+static void m_net_ladder_search(void) { ladder_search(ASTR(3), A32(4), A32(8), A32(9)); RET(S_OK, 10); }
+static void m_net_ladder_search_locale(void) { ladder_search(ASTR(3), A32(4), A32(8), A32(9)); RET(S_OK, 11); }
+
+/* One record token: name|rank|points|wins|losses|disconnects|badgePoints */
+static int parse_ladder_token(char *token, char **name, int32_t v[6]) {
+    char *save = NULL;
+    *name = strtok_r(token, "|", &save);
+    if (!*name) return 0;
+    for (unsigned i = 0; i < 6; i++) {
+        char *field = strtok_r(NULL, "|", &save);
+        if (!field) return 0;
+        v[i] = (int32_t)strtol(field, NULL, 10);
+    }
+    return 1;
+}
+
+/* The player's own numbers go into the persona file the welcome screen reads (the game loads
+ * wolinfo.ini / wolinfoMD.ini afresh whenever it shows them): Rank, Points, Wins, Losses and
+ * Disconnects of the nick's own section. The rest of the file is kept as it is. */
+#define WOL_INI_CAP 65536u
+static char g_ini_in[WOL_INI_CAP], g_ini_out[WOL_INI_CAP + 1024u];
+static size_t g_ini_used;
+static const char *const g_persona_keys[5] = { "Rank", "Points", "Wins", "Losses", "Disconnects" };
+
+static void ini_put(const char *text, size_t length) {
+    if (g_ini_used + length >= sizeof g_ini_out) return;
+    memcpy(g_ini_out + g_ini_used, text, length);
+    g_ini_used += length;
+}
+static void ini_put_missing(const char *eol, const int32_t value[5], const uint8_t done[5]) {
+    char line[48];
+    for (unsigned i = 0; i < 5; i++) {
+        if (done[i]) continue;
+        int length = snprintf(line, sizeof line, "%s=%d%s", g_persona_keys[i], (int)value[i], eol);
+        ini_put(line, (size_t)length);
+    }
+}
+
+/* The file's text with the nick's five stats set; returns the new length in g_ini_out. */
+static size_t persona_stats_text(const char *text, size_t length, const char *nick, const int32_t value[5]) {
+    const char *eol = memchr(text, '\r', length) ? "\r\n" : "\n";
+    uint8_t done[5] = { 0 };
+    int in_section = 0, found = 0;
+    g_ini_used = 0;
+    for (size_t at = 0; at < length;) {
+        const char *line = text + at;
+        const char *end = memchr(line, '\n', length - at);
+        size_t whole = end ? (size_t)(end - line) + 1u : length - at;
+        size_t body = whole;
+        while (body && (line[body - 1] == '\n' || line[body - 1] == '\r')) body--;
+        at += whole;
+        if (body && line[0] == '[') {
+            if (in_section) ini_put_missing(eol, value, done);
+            const char *close = memchr(line, ']', body);
+            size_t name_length = close ? (size_t)(close - line) - 1u : 0;
+            in_section = close && name_length == strlen(nick) && !strncasecmp(line + 1, nick, name_length);
+            if (in_section) found = 1;
+            ini_put(line, whole);
+            if (!end) ini_put(eol, strlen(eol));
+            continue;
+        }
+        int replaced = 0;
+        if (in_section) {
+            for (unsigned i = 0; i < 5 && !replaced; i++) {
+                size_t key_length = strlen(g_persona_keys[i]);
+                if (body <= key_length || strncasecmp(line, g_persona_keys[i], key_length)) continue;
+                size_t after = key_length;
+                while (after < body && (line[after] == ' ' || line[after] == '\t')) after++;
+                if (after >= body || line[after] != '=') continue;
+                char fresh[48];
+                int n = snprintf(fresh, sizeof fresh, "%s=%d%s", g_persona_keys[i], (int)value[i], eol);
+                ini_put(fresh, (size_t)n);
+                done[i] = 1;
+                replaced = 1;
+            }
+        }
+        if (!replaced) {
+            ini_put(line, whole);
+            if (!end) ini_put(eol, strlen(eol));
+        }
+    }
+    if (in_section) ini_put_missing(eol, value, done);
+    if (!found) {
+        char header[48];
+        int n = snprintf(header, sizeof header, "[%s]%s", nick, eol);
+        ini_put(header, (size_t)n);
+        ini_put_missing(eol, value, done);
+    }
+    return g_ini_used;
+}
+
+static void persona_store_stats(const char *nick, const int32_t value[5]) {
+    char path[300] = "/game/" WOL_INFO_FILE, lower[32];
+    DIR *dir = opendir("/game");
+    if (dir) {
+        struct dirent *entry;
+        while ((entry = readdir(dir)))
+            if (!strcasecmp(entry->d_name, WOL_INFO_FILE)) {
+                snprintf(path, sizeof path, "/game/%s", entry->d_name);
+                break;
+            }
+        closedir(dir);
+    }
+    size_t length = 0;
+    FILE *file = fopen(path, "rb");
+    if (file) {
+        length = fread(g_ini_in, 1, WOL_INI_CAP - 1u, file);
+        fclose(file);
+    }
+    for (unsigned i = 0; i < sizeof lower - 1u; i++) {
+        lower[i] = nick[i] >= 'A' && nick[i] <= 'Z' ? (char)(nick[i] + 32) : nick[i];
+        if (!nick[i]) break;
+    }
+    lower[sizeof lower - 1u] = '\0';
+    size_t out = persona_stats_text(g_ini_in, length, lower, value);
+    /* Writing over an existing file can append in the browser build; replace it. */
+    remove(path);
+    file = fopen(path, "wb");
+    if (!file) return;
+    fwrite(g_ini_out, 1, out, file);
+    fclose(file);
+    fprintf(stderr, "[wol] persona %s: rank %d points %d wins %d losses %d disconnects %d\n", lower,
+        (int)value[0], (int)value[1], (int)value[2], (int)value[3], (int)value[4]);
+}
+
+/* `@wolapi ladder <kind> <id> <status> <total> <keyRung> <records...>` from the page. */
+static void deliver_ladder(const char *line) {
+    char copy[WOL_LINE_CAP], *save = NULL;
+    copy_text(copy, sizeof copy, line);
+    strtok_r(copy, " ", &save); /* @wolapi */
+    strtok_r(NULL, " ", &save); /* ladder */
+    const char *kind = strtok_r(NULL, " ", &save);
+    char *id = strtok_r(NULL, " ", &save), *status_text = strtok_r(NULL, " ", &save);
+    char *total_text = strtok_r(NULL, " ", &save), *rung_text = strtok_r(NULL, " ", &save);
+    if (!kind || !id || !status_text || !total_text || !rung_text) return;
+    uint32_t status = (uint32_t)strtoul(status_text, NULL, 10);
+    int32_t total = (int32_t)strtol(total_text, NULL, 10), key_rung = (int32_t)strtol(rung_text, NULL, 10);
+    unsigned count = 0;
+    int32_t own[5] = { 0 };
+    int have_own = 0;
+    int self = !strcmp(kind, "self"), score = !strcmp(kind, "score");
+    for (char *token = strtok_r(NULL, " ", &save); token && count < WOL_LADDER_MAX; token = strtok_r(NULL, " ", &save)) {
+        char *name;
+        int32_t v[6];
+        if (!parse_ladder_token(token, &name, v)) continue;
+        if (self) {
+            if (!strcasecmp(name, g_nick)) {
+                own[0] = v[0]; own[1] = v[1]; own[2] = v[2]; own[3] = v[3]; own[4] = v[4];
+                have_own = 1;
+            }
+            continue;
+        }
+        if (score) {
+            wol_highscore *record = &g_score_records[count];
+            memset(record, 0, sizeof *record);
+            record->sku = (int32_t)WOL_LADDER_SKU;
+            record->wins = v[2];
+            record->losses = v[3];
+            record->points = v[5]; /* the badge's points */
+            record->rank = v[0];
+            copy_text(record->login_name, sizeof record->login_name, name);
+            record->next = 0;
+            if (count) g_score_records[count - 1].next = (uint32_t)(uintptr_t)record;
+        } else {
+            wol_ladder *record = &g_ladder_records[count];
+            memset(record, 0, sizeof *record);
+            record->sku = (int32_t)WOL_LADDER_SKU;
+            record->wins = v[2];
+            record->losses = v[3];
+            record->points = v[1];
+            /* The lobby reads +0x1C ("rung") as the rank it sorts and draws; +0x18 is the same place. */
+            record->rank = v[0];
+            record->rung = v[0];
+            record->disconnects = v[4];
+            copy_text(record->login_name, sizeof record->login_name, name);
+            record->next = 0;
+            if (count) g_ladder_records[count - 1].next = (uint32_t)(uintptr_t)record;
+        }
+        count++;
+    }
+    if (self) {
+        if (have_own && status == S_OK) persona_store_stats(g_nick, own);
+        return;
+    }
+    uint32_t sink = g_channel.sink;
+    fprintf(stderr, "[wol] %s answer: %u records, status 0x%x, sink %s\n", kind, count, (unsigned)status, sink ? "set" : "none");
+    if (!sink) return;
+    uint32_t list = count ? (uint32_t)(uintptr_t)(score ? (void *)&g_score_records[0] : (void *)&g_ladder_records[0]) : 0;
+    uint32_t args[] = { sink, status, list, (uint32_t)total, (uint32_t)(time(NULL)), (uint32_t)key_rung };
+    /* INetUtilEvent::OnLadderList (slot 4) / OnHighscore (slot 9) */
+    hle_call_guest(MEM32(MEM32(sink) + (score ? 9u : 4u) * 4u), 6, args);
+}
+
 static void handle_line(const char *line) {
     if (!strncmp(line, "@wolapi gameres ", 16)) {
         unsigned id, status; char extra;
-        if (sscanf(line + 16, "%u %u %c", &id, &status, &extra) == 2) complete_report(id, status);
+        if (sscanf(line + 16, "%u %u %c", &id, &status, &extra) == 2) {
+            complete_report(id, status);
+            /* A stored result is scored soon after; read the own record again then. */
+            if (!status) schedule_own_stats();
+        }
         return;
     }
+    if (!strncmp(line, "@wolapi ladder ", 15)) { deliver_ladder(line); return; }
     const char *command = strchr(line, ' ');
     if (channel_error(line)) return;
     if (strcmp(line, "@wolapi connected") == 0) {
@@ -807,6 +1120,7 @@ static void handle_line(const char *line) {
          * it does not show anything delivered through OnMessageOfTheDay. */
         emit_connection(S_OK, g_motd_ready ? g_motd : "Connected to RA2Web");
         g_motd_ready = 0;
+        request_own_stats();
         return;
     }
     if (is_numeric_reply(line, "375") || is_numeric_reply(line, "372") || is_numeric_reply(line, "376")) {
@@ -859,6 +1173,8 @@ static void handle_line(const char *line) {
         }
         return;
     }
+    /* RPL 730: RA2Web scored a game this player was in; the own record changed. */
+    if (strstr(line, " 730 ")) { request_own_stats(); return; }
     if (strstr(line, " 322 ")) { parse_room_line(line); return; }
     if (strstr(line, " 323 ")) { emit_channel_list(); return; }
     if (strstr(line, " 353 ")) { parse_roster(line); return; }
@@ -1015,6 +1331,7 @@ void ra2_wolapi_poll(void) {
 
 static void pump_lines(void) {
     ra2_wolapi_poll();
+    poll_own_stats();
     if (g_pending_server_list) {
         g_pending_server_list = 0;
         emit_server_list();
@@ -1159,10 +1476,6 @@ static void m_chat_get_gametype_info(void) {
 static void m_stub_5(void) { RET(E_NOTIMPL, 5); }
 static void m_stub_6(void) { RET(E_NOTIMPL, 6); }
 static void m_stub_7(void) { RET(E_NOTIMPL, 7); }
-static void m_stub_8(void) { RET(E_NOTIMPL, 8); }
-static void m_stub_9(void) { RET(E_NOTIMPL, 9); }
-static void m_stub_10(void) { RET(E_NOTIMPL, 10); }
-static void m_stub_11(void) { RET(E_NOTIMPL, 11); }
 static void m_idle_pump(void) { RET(S_OK, 1); }
 
 static void m_chat_pump(void) { pump_lines(); RET(S_OK, 1); }
@@ -1672,13 +1985,13 @@ static uint32_t create_chat(const uint8_t *iid, uint32_t *out) {
 static uint32_t create_channel(const uint8_t *iid, uint32_t *out) {
     static const win32hle_shim methods[] = {
         { "WolChannel::QueryInterface", m_query_interface }, { "WolChannel::AddRef", m_add_ref }, { "WolChannel::Release", m_release },
-        { "WolChannel::RequestGameresSend", m_net_gameres_send }, { "WolChannel::RequestLadderSearch", m_stub_10 },
-        { "WolChannel::RequestLadderList", m_stub_8 }, { "WolChannel::RequestPing", m_net_request_ping },
+        { "WolChannel::RequestGameresSend", m_net_gameres_send }, { "WolChannel::RequestLadderSearch", m_net_ladder_search },
+        { "WolChannel::RequestLadderList", m_net_ladder_list }, { "WolChannel::RequestPing", m_net_request_ping },
         { "WolChannel::PumpMessages", m_net_pump },
         { "WolChannel::GetAvgPing", m_net_get_avg_ping }, { "WolChannel::RequestNewNick", m_stub_7 },
         { "WolChannel::RequestAgeCheck", m_stub_5 }, { "WolChannel::RequestWDTState", m_stub_4 },
-        { "WolChannel::RequestLocaleLadderList", m_stub_9 }, { "WolChannel::RequestLocaleLadderSearch", m_stub_11 },
-        { "WolChannel::RequestHighscore", m_stub_5 }, { 0, 0 }
+        { "WolChannel::RequestLocaleLadderList", m_net_ladder_list_locale }, { "WolChannel::RequestLocaleLadderSearch", m_net_ladder_search_locale },
+        { "WolChannel::RequestHighscore", m_net_highscore }, { 0, 0 }
     };
     if (!g_channel_vt) g_channel_vt = hle_com_vtable(methods);
     return create_object(&g_channel, g_channel_vt, iid, out);

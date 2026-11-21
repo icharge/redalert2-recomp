@@ -1,4 +1,5 @@
 /** RA2Web's browser-facing subset of the Westwood Online line protocol. */
+import { LadderLookup, LadderSession, parseLadderRequest } from "./wol-ladder";
 
 /** WOLAPI strings carry opaque game-option bytes, including bytes above 0x7f.
  * Represent each byte as one JS code unit across WebSocket, then restore it at
@@ -409,8 +410,28 @@ export class WolClient {
     await this.waitFor((line) => /\s366\s/.test(line) && line.includes(lobby), "lobby roster end");
   }
 
+  private ladder: LadderSession | null = null;
+
   /** Send a WOL command issued by the game's COM interface. */
   sendRaw(line: string): void {
+    // The game's ladder and high-score requests are HTTP lookups, not chat commands.
+    if (line.startsWith("@ladder ")) {
+      const request = parseLadderRequest(line);
+      if (request) {
+        const httpUrl = typeof this.server === "string" ? this.server : this.server.httpUrl;
+        const generation = this.generation;
+        this.ladder ??= new LadderSession(
+          new LadderLookup(httpUrl, this.fetcher, this.timeoutMs),
+          (answer) => {
+            // an answer for a connection that has since closed is dropped
+            if (generation === this.generation)
+              this.listeners.forEach((listener) => listener(answer));
+          },
+        );
+        this.ladder.request(request);
+      }
+      return;
+    }
     // A native screen can send before the page has finished logging in. Queue
     // it; throwing here would be relayed as an `@wolapi error` and fail the
     // pending login (a native screen does exactly this on a slow connection).
