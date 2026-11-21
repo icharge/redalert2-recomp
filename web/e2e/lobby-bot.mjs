@@ -144,7 +144,10 @@ try {
   const a = await open("a");
   const b = await open("b");
   console.log(`${edition.toUpperCase()}: ${a.nick} and ${b.nick}, lobby ${lobby}`);
-  await Promise.all([toLobby(a), toLobby(b)]);
+  // One after the other: the checks below need a in the lobby before b joins (b's JOIN and the bot's
+  // announcement of it reach a); together, b sometimes arrived first and the run timed out.
+  await toLobby(a);
+  await toLobby(b);
 
   // 1. YuriBOT is in both players' NAMES lists (a 353 for the chat lobby that names the bot)
   for (const run of [a, b]) {
@@ -170,7 +173,10 @@ try {
         (w) =>
           w.dir === "<" &&
           w.line.startsWith(`:${BOT}!`) &&
-          new RegExp(` (PRIVMSG|NOTICE) ${lobby} :${b.nick} joined the channel`).test(w.line),
+          // an IRC colour code may come first (lobbyBot.joinColour)
+          new RegExp(
+            ` (PRIVMSG|NOTICE) ${lobby} :(\\x03\\d{1,2})?${b.nick} joined the channel`,
+          ).test(w.line),
       ),
     );
   }

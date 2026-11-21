@@ -766,6 +766,30 @@ alone, in the colour the sender's line would have had (cyan for the bot, an oper
 restarts soon.` at the top left, with no `(YuriBOT)`. The row needs the e2e server's admin mode
 (`ADMIN_LEGACY_AUTH=true ADMIN_USERNAMES=qmadmin`) for its settings change.
 
+## Bot line colours (LB-12, 22 November)
+
+A received line may start with an IRC colour code: 0x03 and one or two digits (an optional `,bg` is skipped).
+`receive_chat` takes it off the text and shows that one line in the colour, without a re-lift:
+
+- Lobby, game room, Page Received: the sinks take a line's colour from a table of seven COLORREFs, read when
+  the line is made (YR `0x007EEF28`, RA2 `0x007A7360`: default -1, public `0xF0F0`, private `0xFF8080`, two
+  action colours, operator `0xFFFF00`, page white). The shim sets all seven to the chosen colour while the
+  sink runs and puts them back after.
+- During a match: the page row's colour scheme comes from `ColorScheme::FindIndex` on the name a pointer holds
+  (YR `0x004E12D0` reads `[0x00822724]`, RA2 `0x004CEFC0` reads `[0x007D83B4]`, both `"Grey"`). The shim
+  points it at the scheme's name (a string in the shim; flat memory, so the game can read it) for the same
+  time. Schemes are rules.ini `[Colors]` names: yellow is `Gold`, red `DarkRed`, light blue `DarkSky`, pink
+  `Magenta` (`k_irc_colours` in `wolapi.c`). An unknown name would give scheme 0.
+- RA2Web: the settings `lobbyBot.joinColour` (join and leave lines) and `lobbyBot.announceColour`
+  (announcements), a new `choice` kind shown as a drop-down in the console (default, white, yellow, orange,
+  red, pink, purple, blue, light blue, cyan, green, light green, grey). `default` sends no code: an older web
+  client shows a code as text, so colours are opt-in.
+
+**Seen (both editions):** `web/e2e/quickmatch.mjs --row 10 --nameless` with `lobbyBot.announceColour` yellow:
+the match row `Announcement test ...: the server restarts soon.` is gold, not grey. `web/e2e/lobby-bot.mjs` with `lobbyBot.joinColour` light blue: the join lines are light blue beside the bot's cyan whispers. Selftest: `wolapi_selftest.c`
+(a code coloured the line while its sink ran, the table and scheme restored, `,bg` skipped, 99 dropped as no
+colour).
+
 ## Ladder and high-score records, rank in the lobby, the welcome's stats (21 November)
 
 `INetUtil` (the shim's `WolChannel` object) now answers `RequestLadderList` (slot 5), `RequestLocaleLadderList` (12),

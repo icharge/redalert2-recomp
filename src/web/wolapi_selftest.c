@@ -22,6 +22,7 @@ static uint32_t test_event_count, test_event_method[128], test_event_args[128][8
 static char test_event_text[128][4096];
 static uint16_t test_event_wide[128][4096];
 static uint16_t test_event_shown[128][0x400]; /* the line as the game would show it */
+static uint32_t test_event_operator_colour[128], test_event_scheme[128]; /* while the sink ran */
 static int wide_is(const uint16_t *wide, const char *text) {
     for (; *text; text++, wide++) if (*wide != (uint8_t)*text) return 0;
     return *wide == 0;
@@ -60,6 +61,8 @@ uint32_t hle_call_guest(uint32_t method, int count, const uint32_t *args) {
         if (method == 0x10006)
             copy_text(test_event_text[test_event_count], 4096, (char *)(uintptr_t)args[2]);
         if (method == 0x10028 || method == 0x10029 || method == 0x1002C) {
+            test_event_operator_colour[test_event_count] = MEM32(WOL_CHAT_COLOURS + 20u);
+            test_event_scheme[test_event_count] = MEM32(WOL_PAGE_SCHEME);
             const uint16_t *text = (const uint16_t *)(uintptr_t)args[method == 0x10028 ? 4 : 3];
             for (unsigned i = 0; i < 4095 && text[i]; i++) test_event_wide[test_event_count][i] = text[i];
             if (method != 0x10029) {
@@ -725,6 +728,29 @@ int main(void) {
         assert(test_event_method[before] == 0x10028 && wide_is(test_event_shown[before], "zz joined the channel."));
         assert(test_event_method[before + 1] == 0x10028 && wide_is(test_event_shown[before + 1], "[YuriBOT] : a reply"));
         assert(test_event_method[before + 2] == 0x1002C && wide_is(test_event_shown[before + 2], "Restart soon."));
+    }
+    /* A leading IRC colour code (LB-12) is taken off the text and colours that line only: the
+     * lists' colour table and the match row's scheme name point at it while the sink runs. */
+    {
+        uint32_t operator_before = MEM32(WOL_CHAT_COLOURS + 20u), scheme_before = MEM32(WOL_PAGE_SCHEME);
+        uint32_t before = test_event_count;
+        ra2_wolapi_receive_line(":YuriBOT!YuriBOT@local NOTICE #testuser :\x03" "08Gold line");
+        ra2_wolapi_receive_line(":YuriBOT!YuriBOT@local NOTICE testuser :\x03" "4,1Red page");
+        ra2_wolapi_receive_line(":YuriBOT!YuriBOT@local PRIVMSG #testuser :\x03" "99odd code");
+        ra2_wolapi_receive_line(":YuriBOT!YuriBOT@local PRIVMSG #testuser :plain");
+        assert(invoke(g_chat.chat, 3, 0, NULL) == S_OK);
+        assert(test_event_count == before + 4);
+        assert(wide_is(test_event_shown[before], "Gold line"));
+        assert(test_event_operator_colour[before] == 0x40FFFFu);
+        assert(!strcmp((const char *)(uintptr_t)test_event_scheme[before], "Gold"));
+        assert(wide_is(test_event_shown[before + 1], "Red page"));
+        assert(test_event_operator_colour[before + 1] == 0x4040FFu);
+        assert(!strcmp((const char *)(uintptr_t)test_event_scheme[before + 1], "DarkRed"));
+        assert(wide_is(test_event_shown[before + 2], "[YuriBOT] : odd code"));
+        assert(test_event_operator_colour[before + 2] == operator_before);
+        assert(wide_is(test_event_shown[before + 3], "[YuriBOT] : plain"));
+        assert(test_event_operator_colour[before + 3] == operator_before && test_event_scheme[before + 3] == scheme_before);
+        assert(MEM32(WOL_CHAT_COLOURS + 20u) == operator_before && MEM32(WOL_PAGE_SCHEME) == scheme_before);
     }
     /* An announcement page reaches the UTF-16 page sink (ordinal 41, vtable slot 44); one to
      * another nick is dropped, and the sender stays out of the roster. */

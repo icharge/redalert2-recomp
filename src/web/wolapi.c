@@ -910,6 +910,54 @@ static void complete_channel_leave(wol_user *user) {
  * (web_chat_time) and the in-match page post (web_bare_page) then keep only the text
  * (docs/wol/handoff-wolapi.md, "Lines without the bot's name"). */
 static const uint16_t *g_bare_text;
+
+/* A line may start with an IRC colour code (0x03 and one or two digits, an optional ",bg"
+ * ignored): RA2Web's bot colours (LB-12). The game takes a received line's colour from a
+ * table of seven COLORREFs (YR 0x007EEF28, RA2 0x007A7360: default, public, private, two
+ * action colours, operator, page white) and a match's page row from the colour scheme named
+ * by a pointer (YR 0x00822724, RA2 0x007D83B4, "Grey"; ColorScheme::FindIndex at the post).
+ * Both are read when the line is made, so the shim points them at the chosen colour while
+ * the sink runs and puts them back after (docs/wol/handoff-wolapi.md, "Bot line colours"). */
+#ifdef RA2_TARGET_GAME
+#define WOL_CHAT_COLOURS 0x007A7360u
+#define WOL_PAGE_SCHEME 0x007D83B4u
+#else
+#define WOL_CHAT_COLOURS 0x007EEF28u
+#define WOL_PAGE_SCHEME 0x00822724u
+#endif
+static const struct { uint32_t colorref; const char *scheme; } k_irc_colours[16] = {
+    { 0xFFFFFFu, "LightGrey" }, /* 0 white */
+    { 0xA0A0A0u, "Grey" },      /* 1 black: unreadable on the dark lists, so grey */
+    { 0xFF6040u, "DarkBlue" },  /* 2 blue */
+    { 0x40C040u, "Green" },     /* 3 green */
+    { 0x4040FFu, "DarkRed" },   /* 4 red */
+    { 0x4080C0u, "Red" },       /* 5 brown */
+    { 0xFF80C0u, "Purple" },    /* 6 purple */
+    { 0x2090FFu, "Orange" },    /* 7 orange */
+    { 0x40FFFFu, "Gold" },      /* 8 yellow */
+    { 0x80FF80u, "DarkGreen" }, /* 9 light green */
+    { 0xC0C000u, "LightBlue" }, /* 10 teal */
+    { 0xFFFF80u, "LightBlue" }, /* 11 light cyan */
+    { 0xFFA080u, "DarkSky" },   /* 12 light blue */
+    { 0xC080FFu, "Magenta" },   /* 13 pink */
+    { 0xA0A0A0u, "Grey" },      /* 14 grey */
+    { 0xD0D0D0u, "LightGrey" }, /* 15 light grey */
+};
+
+/* The colour code at the start of text, or -1; *rest is the text after it. */
+static int irc_colour(const char *text, const char **rest) {
+    *rest = text;
+    if (text[0] != 3 || text[1] < '0' || text[1] > '9') return -1;
+    int colour = text[1] - '0', n = 2;
+    if (text[2] >= '0' && text[2] <= '9') colour = colour * 10 + (text[n++] - '0');
+    if (text[n] == ',' && text[n + 1] >= '0' && text[n + 1] <= '9') {
+        n += 2;
+        if (text[n] >= '0' && text[n] <= '9') n++;
+    }
+    *rest = text + n;
+    return colour < 16 ? colour : -1;
+}
+
 static void receive_chat(const char *line) {
     char sender[10], target[48], command[16];
     if (sscanf(line, ":%9[^! ]%*s %15s %47s", sender, command, target) != 3) return;
@@ -924,6 +972,7 @@ static void receive_chat(const char *line) {
     }
     const char *text = strstr(line, " :");
     if (!text) return;
+    int colour = irc_colour(text + 2, &text); /* text: what follows " :" and any colour code */
     wol_user user = { 0 };
     copy_text(user.name, sizeof user.name, sender);
     for (uint32_t i = 0; i < g_user_count; i++)
@@ -935,8 +984,17 @@ static void receive_chat(const char *line) {
         var at = $1 >> 1;
         for (var i = 0; i < text.length && i < 4095; i++) HEAPU16[at + i] = text.charCodeAt(i);
         HEAPU16[at + i] = 0;
-    }, text + 2, wide);
+    }, text, wide);
     g_bare_text = notice ? wide : NULL;
+    uint32_t saved_colours[7], saved_scheme = 0;
+    if (colour >= 0) {
+        for (unsigned i = 0; i < 7; i++) {
+            saved_colours[i] = MEM32(WOL_CHAT_COLOURS + 4u * i);
+            MEM32(WOL_CHAT_COLOURS + 4u * i) = k_irc_colours[colour].colorref;
+        }
+        saved_scheme = MEM32(WOL_PAGE_SCHEME);
+        MEM32(WOL_PAGE_SCHEME) = (uint32_t)(uintptr_t)k_irc_colours[colour].scheme;
+    }
     if (page) {
         uint32_t values[] = { S_OK, (uint32_t)(uintptr_t)&user, (uint32_t)(uintptr_t)wide };
         fprintf(stderr, "[wol] %s from %s\n", notice ? "notice" : "page", sender);
@@ -949,6 +1007,10 @@ static void receive_chat(const char *line) {
         event_call(38, 3, values); /* IChatEvent::OnPrivateUnicodeMessage */
     }
     g_bare_text = NULL;
+    if (colour >= 0) {
+        for (unsigned i = 0; i < 7; i++) MEM32(WOL_CHAT_COLOURS + 4u * i) = saved_colours[i];
+        MEM32(WOL_PAGE_SCHEME) = saved_scheme;
+    }
 }
 
 /* The chat lists' add (run_lift.py chat_time_patches: YR 0x005E2700, RA2 0x005C2C80) hands every
