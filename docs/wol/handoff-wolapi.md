@@ -746,3 +746,16 @@ guest is the other client): both editions show `[TAG]` in the other client's Pla
 `/ladder` (RA2 Clan/Ladder, YR Tournament) and `/clan` (YR Clan) in a new tab with the game page unchanged. Screenshots in
 `work/tasks/wol-clans/` (`ra2/`, `yr/`; scratch, removed with the task). The selftest (`src/web/wolapi_selftest.c`) covers the roster
 ids, the request/answer, the cache, JOIN and JOINGAME, the own squad, the failure and 421.
+
+### The lobby's observer image (control 0x75F), 21 November
+
+The lobby's Players header has the observer checkbox (0x760) and, right of it, a Static (0x75F, `0x50000005`, ex-style `WS_EX_TRANSPARENT`, no
+`SS_NOTIFY`) that the game fills with `wolob.pcx` (joining as an observer) or `wolnob.pcx` (as a player) through `sub_005E1F30` (RA2; the
+lift's `web_wol_icon_surface` hook records the BSurface per window). The browser presents only the primary surface, so such a PCX child shows
+only where `presenter.c` composites it: that was done for the online page's legend (resource `0x10E`) alone, so the lobby (`0x113`) drew the
+checkbox and no image, in both editions. `composite_wol_icons` now also runs for the lobby dialog, centring and clipping the image in its
+control (VERA20K's `push_flag_entry_clipped_centered`). Evidence: `web/e2e/wol-icons.mjs --kind obstoggle --at 584,22` (the checkbox): the
+icon is the slashed eye, then the eye after a click, then the slashed eye again, in RA2 and YR (`work/tasks/wol-icons/observer-toggle/`).
+Clicking the image itself does nothing here: the dialog proc only reacts to `WM_COMMAND` 0x75F / 0x760, and without `SS_NOTIFY` the Static
+is click-through in Windows and in the HLE (`user32.c`, `WM_NCHITTEST`); VERA20K treats the image as a toggle, which was not checked against
+the retail game.

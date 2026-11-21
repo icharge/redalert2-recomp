@@ -134,6 +134,10 @@ static uint32_t g_palette[256];                          /* raw PAL8: the palett
 static uint32_t g_pause_dialog;
 static uint32_t g_wol_legend_dialog;
 static double g_wol_legend_ready_at;
+/* The lobby (resource 0x113) has the same kind of child: the observer image (control 0x75F, wolob.pcx or
+ * wolnob.pcx), which the game fills with sub_005CD3F0 (RA2) and the YR counterpart. */
+static uint32_t g_wol_lobby_dialog;
+static double g_wol_lobby_ready_at;
 static struct { uint32_t hwnd, surface; } g_wol_icon_surfaces[256];
 #if defined(RA2_TARGET_GAME)
 /* game.exe's RTTI names BSurface at this vtable; Yuri's Revenge differs. */
@@ -158,13 +162,12 @@ void web_wol_icon_surface(uint32_t hwnd, uint32_t surface) {
  * The game's Win32 paint path updates those controls, but the browser presents
  * only the DirectDraw primary surface. Composite their transparent pixels into
  * that published frame so the controls appear over the game-rendered dialog. */
-static void composite_wol_legend(uint8_t *frame, int w, int h, uint32_t row,
-                                 int game_w, int game_h, int scale, int raw, int bpp) {
-    const uint32_t dlg = g_wol_legend_dialog;
+static void composite_wol_icons(uint32_t dlg, double ready_at, int center, uint8_t *frame, int w, int h, uint32_t row,
+                                int game_w, int game_h, int scale, int raw, int bpp) {
     if (!dlg || !hle_is_window(dlg) || !(hle_window_style(dlg) & 0x10000000u)) return;
     /* The shell animates the online page after CreateDialog returns. Wait for
      * that transition before painting PCX controls over the game surface. */
-    if (emscripten_get_now() < g_wol_legend_ready_at) return;
+    if (emscripten_get_now() < ready_at) return;
     if (raw && bpp != 16) return;
     if (bpp != 16 || (w != game_w * scale) || (h != game_h * scale)) return;
 
@@ -182,12 +185,17 @@ static void composite_wol_legend(uint8_t *frame, int w, int h, uint32_t row,
         int draw_w = right - left < sw ? right - left : sw;
         int draw_h = bottom - top < sh ? bottom - top : sh;
         if (draw_w <= 0 || draw_h <= 0) continue;
+        /* The legend's images start at the control's corner; the lobby's observer image is centred in its
+         * control and clipped to it (VERA20K's push_flag_entry_clipped_centered). */
+        int skip_x = center && sw > draw_w ? (sw - draw_w) / 2 : 0, skip_y = center && sh > draw_h ? (sh - draw_h) / 2 : 0;
+        int put_x = left + (center && right - left > draw_w ? (right - left - draw_w) / 2 : 0);
+        int put_y = top + (center && bottom - top > draw_h ? (bottom - top - draw_h) / 2 : 0);
         const uint16_t *src = (const uint16_t *)(uintptr_t)pixels;
         for (int sy = 0; sy < draw_h; sy++) for (int sx = 0; sx < draw_w; sx++) {
-            uint16_t color = src[sy * sw + sx];
+            uint16_t color = src[(sy + skip_y) * sw + sx + skip_x];
             if (color == 0xF81Fu) continue;               /* PCX magenta transparency key */
             for (int dy = 0; dy < scale; dy++) for (int dx = 0; dx < scale; dx++) {
-                int x = (left + sx) * scale + dx, y = (top + sy) * scale + dy;
+                int x = (put_x + sx) * scale + dx, y = (put_y + sy) * scale + dy;
                 if (x < 0 || y < 0 || x >= w || y >= h || x >= game_w * scale || y >= game_h * scale) continue;
                 uint8_t *dst = frame + (size_t)y * row + (size_t)x * (raw ? 2u : 4u);
                 if (raw) {
@@ -266,7 +274,8 @@ static void publish(const uint8_t *px, int w, int h, int pitch, int bpp, const u
             }
         }
     }
-    composite_wol_legend(out, (int)w, (int)h, row, game_w, game_h, hd ? 2 : 1, raw, bpp);
+    composite_wol_icons(g_wol_legend_dialog, g_wol_legend_ready_at, 0, out, (int)w, (int)h, row, game_w, game_h, hd ? 2 : 1, raw, bpp);
+    composite_wol_icons(g_wol_lobby_dialog, g_wol_lobby_ready_at, 1, out, (int)w, (int)h, row, game_w, game_h, hd ? 2 : 1, raw, bpp);
     /* The seqlock went odd before the pixel write, so the page rejects any read that overlaps it. */
     if (raw && bpp == 8) {
         memcpy(g_palette, pal, sizeof g_palette);
@@ -337,11 +346,20 @@ void web_presenter_dialog_created(uint32_t hwnd, uint32_t resource_id) {
         if (resource_id == 0x10Eu) {
             g_wol_legend_dialog = hwnd;
             g_wol_legend_ready_at = emscripten_get_now() + 700.0;
+            g_wol_lobby_dialog = 0;
+        } else if (resource_id == 0x113u) {
+            /* The lobby replaces the online page: its own controls, no legend. The surfaces its init
+             * attached may already be in the map, so it is not cleared here. */
+            g_wol_legend_dialog = 0;
+            g_wol_lobby_dialog = hwnd;
+            g_wol_lobby_ready_at = emscripten_get_now() + 300.0;
         } else {
             /* HWNDs are recycled between shell pages. Drop both the old dialog
              * and its child-surface map so another page cannot composite them. */
             g_wol_legend_dialog = 0;
             g_wol_legend_ready_at = 0;
+            g_wol_lobby_dialog = 0;
+            g_wol_lobby_ready_at = 0;
             memset(g_wol_icon_surfaces, 0, sizeof g_wol_icon_surfaces);
         }
     }

@@ -205,6 +205,25 @@ try {
     );
     process.exit(0);
   }
+  if (kind === "obstoggle") {
+    // The lobby's observer toggle: the image right of the checkbox (control 0x75F) flips with it.
+    //   --at X,Y  the image's centre in game pixels (default: RA2 612,22 / YR 645,22)
+    const solo = await open("s");
+    await toLobby(solo);
+    await solo.page.waitForTimeout(1500);
+    await solo.shot("observer-off");
+    const [x, y] = option("--at", ra2 ? "612,22" : "645,22")
+      .split(",")
+      .map(Number);
+    await solo.clickGame(x, y);
+    await solo.page.waitForTimeout(1200);
+    await solo.shot("observer-on");
+    await solo.clickGame(x, y);
+    await solo.page.waitForTimeout(1200);
+    await solo.shot("observer-off-again");
+    console.log("PASS " + edition.toUpperCase() + " obstoggle; see " + opts.shots);
+    process.exit(0);
+  }
   if (kind === "welcome") {
     const solo = await open("s");
     await solo.waitFor("main menu", (st) => st?.phase === "running", 300);
