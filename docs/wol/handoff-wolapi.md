@@ -638,7 +638,7 @@ observer, which publishes `taken` instead and shows no eye, as native does).
    dialog's tournament value (`channel->tournament`).
 3. Clan: the bit already round-trips in the envelope (a clan host's game sets `0x100` in the reserved word
    plus the chat-lobby number; the BattleClan box is greyed out of a clan, so the test sets the bit on
-   the wire). Nothing to fix. Clan names and tags (`+0x2E`, `+0x57` of the user record) are not part of this.
+   the wire). Nothing to fix. Clan names and tags (`+0x2E`, `+0x57` of the user record) are not part of this (done later, see "Clans" below).
 
 Where the game list reads the Players list's clan tag: `0x00783C80` (VERA `WolPlayerRow::clan`,
 `"[%hs]"` of the user record's `+0x57` tag, tooltip `+0x2E`); the shim's `wol_user` leaves both empty
@@ -710,3 +710,39 @@ Test: `web/e2e/wol-icons.mjs --kind ranked` against `LADDER_DEV_SEED=rkone,rktwo
 Seen after a scored match (21 November, RA2, `quickmatch.mjs --row 3 --placed`, server with `PLACEMENT_MATCHES=1`): the winner's
 persona went from nothing to `rank 1 points 1030 wins 1 losses 0`, the quitter's to `rank 2 points 970 wins 0 losses 1`, written
 by the shim after the result's `OnGameresSent` (scored by the server a few seconds later; the 8, 25 and 60 s refreshes catch it).
+
+## Clans: squad ids in the lists, RequestSquadInfo, the Clan/Ladder button (CL-2, 21 November)
+
+The wire is in ra2web `docs/clans.md`, "The WOL wire (CL-2)". Summary: a player's clan id rides as a trailing number of the user entry
+(NAMES `nick,0,ping,fresh,clan`, JOIN `0,ping,op,fresh,clan`), the client asks `squadinfo <id>` (0 is the caller's own) and gets
+`311 <nick> <asked> <squad id> <tag> :<name>` (squad id 0 is a failure). No HTTP is involved.
+
+Game side (both editions; the addresses are YR's, the RA2 sink has the same shape):
+
+- The user record: `+0x14` squad id, `+0x2E` squad name (tooltip), `+0x57` tag; the lobby reads the tag at `0x00783C80` and draws `[tag]`.
+  The shim fills all three from its cache (`squad_apply`) wherever it builds a record: the roster, JOIN, and any record made for a nick it
+  has seen (JOINGAME has no clan field).
+- `WolChat::RequestSquadInfo(id)` (slot 44, `m_chat_request_squad_info`) always answers: the game counts its requests (`[0xB77DDC]`) and
+  refills the list when the last is answered. The answer is `IChatEvent::OnSquadInfo`, ordinal 29, the sink at `+0x80`
+  (`0x007A4EC0`, `CComObject_VCChatEventSink_ATL__virtual_32` in the lift): `(hr, squad id, Squad*)`, where the record has the name at
+  `+0x168` (41 bytes) and the tag at `+0x191` (13). Found in the lift: arg 2 is stored at `0xB77DE4` for the own request (the user's squad
+  id, kept even on a failure), the tag is copied to `0xB77A94`, and each list member whose `+0x14` equals arg 2 takes tag and name. A
+  failure (`hr` not 0) only ends the request.
+- Requests for an id the cache has are answered from the next pump (never inside the call); the same id asked while the first is in
+  flight is sent once and answered for each caller. An unknown id is cached as unknown. A server without `squadinfo` answers 421, which
+  fails every pending request; a disconnect does the same and clears the cache.
+- Not done: the game's list is not redrawn on a clan change (a refresh NAMES only updates the shim's roster, as every roster after the
+  game's own join does), and the clan-ladder request (SKU `0x802100`, the lobby's second `RequestLadderList` for a clan member's tag) still
+  answers an empty list.
+
+The Clan/Ladder button: RA2's `GUI:ClanAndLadder` (`0x113:1368`) asks the URL routine for the tournament page; YR's lobby has separate
+Clan (page key `Battleclans`) and Tournament (page key `Ladder`) buttons. The page (`web/src/game/link-targets.ts` `launcherPage`,
+`Play.tsx`) maps a `tournament` link or the `Ladder` key to the launcher's `/ladder` page and `Battleclans` or `request=do_clan` to `/clan`,
+and opens it with `window.open` in a new tab on the app's own origin and base (`launcherPageUrl`): no dialog, the game keeps running.
+When the browser blocks the tab, the usual link dialog shows with Open going to that page. Every other WOL link still shows the dialog.
+
+Evidence: `web/e2e/wol-icons.mjs --kind clantag [--clan-button X,Y]` (a member's game account owns a clan made through `/v1/clans`, a
+guest is the other client): both editions show `[TAG]` in the other client's Players list and the own squad answers; the buttons open
+`/ladder` (RA2 Clan/Ladder, YR Tournament) and `/clan` (YR Clan) in a new tab with the game page unchanged. Screenshots in
+`work/tasks/wol-clans/` (`ra2/`, `yr/`; scratch, removed with the task). The selftest (`src/web/wolapi_selftest.c`) covers the roster
+ids, the request/answer, the cache, JOIN and JOINGAME, the own squad, the failure and 421.

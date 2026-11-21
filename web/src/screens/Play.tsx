@@ -11,7 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SoundControl } from "../components/SoundControl";
 import { SettingsDialog } from "../components/SettingsDialog";
 import { LinkDialog } from "../components/LinkDialog";
-import { linkTarget } from "../game/link-targets";
+import { launcherPage, launcherPageUrl, linkTarget } from "../game/link-targets";
 import { Setting, Shared } from "../game/protocol";
 import {
   enterFullscreen,
@@ -141,10 +141,17 @@ export function Play({ files }: { files: FileSource }) {
   const saveReferencePrompt = useGameState((s) => s.saveReferencePrompt);
   const openLink = useGameState((s) => s.openLink);
   const mapSearchStatus = useGameState((s) => s.mapSearchStatus);
-  const linkDialogTarget = useMemo(
-    () => (openLink ? linkTarget(openLink.url, undefined, openLink.page) : null),
-    [openLink],
-  );
+  // The game's Ladder and Clan buttons open the launcher's own page in a new tab; the game keeps
+  // running. A browser that blocks the tab leaves the dialog, whose Open goes to the same page.
+  const [blockedLauncherLink, setBlockedLauncherLink] = useState<number | null>(null);
+  const linkDialogTarget = useMemo(() => {
+    if (!openLink) return null;
+    const target = linkTarget(openLink.url, undefined, openLink.page);
+    const page = launcherPage(target);
+    if (!page) return target;
+    if (blockedLauncherLink !== openLink.seq) return null;
+    return { ...target, embed: false, launcherUrl: launcherPageUrl(page) };
+  }, [openLink, blockedLauncherLink]);
   const settings = useGameState((s) => s.settings);
   const restart = useGameState((s) => s.restart);
   const cursorDebugMode = cursorDebug();
@@ -220,9 +227,20 @@ export function Play({ files }: { files: FileSource }) {
 
   useEffect(() => {
     if (!openLink) return;
+    const page = launcherPage(linkTarget(openLink.url, undefined, openLink.page));
+    if (!page) return;
+    const opened = window.open(launcherPageUrl(page), "_blank");
+    if (opened) {
+      opened.opener = null;
+      gameStore.dismissOpenLink();
+    } else setBlockedLauncherLink(openLink.seq);
+  }, [openLink]);
+
+  useEffect(() => {
+    if (!openLink || !linkDialogTarget) return;
     // the dialog is the only thing that may take the mouse while it is open
     if (document.pointerLockElement) document.exitPointerLock();
-  }, [openLink]);
+  }, [openLink, linkDialogTarget]);
 
   const toggleFullscreen = () => {
     void (

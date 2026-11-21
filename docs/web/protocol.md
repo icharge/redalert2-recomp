@@ -194,6 +194,7 @@ the event carries the real Westwood URL; an unknown key has no URL, and the
 dialog names the page instead. A URL whose host is the old `ra2web.invalid`
 fallback is labelled "This build's registry target", not "The game asked
 for".
+The game's ladder and clan buttons (a `tournament` link, the `Ladder` key, the `Battleclans` key or `request=do_clan`) are the exception: the page opens the launcher's own `/ladder` or `/clan` page in a new tab with `window.open` (`launcherPage`, `launcherPageUrl`) and shows no dialog; a browser that blocks the tab leaves the dialog, whose Open goes to that page.
 Every link opens the same permission dialog: "The game needs access to an
 external link.", the original URL, and **Open** / **Cancel**. A target with
 `embed` also renders in a sandboxed iframe, and Open goes to that page;

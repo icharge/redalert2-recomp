@@ -29,6 +29,8 @@ export interface LinkTarget {
   external: boolean;
   /** whether a page we control can be shown in the sandboxed iframe */
   embed: boolean;
+  /** the launcher page Open goes to instead (set when the browser blocked the new tab); see launcherPage */
+  launcherUrl?: string;
 }
 
 /** The RA2Web site the dead Westwood links are mapped to (VITE_RA2WEB_SITE_URL). */
@@ -68,6 +70,32 @@ const PAGE_TOPICS: Record<string, LinkTopic> = {
   NetStatus: "status",
   News: "news",
 };
+
+/** The launcher pages the game's own ladder and clan buttons open in a new tab. */
+export type LauncherPage = "ladder" | "clan";
+
+/**
+ * The launcher page for a link the game asked for: the Ladder / Clan and Ladder buttons (a tournament
+ * link or the Ladder page key) open the LADDER page, the Battle Clans page the CLAN page. Everything
+ * else stays a dialog.
+ */
+export function launcherPage(
+  target: Pick<LinkTarget, "topic" | "url" | "page">,
+): LauncherPage | null {
+  if (target.page === "Battleclans") return "clan";
+  if (target.topic === "community" && /[?&]request=do_clan(&|$)/i.test(target.url)) return "clan";
+  if (target.topic === "tournament") return "ladder";
+  return null;
+}
+
+/** The launcher page's URL: this app's own origin and base, the way the launcher's routes are served. */
+export function launcherPageUrl(
+  page: LauncherPage,
+  origin: string = window.location.origin,
+  base: string = import.meta.env.BASE_URL,
+): string {
+  return `${origin}${base.replace(/\/?$/, "/")}${page}`;
+}
 
 /** The configured RA2Web page for a topic, or null when there is none. */
 export function sitePageUrl(
@@ -223,6 +251,7 @@ export function linkCopy(target: LinkTarget): LinkCopy {
  * `.invalid`) are build values, never real links, so they are not offered.
  */
 export function outboundUrl(target: LinkTarget, site = ra2webSite()): string | null {
+  if (target.launcherUrl) return target.launcherUrl;
   if (target.embed) {
     const page = sitePageUrl(target, site);
     if (page) return page;

@@ -637,6 +637,134 @@ static void apply_game_name(void) {
     }
 }
 
+/* ---- Clans: the squad id of a user entry and WolChat::RequestSquadInfo (docs/wol/handoff-wolapi.md, "Clans") ----
+ * RA2Web's user lists carry each player's clan id as a trailing number of the entry (`nick,0,ping,fresh,clan`;
+ * a JOIN has `0,ping,op,fresh,clan`), and the clan id is the game's squad id (the user record's +0x14). The game
+ * draws `[tag]` from the record's +0x57 and the tooltip from +0x2E, and for a squad whose tag it does not know it
+ * calls RequestSquadInfo(id) (0 asks for the user's own squad). The server answers `squadinfo <id>` with
+ * `311 <nick> <asked> <squad id> <tag> :<name>` (squad id 0 is a failure); the answer goes to the chat sink's
+ * OnSquadInfo (ordinal 29, +0x80: hr, squad id, record with the name at +0x168 and the tag at +0x191). Answers are
+ * kept per id for the connection, so the records the shim builds already carry the tag and the game asks once. */
+#define WOL_SQUAD_CACHE 32u
+#define WOL_SQUAD_PENDING 64u
+#define WOL_SQUAD_NICKS 64u
+typedef struct { uint32_t id; char tag[13], name[41]; int known; } squad_entry;
+static squad_entry g_squads[WOL_SQUAD_CACHE];
+static uint32_t g_squad_count;
+/* The ids the game asked for, in its order, and whether the server has been asked for each. */
+static uint32_t g_squad_pending[WOL_SQUAD_PENDING], g_squad_pending_count;
+static uint8_t g_squad_sent[WOL_SQUAD_PENDING];
+/* The last squad id seen for a nick, so a record built from a JOINGAME (no clan field) still has it. */
+static struct { char name[10]; uint32_t id; } g_squad_nicks[WOL_SQUAD_NICKS];
+static uint32_t g_squad_nick_next;
+static uint8_t g_squad_record[0x200];
+
+static squad_entry *squad_find(uint32_t id) {
+    for (uint32_t i = 0; i < g_squad_count; i++)
+        if (g_squads[i].id == id) return &g_squads[i];
+    return NULL;
+}
+
+static squad_entry *squad_store(uint32_t id, const char *tag, const char *name, int known) {
+    squad_entry *entry = squad_find(id);
+    if (!entry) {
+        if (g_squad_count == WOL_SQUAD_CACHE) { memmove(&g_squads[0], &g_squads[1], sizeof g_squads - sizeof g_squads[0]); g_squad_count--; }
+        entry = &g_squads[g_squad_count++];
+    }
+    entry->id = id;
+    entry->known = known;
+    copy_text(entry->tag, sizeof entry->tag, tag);
+    copy_text(entry->name, sizeof entry->name, name);
+    return entry;
+}
+
+/* The nick's squad id, remembered; and the user record's tag and name from the cache. */
+static void squad_remember(const char *name, uint32_t id) {
+    for (uint32_t i = 0; i < WOL_SQUAD_NICKS; i++)
+        if (!strcasecmp(g_squad_nicks[i].name, name)) { g_squad_nicks[i].id = id; return; }
+    uint32_t slot = g_squad_nick_next++ % WOL_SQUAD_NICKS;
+    copy_text(g_squad_nicks[slot].name, sizeof g_squad_nicks[slot].name, name);
+    g_squad_nicks[slot].id = id;
+}
+static uint32_t squad_recall(const char *name) {
+    for (uint32_t i = 0; i < WOL_SQUAD_NICKS; i++)
+        if (!strcasecmp(g_squad_nicks[i].name, name)) return g_squad_nicks[i].id;
+    return 0;
+}
+static void squad_apply(wol_user *user, uint32_t id) {
+    user->squad_id = id;
+    user->squad_name[0] = user->squad_abbrev[0] = '\0';
+    squad_entry *entry = id ? squad_find(id) : NULL;
+    if (entry && entry->known) {
+        copy_text(user->squad_name, sizeof user->squad_name, entry->name);
+        copy_text(user->squad_abbrev, sizeof user->squad_abbrev, entry->tag);
+    }
+}
+
+/* The index'th comma-separated number of `text`; 0 when absent. */
+static uint32_t parse_count(const char *text, unsigned index) {
+    for (; index && text; index--) {
+        text = strchr(text, ',');
+        if (text) text++;
+    }
+    if (!text || *text < '0' || *text > '9') return 0;
+    return (uint32_t)strtoul(text, NULL, 10);
+}
+
+/* OnSquadInfo for one pending request; `entry` NULL is a failure. */
+static void squad_deliver(uint32_t asked, const squad_entry *entry) {
+    memset(g_squad_record, 0, sizeof g_squad_record);
+    if (entry) {
+        copy_text((char *)g_squad_record + 0x168, 41, entry->name);
+        copy_text((char *)g_squad_record + 0x191, 13, entry->tag);
+    }
+    uint32_t values[] = { entry ? S_OK : E_FAIL, entry ? entry->id : asked, (uint32_t)(uintptr_t)g_squad_record };
+    fprintf(stderr, "[wol] squad %u -> %s%s%s\n", (unsigned)asked, entry ? entry->tag : "failed", entry ? " " : "", entry ? entry->name : "");
+    event_call(29, 3, values); /* IChatEvent::OnSquadInfo */
+}
+
+static void squad_remove(uint32_t index) {
+    memmove(&g_squad_pending[index], &g_squad_pending[index + 1], (g_squad_pending_count - index - 1) * sizeof g_squad_pending[0]);
+    memmove(&g_squad_sent[index], &g_squad_sent[index + 1], g_squad_pending_count - index - 1);
+    g_squad_pending_count--;
+}
+
+/* Answers the requests whose squad the cache knows (called from the pump, never inside the request). */
+static void squad_flush(void) {
+    for (uint32_t i = 0; i < g_squad_pending_count;) {
+        uint32_t asked = g_squad_pending[i];
+        squad_entry *entry = asked ? squad_find(asked) : NULL;
+        if (!entry) { i++; continue; }
+        squad_remove(i);
+        squad_deliver(asked, entry->known ? entry : NULL);
+    }
+}
+
+/* `311 <nick> <asked> <squad id> <tag> :<name>`. */
+static void squad_reply(const char *line) {
+    char nick[32], tag[24];
+    unsigned asked, id;
+    if (sscanf(line, ":%*s 311 %31s %u %u %23s", nick, &asked, &id, tag) != 4) return;
+    const char *name = strstr(line, " :");
+    squad_entry *entry = id ? squad_store(id, tag, name ? name + 2 : "", 1) : NULL;
+    if (!id && asked) squad_store(asked, "", "", 0); /* unknown or disbanded: not asked again this connection */
+    for (uint32_t i = 0; i < g_squad_pending_count;) {
+        if (g_squad_pending[i] != asked) { i++; continue; }
+        squad_remove(i);
+        squad_deliver(asked, entry);
+    }
+    squad_flush();
+}
+
+/* The connection ended, or the server has no `squadinfo` (421): every request fails. */
+static void squad_fail_all(void) {
+    while (g_squad_pending_count) {
+        uint32_t asked = g_squad_pending[0];
+        squad_remove(0);
+        squad_deliver(asked, NULL);
+    }
+}
+
 static void parse_roster(const char *line) {
     char channel[48];
     if (sscanf(line, ":%*s 353 %*s %*s %47s", channel) != 1 || strcmp(channel, g_current_channel)) return;
@@ -661,6 +789,10 @@ static void parse_roster(const char *line) {
         copy_text(user->name, sizeof user->name, name);
         user->ipaddr = virtual_ip(name);
         user->flags = flags | (strcmp(name, g_nick) == 0 ? 0x8000u : 0u);
+        /* nick,0,ping,fresh,clan: the clan id is the squad id. */
+        uint32_t clan = metadata ? parse_count(metadata + 1, 3) : 0;
+        squad_remember(user->name, clan);
+        squad_apply(user, clan);
     }
     emit_user_list();
 }
@@ -697,6 +829,7 @@ static wol_user *user_for_name(const char *name) {
     copy_text(user->name, sizeof user->name, name);
     user->ipaddr = virtual_ip(name);
     user->flags = strcmp(name, g_nick) == 0 ? 0x8000u : 0u;
+    squad_apply(user, squad_recall(name));
     return user;
 }
 
@@ -748,8 +881,11 @@ static void disconnected(void) {
     memset(&g_session, 0, sizeof g_session);
     g_current_channel[0] = '\0';
     g_user_count = g_channel_count = g_lobby_users = g_channel_list_lobby = 0;
+    g_squad_count = 0;
+    memset(g_squad_nicks, 0, sizeof g_squad_nicks);
     uint32_t status[] = { 0x0004012fu };
     event_call(16, 1, status); /* IChatEvent::OnNetStatus: connection closed */
+    squad_fail_all();
 }
 
 static void complete_channel_leave(wol_user *user) {
@@ -1111,6 +1247,8 @@ static void handle_line(const char *line) {
         return;
     }
     if (!strncmp(line, "@wolapi ladder ", 15)) { deliver_ladder(line); return; }
+    if (strstr(line, " 311 ")) { squad_reply(line); return; }
+    if (strstr(line, " 421 ") && strstr(line, " squadinfo ")) { squad_fail_all(); return; }
     const char *command = strchr(line, ' ');
     if (channel_error(line)) return;
     if (strcmp(line, "@wolapi connected") == 0) {
@@ -1245,6 +1383,10 @@ static void handle_line(const char *line) {
         if (user) {
             const char *metadata = strstr(line, " JOIN ") + 6;
             g_user_ping[user - g_users] = parse_ping(metadata + (*metadata == ':'), ',', 1);
+            /* 0,ping,op,fresh,clan */
+            uint32_t clan = parse_count(metadata + (*metadata == ':'), 4);
+            squad_remember(user->name, clan);
+            squad_apply(user, clan);
         }
         if (user && (user->flags & 0x8000u)) {
             g_joining_channel = 0;
@@ -1332,6 +1474,7 @@ void ra2_wolapi_poll(void) {
 static void pump_lines(void) {
     ra2_wolapi_poll();
     poll_own_stats();
+    squad_flush();
     if (g_pending_server_list) {
         g_pending_server_list = 0;
         emit_server_list();
@@ -1892,6 +2035,26 @@ static void m_chat_request_user_locale(void) {
     browser_send(line);
     RET(S_OK, 2);
 }
+/* WolChat::RequestSquadInfo(id): 0 asks for the user's own squad. The answer is OnSquadInfo, always: the game
+ * counts its requests and refills the player list when the last one is answered. */
+static void m_chat_request_squad_info(void) {
+    uint32_t id = A32(1);
+    if (g_squad_pending_count == WOL_SQUAD_PENDING) RET(E_FAIL, 2);
+    int sent = 0;
+    for (uint32_t i = 0; i < g_squad_pending_count; i++)
+        if (g_squad_pending[i] == id && g_squad_sent[i]) sent = 1;
+    squad_entry *cached = id ? squad_find(id) : NULL;
+    g_squad_pending[g_squad_pending_count] = id;
+    g_squad_sent[g_squad_pending_count] = 0;
+    if (!cached && !sent) {
+        char line[32];
+        snprintf(line, sizeof line, "squadinfo %u", (unsigned)id);
+        browser_send(line);
+        g_squad_sent[g_squad_pending_count] = 1;
+    }
+    g_squad_pending_count++;
+    RET(S_OK, 2);
+}
 static void m_chat_raw_message(void) {
     const char *line = ASTR(1);
     if (line) {
@@ -1946,7 +2109,7 @@ static void m_chat_get_attribute_value(void) {
     { "WolChat::SetProductSKU", m_chat_profile_value }, { "WolChat::GetNick", m_chat_get_nick }, { "WolChat::SetNick", m_chat_set_nick }, \
     { "WolChat::GetLobbyCount", m_chat_get_lobby_count }, { "WolChat::RequestRawMessage", m_chat_raw_message }, \
     { "WolChat::GetAttributeValue", m_chat_get_attribute_value }, { "WolChat::SetAttributeValue", m_chat_set_value }, \
-    { "WolChat::SetChannelExInfo", m_chat_set_channel_ex_info }, { "WolChat::StopAutoping", m_stub_1 }, { "WolChat::RequestSquadInfo", m_stub_2 }, \
+    { "WolChat::SetChannelExInfo", m_chat_set_channel_ex_info }, { "WolChat::StopAutoping", m_stub_1 }, { "WolChat::RequestSquadInfo", m_chat_request_squad_info }, \
     { "WolChat::RequestSetTeam", m_stub_2 }, { "WolChat::RequestSetLocale", m_stub_2 }, { "WolChat::RequestUserLocale", m_chat_request_user_locale }, \
     { "WolChat::RequestUserTeam", m_stub_2 }, { "WolChat::GetNickLocale", m_stub_3 }, { "WolChat::SetNickLocale", m_stub_3 }, \
     { "WolChat::GetLocaleString", m_chat_get_locale_string }, { "WolChat::GetLocaleCount", m_chat_get_locale_count }, { "WolChat::SetClientVersion", m_stub_2 }, \

@@ -288,6 +288,64 @@ int main(void) {
     snprintf(lobby_line, sizeof lobby_line,
              ":wol 353 testuser = %s :@testuser,0,1,1 other,0,0,1", lobby_channel);
     receive_pumped(lobby_line);
+    /* Clans: a user entry's trailing number is the squad id, RequestSquadInfo asks the server once per id
+     * and answers the sink (OnSquadInfo, ordinal 29: hr, squad id, record with the name at +0x168, tag at +0x191). */
+    snprintf(lobby_line, sizeof lobby_line,
+             ":wol 353 testuser = %s :@testuser,0,1,1,7 other,0,0,1 clanner,0,3,1,9", lobby_channel);
+    receive_pumped(lobby_line);
+    assert(g_user_count == 3 && g_users[0].squad_id == 7 && g_users[1].squad_id == 0 && g_users[2].squad_id == 9);
+    assert(!g_users[2].squad_abbrev[0]); /* the tag is not known yet */
+    uint32_t events_before_squads = test_event_count;
+    EM_ASM({ Module.testWolLine = ""; });
+    uint32_t ask_squad[] = { 9 };
+    assert(invoke(g_chat.chat, 44, 1, ask_squad) == S_OK);
+    assert(EM_ASM_INT({ return Module.testWolLine === "squadinfo 9"; }));
+    assert(test_event_count == events_before_squads); /* the answer comes from the server */
+    EM_ASM({ Module.testWolLine = ""; });
+    assert(invoke(g_chat.chat, 44, 1, ask_squad) == S_OK); /* the same id is not asked twice */
+    assert(EM_ASM_INT({ return Module.testWolLine === ""; }));
+    receive_pumped(":wol 311 testuser 9 9 KN :Red Knights");
+    assert(test_event_count == events_before_squads + 2);
+    for (uint32_t i = 0; i < 2; i++) {
+        assert(test_event_method[events_before_squads + i] == 0x10020);
+        assert(test_event_args[events_before_squads + i][1] == S_OK && test_event_args[events_before_squads + i][2] == 9);
+        const uint8_t *record = (const uint8_t *)(uintptr_t)test_event_args[events_before_squads + i][3];
+        assert(!strcmp((const char *)record + 0x168, "Red Knights") && !strcmp((const char *)record + 0x191, "KN"));
+    }
+    /* A cached squad is answered from the next pump without asking, and the records carry its tag. */
+    EM_ASM({ Module.testWolLine = ""; });
+    assert(invoke(g_chat.chat, 44, 1, ask_squad) == S_OK);
+    assert(test_event_count == events_before_squads + 2);
+    assert(invoke(g_chat.chat, 3, 0, NULL) == S_OK);
+    assert(test_event_count == events_before_squads + 3 && test_event_args[events_before_squads + 2][2] == 9);
+    assert(EM_ASM_INT({ return Module.testWolLine === ""; }));
+    receive_pumped(lobby_line);
+    assert(!strcmp(g_users[2].squad_abbrev, "KN") && !strcmp(g_users[2].squad_name, "Red Knights") && g_users[2].squad_id == 9);
+    /* A JOIN carries the clan id after the fresh flag; a JOINGAME has none and takes the one the nick had. */
+    snprintf(lobby_line, sizeof lobby_line, ":newbie!local JOIN :0,5,0,1,9 %s", lobby_channel);
+    receive_pumped(lobby_line);
+    assert(test_event_method[test_event_count - 1] == 0x1000a);
+    const wol_user *newbie = (const wol_user *)(uintptr_t)test_event_args[test_event_count - 1][3];
+    assert(newbie->squad_id == 9 && !strcmp(newbie->squad_abbrev, "KN"));
+    snprintf(lobby_line, sizeof lobby_line, ":clanner!local JOINGAME 0 0 0 0 0 20 0 :%s", lobby_channel);
+    receive_pumped(lobby_line);
+    const wol_user *again = (const wol_user *)(uintptr_t)test_event_args[test_event_count - 1][3];
+    assert(again->squad_id == 9 && !strcmp(again->squad_abbrev, "KN"));
+    /* Own squad (0), an unknown id and a server without the command. */
+    uint32_t ask_own[] = { 0 }, ask_unknown[] = { 4242 };
+    events_before_squads = test_event_count;
+    assert(invoke(g_chat.chat, 44, 1, ask_own) == S_OK);
+    assert(EM_ASM_INT({ return Module.testWolLine === "squadinfo 0"; }));
+    receive_pumped(":wol 311 testuser 0 7 RD :Reds");
+    assert(test_event_count == events_before_squads + 1 && test_event_args[events_before_squads][1] == S_OK && test_event_args[events_before_squads][2] == 7);
+    assert(invoke(g_chat.chat, 44, 1, ask_unknown) == S_OK);
+    receive_pumped(":wol 311 testuser 4242 0 - :");
+    assert(test_event_count == events_before_squads + 2 && test_event_args[events_before_squads + 1][1] == E_FAIL);
+    assert(invoke(g_chat.chat, 44, 1, ask_own) == S_OK);
+    receive_pumped(":wol 421 testuser squadinfo :Unknown command");
+    assert(test_event_count == events_before_squads + 3 && test_event_args[events_before_squads + 2][1] == E_FAIL);
+    snprintf(lobby_line, sizeof lobby_line, ":wol 353 testuser = %s :@testuser,0,1,1 other,0,0,1", lobby_channel);
+    receive_pumped(lobby_line);
     test_event_count = events_before_pings;
     assert(g_user_count == 2 && strcmp(g_users[1].name, "other") == 0);
     assert(invoke(g_chat.chat, 9, 0, NULL) == S_OK);

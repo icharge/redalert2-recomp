@@ -27,14 +27,51 @@ async function guestTicket(nick) {
   return data;
 }
 
+async function post(route, body, token) {
+  const response = await fetch(`${server}${route}`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      origin,
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+  const data = await response.json().catch(() => ({}));
+  assert.ok(
+    response.ok,
+    `${route}: ${response.status} ${data.errorCode ?? ""} ${data.error ?? ""}`,
+  );
+  return data;
+}
+
+/** A member with one game account, and a launch ticket for it (what the launcher's PLAY does). */
+async function memberTicket(nick) {
+  const session = await post("/v1/members/register", {
+    login: `e2e-${nick}`,
+    password: `pw-${nick}-e2e`,
+  });
+  await post(
+    "/v1/members/game-accounts",
+    { username: nick, password: `pw-${nick}-game` },
+    session.accessToken,
+  );
+  const minted = await post(
+    "/v1/auth/launch-ticket",
+    { gameAccount: nick, edition },
+    session.accessToken,
+  );
+  return { session, minted };
+}
+
 const results = [];
 const check = (what) => {
   results.push(what);
   console.log(`ok  ${what}`);
 };
 const clients = {};
-async function open(name, nick = `i${name}${tag}`) {
-  const minted = await guestTicket(nick);
+async function open(name, nick = `i${name}${tag}`, minted = null) {
+  minted ??= await guestTicket(nick);
   const url = new URL(opts.url);
   url.hash = `ticket=${minted.ticket}`;
   const run = await startPage({
@@ -112,6 +149,60 @@ try {
       void at;
     }
     console.log("PASS ranked");
+    process.exit(0);
+  }
+  if (kind === "clantag") {
+    // CL-2: a clan member's tag in the other client's lobby list, and the Clan/Ladder button's new tab.
+    //   --clan-button X,Y  where the lobby's Clan/Ladder button is (game pixels)
+    const clanTag = "K" + tag;
+    const owner = `k${tag}`;
+    const { session, minted } = await memberTicket(owner);
+    const made = await post(
+      "/v1/clans",
+      { tag: clanTag, name: "Red Knights " + tag, account: owner },
+      session.accessToken,
+    );
+    const squad = made.clan.id;
+    console.log(`clan ${clanTag} id ${squad} owned by ${owner}`);
+    const a = await open("a", owner, minted);
+    const b = await open("b"); // a guest: no clan of its own
+    await Promise.all([toLobby(a), toLobby(b)]);
+    await b.page.waitForTimeout(3000);
+    for (const run of [a, b]) await run.shot("lobby-clantag");
+    assert.ok(
+      b.wire.some(
+        (w) =>
+          w.dir === "<" &&
+          / 353 /.test(w.line) &&
+          w.line.includes(`${owner},0,`) &&
+          w.line.includes(`,${squad}`),
+      ),
+      "the guest's NAMES carries the owner's clan id",
+    );
+    check("the other client's NAMES carries the clan id after the owner's entry");
+    await waitNative(b, `[wol] squad ${squad} -> ${clanTag} Red Knights`, 0, 15000);
+    await waitNative(a, "[wol] squad 0 -> " + clanTag, 0, 15000);
+    check(`both games asked for the squad and got [${clanTag}] Red Knights (own squad 0 too)`);
+    const button = option("--clan-button", "");
+    if (button) {
+      const [x, y] = button.split(",").map(Number);
+      const popup = a.page.context().waitForEvent("page", { timeout: 10000 });
+      const before = a.page.url();
+      await a.clickGame(x, y);
+      const tab = await popup;
+      await tab.waitForURL(/\/(ladder|clan)(\?|$)/, { timeout: 10000 }).catch(() => {});
+      console.log("new tab: " + tab.url());
+      assert.match(tab.url(), /\/(ladder|clan)(\?|$)/, "the button opened a launcher page");
+      assert.equal(a.page.url(), before, "the game page did not navigate");
+      assert.ok(await a.page.evaluate(() => !!window.Module), "the game is still running");
+      await tab.screenshot({ path: `${opts.shots}/clan-button-tab.png` }).catch(() => {});
+      await a.shot("after-clan-button");
+      check("the Clan/Ladder button opened " + tab.url() + " in a new tab; the game kept running");
+      await tab.close();
+    }
+    console.log(
+      `PASS ${edition.toUpperCase()} clantag (${results.length} checks); see ${opts.shots}`,
+    );
     process.exit(0);
   }
   if (kind === "welcome") {

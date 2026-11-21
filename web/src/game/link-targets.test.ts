@@ -3,6 +3,8 @@ import {
   EXTERNAL_LINK_PROMPT,
   linkCopy,
   linkTarget,
+  launcherPage,
+  launcherPageUrl,
   outboundUrl,
   sitePageUrl,
 } from "./link-targets";
@@ -232,5 +234,55 @@ describe("outboundUrl", () => {
   it("never offers our sentinel hosts or a non-http(s) scheme", () => {
     expect(outboundUrl(linkTarget("https://ra2web.invalid/community", ""), "")).toBeNull();
     expect(outboundUrl(linkTarget("javascript:alert(1)", ""), "")).toBeNull();
+  });
+});
+
+describe("the launcher pages the game's buttons open", () => {
+  it("sends the ladder and clan buttons to the LADDER and CLAN pages, and nothing else", () => {
+    // RA2's Clan and Ladder button asks for the tournament page; YR's Ladder button names its page key.
+    expect(
+      launcherPage(
+        linkTarget("http://www.westwood.com/westwoodonline/tournaments/redalert2/", SITE),
+      ),
+    ).toBe("ladder");
+    expect(launcherPage(linkTarget("", SITE, "Ladder"))).toBe("ladder");
+    expect(
+      launcherPage(
+        linkTarget(
+          "http://battleclans.westwood.com/cgi-bin/cgiclient?rosetta&request=do_ladder&LANGCODE=0",
+          SITE,
+        ),
+      ),
+    ).toBe("ladder");
+    expect(launcherPage(linkTarget("", SITE, "Battleclans"))).toBe("clan");
+    expect(
+      launcherPage(
+        linkTarget(
+          "http://battleclans.westwood.com/cgi-bin/cgiclient?rosetta&request=do_clan&LANGCODE=0",
+          SITE,
+        ),
+      ),
+    ).toBe("clan");
+    for (const other of [
+      linkTarget("", SITE, "News"),
+      linkTarget("", SITE, "Community"),
+      linkTarget("http://privacypolicy.westwood.com", SITE),
+      linkTarget("https://example.com/hello", SITE),
+    ])
+      expect(launcherPage(other)).toBeNull();
+  });
+
+  it("builds the page under this app's origin and base", () => {
+    expect(launcherPageUrl("clan", "https://play.example", "/")).toBe("https://play.example/clan");
+    expect(launcherPageUrl("ladder", "https://play.example", "/ra2")).toBe(
+      "https://play.example/ra2/ladder",
+    );
+  });
+
+  it("makes Open go to the launcher page once the browser blocked the new tab", () => {
+    const target = linkTarget("", SITE, "Ladder");
+    expect(
+      outboundUrl({ ...target, embed: false, launcherUrl: "https://play.example/ladder" }, SITE),
+    ).toBe("https://play.example/ladder");
   });
 });
