@@ -534,6 +534,22 @@ async function rowPlay() {
       `the match is scored: ${outcome ?? "no settlement line"}`,
     );
     check(`settlement: ${outcome.replace(/^\[[^\]]*\] \[[^\]]*\] /, "")}`);
+    // The game's own stats (the welcome screen's persona) follow the scored match: the shim reads the
+    // own record again after the result (and on the server's 730) and writes it to the persona file.
+    // Start the server with PLACEMENT_MATCHES=1 so that one match places both players.
+    if (argv.includes("--placed")) {
+      const persona = (run) =>
+        run.all.findLast((l) => l.includes(`[wol] persona ${run.nick.toLowerCase()}:`));
+      for (const run of [a, b]) {
+        const deadline = Date.now() + 90000;
+        while (!persona(run) && Date.now() < deadline) await run.page.waitForTimeout(1000);
+        assert.ok(persona(run), `${run.nick}: the persona stats were updated after the match`);
+        info(persona(run));
+      }
+      assert.match(persona(a), /wins 1 losses 0/, "the winner's persona shows the win");
+      assert.match(persona(b), /wins 0 losses 1/, "the quitter's persona shows the loss");
+      check("both personas show the scored match's real numbers");
+    }
   }
   if (row === 9) {
     const admitted = logLines(logMark).some(

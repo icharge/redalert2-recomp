@@ -706,3 +706,7 @@ login** of a page load (the page has no client yet; the launch ticket's session 
 Test: `web/e2e/wol-icons.mjs --kind ranked` against `LADDER_DEV_SEED=rkone,rktwo,rkthree STORAGE=memory node e2e/wol-server.mjs`
 (the seed is a dev-only hook in ra2web's `src/index.ts`; guests can use each name once per server start). After a scored match:
 `quickmatch.mjs --row 3 --placed` (server with `PLACEMENT_MATCHES=1`) checks both personas against the match.
+
+Seen after a scored match (21 November, RA2, `quickmatch.mjs --row 3 --placed`, server with `PLACEMENT_MATCHES=1`): the winner's
+persona went from nothing to `rank 1 points 1030 wins 1 losses 0`, the quitter's to `rank 2 points 970 wins 0 losses 1`, written
+by the shim after the result's `OnGameresSent` (scored by the server a few seconds later; the 8, 25 and 60 s refreshes catch it).
