@@ -921,12 +921,34 @@ static void receive_chat(const char *line) {
         if (!strcmp(g_users[i].name, sender)) { user = g_users[i]; break; }
     user.next = 0; /* A whisper from outside the channel must not change its roster. */
     uint16_t wide[WOL_LINE_CAP];
+    /* A chat line (not a page) starts with the player's local time, "14:05 hello", and the
+     * first one of a day with the date too, "21 Nov 14:05 hello": the game's own lines
+     * carry none (docs/wol/handoff-wolapi.md, "Chat times"). The launcher's Chat times
+     * switch (localStorage "ra2-chat-time" "0") turns it off; Module.ra2WolChatTime and
+     * Module.ra2WolChatNow override the switch and the clock for tests. */
     MAIN_THREAD_EM_ASM({
         var text = UTF8ToString($0);
+        var on = Module.ra2WolChatTime;
+        if (on === undefined) {
+            on = true;
+            try { on = localStorage.getItem("ra2-chat-time") !== "0"; } catch (e) {}
+        }
+        if ($2 && on) {
+            var now = Module.ra2WolChatNow ? Module.ra2WolChatNow() : new Date();
+            var two = function(n) { return (n < 10 ? "0" : "") + n; };
+            var stamp = two(now.getHours()) + ":" + two(now.getMinutes()) + " ";
+            var day = now.getFullYear() + "-" + now.getMonth() + "-" + now.getDate();
+            if (Module.ra2WolChatDay !== day) {
+                Module.ra2WolChatDay = day;
+                var month = "JanFebMarAprMayJunJulAugSepOctNovDec".substr(now.getMonth() * 3, 3);
+                stamp = now.getDate() + " " + month + " " + stamp;
+            }
+            text = stamp + text;
+        }
         var at = $1 >> 1;
         for (var i = 0; i < text.length && i < 4095; i++) HEAPU16[at + i] = text.charCodeAt(i);
         HEAPU16[at + i] = 0;
-    }, text + 2, wide);
+    }, text + 2, wide, !page);
     if (page) {
         uint32_t values[] = { S_OK, (uint32_t)(uintptr_t)&user, (uint32_t)(uintptr_t)wide };
         fprintf(stderr, "[wol] page from %s\n", sender);

@@ -1,5 +1,9 @@
 import { useState } from "react";
 import { forEachEdition } from "../../../storage/all-games";
+import {
+  readChatTimePreference,
+  writeChatTimePreference,
+} from "../../../storage/chat-time-preferences";
 import { setIniValue } from "../../../storage/game-settings";
 import {
   readSkipIntroPreference,
@@ -25,6 +29,7 @@ const BARS = [
 export function LauncherTab({ editions, edition, settings }: TabProps) {
   const [skipIntro, setSkipIntro] = useState(() => readSkipIntroPreference(edition.storage));
   const [fps, setFps] = useState(() => readStatsPreference());
+  const [chatTime, setChatTime] = useState(() => readChatTimePreference());
 
   const saveHost = (key: string, value: string, what: string) =>
     void settings.update(
@@ -70,6 +75,16 @@ export function LauncherTab({ editions, edition, settings }: TabProps) {
           onChange={(on) => {
             setFps(on);
             writeStatsPreference(on);
+          }}
+        />
+      </Group>
+      <Group title="ONLINE">
+        <Toggle
+          label="Chat times"
+          checked={chatTime}
+          onChange={(on) => {
+            setChatTime(on);
+            writeChatTimePreference(on);
           }}
         />
       </Group>

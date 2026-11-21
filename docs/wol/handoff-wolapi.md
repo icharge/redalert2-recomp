@@ -690,6 +690,33 @@ mid-match: both pages received, both games logged the page, and the row `(YuriBO
 server restarts soon.` shows at the top left of the match, typed out over about a second. The match kept running.
 Selftest: `wolapi_selftest.c` (a `PAGE` to the player reaches slot 44; one to another nick is dropped).
 
+## Chat times (LB-11 (a), 21 November)
+
+The game's chat lines carry no time. `receive_chat` puts the player's local time (the browser's clock and zone)
+in front of the text of every public and private line it hands the game, so a lobby line reads
+`[nick] : 14:05 hello`; the first line of a day, and so of each session, also gets the date:
+`[nick] : 21 Nov 14:05 hello`. The month names are fixed English (not `toLocaleString`), and the day is kept
+in `Module.ra2WolChatDay`. Pages get no time: in a match they are message rows with their own timeout, and the
+game shows them for seconds only.
+
+- The switch: Settings › Launcher › ONLINE › **Chat times** (`web/src/storage/chat-time-preferences.ts`),
+  on by default, stored as `localStorage` `ra2-chat-time` = `0` when off. The shim reads it on the page's main
+  thread for each line, so a change applies to the next line.
+- Tests: `Module.ra2WolChatTime` (true or false) overrides the switch and `Module.ra2WolChatNow` (a function
+  returning a `Date`) the clock; the selftest pins both. The game reads lines in its pump, so a test pumps
+  before it moves the clock.
+- Not covered: the player's own lines, which the game echoes itself without going through the shim. Putting
+  the time at the start of every line, own lines too, needs a hook on the transcript's add (LB-11 (b), with
+  LB-9 (c)).
+- The C macro: `MAIN_THREAD_EM_ASM` splits its JavaScript at top-level commas outside parentheses, so an array
+  literal like `["Jan", "Feb"]` breaks the build; the month names are one string, cut with `substr`.
+
+**Seen (both editions, `web/e2e/lobby-bot.mjs` shot `lobby-bot-players`):** the lobby reads
+`[YuriBOT] : 21 Nov 22:13 zad4160 joined the channel. Welcome!`, then `YuriBOT : 22:13 Welcome, ...` (the
+greeting whispers) and `[YuriBOT] : 22:13 zbd4160 joined ...`; the MOTD above stays as it was. Selftest:
+`wolapi_selftest.c` (switch off: text unchanged; on: date on the day's first line, time alone after, the date
+again on the next day; a page unstamped).
+
 ## Ladder and high-score records, rank in the lobby, the welcome's stats (21 November)
 
 `INetUtil` (the shim's `WolChannel` object) now answers `RequestLadderList` (slot 5), `RequestLocaleLadderList` (12),
