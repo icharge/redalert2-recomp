@@ -41,6 +41,22 @@ Changes since 0.2.1.
   invite players by game name and kick, promote, demote or hand over the clan;
   leaving and disbanding ask first. Each clan's members open at `/clan/TAG`.
   Needs a server with clans (the member routes `/v1/clans/*`).
+- **FRIENDS tab and the Buddy List**: add players by game name and see who is
+  online, in a lobby or in a game. In Yuri's Revenge the same list is the
+  game's Buddy List, and `/on <name>` says where a player is in both games.
+  Needs a server with friends (`/v1/friends`); members only.
+- **MESSAGES**: a private-message panel beside the game, opened from the star
+  tray, with a conversation per player and an unread count. Whispers and `/r`
+  typed in the game show there too.
+- **`/r` and `/reply`** answer the last player who wrote to you privately, in
+  the lobby, a game room or a match.
+- **Chat times**: every lobby and game-room chat line starts with your local
+  time, with a date row when the day changes. Settings > Launcher > ONLINE >
+  Chat times turns it off.
+- **YuriBOT, the lobby bot**: listed first with the operator icon; it
+  announces joins and leaves, its announcements also reach players in a match,
+  and its lines can show without its name and in a colour the server picks.
+  Chat lines read `YuriBOT: hello` (no space before the colon).
 
 ### Changed
 
