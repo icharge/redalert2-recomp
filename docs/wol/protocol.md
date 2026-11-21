@@ -40,9 +40,9 @@ Then on the line connection:
 | Client sends | Server replies |
 |---|---|
 | `cvers <version> <sku>` | `700 * :ok` (version and SKU are recorded, not enforced here) |
-| `setlocale <n>` | `310 * :ok` |
+| `setlocale <n>` | `310 * :ok`. Logged in, the pick is stored with the account and replaces the guess made at creation from the `CF-IPCountry` header (`GEO_COUNTRY_HEADER`); an id outside 0..37 is ignored |
 | `session <token>` | MOTD (`375`, `372`..., `376`), then a `PING <ms>`. A bad token, a banned account or an invalid nick gives `378 * :Invalid session token` |
-| `getlocale <nick>` | `309 <nick> <nick> :0`<code>` (locale `0`, then the code, e.g. `0`en-US`) |
+| `getlocale [<nick> ...]` | one `309 <caller> <nick> :<id>`<code>` per nick asked, in order (the id of the `WOL:Locale<nn>` list, then the language tag when it has one, e.g. `28`th-TH`; `0` or `1` alone have none). A nick that is online answers with the locale it shows, an offline account with its stored one, anyone else `0`. No nick, or not logged in, answers for the caller |
 
 A second login for the same nick drops the first connection. Every command after
 this needs a logged-in connection (otherwise `451 * :You must be logged in`).
