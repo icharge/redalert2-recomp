@@ -9,6 +9,7 @@ import { Import, browserDeps } from "./screens/Import";
 import { InstallGuide } from "./screens/InstallGuide";
 import { AccountScreen } from "./screens/launcher/AccountScreen";
 import { GameScreen } from "./screens/launcher/GameScreen";
+import { LadderScreen } from "./screens/launcher/LadderScreen";
 import { ModsScreen } from "./screens/launcher/ModsScreen";
 import { PlayScreen } from "./screens/launcher/PlayScreen";
 import {
@@ -339,6 +340,7 @@ function Main() {
         <Route path="/welcome" element={<WelcomeScreen installed={!!active} />} />
         <Route path="/install/guide" element={<InstallGuide />} />
         <Route path="/account" element={<AccountScreen />} />
+        <Route path="/ladder" element={<LadderScreen edition={edition} />} />
         <Route
           path="/mods"
           element={

@@ -28,6 +28,10 @@ Changes since 0.2.1.
   nick with no login dialog. A guest can give an online name instead; with
   none, the game's own login works as before. Needs a server with member
   support. (71911aca, 2ec3cde9, e1b17652, 55dd593c)
+- **LADDER tab**: the ranked 1v1 standings of Red Alert 2 and Yuri's
+  Revenge, with a season picker (the current season and past ones) and, for
+  a signed-in member, their rank, rating, record and last ten matches.
+  Reads the server's public ladder routes; there is no all-time table yet.
 
 ### Changed
 

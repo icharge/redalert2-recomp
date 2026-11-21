@@ -52,10 +52,11 @@ describe("Shell", () => {
     expect(screen.getByRole("link", { name: "GAME" })).toHaveAttribute("href", "/manage");
   });
 
-  it("has no Maps or Ladder tab yet", () => {
-    renderShell();
+  it("has a Ladder tab and no Maps tab yet", () => {
+    renderShell({}, "/ladder");
+    expect(screen.getByRole("link", { name: "LADDER" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "LADDER" })).toHaveAttribute("href", "/ladder");
     expect(screen.queryByRole("link", { name: "MAPS" })).toBeNull();
-    expect(screen.queryByRole("link", { name: "LADDER" })).toBeNull();
   });
 
   it("shows one tile per edition", () => {

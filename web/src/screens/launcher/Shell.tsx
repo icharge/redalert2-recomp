@@ -13,6 +13,7 @@ export type Estimate = () => Promise<{ quota?: number; usage?: number }>;
 const TABS = [
   { label: "PLAY", to: "/", end: true },
   { label: "MODS", to: "/mods", end: false },
+  { label: "LADDER", to: "/ladder", end: false },
   { label: "GAME", to: "/manage", end: false },
 ];
 

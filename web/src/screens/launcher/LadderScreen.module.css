@@ -1,0 +1,316 @@
+/* The ladder: the player's profile beside the table; on a phone the panel stacks over it. */
+.page {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 32px;
+}
+
+.profile {
+  width: 340px;
+  flex: none;
+  box-sizing: border-box;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--red);
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.label {
+  margin: 0;
+  font-family: var(--font-label);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: var(--muted);
+}
+
+.who {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.whoText {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.name {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+.title {
+  font-family: var(--font-label);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--amber);
+}
+
+.insigniaLarge,
+.insignia {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--amber);
+}
+.insigniaLarge {
+  width: 84px;
+  height: 84px;
+  background: var(--red-deep);
+  border: 2px solid var(--red-dark);
+  clip-path: polygon(25% 0, 75% 0, 100% 25%, 100% 75%, 75% 100%, 25% 100%, 0 75%, 0 25%);
+}
+.insignia {
+  width: 26px;
+  height: 26px;
+  background: #1c1d21;
+  border: 1px solid #3a3b40;
+}
+.insigniaLarge[data-unranked],
+.insignia[data-unranked] {
+  color: var(--muted);
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+}
+.stat {
+  background: #121317;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.statLabel {
+  font-family: var(--font-label);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+}
+.statValue {
+  font-family: var(--font-display);
+  font-size: 24px;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.form .statLabel {
+  font-size: 13px;
+}
+.aside {
+  margin-left: 8px;
+  letter-spacing: 0.06em;
+  font-weight: 500;
+  text-transform: lowercase;
+}
+.blocks {
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  gap: 4px;
+}
+.blocks > span {
+  height: 24px;
+  background: var(--red);
+}
+.blocks > [data-result="win"] {
+  background: var(--green);
+}
+.blocks > [data-result="draw"] {
+  background: var(--muted);
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+}
+.actions > * {
+  flex: 1;
+  height: 44px;
+  padding: 0 12px;
+}
+
+.ladder {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.segmented {
+  display: flex;
+  border: 1px solid #3a3b40;
+}
+.segment {
+  height: 36px;
+  padding: 0 14px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font-label);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition:
+    background 0.2s,
+    color 0.2s;
+}
+.segment + .segment {
+  border-left: 1px solid #3a3b40;
+}
+.segment:hover {
+  color: var(--text);
+}
+.segment[aria-checked="true"] {
+  background: var(--red);
+  color: #fff;
+}
+
+.season select {
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid #3a3b40;
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--text);
+  font-family: var(--font-label);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+.season select:focus-visible,
+.segment:focus-visible {
+  outline: 2px solid var(--yuri-mid);
+  outline-offset: 1px;
+}
+
+/* the table scrolls sideways inside its box, never the page */
+.tableBox {
+  overflow-x: auto;
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+.table {
+  width: 100%;
+  min-width: 520px;
+  border-collapse: collapse;
+  font-size: 15px;
+}
+.table th {
+  padding: 12px 8px;
+  font-family: var(--font-label);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+  text-align: left;
+}
+.table th:first-child,
+.table td:first-child {
+  padding-left: 16px;
+  width: 56px;
+}
+.table th:last-child,
+.table td:last-child {
+  padding-right: 16px;
+}
+.table tbody tr {
+  border-top: 1px solid var(--line);
+}
+.table td {
+  height: 46px;
+  padding: 0 8px;
+}
+.table th.num,
+.table td.num {
+  text-align: right;
+  white-space: nowrap;
+}
+.muted {
+  color: var(--muted);
+}
+
+.rankCell {
+  font-family: var(--font-display);
+  color: var(--muted);
+}
+.rankCell[data-podium="1"] {
+  color: #f2b134;
+}
+.rankCell[data-podium="2"] {
+  color: #c9ccd1;
+}
+.rankCell[data-podium="3"] {
+  color: #d08a52;
+}
+
+.commander {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.commanderName {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+/* the signed-in player's row */
+.table tr[data-me] {
+  background: rgba(211, 38, 43, 0.16);
+}
+.table tr[data-me] td:first-child {
+  box-shadow: inset 3px 0 0 var(--red);
+}
+.table tr[data-me] .commanderName {
+  font-weight: 700;
+}
+
+.table .gap td {
+  height: 28px;
+  text-align: center;
+  color: var(--muted);
+  letter-spacing: 0.3em;
+}
+
+@media (max-width: 720px) {
+  .page {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 24px;
+  }
+  .profile {
+    width: auto;
+    padding: 20px;
+  }
+  .ladder {
+    flex: none;
+  }
+}

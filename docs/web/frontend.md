@@ -42,10 +42,11 @@ web/
     styles/tokens.css       colours, fonts and shapes as CSS variables
     screens/
       launcher/
-        Shell.tsx           the top bar (logo, PLAY / MODS / GAME, storage, who is signed in) and the game rail
+        Shell.tsx           the top bar (logo, PLAY / MODS / LADDER / GAME, storage, who is signed in) and the game rail
         PlayScreen.tsx      the edition's art and title, the mod (PROFILE) picker, a guest's online name, PLAY, the status
         WelcomeScreen.tsx   `/welcome`: what this is, bring your own game, guest or member
         AccountScreen.tsx   `/account`: member sign-in, the member's game account (nick), sign out
+        LadderScreen.tsx    `/ladder`: the ranked 1v1 table, game and season pickers, the signed-in player's profile
         ModsScreen.tsx      every mod of the install, install / play / remove
         GameScreen.tsx      the install: editions, files, saved games, storage, older copies, remove
         settings/           SettingsScreen and one file per tab; controls.tsx (Toggle, Segmented, PipBar, Row)
@@ -80,6 +81,9 @@ web/
       api.ts                the server's member routes: sign-in, refresh (one at a time, a Web Lock across tabs), tickets
       store.ts              guest, offline or member, for React; one refresh on load
       launch.ts             what PLAY sends the game: a member's or a guest's launch ticket, or none
+    ladder/
+      api.ts                the server's public ladder routes: seasons, leaderboard, a player's profile
+      ranks.ts              badge (0 to 9) to rank title and insignia chevrons
     storage/
       opfs.ts               copying into OPFS, reading back, removing
       manifest.ts           what is imported (IndexedDB)
@@ -98,7 +102,7 @@ the game isn't built.
 
 ## Screens
 
-The app uses clean routes under its deployment base: `/` (Play), `/mods`, `/manage` (Game),
+The app uses clean routes under its deployment base: `/` (Play), `/mods`, `/ladder`, `/manage` (Game),
 `/settings/<tab>`, `/welcome`, `/install/guide` and `/account` are the launcher; `/import` installs a folder; `/game` launches the active
 installation, with `?edition=ra2` or `?edition=ra2md` naming the edition. Old `/game/:slot` links
 select that installation and replace the URL with `/game`. `/settings` and an unknown tab go to
@@ -156,13 +160,23 @@ is never reused for another slot. Mod/font restarts reload the same game URL.
    cookie, and refreshes run one at a time across tabs (two at once would read as a stolen token).
 3. **Mods.** Every mod of the install with its edition and size, filtered by edition; IN USE marks
    the active one. INSTALL MOD (or a dropped folder) asks which edition when there are two.
-4. **Game.** The install's editions and their readiness, RESUME INSTALL and ADD MOVIES. The MANAGE
+4. **Ladder** (`/ladder`) is the ranked 1v1 table of the edition chosen in the rail (the GAME toggle
+   switches it), read from the WOL server's public routes: `/seasons?sku=`,
+   `/leaderboard/{sku}/1v1/{season}?start=1&count=100` and `/players/{name}?sku=`
+   (`VITE_WOL_HTTP_URL`, no sign-in). SKUs: 16640 Red Alert 2, 18688 Yuri's Revenge. The season is a
+   picker (the server has no all-time table). The panel shows the signed-in member's first game
+   name: rating, rank, record, last ten matches (the profile's `games`, newest first). A guest is
+   asked to sign in; a player still in placement sees the matches left. The rank title and the
+   insignia come from the record's `badge` (0 to 9, a projection of the rating; `ranks.ts` names
+   them like the game does). The mockup's SIDE column and favorite side are not shown: the server
+   keeps no side per player. Someone ranked below the first hundred is shown with the rows around them.
+5. **Game.** The install's editions and their readiness, RESUME INSTALL and ADD MOVIES. The MANAGE
    GAME panel beside them: browser storage with a breakdown (game content, mods, custom maps, saved
    games, cache and other), then BROWSE FILES, REINSTALL GAME (confirmed inline; saves, settings and
    mods are kept), SAVED GAMES… (the saves of each edition, by title, with download, remove and the
    .ZIP buttons) and REMOVE… (the REMOVE FROM THIS BROWSER dialog: tick the parts to remove, with
    REMOVE EVERYTHING asking inline first). OLDER COPIES stays below.
-5. **Install** (`/import`, full screen), with LAUNCHER and INSTALL GUIDE links at the top. Steps
+6. **Install** (`/import`, full screen), with LAUNCHER and INSTALL GUIDE links at the top. Steps
    1 CHOOSE, 2 REVIEW, 3 INSTALL. CHOOSE has a drop zone around CHOOSE FOLDER (`showDirectoryPicker`,
    Chromium; else the file picker, also behind "Folder button not working?"), USE AN ARCHIVE OR
    INSTALLER (7-Zip, see [storage.md](storage.md#archives)), and a WHERE IS MY GAME? panel built from
@@ -175,13 +189,13 @@ is never reused for another slot. Mod/font restarts reload the same game URL.
    COPYING or WAITING (`import-progress.ts`), then the mods after the game. It's resumable: a reload
    continues from the manifest, and after a failed copy TRY AGAIN carries on in the same
    installation (`runImport`'s `onSlot`).
-6. **Settings.** Launcher, Gameplay, Video, Audio and Keyboard (below), then About: the launcher's
+7. **Settings.** Launcher, Gameplay, Video, Audio and Keyboard (below), then About: the launcher's
    version (`web/package.json`, imported by `src/version.ts`) and the build id from `build.json`,
    what's new (the newest section of [web/CHANGELOG.md](../../web/CHANGELOG.md), read at build time
    by `changelog.ts`), the credits with their GitHub links, and the legal notes and licences. About
    needs no game, so it shows before one is installed. The version under SETTINGS in the rail opens
    it. A release bumps `package.json` and starts a new changelog section.
-7. **In game.** The canvas fills the window. A red star in the bottom-right corner opens the page
+8. **In game.** The canvas fills the window. A red star in the bottom-right corner opens the page
    controls: SETTINGS F10, TYPE, FILES, LAN, the volume and F11. While a match plays the bar slides into
    the star and the star fades to a quarter, so the page doesn't draw the eye; pointing at it,
    keyboard focus, an open pop-up or the game's pause menu brings the bar back. The page knows a
