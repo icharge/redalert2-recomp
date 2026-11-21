@@ -729,6 +729,33 @@ int main(void) {
         assert(test_event_method[before + 1] == 0x10028 && wide_is(test_event_shown[before + 1], "[YuriBOT] : a reply"));
         assert(test_event_method[before + 2] == 0x1002C && wide_is(test_event_shown[before + 2], "Restart soon."));
     }
+    /* /r and /reply: a private line from a player fills the game's reply name; a NOTICE, a page and
+     * an operator's line do not. RequestUnicodePage (slot 62) sends one private line to the first
+     * name only (/r leaves next unset) and the pump then reports the page sent (ordinal 24). */
+    {
+        char *reply = (char *)(uintptr_t)WOL_REPLY_TARGET;
+        char saved[16];
+        memcpy(saved, reply, sizeof saved);
+        memset(reply, 0, 16);
+        ra2_wolapi_receive_line(":stranger!local PRIVMSG testuser :psst");
+        ra2_wolapi_receive_line(":YuriBOT!YuriBOT@local NOTICE testuser :Restart soon.");
+        ra2_wolapi_receive_line(":YuriBOT!YuriBOT@local PAGE testuser :Restart soon.");
+        assert(invoke(g_chat.chat, 3, 0, NULL) == S_OK);
+        assert(!strcmp(reply, "stranger"));
+        wol_user pager = { 0 };
+        strcpy(pager.name, "stranger");
+        pager.next = 0xDEADBEEFu; /* /r's stack record: never followed */
+        uint16_t answer[] = { 'o', 'k', ' ', 0x0e2a, 0 };
+        uint32_t page_args[] = { (uint32_t)(uintptr_t)&pager, (uint32_t)(uintptr_t)answer };
+        EM_ASM({ Module.testWolLine = ""; });
+        assert(invoke(g_chat.chat, 62, 2, page_args) == S_OK);
+        assert(EM_ASM_INT({ return Module.testWolLine === "privmsg stranger :ok ส"; }));
+        uint32_t before = test_event_count;
+        assert(invoke(g_chat.chat, 3, 0, NULL) == S_OK);
+        assert(test_event_count == before + 1 && test_event_method[before] == 0x1001B); /* ordinal 24 */
+        assert(test_event_args[before][1] == S_OK);
+        memcpy(reply, saved, sizeof saved);
+    }
     /* A leading IRC colour code (LB-12) is taken off the text and colours that line only: the
      * lists' colour table and the match row's scheme name point at it while the sink runs. */
     {

@@ -94,6 +94,7 @@ static uint32_t g_channel_list_lobby;
 static uint32_t g_lobby_users;
 static uint32_t g_pending_server_list;
 static uint32_t g_pending_logout;
+static uint32_t g_pending_page_sent; /* RequestUnicodePage sent a page: OnPageSend from the pump */
 /* The started room's own PART (see the PART handler): held until the game
  * leaves by itself, then delivered from the next pump. Reset at each STARTG. */
 static uint32_t g_match_leave_requested, g_match_part_held, g_pending_match_part;
@@ -921,9 +922,11 @@ static const uint16_t *g_bare_text;
 #ifdef RA2_TARGET_GAME
 #define WOL_CHAT_COLOURS 0x007A7360u
 #define WOL_PAGE_SCHEME 0x007D83B4u
+#define WOL_REPLY_TARGET 0x00B2AC48u
 #else
 #define WOL_CHAT_COLOURS 0x007EEF28u
 #define WOL_PAGE_SCHEME 0x00822724u
+#define WOL_REPLY_TARGET 0x00B77E30u
 #endif
 static const struct { uint32_t colorref; const char *scheme; } k_irc_colours[16] = {
     { 0xFFFFFFu, "LightGrey" }, /* 0 white */
@@ -978,6 +981,11 @@ static void receive_chat(const char *line) {
     for (uint32_t i = 0; i < g_user_count; i++)
         if (!strcmp(g_users[i].name, sender)) { user = g_users[i]; break; }
     user.next = 0; /* A whisper from outside the channel must not change its roster. */
+    /* /r and /reply answer the last player who wrote to this one privately: the game keeps that
+     * name in a 16-byte buffer (YR 0x00B77E30, RA2 0x00B2AC48) that only its ANSI page sink fills,
+     * so a private PRIVMSG fills it here. Not from an operator (the bot: its replies and pages would
+     * take /r away from the player) nor from a NOTICE (docs/wol/handoff-wolapi.md, "/r and /reply"). */
+    if (!public && !page && !(user.flags & 1u)) copy_text((char *)(uintptr_t)WOL_REPLY_TARGET, 16, sender);
     uint16_t wide[WOL_LINE_CAP];
     MAIN_THREAD_EM_ASM({
         var text = UTF8ToString($0);
@@ -1628,6 +1636,11 @@ static void pump_lines(void) {
         uint32_t status[] = { 0x0004012fu }; /* directory connection closed after listing */
         event_call(16, 1, status); /* IChatEvent::OnNetStatus */
     }
+    if (g_pending_page_sent) {
+        g_pending_page_sent = 0;
+        uint32_t values[] = { S_OK };
+        event_call(24, 1, values); /* IChatEvent: the page was sent */
+    }
     if (g_pending_logout) {
         g_pending_logout = 0;
         wol_user *user = user_for_name(g_nick);
@@ -1964,6 +1977,21 @@ static void m_chat_request_public_message(void) { uint32_t result = send_chat(NU
 static void m_chat_request_private_message(void) { uint32_t result = send_chat((const wol_user *)(uintptr_t)A32(1), ASTR(2), 0, 1); RET(result, 3); }
 static void m_chat_request_public_unicode_message(void) { uint32_t result = send_chat(NULL, (void *)(uintptr_t)A32(1), 1, 0); RET(result, 2); }
 static void m_chat_request_private_unicode_message(void) { uint32_t result = send_chat((const wol_user *)(uintptr_t)A32(1), (void *)(uintptr_t)A32(2), 1, 1); RET(result, 3); }
+/* IChat::RequestUnicodePage (API+0xF8): the game's /page, /reply and /r (YR 0x0078A6B0 and
+ * 0x0078A8F0, RA2 0x00746480 and 0x007466C0) and the Page dialog. It goes out as a private line,
+ * so the other player sees it like any whisper. /r builds a one-name record on its stack and
+ * leaves its next field unset, so only the first name is taken. The page-sent sink (ordinal 24,
+ * YR 0x007A9800, RA2 0x00762E00) answers from the pump (docs/wol/handoff-wolapi.md, "/r and
+ * /reply"). */
+static void m_chat_request_unicode_page(void) {
+    const wol_user *user = (const wol_user *)(uintptr_t)A32(1);
+    if (!user) RET(E_POINTER, 3);
+    wol_user one = *user;
+    one.next = 0;
+    uint32_t result = send_chat(&one, (void *)(uintptr_t)A32(2), 1, 1);
+    if (result == S_OK) g_pending_page_sent = 1;
+    RET(result, 3);
+}
 /* The "Logging off" dialog waits for IChatEvent::OnLogout; report it from the pump. */
 static void m_chat_request_logout(void) {
     memset(&g_session, 0, sizeof g_session);
@@ -2262,7 +2290,7 @@ static void m_chat_get_attribute_value(void) {
     { "WolChat::SetCodepageFilter", m_stub_2 }, { "WolChat::RequestBuddyList", m_stub_1 }, { "WolChat::RequestBuddyAdd", m_stub_2 }, \
     { "WolChat::RequestBuddyDelete", m_stub_2 }, { "WolChat::RequestPublicUnicodeMessage", m_chat_request_public_unicode_message }, \
     { "WolChat::RequestPrivateUnicodeMessage", m_chat_request_private_unicode_message }, { "WolChat::RequestPublicUnicodeAction", m_stub_2 }, \
-    { "WolChat::RequestPrivateUnicodeAction", m_stub_3 }, { "WolChat::RequestUnicodePage", m_stub_3 }, \
+    { "WolChat::RequestPrivateUnicodeAction", m_stub_3 }, { "WolChat::RequestUnicodePage", m_chat_request_unicode_page }, \
     { "WolChat::RequestSetPlayerCount", m_stub_3 }, { "WolChat::RequestServerTime", m_stub_1 }, \
     { "WolChat::RequestInsiderStatus", m_stub_2 }, { "WolChat::RequestSetLocalIP", m_stub_1 }
 

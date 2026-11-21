@@ -259,6 +259,42 @@ try {
     `${b.nick} saw the /who line`,
   );
   check(`${a.nick} /who: the reply lists ${a.nick} and ${b.nick}`);
+
+  // 5. /r answers the last player who wrote privately (docs/wol/handoff-wolapi.md, "/r and /reply"):
+  // b selects a in the Players list (YuriBOT, a, b) and whispers; a types "/r back", which the game turns
+  // into a page to b, sent as a private line
+  let whispered = false;
+  for (const k of [1, 2]) {
+    if (whispered) break;
+    await b.clickGame(...PLAYER_ROW(k));
+    await b.page.waitForTimeout(300);
+    const at = b.wire.length;
+    await say(b, "hi from b");
+    await b.page.waitForTimeout(1200);
+    whispered = b.wire.some(
+      (w, i) => i >= at && w.dir === ">" && w.line.toLowerCase() === `privmsg ${a.nick} :hi from b`,
+    );
+    if (!whispered) await b.clickGame(...PLAYER_ROW(k));
+  }
+  assert.ok(whispered, `${b.nick}: the private line to ${a.nick} was sent`);
+  await until(a, `${b.nick}'s private line`, () =>
+    a.wire.some(
+      (w) => w.dir === "<" && w.line.startsWith(`:${b.nick}!`) && w.line.endsWith(" :hi from b"),
+    ),
+  );
+  mark = a.wire.length;
+  await say(a, "/r back");
+  await until(a, "the /r page sent", () =>
+    a.wire.some(
+      (w, i) => i >= mark && w.dir === ">" && w.line.toLowerCase() === `privmsg ${b.nick} :back`,
+    ),
+  );
+  await until(b, `${a.nick}'s /r reply`, () =>
+    b.wire.some(
+      (w) => w.dir === "<" && w.line.startsWith(`:${a.nick}!`) && w.line.endsWith(" :back"),
+    ),
+  );
+  check(`${a.nick} /r: the reply reached ${b.nick} as a private line`);
   // The transcript after it all: each line starts with the local time (docs/wol/handoff-wolapi.md, "Chat times").
   await a.page.waitForTimeout(800);
   await a.shot("lobby-bot-chat");

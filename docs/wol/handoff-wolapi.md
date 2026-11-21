@@ -513,7 +513,7 @@ in a chat lobby, both editions were sent the lines LB-1 would send:
   instead of answering 401.
 - **Replies:** private `PRIVMSG <nick> :…` lines of at most about 90 characters, so each fits on
   one row (never more than the 120 a player can type), a few lines per answer.
-- **Paging is a separate shim task.** `/page`, `/r` and YR's Page dialog fail silently for every
+- **Paging (done 22 November for `/page`, `/r` and `/reply`; "/r and /reply" below).** Before it, `/page`, `/r` and YR's Page dialog failed silently for every
   user until `RequestUnicodePage` (and `RequestPage`) send `privmsg <nick> :<text>` and report the
   result, and an incoming page reaches the game's page sink. That is what would make `/r` answer
   the bot. LB-1 does not need it, but decision 15's "page the bot" fallback depends on it, and
@@ -789,6 +789,29 @@ A received line may start with an IRC colour code: 0x03 and one or two digits (a
 the match row `Announcement test ...: the server restarts soon.` is gold, not grey. `web/e2e/lobby-bot.mjs` with `lobbyBot.joinColour` light blue: the join lines are light blue beside the bot's cyan whispers. Selftest: `wolapi_selftest.c`
 (a code coloured the line while its sink ran, the table and scheme restored, `,bg` skipped, 99 dropped as no
 colour).
+
+## /r and /reply (22 November)
+
+The game parses `/page`, `/reply` and `/r` itself in every chat edit (lobby, game room, during a match): YR
+`0x0078A6B0` (`/page`) and `0x0078A8F0` (`/reply`, `/r`), RA2 `0x00746480` and `0x007466C0`; none of them
+reaches the server. `/r` answers the name in a 16-byte ANSI buffer (YR `0x00B77E30`, RA2 `0x00B2AC48`); empty, the
+game says it has not been paged. Otherwise it builds a one-name `wol_user` on its stack (name at +0x24, `next`
+not set) and calls `IChat::RequestUnicodePage` (API+0xF8, slot 62). Only the ANSI page sink (ordinal 25, YR
+`0x007A9200`, RA2 `0x007629B0`) writes the buffer; the UTF-16 one the shim uses does not.
+
+- `receive_chat` copies the sender of a private `PRIVMSG` to the player into the buffer, unless the sender is an
+  operator in the roster (the bot, whose replies and pages would take `/r` away from the player); a `NOTICE` or a
+  `PAGE` never fills it.
+- `RequestUnicodePage` sends `privmsg <nick> :<text>` for the first name only (`send_chat`), and the pump then
+  calls the page-sent sink (ordinal 24, vtable slot 27: YR `0x007A9800`, RA2 `0x00762E00`), which writes the
+  game's own echo `[me > nick] text`. The other player gets an ordinary private line, which arms their `/r`.
+- Native limits kept: an observer in a match cannot `/r` (`[0xA8B538]`), and the game's ignore list applies.
+  `RequestPage` (ANSI) is still a stub; both games use the UTF-16 call.
+
+**Seen (both editions, `web/e2e/lobby-bot.mjs` step 5):** b whispers `hi from b` to a (`00:30 zb90560: hi from b`),
+a types `/r back`: a's socket sends `privmsg zb90560 :back`, b receives it, and a's transcript shows
+`00:31 [za90560 > zb90560] back`. Selftest: `wolapi_selftest.c` (the buffer filled by a player's private line, not
+by a `NOTICE` or `PAGE`; slot 62 sends one line to the first name with a garbage `next`; ordinal 24 from the pump).
 
 ## Ladder and high-score records, rank in the lobby, the welcome's stats (21 November)
 
