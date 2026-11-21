@@ -32,6 +32,11 @@ Changes since 0.2.1.
   Revenge, with a season picker (the current season and past ones) and, for
   a signed-in member, their rank, rating, record and last ten matches.
   Reads the server's public ladder routes; there is no all-time table yet.
+- **CLAN tab**: found a clan with a tag (2 to 6 characters) and a name, accept
+  or decline invitations, and search the public clan list. Owners and officers
+  invite players by game name and kick, promote, demote or hand over the clan;
+  leaving and disbanding ask first. Each clan's members open at `/clan/TAG`.
+  Needs a server with clans (the member routes `/v1/clans/*`).
 
 ### Changed
 

@@ -59,6 +59,13 @@ describe("Shell", () => {
     expect(screen.queryByRole("link", { name: "MAPS" })).toBeNull();
   });
 
+  it("has a Clan tab, also lit on a clan's page", () => {
+    renderShell({}, "/clan/ABC");
+    expect(screen.getByRole("link", { name: "CLAN" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "CLAN" })).toHaveAttribute("href", "/clan");
+    expect(screen.getByRole("link", { name: "LADDER" })).not.toHaveAttribute("aria-current");
+  });
+
   it("shows one tile per edition", () => {
     renderShell({ editions: [ra2], edition: ra2 });
     expect(screen.getByRole("button", { name: "Red Alert 2" })).toHaveAttribute(

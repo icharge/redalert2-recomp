@@ -1,0 +1,223 @@
+/* The clan page: the panels, table and stats are LadderScreen's; what is here is only the
+   form fields, the member actions and the lists that screen has no use for. */
+
+.card .value {
+  font-size: 18px;
+  overflow-wrap: anywhere;
+}
+.tag {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 40px;
+  font-weight: 400;
+  line-height: 1.1;
+  color: var(--amber);
+  overflow-wrap: anywhere;
+}
+.clanName {
+  font-size: 18px;
+  overflow-wrap: anywhere;
+}
+.tagInline {
+  font-family: var(--font-display);
+  color: var(--amber);
+}
+
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.picker select {
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid #3a3b40;
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--text);
+  font-family: var(--font-label);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+.picker select:focus-visible {
+  outline: 2px solid var(--yuri-mid);
+  outline-offset: 1px;
+}
+
+/* a form field: the label above, the rule or the problem below */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.fieldLabel {
+  font-family: var(--font-label);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+}
+.input {
+  height: 44px;
+  box-sizing: border-box;
+  min-width: 0;
+  padding: 0 12px;
+  border: 1px solid #3a3b40;
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--text);
+  font: inherit;
+  font-size: 16px;
+}
+.input:focus-visible {
+  outline: 2px solid var(--yuri-mid);
+  outline-offset: 1px;
+  border-color: var(--yuri-light);
+}
+.input[aria-invalid="true"] {
+  border-color: var(--red);
+}
+.hint,
+.problem {
+  font-size: 13px;
+  min-height: 1.3em;
+}
+.hint {
+  color: var(--muted);
+}
+.problem {
+  color: #ff8a80;
+}
+
+.inviteRow {
+  display: flex;
+  gap: 12px;
+}
+.inviteRow .input {
+  flex: 1;
+}
+
+/* a small button, in a table row or a list */
+.small {
+  composes: quiet from "./Page.module.css";
+  height: 32px;
+  padding: 0 12px;
+  font-size: 14px;
+  letter-spacing: 0.1em;
+}
+.danger {
+  border-color: var(--red);
+}
+.danger:hover:not(:disabled) {
+  background: rgba(211, 38, 43, 0.3);
+}
+
+.nickCell {
+  font-family: var(--font-label);
+  font-weight: 700;
+}
+.link {
+  color: var(--amber);
+  text-decoration: none;
+  letter-spacing: 0.08em;
+}
+.link:hover {
+  text-decoration: underline;
+}
+.link:focus-visible {
+  outline: 2px solid var(--yuri-mid);
+  outline-offset: 2px;
+}
+
+.role {
+  font-family: var(--font-label);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+}
+.role[data-role="owner"] {
+  color: var(--amber);
+}
+.role[data-role="officer"] {
+  color: var(--text);
+}
+
+.rowActions,
+.ask {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ask > span {
+  font-size: 14px;
+}
+
+.confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.pager > span {
+  margin-right: auto;
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+}
+.item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+.item:first-child {
+  border-top: 0;
+}
+.itemText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.itemTitle {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.itemActions {
+  display: flex;
+  gap: 8px;
+}
+
+.card {
+  min-width: 0;
+}
+
+@media (max-width: 720px) {
+  .inviteRow {
+    flex-direction: column;
+  }
+  .tag {
+    font-size: 34px;
+  }
+}

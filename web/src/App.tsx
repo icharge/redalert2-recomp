@@ -8,6 +8,7 @@ import { videoFromQuery, type FileSource } from "./game/loader";
 import { Import, browserDeps } from "./screens/Import";
 import { InstallGuide } from "./screens/InstallGuide";
 import { AccountScreen } from "./screens/launcher/AccountScreen";
+import { ClanScreen, PublicClanScreen } from "./screens/launcher/ClanScreen";
 import { GameScreen } from "./screens/launcher/GameScreen";
 import { LadderScreen } from "./screens/launcher/LadderScreen";
 import { ModsScreen } from "./screens/launcher/ModsScreen";
@@ -341,6 +342,8 @@ function Main() {
         <Route path="/install/guide" element={<InstallGuide />} />
         <Route path="/account" element={<AccountScreen />} />
         <Route path="/ladder" element={<LadderScreen edition={edition} />} />
+        <Route path="/clan" element={<ClanScreen edition={edition} />} />
+        <Route path="/clan/:tag" element={<PublicClanScreen edition={edition} />} />
         <Route
           path="/mods"
           element={

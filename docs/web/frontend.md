@@ -42,11 +42,12 @@ web/
     styles/tokens.css       colours, fonts and shapes as CSS variables
     screens/
       launcher/
-        Shell.tsx           the top bar (logo, PLAY / MODS / LADDER / GAME, storage, who is signed in) and the game rail
+        Shell.tsx           the top bar (logo, PLAY / MODS / LADDER / CLAN / GAME, storage, who is signed in) and the game rail
         PlayScreen.tsx      the edition's art and title, the mod (PROFILE) picker, a guest's online name, PLAY, the status
         WelcomeScreen.tsx   `/welcome`: what this is, bring your own game, guest or member
         AccountScreen.tsx   `/account`: member sign-in, the member's game account (nick), sign out
         LadderScreen.tsx    `/ladder`: the ranked 1v1 table, game and season pickers, the signed-in player's profile
+        ClanScreen.tsx      `/clan` and `/clan/:tag`: your clan, its members and invitations, the public clan list
         ModsScreen.tsx      every mod of the install, install / play / remove
         GameScreen.tsx      the install: editions, files, saved games, storage, older copies, remove
         settings/           SettingsScreen and one file per tab; controls.tsx (Toggle, Segmented, PipBar, Row)
@@ -83,6 +84,8 @@ web/
       launch.ts             what PLAY sends the game: a member's or a guest's launch ticket, or none
     ladder/
       api.ts                the server's public ladder routes: seasons, leaderboard, a player's profile
+    clan/
+      api.ts                the clan routes: the member ones (`/v1/clans/*`, bearer token) and the public list; the tag and name rules
       ranks.ts              badge (0 to 9) to rank title and insignia chevrons
     storage/
       opfs.ts               copying into OPFS, reading back, removing
@@ -102,7 +105,7 @@ the game isn't built.
 
 ## Screens
 
-The app uses clean routes under its deployment base: `/` (Play), `/mods`, `/ladder`, `/manage` (Game),
+The app uses clean routes under its deployment base: `/` (Play), `/mods`, `/ladder`, `/clan` (and `/clan/<tag>`), `/manage` (Game),
 `/settings/<tab>`, `/welcome`, `/install/guide` and `/account` are the launcher; `/import` installs a folder; `/game` launches the active
 installation, with `?edition=ra2` or `?edition=ra2md` naming the edition. Old `/game/:slot` links
 select that installation and replace the URL with `/game`. `/settings` and an unknown tab go to
@@ -170,6 +173,21 @@ is never reused for another slot. Mod/font restarts reload the same game URL.
    insignia come from the record's `badge` (0 to 9, a projection of the rating; `ranks.ts` names
    them like the game does). The mockup's SIDE column and favorite side are not shown: the server
    keeps no side per player. Someone ranked below the first hundred is shown with the rows around them.
+   **Clan** (`/clan`, tab CLAN) is the signed-in game name's clan, over ra2web's clan routes
+   (`docs/clans.md` there; the base is `VITE_WOL_HTTP_URL`). The member routes `/v1/clans/*` go through
+   `AccountClient.bearer` (the access token, one refresh and retry on a 401); a member with several game
+   names gets a PLAYING AS picker and every request then names the name (`?account=` on a read, `account`
+   in the body of a change). A guest or a member with no game name is told to sign in or add one
+   (link to `/account`) and still sees the public list. With no clan: FOUND A CLAN (tag 2 to 6 of
+   `A-Za-z0-9_-`, name 3 to 40 printable ASCII with no space at either end or twice in a row, checked as
+   typed, the server's refusal shown on submit), YOUR INVITATIONS with ACCEPT and DECLINE, and FIND A CLAN
+   (`GET /clans?search=`, newest first, 20 a page). In a clan: the tag, name, your role, the member
+   count and the date; the member table with the actions your role allows (the owner promotes, demotes,
+   kicks and transfers; an officer kicks members; kick, transfer, leave and disband ask first); an
+   invite-by-name field for owners and officers with the invitations still waiting; LEAVE (off for the
+   owner, with the reason) and DISBAND (owner). `/clan/<tag>` is the read-only view of any clan, opened
+   from the list. After every change the page reads `/v1/clans/mine` again. The game's Clan button URL
+   is CL-2's, not this page's.
 5. **Game.** The install's editions and their readiness, RESUME INSTALL and ADD MOVIES. The MANAGE
    GAME panel beside them: browser storage with a breakdown (game content, mods, custom maps, saved
    games, cache and other), then BROWSE FILES, REINSTALL GAME (confirmed inline; saves, settings and
