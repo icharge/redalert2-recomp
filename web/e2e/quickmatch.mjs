@@ -30,6 +30,8 @@
 //   --row 7     the frame counter of each client against the server log's timestamps.
 //   --row 9     one guest and one member in one Quick Match; the match is played, one side surrenders, and
 //               nobody is scored (ladder unchanged; the reports get 404 "Unknown native match").
+//   --row 10    two guests in a match; the admin's POST /admin/announce pages both, and each game takes the
+//               page (shots announce-a, announce-b show its grey message row).
 //
 // Options: --server http://127.0.0.1:9090, --server-log FILE (the server's stdout), --label NAME, --guests,
 // plus the shared ones of lib.mjs (--game, --shots, --headed). Scratch: --shots.
@@ -626,7 +628,37 @@ async function rowQuit() {
     );
 }
 
+/**
+ * Row 10: an announcement during a match. Two guests play; POST /admin/announce (all lobbies) pages both,
+ * since neither is in a chat lobby: the server's `PAGE <nick>` reaches each page, the shim hands it to the
+ * game's UTF-16 page sink (`[wol] page from YuriBOT`), and the game draws it as a grey message row, which
+ * the shots `announce-a` and `announce-b` show.
+ */
+async function rowAnnounce() {
+  const a = await open("a", true);
+  const b = await open("b", true);
+  await startMatch(a, b);
+  const text = `Announcement test ${tag}: the server restarts soon.`;
+  const marks = [a, b].map((run) => ({ wire: run.wire.length, log: run.all.length }));
+  const sent = await admin("POST", "/admin/announce", { text });
+  info(`announce: ${JSON.stringify(sent)}`);
+  for (const [i, run] of [a, b].entries()) {
+    await until(run, "the PAGE from YuriBOT", () =>
+      run.wire
+        .slice(marks[i].wire)
+        .some((w) => w.dir === "<" && / PAGE /.test(w.line) && w.line.includes(text)),
+    );
+    await waitNative(run, "[wol] page from YuriBOT", marks[i].log, 15000);
+  }
+  check("both players in the match were paged and their games took the page");
+  // the game types the row out a character at a time
+  await a.page.waitForTimeout(4000);
+  await Promise.all([a.shot("announce-a"), b.shot("announce-b")]);
+  info(`frames after the announcement: A ${frameOf(a)}, B ${frameOf(b)}`);
+}
+
 const ROWS = {
+  10: rowAnnounce,
   1: rowMaps,
   2: rowMaps,
   3: rowPlay,

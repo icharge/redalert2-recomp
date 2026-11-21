@@ -898,10 +898,16 @@ static void complete_channel_leave(wol_user *user) {
         g_current_channel[0] = '\0';
 }
 
+/* A PRIVMSG, or a PAGE (RA2Web's announcements to a player outside the chat lobbies,
+ * docs/wol/handoff-wolapi.md): the game's UTF-16 page sink (ordinal 41, YR 0x007A9550,
+ * three arguments like the private one) shows "(sender) text" as a grey row during a
+ * match, and in the transcript or the Page Received dialog outside one. */
 static void receive_chat(const char *line) {
     char sender[10], target[48], command[16];
-    if (sscanf(line, ":%9[^! ]%*s %15s %47s", sender, command, target) != 3 || strcmp(command, "PRIVMSG")) return;
-    int public = target[0] == '#';
+    if (sscanf(line, ":%9[^! ]%*s %15s %47s", sender, command, target) != 3) return;
+    int page = !strcmp(command, "PAGE");
+    if (!page && strcmp(command, "PRIVMSG")) return;
+    int public = !page && target[0] == '#';
     if (strcmp(target, public ? g_current_channel : g_nick)) {
         fprintf(stderr, "[wol] chat from %s to %s ignored: current %s is \"%s\"\n", sender, target,
             public ? "channel" : "nick", public ? g_current_channel : g_nick);
@@ -921,7 +927,11 @@ static void receive_chat(const char *line) {
         for (var i = 0; i < text.length && i < 4095; i++) HEAPU16[at + i] = text.charCodeAt(i);
         HEAPU16[at + i] = 0;
     }, text + 2, wide);
-    if (public) {
+    if (page) {
+        uint32_t values[] = { S_OK, (uint32_t)(uintptr_t)&user, (uint32_t)(uintptr_t)wide };
+        fprintf(stderr, "[wol] page from %s\n", sender);
+        event_call(41, 3, values); /* IChatEvent: the UTF-16 page */
+    } else if (public) {
         uint32_t values[] = { S_OK, (uint32_t)(uintptr_t)current_channel(), (uint32_t)(uintptr_t)&user, (uint32_t)(uintptr_t)wide };
         event_call(37, 4, values); /* IChatEvent::OnPublicUnicodeMessage */
     } else {
@@ -1287,7 +1297,7 @@ static void handle_line(const char *line) {
         return;
     }
     if (!strcmp(line, "@wolapi disconnected")) { disconnected(); return; }
-    if (command && !strncmp(command, " PRIVMSG ", 9)) { receive_chat(line); return; }
+    if (command && (!strncmp(command, " PRIVMSG ", 9) || !strncmp(command, " PAGE ", 6))) { receive_chat(line); return; }
     if (command && !strncmp(command, " STARTG_ABORT ", 14)) {
         char channel[48]; unsigned reason;
         if (g_starting_game && sscanf(line, ":%*s STARTG_ABORT %47s :%u", channel, &reason) == 2 && !strcmp(channel, g_current_channel)) {

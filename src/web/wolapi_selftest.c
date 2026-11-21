@@ -54,7 +54,7 @@ uint32_t hle_call_guest(uint32_t method, int count, const uint32_t *args) {
             copy_text(test_event_text[test_event_count], 4096, (char *)(uintptr_t)args[method == 0x10016 ? 4 : 3]);
         if (method == 0x10006)
             copy_text(test_event_text[test_event_count], 4096, (char *)(uintptr_t)args[2]);
-        if (method == 0x10028 || method == 0x10029) {
+        if (method == 0x10028 || method == 0x10029 || method == 0x1002C) {
             const uint16_t *text = (const uint16_t *)(uintptr_t)args[method == 0x10028 ? 4 : 3];
             for (unsigned i = 0; i < 4095 && text[i]; i++) test_event_wide[test_event_count][i] = text[i];
         }
@@ -656,6 +656,15 @@ int main(void) {
     assert(test_event_wide[before_chat][0] == 'h' && test_event_wide[before_chat][10] == 'd');
     assert(test_event_method[before_chat + 1] == 0x10029);
     assert(test_event_wide[before_chat + 1][0] == 0x0e2a && test_event_wide[before_chat + 1][5] == 0x0e35);
+    /* An announcement page reaches the UTF-16 page sink (ordinal 41, vtable slot 44); one to
+     * another nick is dropped, and the sender stays out of the roster. */
+    uint32_t before_page = test_event_count;
+    ra2_wolapi_receive_line(":YuriBOT!YuriBOT@local PAGE testuser :Restart in 5 minutes.");
+    ra2_wolapi_receive_line(":YuriBOT!YuriBOT@local PAGE another :ignore");
+    assert(invoke(g_chat.chat, 3, 0, NULL) == S_OK);
+    assert(test_event_count == before_page + 1 && g_user_count == before_users);
+    assert(test_event_method[before_page] == 0x1002C);
+    assert(test_event_wide[before_page][0] == 'R' && test_event_wide[before_page][20] == '.');
     wol_user recipient = { 0 };
     strcpy(recipient.name, "other");
     uint32_t whisper_args[] = { (uint32_t)(uintptr_t)&recipient, (uint32_t)(uintptr_t)"hi there" };

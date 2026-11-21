@@ -457,8 +457,9 @@ These went to the server unchanged, as public lobby lines, in both editions:
 `/ban bob 2 x`, `/unmute bob`, `/me waves` (`> privmsg #Lob_41_0 :/help`). Today's server
 broadcasts them: the other player saw `[lbzero1] : /help`.
 
-**Paging does not work at all in the browser build yet, for anyone.** `RequestUnicodePage`
-(and `RequestPage`, `RequestFind`) are `m_stub_*` returning `E_NOTIMPL` in `wolapi.c`. The
+**Sending a page does not work in the browser build yet, for anyone.** `RequestUnicodePage`
+(and `RequestPage`, `RequestFind`) are `m_stub_*` returning `E_NOTIMPL` in `wolapi.c`. Receiving one
+does since 21 November (RA2Web's announcements, "Announcements during a match" below). The
 YR Page button's dialog (`0xCF`) does the same as `/page`: it echoes
 `[lbzero1] help via dialog`, sends nothing and shows no status. RA2's lobby has no Page
 button.
@@ -666,6 +667,28 @@ The retail client takes the Quick Match lobby's operator for the matchmaker; the
 
 **Join announcements.** When a player joins a chat lobby the bot says `{nick} joined the channel. Welcome!` to the whole lobby, the joiner too (a channel `PRIVMSG` after the `JOIN`, `LobbyBot.announceJoin`), once per lobby per session, so coming back from a game room is not announced again. Both editions show an operator's channel line as `[YuriBOT] : ...`. The console settings `lobbyBot.announceJoins` and `lobbyBot.joinMessage` (`{nick}`, `{bot}`; empty says nothing) change it live; the private greeting (`lobbyBot.greeting`) still follows it.
 Evidence: `web/e2e/lobby-bot.mjs` in both editions (6 checks each: the bot selected on row 0, the join announcement), its `lobby-bot-players.png`.
+
+## Announcements during a match: a page from YuriBOT (21 November)
+
+A player in a match is in no chat lobby (the game leaves the lobby for the game room), so a lobby line never
+reached them. Natively the game shows a WOL **page** in a match: the page sinks (`IChatEvent` ordinal 25 ANSI,
+YR `0x007A9200`; ordinal 41 UTF-16, YR `0x007A9550`, both `ret 0x10`, so three arguments like the private
+message sink; found as slots 28 and 44 of `CChatEventSink`'s vtable in `GameMD.exe`) draw `(sender) text` as a
+grey message row. Outside a match the same line goes to the open transcript (lobby, game room, Quick Match) or
+opens Page Received (`0x11E`). The UTF-16 sink adds no "how to reply" row and arms no `/r` target, which suits an
+announcement.
+
+- RA2Web: `LobbyBot.announce` sent to every lobby (the console's Announce with no lobby ticked, `/announce`,
+  the restart countdown, scheduled and season announcements without a lobby filter) also sends
+  `:YuriBOT!YuriBOT@local PAGE <nick> :<line>` to every signed-in player not in a chat lobby. A lobby filter
+  pages nobody.
+- Shim: `receive_chat` takes `PAGE` to the player's own nick and calls ordinal 41 with the sender as a
+  stand-alone `wol_user` (not added to the roster) and the UTF-16 text; it logs `[wol] page from <nick>`.
+
+**Seen (both editions, `web/e2e/quickmatch.mjs --row 10`):** two guests in a Quick Match, `POST /admin/announce`
+mid-match: both pages received, both games logged the page, and the row `(YuriBOT) Announcement test ...: the
+server restarts soon.` shows at the top left of the match, typed out over about a second. The match kept running.
+Selftest: `wolapi_selftest.c` (a `PAGE` to the player reaches slot 44; one to another nick is dropped).
 
 ## Ladder and high-score records, rank in the lobby, the welcome's stats (21 November)
 

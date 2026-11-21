@@ -229,7 +229,7 @@ write `SettingsService.ts`. Env-only by design: the storage engine and its URL, 
 
 A bot in the chat lobbies, in the spirit of XWIS's: it greets players, answers `/help`, `/info` (rules), `/stats` (rank), `/top`,
 `/season`, `/who` (online), `/queue` and `/maps`, takes `/flag` (report), makes scheduled and event announcements (and the console's announcements go out as
-YuriBOT), and lets a moderator whose game nick is linked to an admin account `/mute`, `/kick` and ban for up to 24 hours from the
+YuriBOT; `/announce <text>` and `/announce restart <minutes>` for a linked admin or owner, which page players in a match too), and lets a moderator whose game nick is linked to an admin account `/mute`, `/kick` and ban for up to 24 hours from the
 lobby, each audited. **Seen:** `matchbot` is already a virtual user (listed in the Quick Match lobbies' NAMES, private messages to it
 routed in `WolServer.handlePrivmsg`), so YuriBOT follows that pattern, listed in the chat lobbies only, as their operator (21 November: the `woloper.pcx` icon, first in the Players list). The web shim
 reads a sender's nick as at most 9 characters (`wolapi.c:672`), and `/me` actions are stubs. **Seen (LB-0, both editions):** the chat box sends `/help` and every other `/` line
