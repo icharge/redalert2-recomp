@@ -27,8 +27,8 @@ export class FakeServer {
   readonly refusals = new Map<string, { status: number; errorCode: string }>();
   /** The tickets minted so far, by ticket: who for and for which edition. */
   readonly tickets = new Map<string, { user: string; edition: string; guest: boolean }>();
-  /** Existing game accounts (WOL accounts) and their passwords, for claims. */
-  readonly wolAccounts = new Map<string, string>([["Taken", "wolpassword"]]);
+  /** Existing game accounts (WOL accounts) and their passwords (`null`: launcher sign-in only), for claims. */
+  readonly wolAccounts = new Map<string, string | null>([["Taken", "wolpassword"]]);
   readonly owned = new Map<string, string>();
 
   private members = new Map<string, { member: Member; password: string; games: GameAccount[] }>();
@@ -105,6 +105,24 @@ export class FakeServer {
     const forced = this.refusals.get(`${method} ${route}`);
     if (forced) return this.refuse(forced.status, forced.errorCode);
 
+    const passwordRoute = /^POST \/v1\/members\/game-accounts\/([^/]+)\/password$/.exec(
+      `${method} ${route}`,
+    );
+    if (passwordRoute) {
+      if (!who) return this.refuse(401, "unauthorized");
+      const entry = this.members.get(who)!;
+      const nick = decodeURIComponent(passwordRoute[1] ?? "");
+      if (this.owned.get(nick) !== who) return this.refuse(403, "not_your_game_account");
+      if ((body.password ?? "").length < 8) return this.refuse(400, "bad_password");
+      this.wolAccounts.set(nick, body.password!);
+      entry.games = entry.games.map((g) => (g.username === nick ? { ...g, hasPassword: true } : g));
+      return this.respond(200, {
+        gameAccount: entry.games.find((g) => g.username === nick),
+        gameAccounts: entry.games,
+        maxGameAccounts: this.maxGameAccounts,
+      });
+    }
+
     switch (`${method} ${route}`) {
       case "POST /v1/members/register": {
         const key = (body.login ?? "").toLowerCase();
@@ -176,12 +194,21 @@ export class FakeServer {
         if (existing !== undefined) {
           const owner = this.owned.get(nick);
           if (owner && owner !== who) return this.refuse(409, "claimed");
-          if (existing !== body.password) return this.refuse(403, "wrong_password");
+          if (existing === null || existing !== body.password) {
+            return this.refuse(403, "wrong_password");
+          }
         } else {
-          this.wolAccounts.set(nick, body.password!);
+          if (body.password !== undefined && body.password.length < 8) {
+            return this.refuse(400, "bad_password");
+          }
+          this.wolAccounts.set(nick, body.password ?? null);
         }
         this.owned.set(nick, who);
-        const game = { username: nick, linkedAt: 2 };
+        const game = {
+          username: nick,
+          linkedAt: 2,
+          hasPassword: this.wolAccounts.get(nick) !== null,
+        };
         entry.games = [...entry.games, game];
         return this.respond(existing === undefined ? 201 : 200, {
           gameAccount: game,

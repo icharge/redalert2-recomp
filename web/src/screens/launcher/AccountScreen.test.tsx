@@ -121,6 +121,85 @@ describe("AccountScreen", () => {
     expect(screen.getByText("ABCDEFGHI", { selector: "li" })).toBeInTheDocument();
   });
 
+  it("the game account password is optional: left out by default, the account is launcher sign-in only", async () => {
+    const { server, store } = setup();
+    const s = store();
+    await signInAs(s);
+    show(s);
+    const user = userEvent.setup();
+    const password = screen.getByLabelText(/Game account password/);
+    expect(password).not.toBeRequired();
+    expect(password).toHaveValue("");
+    expect(
+      screen.getByText("Optional. Only needed to sign in without the launcher."),
+    ).toBeInTheDocument();
+    await user.type(screen.getByLabelText(/Game name/), "Nopass");
+    await user.click(screen.getByRole("button", { name: "CREATE OR CLAIM" }));
+    expect(await screen.findByText("Game account Nopass created.")).toBeInTheDocument();
+    // the request carried no password at all
+    expect(server.wolAccounts.get("Nopass")).toBeNull();
+    expect(screen.getByText(/Launcher sign-in only/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "SET GAME PASSWORD" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "CHANGE GAME PASSWORD" })).toBeNull();
+  });
+
+  it("a game account made with a password offers CHANGE GAME PASSWORD", async () => {
+    const { store } = setup();
+    const s = store();
+    await signInAs(s);
+    show(s);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText(/Game name/), "Haspass");
+    await user.type(screen.getByLabelText(/Game account password/), "game-pass-1");
+    await user.click(screen.getByRole("button", { name: "CREATE OR CLAIM" }));
+    expect(await screen.findByRole("button", { name: "CHANGE GAME PASSWORD" })).toBeInTheDocument();
+    expect(screen.queryByText(/Launcher sign-in only/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "SET GAME PASSWORD" })).toBeNull();
+  });
+
+  it("SET GAME PASSWORD opens a small form; a short password is refused, a good one is saved", async () => {
+    const { server, store } = setup();
+    const s = store();
+    await signInAs(s);
+    await s.addGameAccount("Nopass");
+    show(s);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "SET GAME PASSWORD" }));
+    const form = within(screen.getByRole("form", { name: "SET GAME PASSWORD" }));
+    await user.type(form.getByLabelText(/New game password/), "short");
+    await user.click(form.getByRole("button", { name: "SAVE PASSWORD" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("A password is 8 to 64 characters.");
+    expect(server.wolAccounts.get("Nopass")).toBeNull();
+    const field = form.getByLabelText(/New game password/);
+    await user.clear(field);
+    await user.type(field, "game-pass-2");
+    await user.click(form.getByRole("button", { name: "SAVE PASSWORD" }));
+    expect(await screen.findByText("Game password saved for Nopass.")).toBeInTheDocument();
+    expect(server.wolAccounts.get("Nopass")).toBe("game-pass-2");
+    expect(screen.queryByRole("form", { name: "SET GAME PASSWORD" })).toBeNull();
+    expect(screen.queryByText(/Launcher sign-in only/)).toBeNull();
+    expect(screen.getByRole("button", { name: "CHANGE GAME PASSWORD" })).toBeInTheDocument();
+    expect(server.log().at(-1)).toBe("POST /v1/members/game-accounts/Nopass/password");
+  });
+
+  it("CHANGE GAME PASSWORD replaces the password, and CANCEL leaves it alone", async () => {
+    const { server, store } = setup();
+    const s = store();
+    await signInAs(s);
+    await s.addGameAccount("Haspass", "game-pass-1");
+    show(s);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "CHANGE GAME PASSWORD" }));
+    await user.click(screen.getByRole("button", { name: "CANCEL" }));
+    expect(screen.queryByRole("form", { name: "CHANGE GAME PASSWORD" })).toBeNull();
+    expect(server.wolAccounts.get("Haspass")).toBe("game-pass-1");
+    await user.click(screen.getByRole("button", { name: "CHANGE GAME PASSWORD" }));
+    await user.type(screen.getByLabelText(/New game password/), "game-pass-2");
+    await user.click(screen.getByRole("button", { name: "SAVE PASSWORD" }));
+    expect(await screen.findByText("Game password saved for Haspass.")).toBeInTheDocument();
+    expect(server.wolAccounts.get("Haspass")).toBe("game-pass-2");
+  });
+
   it("shows the limit when the server says it is reached", async () => {
     const { server, store } = setup();
     const s = store();

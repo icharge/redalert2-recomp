@@ -21,6 +21,8 @@ export interface Member {
 export interface GameAccount {
   username: string;
   linkedAt: number;
+  /** false: "launcher sign-in only", no password can sign in to the game account (never the hash). */
+  hasPassword: boolean;
 }
 
 /** What register, login and refresh answer with. */
@@ -39,6 +41,12 @@ export interface GameAccountResult {
   gameAccount: GameAccount;
   /** true when the nick was created, false when an existing one was claimed. */
   created: boolean;
+  gameAccounts: GameAccount[];
+  maxGameAccounts: number;
+}
+
+export interface GameAccountPasswordResult {
+  gameAccount: GameAccount;
   gameAccounts: GameAccount[];
   maxGameAccounts: number;
 }
@@ -224,12 +232,28 @@ export class AccountClient {
     return this.bearer<Profile>("GET", "v1/members/me");
   }
 
-  /** `POST /v1/members/game-accounts`: creates the nick (201) or claims an existing one (200). */
-  addGameAccount(username: string, password: string): Promise<GameAccountResult> {
+  /**
+   * `POST /v1/members/game-accounts`: creates the nick (201) or claims an existing one (200). A new
+   * nick needs no password (an empty one is left out): it is then "launcher sign-in only". Claiming
+   * needs the existing account's password.
+   */
+  addGameAccount(username: string, password = ""): Promise<GameAccountResult> {
     return this.bearer<GameAccountResult>("POST", "v1/members/game-accounts", {
       username,
-      password,
+      ...(password === "" ? {} : { password }),
     });
+  }
+
+  /**
+   * `POST /v1/members/game-accounts/{nick}/password`: sets or changes the password the game's own
+   * login dialog asks for, for one of the member's game accounts.
+   */
+  setGameAccountPassword(nick: string, password: string): Promise<GameAccountPasswordResult> {
+    return this.bearer<GameAccountPasswordResult>(
+      "POST",
+      `v1/members/game-accounts/${encodeURIComponent(nick)}/password`,
+      { password },
+    );
   }
 
   /**

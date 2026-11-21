@@ -138,6 +138,23 @@ describe("AccountClient", () => {
     expect(claimed.created).toBe(false);
   });
 
+  it("creates a game account without a password, then sets one on its own route", async () => {
+    const { server, client } = setup();
+    const c = client();
+    await c.register("carol", "secret-pass");
+    const made = await c.addGameAccount("Carol");
+    expect(made.gameAccount).toMatchObject({ username: "Carol", hasPassword: false });
+    expect(server.wolAccounts.get("Carol")).toBeNull();
+    const set = await c.setGameAccountPassword("Carol", "game-pass-1");
+    expect(set.gameAccount).toMatchObject({ username: "Carol", hasPassword: true });
+    expect(set.gameAccounts[0]?.hasPassword).toBe(true);
+    expect(server.log().at(-1)).toBe("POST /v1/members/game-accounts/Carol/password");
+    await expect(c.setGameAccountPassword("Taken", "game-pass-1")).rejects.toMatchObject({
+      status: 403,
+      code: "not_your_game_account",
+    });
+  });
+
   it("refuses a second game account past the limit and a claim with a wrong password", async () => {
     const { client } = setup();
     const c = client();

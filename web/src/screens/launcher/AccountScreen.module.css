@@ -98,6 +98,16 @@
   letter-spacing: 0.1em;
 }
 
+.gamePassword {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: flex-start;
+}
+.gamePassword > .form {
+  align-self: stretch;
+}
+
 @media (max-width: 720px) {
   .forms {
     grid-template-columns: minmax(0, 1fr);

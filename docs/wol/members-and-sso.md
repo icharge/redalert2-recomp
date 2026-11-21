@@ -135,6 +135,13 @@ replaces the first game session.
   `member_game_accounts` row links it. Ratings follow because they are keyed by nick. It counts toward the limit.
 - **New game account**: created from the launcher's account screen under the member; `POST /register` keeps working
   and creates a game account with no member, so existing tools do not break.
+- **Game password optional** (decided 21 Nov 2026): a member plays through launch tickets, so the game account's password is
+  not needed to play. The create form leaves it out by default and the account is "launcher sign-in only": the server stores a
+  marker hash no password can match, so `/login`, the TCP gateway's session and a claim refuse it with the ordinary "invalid
+  login or password" and `/register` of the nick stays "taken", while ticket redeem and sessions work as before. The member may
+  set or change it later (`POST /v1/members/game-accounts/{nick}/password`; SET or CHANGE GAME PASSWORD on the account screen)
+  to sign in to the game's own login dialog or a native client. `GET /v1/members/me` shows `hasPassword` per game account.
+  Claiming an existing account still needs its password.
 - **Optional later**: require a member for ranked play (a setting), so a ranked nick is always tied to a person.
 
 ## Open: rating key

@@ -150,13 +150,96 @@ function CreateMember({ store }: { store: AccountStore }) {
   );
 }
 
+/**
+ * What a game account's password is for: the game's own login dialog and native clients. The
+ * launcher signs in without it, so a new game account starts "launcher sign-in only".
+ */
+function GamePassword({
+  store,
+  game,
+}: {
+  store: AccountStore;
+  game: { username: string; hasPassword: boolean };
+}) {
+  const { busy, failure, run, clear } = useAction();
+  const [open, setOpen] = useState(false);
+  const [password, setPassword] = useState("");
+  const [done, setDone] = useState<string | null>(null);
+  const verb = game.hasPassword ? "CHANGE GAME PASSWORD" : "SET GAME PASSWORD";
+  const close = () => {
+    setOpen(false);
+    setPassword("");
+    clear();
+  };
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    setDone(null);
+    void run(async () => {
+      await store.setGameAccountPassword(game.username, password);
+      setDone(`Game password saved for ${game.username}.`);
+      close();
+    });
+  };
+  return (
+    <div className={styles.gamePassword}>
+      <p className={page.status}>
+        {game.username}: {game.hasPassword ? "game password set" : "Launcher sign-in only"}
+      </p>
+      {open ? (
+        <form className={styles.form} onSubmit={submit} aria-label={verb}>
+          <Field
+            label={`New game password for ${game.username}`}
+            hint="8 to 64 characters. Used to sign in without the launcher"
+            type="password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            autoComplete="new-password"
+            required
+          />
+          {failure && (
+            <p className={page.failure} role="alert">
+              {failure}
+            </p>
+          )}
+          <div className={styles.actions}>
+            <button type="submit" className={page.primary} disabled={busy}>
+              {busy ? "SAVING…" : "SAVE PASSWORD"}
+            </button>
+            <button type="button" className={page.quiet} disabled={busy} onClick={close}>
+              CANCEL
+            </button>
+          </div>
+        </form>
+      ) : (
+        <div className={styles.actions}>
+          <button
+            type="button"
+            className={page.outline}
+            onClick={() => {
+              setDone(null);
+              setOpen(true);
+            }}
+          >
+            {verb}
+          </button>
+        </div>
+      )}
+      {done && (
+        <p className={`${page.status} ${page.ok}`} role="status">
+          {done}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function GameAccountPanel({
   store,
   gameAccounts,
   maxGameAccounts,
 }: {
   store: AccountStore;
-  gameAccounts: { username: string }[];
+  gameAccounts: { username: string; hasPassword: boolean }[];
   maxGameAccounts: number;
 }) {
   const { busy, failure, run, clear } = useAction();
@@ -195,6 +278,9 @@ function GameAccountPanel({
           ))}
         </ul>
       )}
+      {gameAccounts.map((game) => (
+        <GamePassword key={game.username} store={store} game={game} />
+      ))}
       {full ? (
         <p className={page.status}>
           This member has all the game accounts it can have: {gameAccounts.length} of{" "}
@@ -204,7 +290,7 @@ function GameAccountPanel({
         <form className={styles.form} onSubmit={submit}>
           <p className={page.status}>
             Your name in the online lobby. A new name is created; the name of a game account you
-            already have is claimed with its password.
+            already have is claimed with its password (not optional then).
           </p>
           <Field
             label="Game name"
@@ -219,13 +305,12 @@ function GameAccountPanel({
             required
           />
           <Field
-            label="Game account password"
-            hint="8 to 64 characters. For a new name, choose one; to claim a name, its current one"
+            label="Game account password (optional)"
+            hint="Optional. Only needed to sign in without the launcher."
             type="password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             autoComplete="off"
-            required
           />
           {failure && (
             <p className={page.failure} role="alert">

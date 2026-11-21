@@ -4,6 +4,7 @@ import {
   AccountError,
   OfflineError,
   type GameAccount,
+  type GameAccountPasswordResult,
   type GameAccountResult,
   type Member,
   type TicketEdition,
@@ -110,9 +111,28 @@ export class AccountStore {
   }
 
   /** Create or claim a game account; resolves with what happened. */
-  async addGameAccount(username: string, password: string): Promise<GameAccountResult> {
+  async addGameAccount(username: string, password = ""): Promise<GameAccountResult> {
     try {
       const result = await this.client.addGameAccount(username, password);
+      const current = this.state;
+      if (current.status === "member") {
+        this.set({
+          ...current,
+          gameAccounts: result.gameAccounts,
+          maxGameAccounts: result.maxGameAccounts,
+        });
+      }
+      return result;
+    } catch (error) {
+      this.ended(error);
+      throw error;
+    }
+  }
+
+  /** Set or change the game password of one of the member's game accounts. */
+  async setGameAccountPassword(nick: string, password: string): Promise<GameAccountPasswordResult> {
+    try {
+      const result = await this.client.setGameAccountPassword(nick, password);
       const current = this.state;
       if (current.status === "member") {
         this.set({
