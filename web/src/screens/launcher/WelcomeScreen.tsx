@@ -139,10 +139,23 @@ function RegisterForm({ store, onDone }: { store: AccountStore; onDone(): void }
   );
 }
 
+/**
+ * The navigation state the welcome page hands on: `/` then shows PLAY even while nothing is
+ * installed (its "no game installed" state, with INSTALL THE GAME) instead of coming back here.
+ */
+export const WELCOME_PASSED = { welcome: "passed" } as const;
+
+/** Whether a location state came from the welcome page moving the player on. */
+export function welcomePassed(state: unknown): boolean {
+  return (
+    typeof state === "object" && state !== null && "welcome" in state && state.welcome === "passed"
+  );
+}
+
 /** Where a player goes on from the welcome page. */
 function nextPage(installed: boolean, state: AccountState): string {
-  // a player with nothing installed has to bring the game in first
-  if (!installed) return "/install/guide";
+  // with nothing installed, PLAY shows its "no game installed" state and the way to install
+  if (!installed) return "/";
   // a member needs a game account (their online name) to play online
   if (state.status === "member" && state.gameAccounts.length === 0) return "/account";
   return "/";
@@ -168,16 +181,18 @@ export function WelcomeScreen({
     state.welcome === "redirect";
   // `/` can redirect here before the records are read again (BACK from an import just started):
   // once an install shows up, the page the player asked for is PLAY.
-  useEffect(() => {
-    if (redirected && installed) void navigate("/", { replace: true });
-  }, [redirected, installed, navigate]);
-
   const who = useAccount(store);
+  // a signed-in member is never held on this page: PLAY (or its "no game installed" state)
+  const member = who.status === "member";
+  useEffect(() => {
+    if (redirected && (installed || member))
+      void navigate("/", { replace: true, state: WELCOME_PASSED });
+  }, [redirected, installed, member, navigate]);
+
   const [tab, setTab] = useState<Tab>("register");
   const tabs = useId();
-  // a guest with nothing installed has to bring the game in first
-  const guest = installed ? "/" : "/install/guide";
-  const proceed = () => void navigate(nextPage(installed, store.getState()));
+  const proceed = () =>
+    void navigate(nextPage(installed, store.getState()), { state: WELCOME_PASSED });
 
   const onTabKey = (event: KeyboardEvent<HTMLButtonElement>) => {
     const step = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
@@ -268,7 +283,7 @@ export function WelcomeScreen({
           <div className={styles.or} aria-hidden="true">
             OR
           </div>
-          <Link to={guest} className={styles.guest}>
+          <Link to="/" state={WELCOME_PASSED} className={styles.guest}>
             PLAY AS GUEST
           </Link>
           <p className={styles.guestNote}>Guests play online unranked, with no clan.</p>

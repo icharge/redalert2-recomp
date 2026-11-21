@@ -98,7 +98,7 @@ describe("WelcomeScreen", () => {
     expect(screen.getByRole("tab", { name: "LOGIN" })).toHaveFocus();
   });
 
-  it("creates a member through the api, then goes to install when nothing is installed", async () => {
+  it("creates a member through the api, then goes to PLAY's no-game state when nothing is installed", async () => {
     const { server, store } = await show(false);
     const user = userEvent.setup();
     const form = within(screen.getByRole("form", { name: "Create account" }));
@@ -106,7 +106,7 @@ describe("WelcomeScreen", () => {
     await user.type(form.getByLabelText("Email (optional)"), "carol@example.com");
     await user.type(form.getByLabelText("Password"), "secret-pass");
     await user.click(form.getByRole("button", { name: "CREATE ACCOUNT" }));
-    expect(await screen.findByTestId("where")).toHaveTextContent("/install/guide");
+    expect((await screen.findByTestId("where")).textContent).toBe("/");
     expect(server.calls.some((call) => call.path === "/v1/members/register")).toBe(true);
     const state = store.getState();
     expect(state.status === "member" && state.member.login).toBe("carol");
@@ -171,10 +171,10 @@ describe("WelcomeScreen", () => {
       expect(store.getState().status).toBe("member");
     });
 
-    it("with nothing installed goes to the install guide", async () => {
+    it("with nothing installed goes to PLAY (its no-game state)", async () => {
       await memberLoggedOut(true, false);
       await login();
-      expect(await screen.findByTestId("where")).toHaveTextContent("/install/guide");
+      expect((await screen.findByTestId("where")).textContent).toBe("/");
     });
 
     it("a member without a game account goes to ACCOUNT to get one", async () => {
@@ -204,12 +204,9 @@ describe("WelcomeScreen", () => {
     expect(screen.getByTestId("where").textContent).toBe("/");
   });
 
-  it("a guest with nothing installed goes to the guide", async () => {
+  it("a guest with nothing installed goes to PLAY (its no-game state)", async () => {
     await show();
-    expect(screen.getByRole("link", { name: "PLAY AS GUEST" })).toHaveAttribute(
-      "href",
-      "/install/guide",
-    );
+    expect(screen.getByRole("link", { name: "PLAY AS GUEST" })).toHaveAttribute("href", "/");
     expect(screen.getByText("Guests play online unranked, with no clan.")).toBeInTheDocument();
   });
 

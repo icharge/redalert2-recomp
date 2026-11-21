@@ -19,7 +19,8 @@ import {
   SettingsScreen,
 } from "./screens/launcher/settings/SettingsScreen";
 import { Shell } from "./screens/launcher/Shell";
-import { WELCOME_REDIRECT, WelcomeScreen } from "./screens/launcher/WelcomeScreen";
+import { WELCOME_REDIRECT, WelcomeScreen, welcomePassed } from "./screens/launcher/WelcomeScreen";
+import { account, useAccount } from "./account/store";
 import { Play } from "./screens/Play";
 import {
   pickActiveInstall,
@@ -101,6 +102,7 @@ interface ModState {
 function Main() {
   const location = useLocation();
   const navigate = useNavigate();
+  const who = useAccount(account);
   const query = new URLSearchParams(location.search);
   const test = query.get("test") === "1";
   const dev = import.meta.env.DEV && query.has("dev");
@@ -318,8 +320,10 @@ function Main() {
         <Route
           path="/"
           element={
-            // a first run, and every visit while nothing is installed, opens on the welcome page
-            showWelcome(!!active) ? (
+            // a first run, and every visit while nothing is installed, opens on the welcome page,
+            // except once the welcome page moved the player on, or for a signed-in member: they
+            // get PLAY's "no game installed" state
+            showWelcome(!!active) && !welcomePassed(location.state) && who.status !== "member" ? (
               <Navigate to="/welcome" replace state={WELCOME_REDIRECT} />
             ) : (
               <PlayScreen
