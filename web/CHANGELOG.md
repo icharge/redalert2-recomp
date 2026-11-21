@@ -15,6 +15,10 @@ Changes since 0.2.1.
 
 ### Added
 
+- **A new welcome page**: a full-screen page with a CREATE ACCOUNT and LOGIN
+  panel beside the YuriNet title, and PLAY AS GUEST under them. New players
+  are asked to become members first; a guest plays online unranked, with no
+  clan.
 - **Quick Match and Quick Co-op on a YuriNET server**: the Quick Match
   button of Yuri's Revenge and of Red Alert 2 finds the server's Quick Match
   lobby instead of ending in "Matching Server Not Found", and Yuri's Revenge's

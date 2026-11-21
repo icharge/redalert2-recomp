@@ -12,7 +12,7 @@ export const NICK_MAX = 9;
 type Task = "idle" | "working";
 
 /** Runs a form's action once at a time and keeps the refusal's text for the form. */
-function useAction() {
+export function useAction() {
   const [task, setTask] = useState<Task>("idle");
   const [failure, setFailure] = useState<string | null>(null);
   const run = async (action: () => Promise<unknown>): Promise<boolean> => {

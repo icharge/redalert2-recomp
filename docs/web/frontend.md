@@ -44,7 +44,7 @@ web/
       launcher/
         Shell.tsx           the top bar (logo, PLAY / MODS / LADDER / CLAN / GAME, storage, who is signed in) and the game rail
         PlayScreen.tsx      the edition's art and title, the mod (PROFILE) picker, a guest's online name, PLAY, the status
-        WelcomeScreen.tsx   `/welcome`: what this is, bring your own game, guest or member
+        WelcomeScreen.tsx   `/welcome`: a full page (no bar, no rail): bring your own game, CREATE ACCOUNT / LOGIN, or PLAY AS GUEST
         AccountScreen.tsx   `/account`: member sign-in, the member's game account (nick), sign out
         LadderScreen.tsx    `/ladder`: the ranked 1v1 table, game and season pickers, the signed-in player's profile
         ClanScreen.tsx      `/clan` and `/clan/:tag`: your clan, its members and invitations, the public clan list
@@ -156,7 +156,7 @@ is never reused for another slot. Mod/font restarts reload the same game URL.
    opens without one and its own login dialog works as before. The loader clears and redeems the
    ticket, and the game's own auto-login then takes Internet straight to the lobby
    ([members-and-sso.md](../wol/members-and-sso.md); end to end: `web/e2e/launch-login.mjs`).
-   **Welcome** (`/welcome`) explains bring-your-own-game and the choice of guest or member;
+   **Welcome** (`/welcome`, outside the launcher shell) explains bring-your-own-game and offers CREATE ACCOUNT (the tab it opens on), LOGIN (the same store calls as Account) or PLAY AS GUEST; after a sign-in it goes to the install guide with nothing installed, to Account for a member with no game account, else to Play;
    **Account** (`/account`) signs a member in (login name or email), creates or claims their one
    game account ("1 of 1"), and signs out here or everywhere. The bar shows "Guest" or
    `member · nick`. The access token stays in memory; the refresh token is the server's `HttpOnly`

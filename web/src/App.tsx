@@ -312,6 +312,8 @@ function Main() {
 
   return (
     <Routes>
+      {/* the welcome page is a full page of its own: no top bar, no game rail */}
+      <Route path="/welcome" element={<WelcomeScreen installed={!!active} />} />
       <Route element={launcherShell}>
         <Route
           path="/"
@@ -338,7 +340,6 @@ function Main() {
             )
           }
         />
-        <Route path="/welcome" element={<WelcomeScreen installed={!!active} />} />
         <Route path="/install/guide" element={<InstallGuide />} />
         <Route path="/account" element={<AccountScreen />} />
         <Route path="/ladder" element={<LadderScreen edition={edition} />} />

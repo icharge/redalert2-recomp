@@ -1,18 +1,164 @@
-import { useEffect } from "react";
+import {
+  useEffect,
+  useId,
+  useState,
+  type FormEvent,
+  type InputHTMLAttributes,
+  type KeyboardEvent,
+} from "react";
 import { Link, useLocation, useNavigate } from "react-router";
+import { OfflineError, describeAccountError } from "../../account/api";
+import { account, useAccount, type AccountState, type AccountStore } from "../../account/store";
+import { BrandImage } from "../../components/BrandImage";
+import { LOGO_SRC } from "../../components/brand";
 import { KeyArt } from "../../components/KeyArt";
+import { appPath } from "../../paths";
 import { writeWelcomeDismissed } from "../../storage/welcome-preferences";
+import { useAction } from "./AccountScreen";
 import page from "./Page.module.css";
 import styles from "./WelcomeScreen.module.css";
 
 /** The navigation state of the launcher's own redirect from `/` (a first run, nothing installed). */
 export const WELCOME_REDIRECT = { welcome: "redirect" } as const;
 
+type Tab = "login" | "register";
+const TABS: { id: Tab; label: string }[] = [
+  { id: "login", label: "LOGIN" },
+  { id: "register", label: "CREATE ACCOUNT" },
+];
+
+function Field({
+  label,
+  hint,
+  ...input
+}: { label: string; hint?: string } & InputHTMLAttributes<HTMLInputElement>) {
+  const id = useId();
+  return (
+    <div className={styles.field}>
+      <label htmlFor={id} className={styles.fieldLabel}>
+        {label}
+      </label>
+      <input
+        id={id}
+        className={styles.input}
+        aria-describedby={hint ? `${id}-hint` : undefined}
+        {...input}
+      />
+      {hint && (
+        <span id={`${id}-hint`} className={styles.hint}>
+          {hint}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function LoginForm({ store, onDone }: { store: AccountStore; onDone(): void }) {
+  const { busy, failure, run } = useAction();
+  const [login, setLogin] = useState("");
+  const [password, setPassword] = useState("");
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    void run(() => store.signIn(login.trim(), password)).then((ok) => ok && onDone());
+  };
+  return (
+    <form className={styles.form} onSubmit={submit} aria-label="Login">
+      <Field
+        label="Name or email"
+        value={login}
+        onChange={(event) => setLogin(event.target.value)}
+        autoComplete="username"
+        required
+      />
+      <Field
+        label="Password"
+        type="password"
+        value={password}
+        onChange={(event) => setPassword(event.target.value)}
+        autoComplete="current-password"
+        required
+      />
+      {failure && (
+        <p className={page.failure} role="alert">
+          {failure}
+        </p>
+      )}
+      <button type="submit" className={`${page.primary} ${styles.submit}`} disabled={busy}>
+        {busy ? "SIGNING IN…" : "LOGIN"}
+      </button>
+    </form>
+  );
+}
+
+function RegisterForm({ store, onDone }: { store: AccountStore; onDone(): void }) {
+  const { busy, failure, run } = useAction();
+  const [login, setLogin] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    void run(() => store.register(login.trim(), password, email.trim() || undefined)).then(
+      (ok) => ok && onDone(),
+    );
+  };
+  return (
+    <form className={styles.form} onSubmit={submit} aria-label="Create account">
+      <Field
+        label="Login"
+        hint="3 to 32 letters, digits, dots, dashes or underscores"
+        value={login}
+        onChange={(event) => setLogin(event.target.value)}
+        autoComplete="username"
+        required
+      />
+      <Field
+        label="Email (optional)"
+        type="email"
+        value={email}
+        onChange={(event) => setEmail(event.target.value)}
+        autoComplete="email"
+      />
+      <Field
+        label="Password"
+        hint="8 to 64 characters"
+        type="password"
+        value={password}
+        onChange={(event) => setPassword(event.target.value)}
+        autoComplete="new-password"
+        required
+      />
+      {failure && (
+        <p className={page.failure} role="alert">
+          {failure}
+        </p>
+      )}
+      <button type="submit" className={`${page.primary} ${styles.submit}`} disabled={busy}>
+        {busy ? "CREATING…" : "CREATE ACCOUNT"}
+      </button>
+    </form>
+  );
+}
+
+/** Where a player goes on from the welcome page. */
+function nextPage(installed: boolean, state: AccountState): string {
+  // a player with nothing installed has to bring the game in first
+  if (!installed) return "/install/guide";
+  // a member needs a game account (their online name) to play online
+  if (state.status === "member" && state.gameAccounts.length === 0) return "/account";
+  return "/";
+}
+
 /**
  * The first page a new player sees: what this is, that they bring their own copy of the game, and
- * the choice to play as a guest or sign in as a member.
+ * the choice to become a member (the tab it opens on), log in, or play as a guest.
  */
-export function WelcomeScreen({ installed }: { installed: boolean }) {
+export function WelcomeScreen({
+  installed,
+  store = account,
+}: {
+  installed: boolean;
+  store?: AccountStore;
+}) {
   const navigate = useNavigate();
   const state: unknown = useLocation().state;
   const redirected =
@@ -25,77 +171,110 @@ export function WelcomeScreen({ installed }: { installed: boolean }) {
   useEffect(() => {
     if (redirected && installed) void navigate("/", { replace: true });
   }, [redirected, installed, navigate]);
+
+  const who = useAccount(store);
+  const [tab, setTab] = useState<Tab>("register");
+  const tabs = useId();
   // a guest with nothing installed has to bring the game in first
   const guest = installed ? "/" : "/install/guide";
+  const proceed = () => void navigate(nextPage(installed, store.getState()));
+
+  const onTabKey = (event: KeyboardEvent<HTMLButtonElement>) => {
+    const step = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
+    if (!step) return;
+    event.preventDefault();
+    const at = TABS.findIndex((entry) => entry.id === tab);
+    const next = TABS[(at + step + TABS.length) % TABS.length]?.id ?? tab;
+    setTab(next);
+    document.getElementById(`${tabs}-${next}`)?.focus();
+  };
+
   return (
     <div className={styles.screen}>
-      <KeyArt edition={null} dim={0.55} />
-      <div className={`${page.page} ${styles.page}`}>
+      <KeyArt edition={null} dim={0.4} />
+      <div className={styles.content}>
         <header className={styles.intro}>
+          <BrandImage
+            src={appPath(LOGO_SRC)}
+            alt="YuriNet"
+            className={styles.logo}
+            fallback={<span className={styles.logoText}>YURINET</span>}
+          />
           <p className={styles.kicker}>WELCOME TO YURINET</p>
-          <h1 className={styles.title}>RED ALERT 2 AND YURI’S REVENGE, IN YOUR BROWSER</h1>
+          <h1 className={styles.title}>
+            <span>RED ALERT 2</span> <span>ONLINE</span>
+          </h1>
           <p className={styles.lead}>
-            The original games, recompiled to run in this page: campaign, skirmish, LAN and online
-            play, with your saves kept in this browser.
+            Bring your own copy of the game. Its files stay in this browser and are never uploaded.{" "}
+            <Link to="/install/guide" className={styles.guide}>
+              Install guide
+            </Link>
           </p>
         </header>
 
-        <section className={page.panel} aria-labelledby="welcome-byog">
-          <h2 id="welcome-byog" className={page.label}>
-            BRING YOUR OWN GAME
-          </h2>
-          <p className={styles.text}>
-            You play with your own copy: the original CDs, The First Decade, the EA App (Origin) or
-            Steam. Nothing of the game is downloaded from this site. You pick your game folder, and
-            the launcher copies the files the game reads into this browser&apos;s storage. They are
-            never uploaded.
-          </p>
-          <div className={styles.actions}>
-            <Link to="/install/guide" className={page.outline}>
-              READ THE INSTALL GUIDE
-            </Link>
-            {!installed && (
-              <Link to="/import" className={page.quiet}>
-                I HAVE MY GAME FOLDER
-              </Link>
-            )}
+        <section className={styles.panel} aria-label="Account">
+          {who.status === "member" ? (
+            <div className={styles.member}>
+              <p className={styles.memberLabel}>SIGNED IN AS</p>
+              <p className={styles.memberName}>{who.member.login}</p>
+              <button
+                type="button"
+                className={`${page.primary} ${styles.submit}`}
+                onClick={proceed}
+              >
+                CONTINUE
+              </button>
+            </div>
+          ) : (
+            <>
+              <div role="tablist" aria-label="Account" className={styles.tabs}>
+                {TABS.map((entry) => (
+                  <button
+                    key={entry.id}
+                    id={`${tabs}-${entry.id}`}
+                    type="button"
+                    role="tab"
+                    className={styles.tab}
+                    aria-selected={tab === entry.id}
+                    aria-controls={`${tabs}-panel`}
+                    tabIndex={tab === entry.id ? 0 : -1}
+                    onClick={() => setTab(entry.id)}
+                    onKeyDown={onTabKey}
+                  >
+                    {entry.label}
+                  </button>
+                ))}
+              </div>
+              <div role="tabpanel" id={`${tabs}-panel`} aria-labelledby={`${tabs}-${tab}`}>
+                {who.status === "offline" && (
+                  <p className={`${page.warn} ${styles.notice}`} role="status">
+                    {describeAccountError(new OfflineError())}
+                  </p>
+                )}
+                {who.status === "guest" && who.notice && (
+                  <p className={`${page.warn} ${styles.notice}`} role="status">
+                    {who.notice}
+                  </p>
+                )}
+                {tab === "login" ? (
+                  <LoginForm store={store} onDone={proceed} />
+                ) : (
+                  <RegisterForm store={store} onDone={proceed} />
+                )}
+              </div>
+            </>
+          )}
+
+          <div className={styles.or} aria-hidden="true">
+            OR
           </div>
-        </section>
-
-        <section className={styles.choices} aria-labelledby="welcome-how">
-          <h2 id="welcome-how" className={`${page.label} ${styles.choicesLabel}`}>
-            HOW DO YOU WANT TO PLAY?
-          </h2>
-          <article className={`${page.panel} ${styles.choice}`} aria-labelledby="welcome-guest">
-            <h3 id="welcome-guest" className={styles.choiceTitle}>
-              GUEST
-            </h3>
-            <p className={styles.text}>
-              Play straight away, with no account. Your games, saves and settings stay in this
-              browser.
-            </p>
-            <Link to={guest} className={page.primary}>
-              PLAY AS GUEST
-            </Link>
-          </article>
-          <article className={`${page.panel} ${styles.choice}`} aria-labelledby="welcome-member">
-            <h3 id="welcome-member" className={styles.choiceTitle}>
-              MEMBER
-            </h3>
-            <p className={styles.text}>
-              A member account keeps your online name and signs you in to the game&apos;s online
-              lobby without typing.
-            </p>
-            <Link to="/account" className={page.outline}>
-              SIGN IN
-            </Link>
-          </article>
-        </section>
-
-        <footer className={styles.footer}>
+          <Link to={guest} className={styles.guest}>
+            PLAY AS GUEST
+          </Link>
+          <p className={styles.guestNote}>Guests play online unranked, with no clan.</p>
           <button
             type="button"
-            className={page.quiet}
+            className={styles.dismiss}
             onClick={() => {
               writeWelcomeDismissed();
               void navigate("/");
@@ -103,7 +282,7 @@ export function WelcomeScreen({ installed }: { installed: boolean }) {
           >
             DON&apos;T SHOW THIS AGAIN
           </button>
-        </footer>
+        </section>
       </div>
     </div>
   );
