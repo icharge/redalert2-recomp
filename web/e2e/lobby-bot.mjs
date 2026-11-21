@@ -162,14 +162,15 @@ try {
       (w) => w.dir === "<" && w.line.includes(`:${b.nick}!`) && w.line.includes(" JOIN "),
     ),
   );
-  // b's join announced by the bot: a channel line (not private) that both players receive
+  // b's join announced by the bot: a channel line (not private) that both players receive; a NOTICE
+  // (shown without "[YuriBOT] :") while lobbyBot.namelessJoins is on, the default
   for (const run of [a, b]) {
     await until(run, `${BOT} announcing ${b.nick}`, () =>
       run.wire.some(
         (w) =>
           w.dir === "<" &&
           w.line.startsWith(`:${BOT}!`) &&
-          w.line.includes(`PRIVMSG ${lobby} :${b.nick} joined the channel`),
+          new RegExp(` (PRIVMSG|NOTICE) ${lobby} :${b.nick} joined the channel`).test(w.line),
       ),
     );
   }

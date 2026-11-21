@@ -31,7 +31,8 @@
 //   --row 9     one guest and one member in one Quick Match; the match is played, one side surrenders, and
 //               nobody is scored (ladder unchanged; the reports get 404 "Unknown native match").
 //   --row 10    two guests in a match; the admin's POST /admin/announce pages both, and each game takes the
-//               page (shots announce-a, announce-b show its grey message row).
+//               page (shots announce-a, announce-b show its grey message row). With --nameless the setting
+//               lobbyBot.namelessAnnouncements is on for the row: a NOTICE, and the row shows the text alone.
 //
 // Options: --server http://127.0.0.1:9090, --server-log FILE (the server's stdout), --label NAME, --guests,
 // plus the shared ones of lib.mjs (--game, --shots, --headed). Scratch: --shots.
@@ -48,6 +49,7 @@ const server = option("--server", "http://127.0.0.1:9090");
 const serverLog = option("--server-log", null);
 const label = option("--label", "quickmatch");
 const row = Number(option("--row", "1"));
+const nameless = argv.includes("--nameless");
 const wantMap = option("--map", null);
 const hold = Number(option("--hold", "65"));
 const minutes = Number(option("--minutes", "3"));
@@ -640,17 +642,30 @@ async function rowAnnounce() {
   await startMatch(a, b);
   const text = `Announcement test ${tag}: the server restarts soon.`;
   const marks = [a, b].map((run) => ({ wire: run.wire.length, log: run.all.length }));
-  const sent = await admin("POST", "/admin/announce", { text });
+  const setting = "/admin/settings/lobbyBot.namelessAnnouncements";
+  if (nameless) info(`nameless: ${JSON.stringify(await admin("PUT", setting, { value: true }))}`);
+  let sent;
+  try {
+    sent = await admin("POST", "/admin/announce", { text });
+  } finally {
+    if (nameless) await admin("DELETE", setting);
+  }
   info(`announce: ${JSON.stringify(sent)}`);
+  const command = nameless ? "NOTICE" : "PAGE";
   for (const [i, run] of [a, b].entries()) {
-    await until(run, "the PAGE from YuriBOT", () =>
+    await until(run, `the ${command} from YuriBOT`, () =>
       run.wire
         .slice(marks[i].wire)
-        .some((w) => w.dir === "<" && / PAGE /.test(w.line) && w.line.includes(text)),
+        .some((w) => w.dir === "<" && w.line.includes(` ${command} `) && w.line.includes(text)),
     );
-    await waitNative(run, "[wol] page from YuriBOT", marks[i].log, 15000);
+    await waitNative(
+      run,
+      `[wol] ${nameless ? "notice" : "page"} from YuriBOT`,
+      marks[i].log,
+      15000,
+    );
   }
-  check("both players in the match were paged and their games took the page");
+  check(`both players in the match got the ${command} and their games took it`);
   // the game types the row out a character at a time
   await a.page.waitForTimeout(4000);
   await Promise.all([a.shot("announce-a"), b.shot("announce-b")]);

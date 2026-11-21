@@ -841,6 +841,15 @@ CHAT_TIME_SITES = {
     'gamemd': (0x005E2775, '8d54240c', 0x005E2779, 0x005E2820),
     'game': (0x005C2CF5, '8d54240c', 0x005C2CF9, 0x005C2DA0),
 }
+# The MOTD's rows come from the welcome runner (YR 0x00787770, VERA's "MOTD's transcript rows"): one
+# call to the chat add per row and one for the blank row after them. They keep no time. A lifted call
+# pushes a placeholder, not its return address, so the chat add cannot tell who called; instead the
+# host is told around each of these calls: on after the push before it (one byte, checked), off after
+# the instruction after it. (the call, the chat add it calls)
+CHAT_TIME_MOTD_CALLS = {
+    'gamemd': ((0x00787AAE, 0x005E2700), (0x00787ADD, 0x005E2700)),
+    'game': ((0x00743A70, 0x005C2C80), (0x00743A9F, 0x005C2C80)),
+}
 
 
 def chat_time_patches(code, cs, target):
@@ -850,8 +859,41 @@ def chat_time_patches(code, cs, target):
     if code[va - cs:va - cs + len(raw)] != raw or not _call_matches(code, cs, call, add):
         print('[*] chat_time_patches: the chat add at 0x%08X does not match this build; no chat times' % va)
         return {}
-    return {va: ('{ extern void web_chat_time(uint32_t); web_chat_time(edx); } '
-                 '/* browser chat times, run_lift.py chat_time_patches */')}
+    patches = {va: ('{ extern void web_chat_time(uint32_t); web_chat_time(edx); } '
+                    '/* browser chat times, run_lift.py chat_time_patches */')}
+    motd = CHAT_TIME_MOTD_CALLS[target]
+    if all(_call_matches(code, cs, site, chat_add) and 0x50 <= code[site - 1 - cs] <= 0x57
+           for site, chat_add in motd):
+        for site, _ in motd:
+            patches[site - 1] = ('{ extern void web_chat_motd(int); web_chat_motd(1); } '
+                                 '/* the MOTD row next: no time, run_lift.py chat_time_patches */')
+            patches[site + 5] = '{ extern void web_chat_motd(int); web_chat_motd(0); }'
+    else:
+        print('[*] chat_time_patches: the MOTD row calls do not match this build; the MOTD gets times')
+    return patches
+
+
+# A page shown during a match (docs/wol/handoff-wolapi.md, "Lines without the bot's name"): the UTF-16
+# page sink (IChatEvent ordinal 41; YR 0x007A9550, RA2 0x00762C20) formats "(%hs) %s" into a stack
+# buffer, then posts it with MessageListClass::Add_Message (YR 0x005D3BA0, RA2 0x005B4DA0) as a grey
+# row. After the format's `add esp, 0x10` the buffer is at [esp+0x14] (YR) or [esp+0x10] (RA2); the host
+# cuts the sender off a line the server sent as a NOTICE, so it shows as the text alone. Byte-checked.
+BARE_PAGE_SITES = {
+    # (the add after the format call, its bytes, the buffer's esp offset, the Add_Message call, its target)
+    'gamemd': (0x007A962A, '83c410', 0x14, 0x007A965F, 0x005D3BA0),
+    'game': (0x00762C6B, '83c410', 0x10, 0x00762CA0, 0x005B4DA0),
+}
+
+
+def bare_page_patches(code, cs, target):
+    """Show a page the server marked as the bot's notice without "(sender) " during a match."""
+    va, shape, offset, call, add = BARE_PAGE_SITES[target]
+    raw = bytes.fromhex(shape)
+    if code[va - cs:va - cs + len(raw)] != raw or not _call_matches(code, cs, call, add):
+        print('[*] bare_page_patches: the page sink at 0x%08X does not match this build; pages keep the sender' % va)
+        return {}
+    return {va: ('{ extern void web_bare_page(uint32_t); web_bare_page(esp + 0x%Xu); } '
+                 '/* browser: a bot notice without its sender, run_lift.py bare_page_patches */' % offset)}
 
 
 # Red Alert 2 itself (game.exe, the same install) is a second target: its own
@@ -1732,7 +1774,7 @@ def targets():
                                                  **live_resize_menu_patches(code, cs),
                                                  **web_exit_confirmation_patches(code, cs, 'gamemd'),
                                                  **web_url_patches(code, cs, 'gamemd'),
-                                                 **wol_icon_surface_patches(code, cs, 'gamemd'), **chat_time_patches(code, cs, 'gamemd'),
+                                                 **wol_icon_surface_patches(code, cs, 'gamemd'), **chat_time_patches(code, cs, 'gamemd'), **bare_page_patches(code, cs, 'gamemd'),
                                                  **net_timing_event_patches(code, cs, 'gamemd')}),
         'game': dict(exe=os.path.join(_HERE, 'game', 'game.exe'),
                      catalog=os.path.join(_HERE, 'work', 'game', 'functions.json'),
@@ -1762,7 +1804,7 @@ def targets():
                                                **reconnect_patches(code, cs, 'game'),
                                                **live_resize_patches(code, cs, 'game'),
                                                **web_url_patches(code, cs, 'game'),
-                                               **wol_icon_surface_patches(code, cs, 'game'), **chat_time_patches(code, cs, 'game'),
+                                               **wol_icon_surface_patches(code, cs, 'game'), **chat_time_patches(code, cs, 'game'), **bare_page_patches(code, cs, 'game'),
                                                **net_timing_event_patches(code, cs, 'game')}),
     }
 

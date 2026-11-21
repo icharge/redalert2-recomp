@@ -21,6 +21,11 @@ static uint32_t test_class_count;
 static uint32_t test_event_count, test_event_method[128], test_event_args[128][8];
 static char test_event_text[128][4096];
 static uint16_t test_event_wide[128][4096];
+static uint16_t test_event_shown[128][0x400]; /* the line as the game would show it */
+static int wide_is(const uint16_t *wide, const char *text) {
+    for (; *text; text++, wide++) if (*wide != (uint8_t)*text) return 0;
+    return *wide == 0;
+}
 static uint32_t test_retry_results, test_retry_args[4];
 static uint32_t invoke(uint32_t object, unsigned slot, int count, const uint32_t *args);
 
@@ -57,6 +62,21 @@ uint32_t hle_call_guest(uint32_t method, int count, const uint32_t *args) {
         if (method == 0x10028 || method == 0x10029 || method == 0x1002C) {
             const uint16_t *text = (const uint16_t *)(uintptr_t)args[method == 0x10028 ? 4 : 3];
             for (unsigned i = 0; i < 4095 && text[i]; i++) test_event_wide[test_event_count][i] = text[i];
+            if (method != 0x10029) {
+                /* As the game: "[sender] : text" through the chat add's patch, "(sender) text"
+                 * through the in-match page post's (run_lift.py chat_time_patches, bare_page_patches). */
+                const wol_user *from = (const wol_user *)(uintptr_t)args[method == 0x10028 ? 3 : 2];
+                uint16_t *line = test_event_shown[test_event_count];
+                unsigned n = 0;
+                const char *head = method == 0x10028 ? "[" : "(", *tail = method == 0x10028 ? "] : " : ") ";
+                for (const char *c = head; *c; c++) line[n++] = (uint8_t)*c;
+                for (const char *c = from->name; *c; c++) line[n++] = (uint8_t)*c;
+                for (const char *c = tail; *c; c++) line[n++] = (uint8_t)*c;
+                for (unsigned i = 0; i < 0x300 && text[i]; i++) line[n++] = text[i];
+                line[n] = 0;
+                if (method == 0x10028) web_chat_time((uint32_t)(uintptr_t)line);
+                else web_bare_page((uint32_t)(uintptr_t)line);
+            }
         }
         memcpy(test_event_args[test_event_count++], args, count * sizeof *args);
         if (method == 0x20005 && test_retry_results) {
@@ -646,6 +666,7 @@ int main(void) {
     assert(strcmp(test_event_text[events_before_motd], "Welcome\nHave fun") == 0);
     /* Chat uses the real Unicode callbacks without putting whisper senders in the roster. */
     uint32_t before_chat = test_event_count, before_users = g_user_count;
+    EM_ASM({ Module.ra2WolChatTime = false; });
     ra2_wolapi_receive_line(":other!local PRIVMSG #testuser :hello world");
     ra2_wolapi_receive_line(":stranger!local PRIVMSG testuser :\xe0\xb8\xaa\xe0\xb8\xa7\xe0\xb8\xb1\xe0\xb8\xaa\xe0\xb8\x94\xe0\xb8\xb5");
     ra2_wolapi_receive_line(":other!local PRIVMSG #elsewhere :ignore");
@@ -661,12 +682,13 @@ int main(void) {
      * 0x400-character buffer never overrun, and nothing with the switch off. */
     {
         static uint16_t line[0x400];
-        static const struct { int day, hour, minute, on; const char *in, *out; } cases[] = {
-            { 21, 9, 5, 1, "[other] : first", "-- 21 Nov 2026 --\n09:05 [other] : first" },
-            { 21, 9, 6, 1, "testuser : mine", "09:06 testuser : mine" },
-            { 21, 9, 6, 1, "  ", "  " },
-            { 21, 9, 7, 0, "[other] : off", "[other] : off" },
-            { 22, 0, 1, 1, "[other] : next day", "-- 22 Nov 2026 --\n00:01 [other] : next day" },
+        static const struct { int day, hour, minute, on, motd; const char *in, *out; } cases[] = {
+            { 21, 9, 4, 1, 1, "Welcome to the server", "Welcome to the server" },
+            { 21, 9, 5, 1, 0, "[other] : first", "-- 21 Nov 2026 --\n09:05 [other] : first" },
+            { 21, 9, 6, 1, 0, "testuser : mine", "09:06 testuser : mine" },
+            { 21, 9, 6, 1, 0, "  ", "  " },
+            { 21, 9, 7, 0, 0, "[other] : off", "[other] : off" },
+            { 22, 0, 1, 1, 0, "[other] : next day", "-- 22 Nov 2026 --\n00:01 [other] : next day" },
         };
         for (unsigned c = 0; c < sizeof cases / sizeof cases[0]; c++) {
             memset(line, 0, sizeof line);
@@ -675,7 +697,9 @@ int main(void) {
                 Module.ra2WolChatTime = !!$3;
                 Module.ra2WolChatNow = function() { return new Date(2026, 10, $0, $1, $2); };
             }, cases[c].day, cases[c].hour, cases[c].minute, cases[c].on);
+            web_chat_motd(cases[c].motd);
             web_chat_time((uint32_t)(uintptr_t)line);
+            web_chat_motd(0);
             unsigned i = 0;
             for (; cases[c].out[i]; i++) assert(line[i] == (uint16_t)cases[c].out[i]);
             assert(line[i] == 0);
@@ -685,7 +709,22 @@ int main(void) {
         EM_ASM({ Module.ra2WolChatNow = function() { return new Date(2026, 10, 22, 0, 2); }; });
         web_chat_time((uint32_t)(uintptr_t)line);
         assert(line[0] == '0' && line[5] == ' ' && line[6] == 'x' && line[0x3FE] == 'x' && line[0x3FF] == 0);
-        EM_ASM({ delete Module.ra2WolChatTime; delete Module.ra2WolChatNow; });
+        EM_ASM({ Module.ra2WolChatTime = false; delete Module.ra2WolChatNow; });
+    }
+    /* A NOTICE shows without its sender (LB-9, LB-10): to the channel through the public sink,
+     * to the player through the page sink; the line the game formats keeps the text alone. A
+     * PRIVMSG keeps its sender, and a NOTICE to another nick is dropped. */
+    {
+        uint32_t before = test_event_count;
+        ra2_wolapi_receive_line(":YuriBOT!YuriBOT@local NOTICE #testuser :zz joined the channel.");
+        ra2_wolapi_receive_line(":YuriBOT!YuriBOT@local PRIVMSG #testuser :a reply");
+        ra2_wolapi_receive_line(":YuriBOT!YuriBOT@local NOTICE testuser :Restart soon.");
+        ra2_wolapi_receive_line(":YuriBOT!YuriBOT@local NOTICE another :ignore");
+        assert(invoke(g_chat.chat, 3, 0, NULL) == S_OK);
+        assert(test_event_count == before + 3 && g_user_count == before_users);
+        assert(test_event_method[before] == 0x10028 && wide_is(test_event_shown[before], "zz joined the channel."));
+        assert(test_event_method[before + 1] == 0x10028 && wide_is(test_event_shown[before + 1], "[YuriBOT] : a reply"));
+        assert(test_event_method[before + 2] == 0x1002C && wide_is(test_event_shown[before + 2], "Restart soon."));
     }
     /* An announcement page reaches the UTF-16 page sink (ordinal 41, vtable slot 44); one to
      * another nick is dropped, and the sender stays out of the roster. */
@@ -822,6 +861,27 @@ int main(void) {
     assert(test_retry_results == 2);
     test_retry_results = 0;
     invalidate_reports();
+    /* The received-line formats lose the space before the colon, only as shipped: a second run
+     * leaves them as they are. The image addresses are borrowed and restored. */
+    {
+#ifdef RA2_TARGET_GAME
+        uint16_t *pub = (uint16_t *)(uintptr_t)0x007FE064u, *priv = (uint16_t *)(uintptr_t)0x007FE07Cu;
+#else
+        uint16_t *pub = (uint16_t *)(uintptr_t)0x0084AFB0u, *priv = (uint16_t *)(uintptr_t)0x0084AFC8u;
+#endif
+        uint16_t saved_pub[12], saved_priv[12];
+        memcpy(saved_pub, pub, sizeof saved_pub);
+        memcpy(saved_priv, priv, sizeof saved_priv);
+        const char *a = "[%hs] : %s", *b = "%hs : %s";
+        for (unsigned i = 0; i <= strlen(a); i++) pub[i] = (uint8_t)a[i];
+        for (unsigned i = 0; i <= strlen(b); i++) priv[i] = (uint8_t)b[i];
+        tighten_chat_formats();
+        assert(wide_is(pub, "[%hs]: %s") && wide_is(priv, "%hs: %s"));
+        tighten_chat_formats();
+        assert(wide_is(pub, "[%hs]: %s") && wide_is(priv, "%hs: %s"));
+        memcpy(pub, saved_pub, sizeof saved_pub);
+        memcpy(priv, saved_priv, sizeof saved_priv);
+    }
     puts("WOLAPI COM startup ABI: PASS");
     return 0;
 }

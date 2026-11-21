@@ -901,13 +901,22 @@ static void complete_channel_leave(wol_user *user) {
 /* A PRIVMSG, or a PAGE (RA2Web's announcements to a player outside the chat lobbies,
  * docs/wol/handoff-wolapi.md): the game's UTF-16 page sink (ordinal 41, YR 0x007A9550,
  * three arguments like the private one) shows "(sender) text" as a grey row during a
- * match, and in the transcript or the Page Received dialog outside one. */
+ * match, and in the transcript or the Page Received dialog outside one.
+ *
+ * A NOTICE is RA2Web's mark for a line shown without its sender (LB-9, LB-10; the bot's
+ * announcements and join lines): to the channel it goes to the public sink, to the player
+ * to the page sink, as a PRIVMSG or PAGE would, and g_bare_text holds its text while the
+ * sink runs. The game formats the line with the sender as always; the lifted chat add
+ * (web_chat_time) and the in-match page post (web_bare_page) then keep only the text
+ * (docs/wol/handoff-wolapi.md, "Lines without the bot's name"). */
+static const uint16_t *g_bare_text;
 static void receive_chat(const char *line) {
     char sender[10], target[48], command[16];
     if (sscanf(line, ":%9[^! ]%*s %15s %47s", sender, command, target) != 3) return;
-    int page = !strcmp(command, "PAGE");
-    if (!page && strcmp(command, "PRIVMSG")) return;
-    int public = !page && target[0] == '#';
+    int notice = !strcmp(command, "NOTICE");
+    int public = target[0] == '#' && (notice || !strcmp(command, "PRIVMSG"));
+    int page = !public && (notice || !strcmp(command, "PAGE"));
+    if (!public && !page && strcmp(command, "PRIVMSG")) return;
     if (strcmp(target, public ? g_current_channel : g_nick)) {
         fprintf(stderr, "[wol] chat from %s to %s ignored: current %s is \"%s\"\n", sender, target,
             public ? "channel" : "nick", public ? g_current_channel : g_nick);
@@ -927,9 +936,10 @@ static void receive_chat(const char *line) {
         for (var i = 0; i < text.length && i < 4095; i++) HEAPU16[at + i] = text.charCodeAt(i);
         HEAPU16[at + i] = 0;
     }, text + 2, wide);
+    g_bare_text = notice ? wide : NULL;
     if (page) {
         uint32_t values[] = { S_OK, (uint32_t)(uintptr_t)&user, (uint32_t)(uintptr_t)wide };
-        fprintf(stderr, "[wol] page from %s\n", sender);
+        fprintf(stderr, "[wol] %s from %s\n", notice ? "notice" : "page", sender);
         event_call(41, 3, values); /* IChatEvent: the UTF-16 page */
     } else if (public) {
         uint32_t values[] = { S_OK, (uint32_t)(uintptr_t)current_channel(), (uint32_t)(uintptr_t)&user, (uint32_t)(uintptr_t)wide };
@@ -938,6 +948,7 @@ static void receive_chat(const char *line) {
         uint32_t values[] = { S_OK, (uint32_t)(uintptr_t)&user, (uint32_t)(uintptr_t)wide };
         event_call(38, 3, values); /* IChatEvent::OnPrivateUnicodeMessage */
     }
+    g_bare_text = NULL;
 }
 
 /* The chat lists' add (run_lift.py chat_time_patches: YR 0x005E2700, RA2 0x005C2C80) hands every
@@ -948,8 +959,31 @@ static void receive_chat(const char *line) {
  * splits at (docs/wol/handoff-wolapi.md, "Chat times"). The launcher's Chat times switch
  * (localStorage "ra2-chat-time" "0") turns it off; Module.ra2WolChatTime and Module.ra2WolChatNow
  * override the switch and the clock for tests. */
+/* A line formatted from a NOTICE's text (g_bare_text) keeps the text alone: whatever the
+ * game put in front of it ("[YuriBOT] : ", "(YuriBOT) ") goes. Any other line is left. */
+static void cut_to_bare_text(uint32_t text_va) {
+    if (!g_bare_text || !text_va) return;
+    uint16_t *line = (uint16_t *)(uintptr_t)text_va;
+    size_t n = 0, m = 0;
+    while (n < 0x3FF && line[n]) n++;
+    while (g_bare_text[m]) m++;
+    if (!m || m >= n || memcmp(line + n - m, g_bare_text, m * sizeof *line)) return;
+    memmove(line, line + n - m, m * sizeof *line);
+    line[m] = 0;
+}
+
+/* run_lift.py bare_page_patches: a page about to be posted as a match's grey row. */
+void web_bare_page(uint32_t text_va) { cut_to_bare_text(text_va); }
+
+/* run_lift.py chat_time_patches: on around the welcome runner's calls to the chat add
+ * (CHAT_TIME_MOTD_CALLS), whose MOTD rows keep no time. Game thread only. */
+static int g_chat_motd;
+void web_chat_motd(int on) { g_chat_motd = on; }
+
 void web_chat_time(uint32_t text_va) {
     if (!text_va) return;
+    cut_to_bare_text(text_va);
+    if (g_chat_motd) return;
     MAIN_THREAD_EM_ASM({
         var at = $0 >> 1;
         var cap = 0x3FF;
@@ -1337,7 +1371,7 @@ static void handle_line(const char *line) {
         return;
     }
     if (!strcmp(line, "@wolapi disconnected")) { disconnected(); return; }
-    if (command && (!strncmp(command, " PRIVMSG ", 9) || !strncmp(command, " PAGE ", 6))) { receive_chat(line); return; }
+    if (command && (!strncmp(command, " PRIVMSG ", 9) || !strncmp(command, " PAGE ", 6) || !strncmp(command, " NOTICE ", 8))) { receive_chat(line); return; }
     if (command && !strncmp(command, " STARTG_ABORT ", 14)) {
         char channel[48]; unsigned reason;
         if (g_starting_game && sscanf(line, ":%*s STARTG_ABORT %47s :%u", channel, &reason) == 2 && !strcmp(channel, g_current_channel)) {
@@ -2189,8 +2223,33 @@ static uint32_t create_object(wol_object *state, uint32_t primary_vt, const uint
     return S_OK;
 }
 
+/* "YuriBOT: hello" rather than the game's "YuriBOT : hello": the received-line formats
+ * (public "[%hs] : %s", private "%hs : %s", UTF-16 in the image's data; YR 0x0084AFB0 and
+ * 0x0084AFC8, RA2 0x007FE064 and 0x007FE07C) lose the space before the colon, once, when the
+ * game first makes its chat object. Each is changed only while it reads exactly as shipped
+ * (docs/wol/handoff-wolapi.md, "Lines without the bot's name"). */
+static void tighten_chat_formats(void) {
+#ifdef RA2_TARGET_GAME
+    static const uint32_t at[] = { 0x007FE064u, 0x007FE07Cu };
+#else
+    static const uint32_t at[] = { 0x0084AFB0u, 0x0084AFC8u };
+#endif
+    static const char *const shipped[] = { "[%hs] : %s", "%hs : %s" };
+    for (unsigned k = 0; k < 2; k++) {
+        uint16_t *format = (uint16_t *)(uintptr_t)at[k];
+        size_t n = 0, space = 0;
+        for (; shipped[k][n]; n++) {
+            if (format[n] != (uint8_t)shipped[k][n]) break;
+            if (shipped[k][n] == ' ' && shipped[k][n + 1] == ':') space = n;
+        }
+        if (shipped[k][n] || format[n] || !space) continue;
+        memmove(format + space, format + space + 1, (n - space) * sizeof *format);
+    }
+}
+
 static uint32_t create_chat(const uint8_t *iid, uint32_t *out) {
     static const win32hle_shim methods[] = { CHAT_METHODS, { 0, 0 } };
+    tighten_chat_formats();
     if (!g_chat_vt) g_chat_vt = hle_com_vtable(methods);
     return create_object(&g_chat, g_chat_vt, iid, out);
 }

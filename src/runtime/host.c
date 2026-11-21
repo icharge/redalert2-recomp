@@ -40,8 +40,11 @@ extern const uint32_t ra2_entry_va;    /* recomp_dispatch.c */
  * fatal, as in the original game. The web host defines the interactive version. */
 int ra2_web_save_reference_prompt(void) { return 0; }
 
-/* run_lift.py chat_time_patches calls into src/web, which only the web build compiles. */
-void web_chat_time(uint32_t text) { (void)text; } /* no chat times */
+/* run_lift.py chat_time_patches and bare_page_patches call into src/web, which only the web
+ * build compiles: native builds show chat lines as the game formats them. */
+void web_chat_time(uint32_t text) { (void)text; }
+void web_chat_motd(int on) { (void)on; }
+void web_bare_page(uint32_t text) { (void)text; }
 #endif
 
 #define RA2_IMAGE_BASE 0x00400000u

@@ -695,7 +695,7 @@ Selftest: `wolapi_selftest.c` (a `PAGE` to the player reaches slot 44; one to an
 The game's chat lines carry no time. Every line of a chat list now starts with the player's local time (the
 browser's clock and zone): `14:05 [nick] : hello`, `14:05 nick : whisper`, `14:05 You joined channel ...`, the
 player's own lines included. Before the first line of a day, and so of each session, a date row:
-`-- 21 Nov 2026 --`. Blank lines stay blank. The month names are fixed English (not `toLocaleString`); the day
+`-- 21 Nov 2026 --`. Blank lines stay blank, and so do the MOTD's rows (the welcome text under the date row). The month names are fixed English (not `toLocaleString`); the day
 is kept in `Module.ra2WolChatDay`.
 
 - Where: the chat lists' add, YR `0x005E2700`, RA2 `0x005C2C80` (the same bytes; 129 and 120 callers). It
@@ -707,6 +707,11 @@ is kept in `Module.ra2WolChatDay`.
   that calls `web_chat_time(edx)` in `src/web/wolapi.c`; native builds get an empty one from `host.c`. The
   date row is the same buffer with a newline after it, so the row add makes it a row of its own in the
   line's colour.
+- The MOTD: its rows come from the welcome runner (YR `0x00787770`, the same code in RA2), one call to the
+  chat add per row at YR `0x00787AAE` / RA2 `0x00743A70` and one for the blank row after them at YR `0x00787ADD`
+  / RA2 `0x00743A9F` (`CHAT_TIME_MOTD_CALLS`). A lifted call pushes a placeholder (`RECOMP_RETADDR`), not its
+  return address, so the chat add cannot see its caller; the patch instead calls `web_chat_motd(1)` after the
+  one-byte push before each of these calls and `web_chat_motd(0)` after the instruction after it.
 - Not stamped: the in-match messages (`MessageListClass`, pages from YuriBOT during a match), the Page dialog's
   list `0x5B5` (`0x005E2790`) and the few lines that call the row add directly (YR `0x007AB850`, a game
   room's leave line in the hidden lobby).
@@ -721,7 +726,45 @@ is kept in `Module.ra2WolChatDay`.
 - History: the first version (9a82cc1e) stamped only received lines inside their text,
   `[nick] : 14:05 hello`, in `receive_chat`; it is gone.
 
-**Seen (both editions, `web/e2e/lobby-bot.mjs`, shots `lobby-bot-top` and `lobby-bot-chat`):** the lobby starts with `-- 21 Nov 2026 --` on a row of its own (no glyph for the newline), then `22:48 Welcome to THAI RA2 Channel` and the other MOTD rows, `22:48 You joined channel USA Command`, `22:46 [YuriBOT] : ... joined the channel`, the bot's whispers `22:46 YuriBOT : ...`, and the player's own lines `22:46 [za8f075] hello` and `22:46 [za8f075] /who`. A wrapped line's second row has no time (`Discord. !!` under the MOTD line it continues). Selftest: `wolapi_selftest.c` (date row on a day's first line and again on the next day, time alone in between, a blank line and the switch off unchanged, a full buffer kept at `0x3FF` characters).
+**Seen (both editions, `web/e2e/lobby-bot.mjs`, shots `lobby-bot-top` and `lobby-bot-chat`):** the MOTD rows first, with no time (`Welcome to THAI RA2 Channel`, ...), then `-- 21 Nov 2026 --` on a row of its own (no glyph for the newline), `23:39 You joined channel USA Command`, `23:40 za069c5 joined the channel. Welcome!`, the bot's whispers `23:40 YuriBOT: ...`, and the player's own lines `23:40 [za069c5] hello` and `23:40 [za069c5] /who`. A wrapped line's second row has no time. Selftest: `wolapi_selftest.c` (date row on a day's first line and again on the next day, time alone in between, a MOTD row, a blank line and the switch off unchanged, a full buffer kept at `0x3FF` characters).
+
+## Lines without the bot's name (LB-9, LB-10, 21 November)
+
+The game builds every received line from a format that names the sender: `[YuriBOT] : text` in a lobby,
+`(YuriBOT) text` for a page during a match. A line the server sends as an IRC `NOTICE` now shows as the text
+alone, in the colour the sender's line would have had (cyan for the bot, an operator).
+
+- RA2Web: `LobbyBot` sends join and leave lines as `NOTICE #lobby` while `lobbyBot.namelessJoins` is on (the
+  default), and announcements as `NOTICE #lobby` and `NOTICE <nick>` (instead of `PAGE`) while
+  `lobbyBot.namelessAnnouncements` is on (off by default). Command replies and the greeting stay `PRIVMSG`, with
+  the name. New too: `lobbyBot.announceLeaves` / `lobbyBot.leaveMessage` (`{nick} left the channel.`), said to a
+  chat lobby when a player in it signs off, only where the player's join was announced (going to a game room
+  says nothing).
+- Shim: `receive_chat` takes `NOTICE`. To the current channel it goes to the public sink (ordinal 37), to the
+  player to the UTF-16 page sink (ordinal 41), as a `PRIVMSG` or `PAGE` would; `g_bare_text` holds the UTF-16
+  text while the sink runs. The game formats the line as always, then:
+  - in a lobby, game room or Page Received, the chat add's patch (`web_chat_time`, "Chat times" above) calls
+    `cut_to_bare_text` first;
+  - during a match, `run_lift.py bare_page_patches` adds C after the page sink's format (`add esp, 0x10`; YR
+    `0x007A962A`, buffer `[esp+0x14]`; RA2 `0x00762C6B` in the sink at `0x00762C20`, buffer `[esp+0x10]`), before
+    `MessageListClass::Add_Message` (YR `0x005D3BA0`, RA2 `0x005B4DA0`), which calls `web_bare_page`.
+  `cut_to_bare_text` keeps the line's end when it is the `NOTICE`'s text, so it needs no format string of either
+  edition; any other line is left alone.
+- An older web client ignores a `NOTICE`: those lines do not show there at all.
+- No space before the colon: `YuriBOT: hello`, `[nick]: hello`. The received-line formats are UTF-16 strings in
+  the image's data, public `[%hs] : %s` and private `%hs : %s` (YR `0x0084AFB0`, `0x0084AFC8`; RA2 `0x007FE064`,
+  `0x007FE07C`, the only `" : %s"` strings in either). `tighten_chat_formats` drops the space when the game first
+  makes its chat object (`create_chat`), only while a string reads exactly as shipped: no lift patch.
+- Selftest: `wolapi_selftest.c`. Its fake sinks format `[sender] : text` and `(sender) text` and run the two
+  patches' functions: a `NOTICE` to the channel and to the player shows the text alone, a `PRIVMSG` keeps its
+  sender, a `NOTICE` to another nick is dropped; the formats lose their space once, at their image addresses.
+
+**Seen (both editions):** `web/e2e/lobby-bot.mjs`: `23:40 za069c5 joined the channel. Welcome!` (a `NOTICE`), and
+`23:40 YuriBOT: Unknown command /hello. Try /help.` (a reply, named, no space before the colon).
+`web/e2e/quickmatch.mjs --row 10 --nameless` (the setting on for the row): both players in a match got the
+`NOTICE`, each game logged `[wol] notice from YuriBOT`, and the grey row reads `Announcement test ...: the server
+restarts soon.` at the top left, with no `(YuriBOT)`. The row needs the e2e server's admin mode
+(`ADMIN_LEGACY_AUTH=true ADMIN_USERNAMES=qmadmin`) for its settings change.
 
 ## Ladder and high-score records, rank in the lobby, the welcome's stats (21 November)
 
