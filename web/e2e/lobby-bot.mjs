@@ -9,6 +9,7 @@
 //   - YuriBOT is in both players' NAMES list (353)
 //   - A types /help in the lobby's chat edit (native keys): a private PRIVMSG from YuriBOT comes back to A,
 //     and the lobby sees no /help line: B's socket never carries that text
+//   - B joining is announced by YuriBOT to the lobby (a channel line both receive)
 //   - A selects YuriBOT in the Players list and types a line: a private reply comes back
 //   - A types /who: the reply names both players
 // Options: --server http://127.0.0.1:9090, plus the shared ones (--game, --shots, --headed).
@@ -161,6 +162,19 @@ try {
       (w) => w.dir === "<" && w.line.includes(`:${b.nick}!`) && w.line.includes(" JOIN "),
     ),
   );
+  // b's join announced by the bot: a channel line (not private) that both players receive
+  for (const run of [a, b]) {
+    await until(run, `${BOT} announcing ${b.nick}`, () =>
+      run.wire.some(
+        (w) =>
+          w.dir === "<" &&
+          w.line.startsWith(`:${BOT}!`) &&
+          w.line.includes(`PRIVMSG ${lobby} :${b.nick} joined the channel`),
+      ),
+    );
+  }
+  check(`${BOT} announced ${b.nick} joining ${lobby} to both players`);
+
   // the Players list with both players: YuriBOT first, with the operator icon
   await a.page.waitForTimeout(1500);
   await a.shot("lobby-bot-players");

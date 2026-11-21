@@ -663,7 +663,9 @@ RA2Web lists YuriBOT as `@YuriBOT,0,0,0`, the first entry of a chat lobby's NAME
   must also be the first entry. With `push` it was second, under the player.
 
 The retail client takes the Quick Match lobby's operator for the matchmaker; the bot is never in those lobbies.
-Evidence: `web/e2e/lobby-bot.mjs` in both editions (5 checks each, the bot selected on row 0), its `lobby-bot-players.png`.
+
+**Join announcements.** When a player joins a chat lobby the bot says `{nick} joined the channel. Welcome!` to the whole lobby, the joiner too (a channel `PRIVMSG` after the `JOIN`, `LobbyBot.announceJoin`), once per lobby per session, so coming back from a game room is not announced again. Both editions show an operator's channel line as `[YuriBOT] : ...`. The console settings `lobbyBot.announceJoins` and `lobbyBot.joinMessage` (`{nick}`, `{bot}`; empty says nothing) change it live; the private greeting (`lobbyBot.greeting`) still follows it.
+Evidence: `web/e2e/lobby-bot.mjs` in both editions (6 checks each: the bot selected on row 0, the join announcement), its `lobby-bot-players.png`.
 
 ## Ladder and high-score records, rank in the lobby, the welcome's stats (21 November)
 
