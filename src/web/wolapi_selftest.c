@@ -297,12 +297,12 @@ int main(void) {
     assert(test_event_count == 7 && test_event_method[6] == 0x1000b);
     assert(strcmp(((wol_channel *)(uintptr_t)test_event_args[6][2])->name, expected_lobby) == 0);
     assert(!g_current_channel[0]);
-    wol_channel room = { .type = 41, .min_users = 1, .max_users = 4, .reserved = 0x600, .flags = 128 };
+    wol_channel room = { .type = 41, .min_users = 1, .max_users = 4, .reserved = 0x600, .flags = 128, .tournament = 1 };
     strcpy(room.name, "testuser");
     strcpy(room.key, "locked");
     uint32_t create_args[] = { (uint32_t)(uintptr_t)&room };
     assert(invoke(g_chat.chat, 7, 1, create_args) == S_OK);
-    assert(EM_ASM_INT({ return Module.testWolLine === "joingame #testuser 1 4 41 0 0 0 0 locked"; }));
+    assert(EM_ASM_INT({ return Module.testWolLine === "joingame #testuser 1 4 41 0 0 1 0 locked"; }));
     ra2_wolapi_receive_line(":testuser!local JOINGAME 0 0 0 0 0 1 0 :#testuser");
     assert(invoke(g_chat.chat, 3, 0, NULL) == S_OK);
     assert(test_event_count == 8 && test_event_method[7] == 0x10009);
@@ -408,6 +408,22 @@ int main(void) {
     assert(current_channel()->max_users == 6);
     assert(EM_ASM_INT({ return Module.testWolLine.includes("WOLAPI2:1536,1,6,128;"); }));
     assert(EM_ASM_INT({ return !Module.testWolLine.includes("locked"); }));
+    /* An observer row's seat counts in the limit the game asks for; the map caps only the players. */
+    g_map_player_slots = 2;
+    uint32_t seat_open[] = { (uint32_t)(uintptr_t)"39,1234,0,0,1,x.map" };
+    uint32_t seat_none[] = { (uint32_t)(uintptr_t)"39,1234,0,0,0,x.map" };
+    uint32_t seat_limit[] = { (uint32_t)(uintptr_t)"mode #testuser +l 3" };
+    assert(invoke(g_chat.chat, 42, 1, seat_none) == S_OK);
+    assert(invoke(g_chat.chat, 39, 1, seat_limit) == S_OK);
+    assert(current_channel()->max_users == 2);
+    assert(invoke(g_chat.chat, 42, 1, seat_open) == S_OK);
+    assert(current_channel()->max_users == 3);
+    assert(EM_ASM_INT({ return Module.testWolLine.includes("WOLAPI2:1536,1,3,128;39,1234,0,0,1,x.map"); }));
+    assert(invoke(g_chat.chat, 42, 1, seat_none) == S_OK);
+    assert(current_channel()->max_users == 2);
+    g_map_player_slots = 0;
+    assert(invoke(g_chat.chat, 42, 1, info_args) == S_OK);
+    assert(invoke(g_chat.chat, 39, 1, limit_args) == S_OK);
     /* Native OnChannelJoin has distinct HRESULT branches for these failures. */
     const struct { const char *reply; uint32_t status; } join_errors[] = {
         { ":wol 475 testuser #testuser :bad key", 0x80040071u },

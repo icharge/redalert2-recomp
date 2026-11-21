@@ -473,7 +473,7 @@ static void read_channel_metadata(wol_channel *channel, const char *text) {
         info = text + 8;
         if (!metadata_number(&info, &reserved, ',') || !metadata_number(&info, &min_users, ',') ||
             !metadata_number(&info, &max_users, ',') || !metadata_number(&info, &flags, ';') ||
-            max_users < 2 || max_users > 8 || min_users > max_users) info = NULL;
+            max_users < 2 || max_users > 9 || min_users > max_users) info = NULL;
     } else if (strncmp(text, "WOLAPI1:", 8) == 0) info = text + 8;
     if (info) {
         const char *end = strstr(info, "::");
@@ -533,9 +533,26 @@ static int game_options_player_slots(const char *options, uint32_t *slots) {
     return 1;
 }
 
+/* The channel's ex-info ("%d,%d,%d,%d,%d,%s": version, hash, AI players, a human on the
+ * observer row, an open observer row, scenario; YR 0x0077E7A0, RA2 the same order at 39)
+ * says whether the room holds an observer slot, open or taken. The game counts it in the
+ * limit it asks for (MODE +l: the host, each Open row, and the observer row), so the map's
+ * slot count caps only the players: without the extra seat a two-player map with an open
+ * observer row listed as 1/1 and turned the second player away. */
+static uint32_t ex_info_observer_seat(const char *info) {
+    unsigned field = 0;
+    for (const char *p = info; p && *p && field < 5; p++) {
+        if (*p == ',') { field++; continue; }
+        if ((field == 3 || field == 4) && *p >= '1' && *p <= '9') return 1;
+    }
+    return 0;
+}
+
 static uint32_t effective_player_limit(uint32_t requested) {
-    if (g_map_player_slots >= 2 && g_map_player_slots <= 8 && requested > g_map_player_slots)
-        return g_map_player_slots;
+    const wol_channel *channel = g_current_channel[0] ? current_channel() : NULL;
+    uint32_t seat = channel ? ex_info_observer_seat(channel->ex_info) : 0;
+    if (g_map_player_slots >= 2 && g_map_player_slots <= 8 && requested > g_map_player_slots + seat)
+        return g_map_player_slots + seat;
     return requested;
 }
 
@@ -1241,13 +1258,16 @@ static void m_chat_request_channel_create(void) {
     g_active_channel = *channel;
     g_active_channel.next = 0;
     g_map_player_slots = 0;
-    g_requested_player_limit = channel->max_users >= 2 && channel->max_users <= 8
+    g_requested_player_limit = channel->max_users >= 2 && channel->max_users <= 9
         ? channel->max_users : 4u;
     g_creating_channel = 1;
     g_joining_channel = 0;
-    snprintf(line, sizeof line, "joingame %s 1 %u %u 0 0 0 0%s%.8s", name,
+    /* The seventh word is the room's tournament value (the Create dialog's Tournament box,
+     * Channel +0x14); RA2Web keeps it and lists it back, and the game draws the trophy from it. */
+    snprintf(line, sizeof line, "joingame %s 1 %u %u 0 0 %u 0%s%.8s", name,
         g_requested_player_limit,
-        (uint32_t)channel->type, channel->key[0] ? " " : "", channel->key);
+        (uint32_t)channel->type, channel->tournament ? 1u : 0u,
+        channel->key[0] ? " " : "", channel->key);
     browser_send(line);
     RET(S_OK, 2);
 }
@@ -1263,7 +1283,7 @@ static void m_chat_request_channel_join(void) {
     g_active_channel.next = 0;
     copy_text(g_active_channel.name, sizeof g_active_channel.name, name + 1);
     g_map_player_slots = 0;
-    g_requested_player_limit = channel->max_users >= 2 && channel->max_users <= 8
+    g_requested_player_limit = channel->max_users >= 2 && channel->max_users <= 9
         ? channel->max_users : 8u;
     g_joining_channel = 1;
     g_creating_channel = 0;
@@ -1412,6 +1432,16 @@ static void m_chat_set_channel_ex_info(void) {
     wol_channel *channel = current_channel();
     if (!channel || !ASTR(1)) RET(E_POINTER, 2);
     copy_text(channel->ex_info, sizeof channel->ex_info, ASTR(1));
+    /* A seat for an observer changes the limit the game asked for before this ex-info. */
+    if (g_requested_player_limit) {
+        uint32_t limit = effective_player_limit(g_requested_player_limit);
+        if (channel->max_users != limit) {
+            char mode[96];
+            channel->max_users = limit;
+            snprintf(mode, sizeof mode, "mode %s +l%u", g_current_channel, limit);
+            browser_send(mode);
+        }
+    }
     send_channel_metadata();
     RET(S_OK, 2);
 }
@@ -1560,7 +1590,7 @@ static void m_chat_raw_message(void) {
         unsigned limit;
         if (sscanf(line, "%7s %47s %7s %u %c", command, name, mode, &limit, &extra) == 4 &&
             (!strcmp(command, "mode") || !strcmp(command, "MODE")) &&
-            !strcmp(name, g_current_channel) && !strcmp(mode, "+l") && limit >= 2 && limit <= 8) {
+            !strcmp(name, g_current_channel) && !strcmp(mode, "+l") && limit >= 2 && limit <= 9) {
             g_requested_player_limit = limit;
             limit = effective_player_limit(limit);
             wol_channel *channel = current_channel();

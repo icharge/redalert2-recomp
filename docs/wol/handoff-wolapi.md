@@ -607,3 +607,42 @@ Local only; no public probes. Rebuilt `build-web-udp` (RA2) and
 - Commit plan when resumed: the three repositories separately; in
   `redalert2-recomp` split the WOL files from the presenter/input/Thai-font/LAN work
   that shares `main.c`, `loader.ts` and other files.
+
+## The Available Games list's icons (observer eye, trophy, clan; 21 November)
+
+The lobby's game list (`0x113`; YR `0x00781480`, `WolChannel`/VERA `src/ui/wol_lobby/channels.rs`) draws
+four things per room, all from the `wol_channel` record the shim builds from the server's `322` line:
+
+| Icon | PCX | Source in the record | What carries it on the wire |
+|---|---|---|---|
+| game type | `gt18.pcx` | none (the plain WS logo) | |
+| trophy | `woltrny.pcx` | `+0x14` tournament | `322` word 7, which RA2Web sets from the creator's `joingame` word 7 |
+| clan | `wolclan.pcx` | bit `0x100` of `+0x20` (the "reserved" word) | the `WOLAPI2:<reserved>,...` topic envelope |
+| lock | `wolpriv.pcx` | `+0x1C` bit `0x100` | `mode` 384 of the `322` line |
+| observer eye | `wolob.pcx` (`wolrslkob.pcx` with a resolution limit) | the ex-info (`+0xE0`, `"%d,%d,%d,%d,%d,%s"`: version, INI hash, AI players, **a human on the observer row**, **an open observer row**, scenario; RA2 writes version 39, YR 25) | the `WOLAPI2` topic's ex-info |
+
+The eye shows while the open-observer word is above zero. The count is `users - taken + ai` over
+`max_users - (taken + open)`. The host opens the row from the observer row's dropdown in the room
+("Open Observer", `GUI:OpenObserver`; the Create dialog's own Observe box makes the **host** the
+observer, which publishes `taken` instead and shows no eye, as native does).
+
+**What was wrong (found with two clients, `web/e2e/wol-icons.mjs`):**
+
+1. The eye itself already came through, but a room with an open observer row listed as `1/1` on a
+   two-player map and turned the second player away. The game asks for `MODE +l` of the host, each
+   Open row **and the observer row** (YR `0x0078F000`, `republished_limit` in VERA), and the shim clamped
+   that to the map's slot count. The clamp now adds one seat when the ex-info has an observer row, open or
+   taken (`ex_info_observer_seat`), re-applies when the ex-info arrives after the `MODE` (the order the game uses
+   is not fixed), and the limit may be 9 (eight players and the observer).
+2. `joingame` always sent tournament 0, so no room ever showed the trophy. It now carries the Create
+   dialog's tournament value (`channel->tournament`).
+3. Clan: the bit already round-trips in the envelope (a clan host's game sets `0x100` in the reserved word
+   plus the chat-lobby number; the BattleClan box is greyed out of a clan, so the test sets the bit on
+   the wire). Nothing to fix. Clan names and tags (`+0x2E`, `+0x57` of the user record) are not part of this.
+
+Where the game list reads the Players list's clan tag: `0x00783C80` (VERA `WolPlayerRow::clan`,
+`"[%hs]"` of the user record's `+0x57` tag, tooltip `+0x2E`); the shim's `wol_user` leaves both empty
+(its `squad_abbrev` / `squad_name` fields), so no `[tag]` shows.
+
+Evidence: `web/e2e/wol-icons.mjs --kind observer|tournament|clan|normal` (RA2: `?target=game`; YR without it),
+two or three clients against `node e2e/wol-server.mjs`. The selftest covers the seat and tournament word.
