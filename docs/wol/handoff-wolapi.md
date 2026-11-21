@@ -647,6 +647,24 @@ Where the game list reads the Players list's clan tag: `0x00783C80` (VERA `WolPl
 Evidence: `web/e2e/wol-icons.mjs --kind observer|tournament|clan|normal` (RA2: `?target=game`; YR without it),
 two or three clients against `node e2e/wol-server.mjs`. The selftest covers the seat and tournament word.
 
+## The Players list's icons, YuriBOT first (21 November)
+
+A Players row (`0x00783C80`, VERA `WolPlayerRow`) has one status icon, from the user record's `flags`: `woloper.pcx`
+(tooltip `TXT_OPER`) for bit `0x1`, operator, else `wolvoice.pcx` (`TXT_VOICE`) for bit `0x2`, voice. After the name come the
+`[tag]` (clan), the ladder rank and the high-score images (`cooperat.pcx` for every co-op campaign finished, a badge from
+`private.pcx` to `comchief.pcx`). Nothing else can be drawn there without a new PCX in the game's MIX files. The shim sets
+`0x1` for a NAMES entry with `@` (`parse_roster`); a `+` is stripped and sets nothing, so voice is never shown.
+
+RA2Web lists YuriBOT as `@YuriBOT,0,0,0`, the first entry of a chat lobby's NAMES (`LobbyBot.namesEntry`,
+`WolServer.sendChannelNames`). Nobody else is an operator in a chat lobby, so:
+
+- **YR** keeps operators in a leading block whatever the sort (`0x007A5E40`'s insert; VERA `insert_member`): the bot is first.
+- **RA2** has no sort buttons and lists the NAMES in their order, the player's own name wherever the server put it, so the bot
+  must also be the first entry. With `push` it was second, under the player.
+
+The retail client takes the Quick Match lobby's operator for the matchmaker; the bot is never in those lobbies.
+Evidence: `web/e2e/lobby-bot.mjs` in both editions (5 checks each, the bot selected on row 0), its `lobby-bot-players.png`.
+
 ## Ladder and high-score records, rank in the lobby, the welcome's stats (21 November)
 
 `INetUtil` (the shim's `WolChannel` object) now answers `RequestLadderList` (slot 5), `RequestLocaleLadderList` (12),

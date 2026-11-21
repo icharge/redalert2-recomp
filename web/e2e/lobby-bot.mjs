@@ -30,10 +30,10 @@ const BOT = "YuriBOT";
 
 // The lobby screen's controls in the game's 800x600 pixels (read off the lobby in both editions): the
 // chat edit is the same row; the Players list is the middle column, one row every 18.75, starting at
-// y 46 in RA2 and 66 in YR (YR's has a header row of sort buttons). RA2 lists the player first, then the
-// others in the server's order (YuriBOT second); YR sorts by name, so YuriBOT (Y) is before the z-nicks.
+// y 46 in RA2 and 66 in YR (YR's has a header row of sort buttons). YuriBOT is the lobby's operator, and
+// both editions keep operators at the top of the list, so it is the first row.
 const CHAT_EDIT = [300, 545];
-const BOT_ROWS = ra2 ? [1, 0, 2] : [0, 1, 2];
+const BOT_ROWS = [0, 1, 2];
 const PLAYER_ROW = (k) => [360, (ra2 ? 46 : 66) + 18.75 * k];
 
 async function guestTicket(nick) {
@@ -161,6 +161,9 @@ try {
       (w) => w.dir === "<" && w.line.includes(`:${b.nick}!`) && w.line.includes(" JOIN "),
     ),
   );
+  // the Players list with both players: YuriBOT first, with the operator icon
+  await a.page.waitForTimeout(1500);
+  await a.shot("lobby-bot-players");
 
   // 2. /help typed by a: a private answer from the bot, nothing in b's socket
   let mark = a.wire.length;
