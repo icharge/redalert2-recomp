@@ -646,7 +646,6 @@ int main(void) {
     assert(strcmp(test_event_text[events_before_motd], "Welcome\nHave fun") == 0);
     /* Chat uses the real Unicode callbacks without putting whisper senders in the roster. */
     uint32_t before_chat = test_event_count, before_users = g_user_count;
-    EM_ASM({ Module.ra2WolChatTime = false; });
     ra2_wolapi_receive_line(":other!local PRIVMSG #testuser :hello world");
     ra2_wolapi_receive_line(":stranger!local PRIVMSG testuser :\xe0\xb8\xaa\xe0\xb8\xa7\xe0\xb8\xb1\xe0\xb8\xaa\xe0\xb8\x94\xe0\xb8\xb5");
     ra2_wolapi_receive_line(":other!local PRIVMSG #elsewhere :ignore");
@@ -657,25 +656,36 @@ int main(void) {
     assert(test_event_wide[before_chat][0] == 'h' && test_event_wide[before_chat][10] == 'd');
     assert(test_event_method[before_chat + 1] == 0x10029);
     assert(test_event_wide[before_chat + 1][0] == 0x0e2a && test_event_wide[before_chat + 1][5] == 0x0e35);
-    /* With chat times on, a line starts with the local time, the day's first with the date too;
-     * a page gets none (checked below, where the switch is still on). */
-    EM_ASM({
-        Module.ra2WolChatTime = true;
-        Module.ra2WolChatNow = function() { return new Date(2026, 10, 21, 9, 5); };
-    });
-    uint32_t before_times = test_event_count;
-    ra2_wolapi_receive_line(":other!local PRIVMSG #testuser :first");
-    ra2_wolapi_receive_line(":stranger!local PRIVMSG testuser :second");
-    assert(invoke(g_chat.chat, 3, 0, NULL) == S_OK); /* lines are read in the pump */
-    EM_ASM({ Module.ra2WolChatNow = function() { return new Date(2026, 10, 22, 0, 1); }; });
-    ra2_wolapi_receive_line(":other!local PRIVMSG #testuser :next day");
-    assert(invoke(g_chat.chat, 3, 0, NULL) == S_OK);
-    assert(test_event_count == before_times + 3);
-    static const char *const timed[] = { "21 Nov 09:05 first", "09:05 second", "22 Nov 00:01 next day" };
-    for (unsigned t = 0; t < 3; t++) {
-        unsigned i = 0;
-        for (; timed[t][i]; i++) assert(test_event_wide[before_times + t][i] == (uint16_t)timed[t][i]);
-        assert(test_event_wide[before_times + t][i] == 0);
+    /* The chat lists' add (run_lift.py chat_time_patches) passes each line to web_chat_time: the
+     * local time in front, a date row before the day's first line, blank lines untouched, the
+     * 0x400-character buffer never overrun, and nothing with the switch off. */
+    {
+        static uint16_t line[0x400];
+        static const struct { int day, hour, minute, on; const char *in, *out; } cases[] = {
+            { 21, 9, 5, 1, "[other] : first", "-- 21 Nov 2026 --\n09:05 [other] : first" },
+            { 21, 9, 6, 1, "testuser : mine", "09:06 testuser : mine" },
+            { 21, 9, 6, 1, "  ", "  " },
+            { 21, 9, 7, 0, "[other] : off", "[other] : off" },
+            { 22, 0, 1, 1, "[other] : next day", "-- 22 Nov 2026 --\n00:01 [other] : next day" },
+        };
+        for (unsigned c = 0; c < sizeof cases / sizeof cases[0]; c++) {
+            memset(line, 0, sizeof line);
+            for (unsigned i = 0; cases[c].in[i]; i++) line[i] = (uint16_t)cases[c].in[i];
+            EM_ASM({
+                Module.ra2WolChatTime = !!$3;
+                Module.ra2WolChatNow = function() { return new Date(2026, 10, $0, $1, $2); };
+            }, cases[c].day, cases[c].hour, cases[c].minute, cases[c].on);
+            web_chat_time((uint32_t)(uintptr_t)line);
+            unsigned i = 0;
+            for (; cases[c].out[i]; i++) assert(line[i] == (uint16_t)cases[c].out[i]);
+            assert(line[i] == 0);
+        }
+        for (unsigned i = 0; i < 0x3FF; i++) line[i] = 'x';
+        line[0x3FF] = 0;
+        EM_ASM({ Module.ra2WolChatNow = function() { return new Date(2026, 10, 22, 0, 2); }; });
+        web_chat_time((uint32_t)(uintptr_t)line);
+        assert(line[0] == '0' && line[5] == ' ' && line[6] == 'x' && line[0x3FE] == 'x' && line[0x3FF] == 0);
+        EM_ASM({ delete Module.ra2WolChatTime; delete Module.ra2WolChatNow; });
     }
     /* An announcement page reaches the UTF-16 page sink (ordinal 41, vtable slot 44); one to
      * another nick is dropped, and the sender stays out of the roster. */

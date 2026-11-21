@@ -178,6 +178,12 @@ try {
   // the Players list with both players: YuriBOT first, with the operator icon
   await a.page.waitForTimeout(1500);
   await a.shot("lobby-bot-players");
+  // The transcript's top: the date row before the session's first line (docs/wol/handoff-wolapi.md,
+  // "Chat times"). The list's scroll arrows, in the game's 800x600.
+  for (let i = 0; i < 12; i++) await a.clickGame(609, 381);
+  await a.page.waitForTimeout(500);
+  await a.shot("lobby-bot-top");
+  for (let i = 0; i < 12; i++) await a.clickGame(609, 517);
 
   // 2. /help typed by a: a private answer from the bot, nothing in b's socket
   let mark = a.wire.length;
@@ -246,6 +252,9 @@ try {
     `${b.nick} saw the /who line`,
   );
   check(`${a.nick} /who: the reply lists ${a.nick} and ${b.nick}`);
+  // The transcript after it all: each line starts with the local time (docs/wol/handoff-wolapi.md, "Chat times").
+  await a.page.waitForTimeout(800);
+  await a.shot("lobby-bot-chat");
   console.log(`PASS ${edition.toUpperCase()} (${results.length} checks)`);
 } catch (error) {
   console.error("FAIL:", error?.message ?? error);

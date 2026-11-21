@@ -921,34 +921,12 @@ static void receive_chat(const char *line) {
         if (!strcmp(g_users[i].name, sender)) { user = g_users[i]; break; }
     user.next = 0; /* A whisper from outside the channel must not change its roster. */
     uint16_t wide[WOL_LINE_CAP];
-    /* A chat line (not a page) starts with the player's local time, "14:05 hello", and the
-     * first one of a day with the date too, "21 Nov 14:05 hello": the game's own lines
-     * carry none (docs/wol/handoff-wolapi.md, "Chat times"). The launcher's Chat times
-     * switch (localStorage "ra2-chat-time" "0") turns it off; Module.ra2WolChatTime and
-     * Module.ra2WolChatNow override the switch and the clock for tests. */
     MAIN_THREAD_EM_ASM({
         var text = UTF8ToString($0);
-        var on = Module.ra2WolChatTime;
-        if (on === undefined) {
-            on = true;
-            try { on = localStorage.getItem("ra2-chat-time") !== "0"; } catch (e) {}
-        }
-        if ($2 && on) {
-            var now = Module.ra2WolChatNow ? Module.ra2WolChatNow() : new Date();
-            var two = function(n) { return (n < 10 ? "0" : "") + n; };
-            var stamp = two(now.getHours()) + ":" + two(now.getMinutes()) + " ";
-            var day = now.getFullYear() + "-" + now.getMonth() + "-" + now.getDate();
-            if (Module.ra2WolChatDay !== day) {
-                Module.ra2WolChatDay = day;
-                var month = "JanFebMarAprMayJunJulAugSepOctNovDec".substr(now.getMonth() * 3, 3);
-                stamp = now.getDate() + " " + month + " " + stamp;
-            }
-            text = stamp + text;
-        }
         var at = $1 >> 1;
         for (var i = 0; i < text.length && i < 4095; i++) HEAPU16[at + i] = text.charCodeAt(i);
         HEAPU16[at + i] = 0;
-    }, text + 2, wide, !page);
+    }, text + 2, wide);
     if (page) {
         uint32_t values[] = { S_OK, (uint32_t)(uintptr_t)&user, (uint32_t)(uintptr_t)wide };
         fprintf(stderr, "[wol] page from %s\n", sender);
@@ -960,6 +938,46 @@ static void receive_chat(const char *line) {
         uint32_t values[] = { S_OK, (uint32_t)(uintptr_t)&user, (uint32_t)(uintptr_t)wide };
         event_call(38, 3, values); /* IChatEvent::OnPrivateUnicodeMessage */
     }
+}
+
+/* The chat lists' add (run_lift.py chat_time_patches: YR 0x005E2700, RA2 0x005C2C80) hands every
+ * line of the lobby, game room, LAN and co-op lists here before it is wrapped into rows, the
+ * player's own lines too: a zeroed 0x400-character UTF-16 buffer at text_va. A line that is not
+ * blank gets the player's local time in front, "14:05 [nick] : hello", and the first one of a day
+ * (and so of a session) a date row before it, "-- 21 Nov 2026 --", through the \n the row add
+ * splits at (docs/wol/handoff-wolapi.md, "Chat times"). The launcher's Chat times switch
+ * (localStorage "ra2-chat-time" "0") turns it off; Module.ra2WolChatTime and Module.ra2WolChatNow
+ * override the switch and the clock for tests. */
+void web_chat_time(uint32_t text_va) {
+    if (!text_va) return;
+    MAIN_THREAD_EM_ASM({
+        var at = $0 >> 1;
+        var cap = 0x3FF;
+        var n = 0;
+        while (n < cap && HEAPU16[at + n]) n++;
+        var blank = true;
+        for (var k = 0; k < n && blank; k++) blank = HEAPU16[at + k] <= 32;
+        if (blank) return;
+        var on = Module.ra2WolChatTime;
+        if (on === undefined) {
+            on = true;
+            try { on = localStorage.getItem("ra2-chat-time") !== "0"; } catch (e) {}
+        }
+        if (!on) return;
+        var now = Module.ra2WolChatNow ? Module.ra2WolChatNow() : new Date();
+        var two = function(v) { return (v < 10 ? "0" : "") + v; };
+        var stamp = two(now.getHours()) + ":" + two(now.getMinutes()) + " ";
+        var day = now.getFullYear() + "-" + now.getMonth() + "-" + now.getDate();
+        if (Module.ra2WolChatDay !== day) {
+            Module.ra2WolChatDay = day;
+            var month = "JanFebMarAprMayJunJulAugSepOctNovDec".substr(now.getMonth() * 3, 3);
+            stamp = "-- " + now.getDate() + " " + month + " " + now.getFullYear() + " --\n" + stamp;
+        }
+        var keep = Math.min(n, cap - stamp.length);
+        HEAPU16.copyWithin(at + stamp.length, at, at + keep);
+        for (var i = 0; i < stamp.length; i++) HEAPU16[at + i] = stamp.charCodeAt(i);
+        HEAPU16[at + stamp.length + keep] = 0;
+    }, text_va);
 }
 
 /* ---- Ladder and high-score records (INetUtil slots 4, 5, 12-14; INetUtilEvent slots 4 and 9) ----

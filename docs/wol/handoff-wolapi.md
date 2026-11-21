@@ -690,32 +690,38 @@ mid-match: both pages received, both games logged the page, and the row `(YuriBO
 server restarts soon.` shows at the top left of the match, typed out over about a second. The match kept running.
 Selftest: `wolapi_selftest.c` (a `PAGE` to the player reaches slot 44; one to another nick is dropped).
 
-## Chat times (LB-11 (a), 21 November)
+## Chat times (LB-11, 21 November)
 
-The game's chat lines carry no time. `receive_chat` puts the player's local time (the browser's clock and zone)
-in front of the text of every public and private line it hands the game, so a lobby line reads
-`[nick] : 14:05 hello`; the first line of a day, and so of each session, also gets the date:
-`[nick] : 21 Nov 14:05 hello`. The month names are fixed English (not `toLocaleString`), and the day is kept
-in `Module.ra2WolChatDay`. Pages get no time: in a match they are message rows with their own timeout, and the
-game shows them for seconds only.
+The game's chat lines carry no time. Every line of a chat list now starts with the player's local time (the
+browser's clock and zone): `14:05 [nick] : hello`, `14:05 nick : whisper`, `14:05 You joined channel ...`, the
+player's own lines included. Before the first line of a day, and so of each session, a date row:
+`-- 21 Nov 2026 --`. Blank lines stay blank. The month names are fixed English (not `toLocaleString`); the day
+is kept in `Module.ra2WolChatDay`.
 
+- Where: the chat lists' add, YR `0x005E2700`, RA2 `0x005C2C80` (the same bytes; 129 and 120 callers). It
+  formats its arguments into a zeroed `0x400`-character buffer on its stack, walks the dialog stack for the
+  list `0x53F` (lobby `0x113`, game room, Quick Match `0x117`, LAN, co-op results `0xBC6`, Page Received
+  `0x11E`) and calls the row add (YR `0x005E2820`, RA2 `0x005C2DA0`; `ecx` the colour, `edx` the text, the
+  list pushed), which wraps the text and starts a new row after each newline. `run_lift.py chat_time_patches`
+  adds C after `lea edx, [esp+0xc]` (YR `0x005E2775`, RA2 `0x005C2CF5`, byte-checked with the call after it)
+  that calls `web_chat_time(edx)` in `src/web/wolapi.c`; native builds get an empty one from `host.c`. The
+  date row is the same buffer with a newline after it, so the row add makes it a row of its own in the
+  line's colour.
+- Not stamped: the in-match messages (`MessageListClass`, pages from YuriBOT during a match), the Page dialog's
+  list `0x5B5` (`0x005E2790`) and the few lines that call the row add directly (YR `0x007AB850`, a game
+  room's leave line in the hidden lobby).
 - The switch: Settings › Launcher › ONLINE › **Chat times** (`web/src/storage/chat-time-preferences.ts`),
-  on by default, stored as `localStorage` `ra2-chat-time` = `0` when off. The shim reads it on the page's main
-  thread for each line, so a change applies to the next line.
+  on by default, stored as `localStorage` `ra2-chat-time` = `0` when off, read on the page's main thread
+  for each line, so a change applies to the next line.
 - Tests: `Module.ra2WolChatTime` (true or false) overrides the switch and `Module.ra2WolChatNow` (a function
-  returning a `Date`) the clock; the selftest pins both. The game reads lines in its pump, so a test pumps
-  before it moves the clock.
-- Not covered: the player's own lines, which the game echoes itself without going through the shim. Putting
-  the time at the start of every line, own lines too, needs a hook on the transcript's add (LB-11 (b), with
-  LB-9 (c)).
-- The C macro: `MAIN_THREAD_EM_ASM` splits its JavaScript at top-level commas outside parentheses, so an array
-  literal like `["Jan", "Feb"]` breaks the build; the month names are one string, cut with `substr`.
+  returning a `Date`) the clock; `wolapi_selftest.c` calls `web_chat_time` on a buffer with both pinned.
+- The C macro: `MAIN_THREAD_EM_ASM` splits its JavaScript at commas outside parentheses, so an array literal
+  (`["Jan", "Feb"]`) or `var a = 1, b = 2;` breaks the build; the month names are one string, cut with
+  `substr`.
+- History: the first version (9a82cc1e) stamped only received lines inside their text,
+  `[nick] : 14:05 hello`, in `receive_chat`; it is gone.
 
-**Seen (both editions, `web/e2e/lobby-bot.mjs` shot `lobby-bot-players`):** the lobby reads
-`[YuriBOT] : 21 Nov 22:13 zad4160 joined the channel. Welcome!`, then `YuriBOT : 22:13 Welcome, ...` (the
-greeting whispers) and `[YuriBOT] : 22:13 zbd4160 joined ...`; the MOTD above stays as it was. Selftest:
-`wolapi_selftest.c` (switch off: text unchanged; on: date on the day's first line, time alone after, the date
-again on the next day; a page unstamped).
+**Seen (both editions, `web/e2e/lobby-bot.mjs`, shots `lobby-bot-top` and `lobby-bot-chat`):** the lobby starts with `-- 21 Nov 2026 --` on a row of its own (no glyph for the newline), then `22:48 Welcome to THAI RA2 Channel` and the other MOTD rows, `22:48 You joined channel USA Command`, `22:46 [YuriBOT] : ... joined the channel`, the bot's whispers `22:46 YuriBOT : ...`, and the player's own lines `22:46 [za8f075] hello` and `22:46 [za8f075] /who`. A wrapped line's second row has no time (`Discord. !!` under the MOTD line it continues). Selftest: `wolapi_selftest.c` (date row on a day's first line and again on the next day, time alone in between, a blank line and the switch off unchanged, a full buffer kept at `0x3FF` characters).
 
 ## Ladder and high-score records, rank in the lobby, the welcome's stats (21 November)
 

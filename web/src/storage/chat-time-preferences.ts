@@ -1,8 +1,8 @@
-/** Whether online chat lines start with the local time ("14:05 hello").
+/** Whether chat lines start with the local time ("14:05 [nick] : hello").
  *
- * On unless the player turned it off. The game's WOL shim reads the same key
- * on the page's main thread for every line it receives, so a change applies
- * to the next line (src/web/wolapi.c, receive_chat; docs/wol/handoff-wolapi.md,
+ * On unless the player turned it off. The game reads the same key on the
+ * page's main thread for every line its chat lists add, so a change applies
+ * to the next line (src/web/wolapi.c, web_chat_time; docs/wol/handoff-wolapi.md,
  * "Chat times").
  */
 const KEY = "ra2-chat-time";

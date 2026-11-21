@@ -829,6 +829,31 @@ def wol_icon_surface_patches(code, cs, target):
                  '/* browser WOL PCX surfaces, run_lift.py wol_icon_surface_patches */')}
 
 
+# The chat lists' add (YR 0x005E2700, RA2 0x005C2C80; docs/wol/handoff-wolapi.md, "Chat times"): it
+# formats its arguments into a zeroed 0x400-character buffer on its stack, finds the open dialog's
+# list 0x53F (lobby, game room, LAN, co-op results) and hands both to the row add (YR 0x005E2820,
+# RA2 0x005C2DA0), which wraps the text and starts a new row at each \n. After `lea edx, [esp+0xc]`
+# edx is the buffer; the host puts the player's local time in front, and a date row when the day
+# changes. Every line of those lists passes here, the player's own included; the in-match messages
+# do not. Sites are byte-checked: a different build gets no times.
+CHAT_TIME_SITES = {
+    # (the lea, its bytes, the call after it, the row add it calls)
+    'gamemd': (0x005E2775, '8d54240c', 0x005E2779, 0x005E2820),
+    'game': (0x005C2CF5, '8d54240c', 0x005C2CF9, 0x005C2DA0),
+}
+
+
+def chat_time_patches(code, cs, target):
+    """Start each chat-list line with the local time (docs/wol/handoff-wolapi.md, "Chat times")."""
+    va, shape, call, add = CHAT_TIME_SITES[target]
+    raw = bytes.fromhex(shape)
+    if code[va - cs:va - cs + len(raw)] != raw or not _call_matches(code, cs, call, add):
+        print('[*] chat_time_patches: the chat add at 0x%08X does not match this build; no chat times' % va)
+        return {}
+    return {va: ('{ extern void web_chat_time(uint32_t); web_chat_time(edx); } '
+                 '/* browser chat times, run_lift.py chat_time_patches */')}
+
+
 # Red Alert 2 itself (game.exe, the same install) is a second target: its own
 # catalog in work/game, its lift in src/recomp/gen_game, its own seeds, hooks
 # and patches. Everything address-bound the host needs comes to it through
@@ -1707,7 +1732,7 @@ def targets():
                                                  **live_resize_menu_patches(code, cs),
                                                  **web_exit_confirmation_patches(code, cs, 'gamemd'),
                                                  **web_url_patches(code, cs, 'gamemd'),
-                                                 **wol_icon_surface_patches(code, cs, 'gamemd'),
+                                                 **wol_icon_surface_patches(code, cs, 'gamemd'), **chat_time_patches(code, cs, 'gamemd'),
                                                  **net_timing_event_patches(code, cs, 'gamemd')}),
         'game': dict(exe=os.path.join(_HERE, 'game', 'game.exe'),
                      catalog=os.path.join(_HERE, 'work', 'game', 'functions.json'),
@@ -1737,7 +1762,7 @@ def targets():
                                                **reconnect_patches(code, cs, 'game'),
                                                **live_resize_patches(code, cs, 'game'),
                                                **web_url_patches(code, cs, 'game'),
-                                               **wol_icon_surface_patches(code, cs, 'game'),
+                                               **wol_icon_surface_patches(code, cs, 'game'), **chat_time_patches(code, cs, 'game'),
                                                **net_timing_event_patches(code, cs, 'game')}),
     }
 
