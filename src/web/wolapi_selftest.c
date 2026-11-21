@@ -914,6 +914,121 @@ int main(void) {
     assert(test_retry_results == 2);
     test_retry_results = 0;
     invalidate_reports();
+    /* LB-15: the Buddy List and Find. Slots 24 (RequestFind), 26 (SetFindPage), 55-57 (buddy list/add/delete);
+     * the answers are IChatEvent ordinals 34 (list), 35/36 (add/delete) and 23 (find): method ids 0x10000 + ordinal + 3. */
+    {
+        enum { ON_FIND = 0x1001A, ON_LIST = 0x10025, ON_ADD = 0x10026, ON_DEL = 0x10027 };
+#define LAST_LINE(text) EM_ASM_INT({ return Module.testWolLine === UTF8ToString($0); }, text)
+        test_event_count = 0;
+        /* An empty list is an event with no chain. */
+        assert(invoke(g_chat.chat, 55, 0, NULL) == S_OK && LAST_LINE("buddylist"));
+        assert(test_event_count == 0); /* the answer comes from the server */
+        receive_pumped(":wol-ra2web 611 testuser :End of buddy list");
+        assert(test_event_count == 1 && test_event_method[0] == ON_LIST);
+        assert(test_event_args[0][1] == S_OK && test_event_args[0][2] == 0);
+        /* Three buddies arrive in order as a linked chain; the names are the User's name field. */
+        test_event_count = 0;
+        assert(invoke(g_chat.chat, 55, 0, NULL) == S_OK);
+        ra2_wolapi_receive_line(":wol-ra2web 610 testuser Alpha");
+        ra2_wolapi_receive_line(":wol-ra2web 610 testuser Bravo");
+        ra2_wolapi_receive_line(":wol-ra2web 610 testuser Charlie");
+        assert(invoke(g_chat.chat, 3, 0, NULL) == S_OK && test_event_count == 0); /* nothing before the end line */
+        receive_pumped(":wol-ra2web 611 testuser :End of buddy list");
+        assert(test_event_count == 1 && test_event_method[0] == ON_LIST && test_event_args[0][1] == S_OK);
+        const wol_user *buddy = (const wol_user *)(uintptr_t)test_event_args[0][2];
+        const char *expected_buddies[] = { "Alpha", "Bravo", "Charlie" };
+        for (unsigned i = 0; i < 3; i++) {
+            assert(buddy && !strcmp(buddy->name, expected_buddies[i]));
+            buddy = (const wol_user *)(uintptr_t)buddy->next;
+        }
+        assert(buddy == NULL);
+        /* The cap is 100 entries; the next list starts empty. */
+        test_event_count = 0;
+        for (unsigned i = 0; i < 105; i++) {
+            char entry[64];
+            snprintf(entry, sizeof entry, ":wol-ra2web 610 testuser B%u", i);
+            ra2_wolapi_receive_line(entry);
+        }
+        receive_pumped(":wol-ra2web 611 testuser :End of buddy list");
+        unsigned chain = 0;
+        for (buddy = (const wol_user *)(uintptr_t)test_event_args[0][2]; buddy; buddy = (const wol_user *)(uintptr_t)buddy->next) chain++;
+        assert(chain == 100);
+        test_event_count = 0;
+        receive_pumped(":wol-ra2web 610 testuser Delta");
+        receive_pumped(":wol-ra2web 611 testuser :End of buddy list");
+        buddy = (const wol_user *)(uintptr_t)test_event_args[0][2];
+        assert(buddy && !strcmp(buddy->name, "Delta") && buddy->next == 0);
+
+        /* Add: sent as `buddyadd <nick>`; 612 is S_OK, 613 a failure. */
+        wol_user asked = { 0 };
+        strcpy(asked.name, "Echo");
+        uint32_t user_args[] = { (uint32_t)(uintptr_t)&asked };
+        test_event_count = 0;
+        assert(invoke(g_chat.chat, 56, 1, user_args) == S_OK && LAST_LINE("buddyadd Echo"));
+        receive_pumped(":wol-ra2web 612 testuser Echo :added");
+        assert(test_event_count == 1 && test_event_method[0] == ON_ADD && test_event_args[0][1] == S_OK);
+        assert(!strcmp(((const wol_user *)(uintptr_t)test_event_args[0][2])->name, "Echo"));
+        receive_pumped(":wol-ra2web 613 testuser Echo :list is full");
+        assert(test_event_count == 2 && test_event_method[1] == ON_ADD && test_event_args[1][1] == E_FAIL);
+        /* Delete. */
+        strcpy(asked.name, "Foxtrot");
+        assert(invoke(g_chat.chat, 57, 1, user_args) == S_OK && LAST_LINE("buddydel Foxtrot"));
+        receive_pumped(":wol-ra2web 614 testuser Foxtrot :removed");
+        assert(test_event_count == 3 && test_event_method[2] == ON_DEL && test_event_args[2][1] == S_OK);
+        assert(!strcmp(((const wol_user *)(uintptr_t)test_event_args[2][2])->name, "Foxtrot"));
+        /* A missing User, or a name that would split the line, sends nothing. */
+        uint32_t no_user[] = { 0 };
+        assert(invoke(g_chat.chat, 56, 1, no_user) == E_POINTER && invoke(g_chat.chat, 24, 1, no_user) == E_POINTER);
+        strcpy(asked.name, "a b");
+        assert(invoke(g_chat.chat, 56, 1, user_args) == E_FAIL && LAST_LINE("buddydel Foxtrot"));
+
+        /* Find: `find <nick>`, then one answer per state. */
+        test_event_count = 0;
+        strcpy(asked.name, "Golf");
+        assert(invoke(g_chat.chat, 24, 1, user_args) == S_OK && LAST_LINE("find Golf"));
+        assert(test_event_count == 0);
+        receive_pumped(":wol-ra2web 615 testuser Golf found #Lob_41_3 0");
+        assert(test_event_count == 1 && test_event_method[0] == ON_FIND && test_event_args[0][1] == S_OK);
+        const wol_channel *where = (const wol_channel *)(uintptr_t)test_event_args[0][2];
+        assert(where && !strcmp(where->name, "Lob_41_3") && where->type == 0);
+        strcpy(asked.name, "Hotel");
+        assert(invoke(g_chat.chat, 24, 1, user_args) == S_OK && LAST_LINE("find Hotel"));
+        receive_pumped(":wol-ra2web 615 testuser Hotel found #Hotel_room 2");
+        assert(test_event_count == 2 && test_event_args[1][1] == S_OK);
+        where = (const wol_channel *)(uintptr_t)test_event_args[1][2];
+        assert(where && !strcmp(where->name, "Hotel_room") && where->type == 2);
+        const struct { const char *nick, *state; uint32_t code; } find_cases[] = {
+            { "India", "offline", 0x00040130u }, { "Juliet", "nochannel", 0x00040131u }, { "Kilo", "hidden", 0x00040132u } };
+        for (unsigned i = 0; i < 3; i++) {
+            char reply[96];
+            strcpy(asked.name, find_cases[i].nick);
+            assert(invoke(g_chat.chat, 24, 1, user_args) == S_OK);
+            snprintf(reply, sizeof reply, ":wol-ra2web 615 testuser %s %s * 0", find_cases[i].nick, find_cases[i].state);
+            receive_pumped(reply);
+            assert(test_event_count == 3 + i && test_event_method[2 + i] == ON_FIND);
+            assert(test_event_args[2 + i][1] == find_cases[i].code && test_event_args[2 + i][2] == 0);
+        }
+        assert(g_find_pending_count == 0);
+        /* Several finds in flight are answered by name; an unknown-command reply fails the oldest. */
+        test_event_count = 0;
+        strcpy(asked.name, "Lima");
+        assert(invoke(g_chat.chat, 24, 1, user_args) == S_OK);
+        strcpy(asked.name, "Mike");
+        assert(invoke(g_chat.chat, 24, 1, user_args) == S_OK);
+        assert(g_find_pending_count == 2);
+        receive_pumped(":wol-ra2web 421 testuser find :Unknown command");
+        assert(test_event_count == 1 && test_event_args[0][1] == 0x00040130u && g_find_pending_count == 1);
+        receive_pumped(":wol-ra2web 615 testuser Mike found #Lob_41_1 0");
+        assert(test_event_count == 2 && test_event_args[1][1] == S_OK && g_find_pending_count == 0);
+
+        /* SetFindPage(find, page) tells the server what others may do. */
+        uint32_t flags[] = { 1, 0 };
+        assert(invoke(g_chat.chat, 26, 2, flags) == S_OK && LAST_LINE("setfind 1 0"));
+        flags[0] = 0; flags[1] = 2;
+        assert(invoke(g_chat.chat, 26, 2, flags) == S_OK && LAST_LINE("setfind 0 1"));
+#undef LAST_LINE
+        test_event_count = 0;
+    }
     /* The received-line formats lose the space before the colon, only as shipped: a second run
      * leaves them as they are. The image addresses are borrowed and restored. */
     {

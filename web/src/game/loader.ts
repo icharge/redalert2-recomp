@@ -52,6 +52,7 @@ import {
   WolLoginError,
   type HeldSession,
 } from "./wol";
+import { PmStore } from "./pm";
 import { UdpRelay, parseStartHandoff } from "./udp-relay";
 
 /** The two edition bundles share /game and use edition-specific filenames. */
@@ -209,6 +210,8 @@ export interface GameHandle {
   files: ReadOnlyFileSource;
   /** keeps the game's writes (saves, settings) in OPFS; null when the files are not from the import */
   saves: SaveSync | null;
+  /** the private messages the WOL connection carried, and where the page's panel sends (pm.ts) */
+  pm: PmStore;
 }
 
 /** Where /game comes from. The import (stage 6) adds OPFS; for now the dev server's folder. */
@@ -597,7 +600,12 @@ async function loadOpfsFiles(
   store.loading("the game");
 }
 
-function createHandle(module: Ra2Module, saves: SaveSync | null, game: GameId): GameHandle {
+function createHandle(
+  module: Ra2Module,
+  saves: SaveSync | null,
+  game: GameId,
+  pm: PmStore,
+): GameHandle {
   if (!module.FS) throw new Error("the game's file system is not available yet");
   const exports = {} as Record<string, unknown>;
   for (const [name, { returns, args }] of Object.entries(EXPORT_SIGNATURES)) {
@@ -610,6 +618,7 @@ function createHandle(module: Ra2Module, saves: SaveSync | null, game: GameId): 
     shared: ra2.ra2_shared(),
     files: liveGameFileSource(module.FS, game === "ra2" ? "Red Alert 2" : "Yuri's Revenge"),
     saves,
+    pm,
   };
 }
 
@@ -677,6 +686,8 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
           ? gameModulePath(game, moduleBase, path, runtimeGame.wasm, runtimeGame.data)
           : gameModuleUrl(game, moduleBase, path, runtimeGame.build ?? ""),
     } as Partial<Ra2Module> as Ra2Module;
+    const pm = new PmStore();
+    pm.setTransport((line) => module.ra2WolSend?.(line));
     let wolClient: WolClient | null = null;
     let udpRelay: UdpRelay | null = null;
     const wolResultGames = new Map<number, string>();
@@ -690,6 +701,7 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
     module.ra2WolStart = (username, password) => {
       udpRelay?.stop();
       wolClient?.close();
+      pm.setOnline(false);
       wolResultGames.clear();
       latestResultGame = "";
       // A redeemed launch session logs in as the ticket's nick; it stays for a
@@ -705,6 +717,7 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
         held,
       );
       wolClient = client;
+      pm.setNick(client.nick);
       client.onLine((line) => {
         if (wolClient !== client) return;
         // STARTG carries the ticket for RA2Web's native datagram relay: open it
@@ -719,13 +732,20 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
           }
           udpRelay?.start(handoff);
         }
+        pm.setNick(client.nick);
+        pm.handleIncoming(line);
         module.ra2WolReceiveLine?.(line);
       });
       client.onDisconnect(() => {
+        if (wolClient === client) pm.setOnline(false);
         if (wolClient === client) module.ra2WolReceiveLine?.("@wolapi disconnected");
       });
       void client.connect({ joinLobby: false }).then(
         () => {
+          if (wolClient === client) {
+            pm.setNick(client.nick);
+            pm.setOnline(true);
+          }
           if (wolClient === client) module.ra2WolReceiveLine?.("@wolapi connected");
         },
         (error: unknown) => {
@@ -758,6 +778,7 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
         // the native game is still starting, so its relay must stay alive then.
         if (/^(?:join|joingame)\s/i.test(line)) udpRelay?.stop();
         client.sendRaw(line);
+        pm.observeOutgoing(line);
       } catch (error) {
         // A closed socket is already reported through onDisconnect. Replaying
         // a send failure as `@wolapi error` would instead abort a login that
@@ -796,6 +817,7 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
       udpRelay?.stop();
       wolClient?.close();
       wolClient = null;
+      pm.setOnline(false);
       wolResultGames.clear();
       latestResultGame = "";
     };
@@ -906,7 +928,7 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
           .then(() => {
             if (files.kind === "opfs")
               saves = startSaveSync(fs, opfsTarget(), files.record.storage);
-            resolve(createHandle(module, saves, game));
+            resolve(createHandle(module, saves, game, pm));
             module.callMain(module.arguments);
           }, fail);
       } catch (error) {

@@ -24,6 +24,7 @@ import { GameAudio } from "../game/audio";
 import { attachInput } from "../game/input";
 import { PageCursor } from "../game/cursor-layer";
 import { LanPanel } from "../components/LanPanel";
+import { PmPanel, PmTrayButton } from "../components/PmPanel";
 import { FileExplorer } from "../components/FileExplorer";
 import { GameTray, trayItem } from "./GameTray";
 import { CrashDialog } from "./CrashDialog";
@@ -123,6 +124,7 @@ export function Play({ files }: { files: FileSource }) {
   const [textInputOpen, setTextInputOpen] = useState(false);
   const [browserError, setBrowserError] = useState<string | null>(null);
   const [trayQuiet, setTrayQuiet] = useState(false);
+  const [pmOpen, setPmOpen] = useState(false);
   const gameId = sourceStorage(files);
   const [thaiFontFix] = useState(() => readThaiFontPreference(gameId));
   const [fullscreenPreference] = useState<FullscreenPreference>(() =>
@@ -241,6 +243,21 @@ export function Play({ files }: { files: FileSource }) {
     // the dialog is the only thing that may take the mouse while it is open
     if (document.pointerLockElement) document.exitPointerLock();
   }, [openLink, linkDialogTarget]);
+
+  // The private-message panel is not a dialog: the game keeps running. Opening it frees the
+  // mouse if the game held it; closing it, or a match starting, gives the keys back to the game.
+  const togglePm = () => {
+    if (pmOpen) {
+      setPmOpen(false);
+      canvas.current?.focus();
+    } else {
+      if (document.pointerLockElement) document.exitPointerLock();
+      setPmOpen(true);
+    }
+  };
+  useEffect(() => {
+    if (trayQuiet && pmOpen) canvas.current?.focus();
+  }, [trayQuiet, pmOpen]);
 
   const toggleFullscreen = () => {
     void (
@@ -814,6 +831,14 @@ export function Play({ files }: { files: FileSource }) {
           </button>
         )}
         {presenter && handle.current && <LanPanel game={handle.current} className={trayItem} />}
+        {presenter && handle.current && (
+          <PmTrayButton
+            pm={handle.current.pm}
+            open={pmOpen}
+            onToggle={togglePm}
+            className={trayItem}
+          />
+        )}
         {audio && (
           <SoundControl
             audio={audio}
@@ -847,6 +872,9 @@ export function Play({ files }: { files: FileSource }) {
           F11
         </button>
       </GameTray>
+      {pmOpen && !trayQuiet && presenter && handle.current && (
+        <PmPanel pm={handle.current.pm} onClose={togglePm} />
+      )}
       {browseFiles && liveFiles && (
         <FileExplorer source={liveFiles} onClose={() => setBrowseFiles(false)} />
       )}

@@ -766,6 +766,112 @@ static void squad_fail_all(void) {
     }
 }
 
+/* ---- Buddies and Find (LB-15; docs/wol/handoff-wolapi.md) ----
+ * IChat slots 55-57 (RequestBuddyList/Add/Delete) answer through IChatEvent ordinals 34-36, and slot 24
+ * RequestFind(User*) through ordinal 23, as the vtables show (YR CChatEventSink at 0x007F76B4, RA2 at 0x007AF77C;
+ * slot = ordinal + 3): 34 is the list sink (hr, User* chain; next at +0x20, name at +0x24); 35/36 are the add/delete
+ * sinks (hr, User*; both return 0 and ignore the answer); 23 is the find sink (hr, Channel*). RequestFind has the
+ * User's name at +0x24 only; the Buddy List asks for each buddy in turn and `/on <nick>` asks for one. The server
+ * (docs/wol/tasks.md LB-15) answers in order, so a pending find is the oldest one. */
+#define WOL_BUDDY_MAX 100u
+#define WOL_FIND_PENDING 8u
+#define WOL_FIND_NOT_ONLINE 0x00040130u
+#define WOL_FIND_NO_CHANNEL 0x00040131u
+#define WOL_FIND_DISABLED 0x00040132u
+static wol_user g_buddies[WOL_BUDDY_MAX]; /* the list being collected from 610 lines, until 611 */
+static uint32_t g_buddy_count;
+static wol_user g_buddy_answer_user;       /* the user of an add/delete answer */
+static wol_channel g_found_channel;        /* the channel of a find answer */
+static char g_find_pending[WOL_FIND_PENDING][32];
+static uint32_t g_find_pending_count;
+
+static void buddy_reset(void) {
+    g_buddy_count = 0;
+    g_find_pending_count = 0;
+}
+
+static void buddy_name_user(wol_user *user, const char *name) {
+    memset(user, 0, sizeof *user);
+    copy_text(user->name, sizeof user->name, name);
+}
+
+/* 610 <me> <buddy>: one entry of the list. 611: the list is complete (OnBuddyList, ordinal 34). */
+static void buddy_list_line(const char *line) {
+    char name[32];
+    if (sscanf(line, ":%*s 610 %*s %31s", name) != 1) return;
+    if (g_buddy_count >= WOL_BUDDY_MAX) return;
+    buddy_name_user(&g_buddies[g_buddy_count++], name);
+}
+
+static void buddy_list_end(void) {
+    for (uint32_t i = 0; i < g_buddy_count; i++)
+        g_buddies[i].next = i + 1 < g_buddy_count ? (uint32_t)(uintptr_t)&g_buddies[i + 1] : 0;
+    uint32_t values[] = { S_OK, g_buddy_count ? (uint32_t)(uintptr_t)&g_buddies[0] : 0 };
+    uint32_t count = g_buddy_count;
+    g_buddy_count = 0;
+    fprintf(stderr, "[wol] buddy list: %u\n", (unsigned)count);
+    event_call(34, 2, values); /* IChatEvent: the buddy list */
+}
+
+/* 612/613 add, 614 delete: `<me> <nick> :text`. The game ignores both answers; they still arrive. */
+static void buddy_change_event(const char *name, uint32_t ordinal, uint32_t result) {
+    buddy_name_user(&g_buddy_answer_user, name);
+    uint32_t values[] = { result, (uint32_t)(uintptr_t)&g_buddy_answer_user };
+    event_call(ordinal, 2, values); /* IChatEvent: buddy added (35) / removed (36) */
+}
+
+static void buddy_change_reply(const char *line, uint32_t ordinal, uint32_t result) {
+    char name[32];
+    if (sscanf(line, ":%*s %*u %*s %31s", name) != 1) return;
+    buddy_change_event(name, ordinal, result);
+}
+
+static void find_deliver(const char *name, uint32_t result, const char *channel, int type) {
+    for (uint32_t i = 0; i < g_find_pending_count; i++) {
+        if (strcasecmp(g_find_pending[i], name)) continue;
+        memmove(g_find_pending[i], g_find_pending[i + 1], (g_find_pending_count - i - 1) * sizeof g_find_pending[0]);
+        g_find_pending_count--;
+        break;
+    }
+    if (result == S_OK) {
+        memset(&g_found_channel, 0, sizeof g_found_channel);
+        /* WOLAPI channel names omit the IRC # prefix. */
+        copy_text(g_found_channel.name, sizeof g_found_channel.name, channel + (channel[0] == '#'));
+        g_found_channel.type = type;
+        g_found_channel.max_users = 8;
+    }
+    fprintf(stderr, "[wol] find %s: 0x%x %s\n", name, (unsigned)result, result == S_OK ? g_found_channel.name : "");
+    uint32_t values[] = { result, result == S_OK ? (uint32_t)(uintptr_t)&g_found_channel : 0 };
+    event_call(23, 2, values); /* IChatEvent: the find answer */
+}
+
+/* 615 <me> <nick> <found|offline|nochannel|hidden> <channel> <type> */
+static void find_reply(const char *line) {
+    char name[32], state[16], channel[48] = "";
+    int type = 0;
+    if (sscanf(line, ":%*s 615 %*s %31s %15s %47s %d", name, state, channel, &type) < 2) return;
+    uint32_t result = WOL_FIND_NOT_ONLINE;
+    if (!strcmp(state, "found") && channel[0] && channel[0] != '*') result = S_OK;
+    else if (!strcmp(state, "nochannel")) result = WOL_FIND_NO_CHANNEL;
+    else if (!strcmp(state, "hidden")) result = WOL_FIND_DISABLED;
+    find_deliver(name, result, channel, type);
+}
+
+/* A server without these commands answers 421 <me> <command> :...: fail the request like the real service would. */
+static int buddy_unknown_command(const char *line) {
+    if (!is_numeric_reply(line, "421")) return 0;
+    char name[32] = "";
+    if (strstr(line, " buddylist ")) { uint32_t v[] = { E_FAIL, 0 }; event_call(34, 2, v); return 1; }
+    if (strstr(line, " buddyadd ")) { buddy_change_event("", 35, E_FAIL); return 1; }
+    if (strstr(line, " buddydel ")) { buddy_change_event("", 36, E_FAIL); return 1; }
+    if (strstr(line, " find ")) {
+        if (g_find_pending_count) copy_text(name, sizeof name, g_find_pending[0]);
+        find_deliver(name, WOL_FIND_NOT_ONLINE, "", 0);
+        return 1;
+    }
+    return 0;
+}
+
 static void parse_roster(const char *line) {
     char channel[48];
     if (sscanf(line, ":%*s 353 %*s %*s %47s", channel) != 1 || strcmp(channel, g_current_channel)) return;
@@ -884,6 +990,7 @@ static void disconnected(void) {
     g_user_count = g_channel_count = g_lobby_users = g_channel_list_lobby = 0;
     g_squad_count = 0;
     memset(g_squad_nicks, 0, sizeof g_squad_nicks);
+    buddy_reset();
     uint32_t status[] = { 0x0004012fu };
     event_call(16, 1, status); /* IChatEvent::OnNetStatus: connection closed */
     squad_fail_all();
@@ -1403,6 +1510,13 @@ static void handle_line(const char *line) {
     if (!strncmp(line, "@wolapi ladder ", 15)) { deliver_ladder(line); return; }
     if (strstr(line, " 311 ")) { squad_reply(line); return; }
     if (strstr(line, " 421 ") && strstr(line, " squadinfo ")) { squad_fail_all(); return; }
+    if (is_numeric_reply(line, "610")) { buddy_list_line(line); return; }
+    if (is_numeric_reply(line, "611")) { buddy_list_end(); return; }
+    if (is_numeric_reply(line, "612")) { buddy_change_reply(line, 35, S_OK); return; }
+    if (is_numeric_reply(line, "613")) { buddy_change_reply(line, 35, E_FAIL); return; }
+    if (is_numeric_reply(line, "614")) { buddy_change_reply(line, 36, S_OK); return; }
+    if (is_numeric_reply(line, "615")) { find_reply(line); return; }
+    if (buddy_unknown_command(line)) return;
     const char *command = strchr(line, ' ');
     if (channel_error(line)) return;
     if (strcmp(line, "@wolapi connected") == 0) {
@@ -1651,6 +1765,7 @@ static void pump_lines(void) {
         uint32_t status[] = { 0x0004012fu };
         event_call(16, 1, status); /* IChatEvent::OnNetStatus */
         g_current_channel[0] = '\0';
+        buddy_reset();
         g_user_count = 0;
         g_channel_count = 0;
         g_lobby_users = 0;
@@ -2264,6 +2379,55 @@ static void m_chat_get_attribute_value(void) {
     RET(S_OK, 3);
 }
 
+/* Buddies and Find: each call sends one line and answers S_OK; the answer is an event from the pump
+ * (buddy_list_end, buddy_change_reply, find_reply). RequestBuddyAdd/Delete/Find take a User* whose name is at +0x24. */
+static int buddy_user_name(uint32_t pointer, char *name, size_t capacity) {
+    const wol_user *user = (const wol_user *)(uintptr_t)pointer;
+    if (!user) return 0;
+    copy_text(name, capacity, user->name);
+    if (!name[0]) return 0;
+    for (const char *c = name; *c; c++) if ((unsigned char)*c <= ' ') return 0; /* a space would split the line */
+    return 1;
+}
+static void m_chat_request_buddy_list(void) { browser_send("buddylist"); RET(S_OK, 1); }
+static void m_chat_request_buddy_add(void) {
+    char name[sizeof ((wol_user *)0)->name], line[48];
+    if (!A32(1)) RET(E_POINTER, 2);
+    if (!buddy_user_name(A32(1), name, sizeof name)) RET(E_FAIL, 2);
+    snprintf(line, sizeof line, "buddyadd %s", name);
+    browser_send(line);
+    RET(S_OK, 2);
+}
+static void m_chat_request_buddy_delete(void) {
+    char name[sizeof ((wol_user *)0)->name], line[48];
+    if (!A32(1)) RET(E_POINTER, 2);
+    if (!buddy_user_name(A32(1), name, sizeof name)) RET(E_FAIL, 2);
+    snprintf(line, sizeof line, "buddydel %s", name);
+    browser_send(line);
+    RET(S_OK, 2);
+}
+/* WolChat::RequestFind(User*): the Buddy List asks for each buddy in turn, `/on <nick>` for one. */
+static void m_chat_request_find(void) {
+    char name[sizeof ((wol_user *)0)->name], line[48];
+    if (!A32(1)) RET(E_POINTER, 2);
+    if (!buddy_user_name(A32(1), name, sizeof name)) RET(E_FAIL, 2);
+    if (g_find_pending_count == WOL_FIND_PENDING) { /* answers lost: forget the oldest */
+        memmove(g_find_pending[0], g_find_pending[1], (WOL_FIND_PENDING - 1u) * sizeof g_find_pending[0]);
+        g_find_pending_count--;
+    }
+    copy_text(g_find_pending[g_find_pending_count++], sizeof g_find_pending[0], name);
+    snprintf(line, sizeof line, "find %s", name);
+    browser_send(line);
+    RET(S_OK, 2);
+}
+/* WolChat::SetFindPage(find, page): whether others may find this player and page them. */
+static void m_chat_set_find_page(void) {
+    char line[32];
+    snprintf(line, sizeof line, "setfind %d %d", A32(1) != 0, A32(2) != 0);
+    browser_send(line);
+    RET(S_OK, 3);
+}
+
 #define CHAT_METHODS \
     { "WolChat::QueryInterface", m_query_interface }, { "WolChat::AddRef", m_add_ref }, { "WolChat::Release", m_release }, \
     { "WolChat::PumpMessages", m_chat_pump }, \
@@ -2276,8 +2440,8 @@ static void m_chat_get_attribute_value(void) {
     { "WolChat::RequestPublicAction", m_chat_request_public_action }, { "WolChat::RequestPrivateAction", m_chat_request_private_action }, \
     { "WolChat::RequestGameStart", m_chat_request_game_start }, { "WolChat::RequestChannelTopic", m_chat_request_channel_topic }, \
     { "WolChat::GetVersion", m_chat_get_version }, { "WolChat::RequestUserKick", m_stub_2 }, { "WolChat::RequestUserIP", m_stub_2 }, \
-    { "WolChat::GetGametypeInfo", m_chat_get_gametype_info }, { "WolChat::RequestFind", m_stub_2 }, { "WolChat::RequestPage", m_stub_3 }, \
-    { "WolChat::SetFindPage", m_stub_3 }, { "WolChat::SetSquelch", m_stub_3 }, { "WolChat::GetSquelch", m_stub_2 }, \
+    { "WolChat::GetGametypeInfo", m_chat_get_gametype_info }, { "WolChat::RequestFind", m_chat_request_find }, { "WolChat::RequestPage", m_stub_3 }, \
+    { "WolChat::SetFindPage", m_chat_set_find_page }, { "WolChat::SetSquelch", m_stub_3 }, { "WolChat::GetSquelch", m_stub_2 }, \
     { "WolChat::SetChannelFilter", m_stub_2 }, { "WolChat::RequestGameEnd", m_chat_game_end }, { "WolChat::SetLangFilter", m_stub_2 }, \
     { "WolChat::RequestChannelBan", m_stub_3 }, { "WolChat::GetGametypeList", m_chat_get_gametype_list }, { "WolChat::GetHelpURL", m_chat_get_help_url }, \
     { "WolChat::SetProductSKU", m_chat_profile_value }, { "WolChat::GetNick", m_chat_get_nick }, { "WolChat::SetNick", m_chat_set_nick }, \
@@ -2287,8 +2451,8 @@ static void m_chat_get_attribute_value(void) {
     { "WolChat::RequestSetTeam", m_stub_2 }, { "WolChat::RequestSetLocale", m_stub_2 }, { "WolChat::RequestUserLocale", m_chat_request_user_locale }, \
     { "WolChat::RequestUserTeam", m_stub_2 }, { "WolChat::GetNickLocale", m_stub_3 }, { "WolChat::SetNickLocale", m_stub_3 }, \
     { "WolChat::GetLocaleString", m_chat_get_locale_string }, { "WolChat::GetLocaleCount", m_chat_get_locale_count }, { "WolChat::SetClientVersion", m_stub_2 }, \
-    { "WolChat::SetCodepageFilter", m_stub_2 }, { "WolChat::RequestBuddyList", m_stub_1 }, { "WolChat::RequestBuddyAdd", m_stub_2 }, \
-    { "WolChat::RequestBuddyDelete", m_stub_2 }, { "WolChat::RequestPublicUnicodeMessage", m_chat_request_public_unicode_message }, \
+    { "WolChat::SetCodepageFilter", m_stub_2 }, { "WolChat::RequestBuddyList", m_chat_request_buddy_list }, { "WolChat::RequestBuddyAdd", m_chat_request_buddy_add }, \
+    { "WolChat::RequestBuddyDelete", m_chat_request_buddy_delete }, { "WolChat::RequestPublicUnicodeMessage", m_chat_request_public_unicode_message }, \
     { "WolChat::RequestPrivateUnicodeMessage", m_chat_request_private_unicode_message }, { "WolChat::RequestPublicUnicodeAction", m_stub_2 }, \
     { "WolChat::RequestPrivateUnicodeAction", m_stub_3 }, { "WolChat::RequestUnicodePage", m_chat_request_unicode_page }, \
     { "WolChat::RequestSetPlayerCount", m_stub_3 }, { "WolChat::RequestServerTime", m_stub_1 }, \

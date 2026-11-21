@@ -66,6 +66,15 @@ describe("Shell", () => {
     expect(screen.getByRole("link", { name: "LADDER" })).not.toHaveAttribute("aria-current");
   });
 
+  it("has a Friends tab after Clan", () => {
+    renderShell({}, "/friends");
+    expect(screen.getByRole("link", { name: "FRIENDS" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "FRIENDS" })).toHaveAttribute("href", "/friends");
+    expect(screen.getByRole("link", { name: "CLAN" })).not.toHaveAttribute("aria-current");
+    const labels = screen.getAllByRole("link").map((link) => link.textContent);
+    expect(labels.indexOf("FRIENDS")).toBe(labels.indexOf("CLAN") + 1);
+  });
+
   it("shows one tile per edition", () => {
     renderShell({ editions: [ra2], edition: ra2 });
     expect(screen.getByRole("button", { name: "Red Alert 2" })).toHaveAttribute(

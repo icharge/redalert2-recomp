@@ -1,0 +1,62 @@
+/* The friends page: the panels, table and buttons are LadderScreen's, ClanScreen's and Page's;
+   what is here is only the status dot and the add row. */
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  box-sizing: border-box;
+  background: #55565c;
+}
+.dot[data-status="online"],
+.dot[data-status="lobby"] {
+  background: var(--green);
+}
+.dot[data-status="game"] {
+  background: var(--amber);
+}
+/* a buddy who hides: a ring, neither lit nor dark */
+.dot[data-status="hidden"] {
+  background: transparent;
+  border: 2px solid var(--muted);
+}
+.statusText {
+  overflow-wrap: anywhere;
+}
+.statusText[data-status="offline"],
+.statusText[data-status="hidden"] {
+  color: var(--muted);
+}
+.room {
+  color: var(--muted);
+}
+
+.addRow {
+  display: flex;
+  gap: 12px;
+}
+.addRow input {
+  flex: 1;
+}
+
+.toolbar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.count {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 720px) {
+  .addRow {
+    flex-direction: column;
+  }
+}

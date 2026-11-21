@@ -813,6 +813,42 @@ a types `/r back`: a's socket sends `privmsg zb90560 :back`, b receives it, and 
 `00:31 [za90560 > zb90560] back`. Selftest: `wolapi_selftest.c` (the buffer filled by a player's private line, not
 by a `NOTICE` or `PAGE`; slot 62 sends one line to the first name with a garbage `next`; ordinal 24 from the pump).
 
+## The MESSAGES panel and buddies (LB-14, LB-15, 22 November)
+
+**MESSAGES panel (web only).** `web/src/game/pm.ts` (`PmStore`) keeps a conversation per player for the page;
+`web/src/components/PmPanel.tsx` shows it beside the game (non-modal: the game keeps running, keys typed in the
+panel stop there), opened from MESSAGES in the star tray, with an unread count. `loader.ts` feeds it every
+server line before the shim gets it (the game still gets every line) and every line the shim sends
+(`observeOutgoing`), so whispers and `/r` typed in the game show in the panel too; the panel sends
+`privmsg <nick> :<text>` through `module.ra2WolSend`, split at 400 UTF-8 bytes. Only a player's private
+`PRIVMSG` makes a conversation: `NOTICE`, `PAGE` and an operator's lines (the bot, learnt from the `@` in a
+NAMES reply) stay in the game's chat. Colour codes are stripped. A line sent from the panel is not echoed in
+the game's own transcript. The tray, and so the panel, hides during a match (`matchQuiet`); unread still counts.
+
+**Buddies.** One list per member game account on the server (ra2web `docs/friends.md`: migration 10
+`friends`, at most 100), used by YR's Buddy List and the launcher's FRIENDS page.
+- WOL lines (codes 610-615): `buddylist` (610 per buddy, 611 end), `buddyadd <nick>` (612 / 613 reason),
+  `buddydel <nick>` (614), `find <nick>` (615 `<nick> found <channel> <type>` or `offline|nochannel|hidden * 0`),
+  `setfind <find> <page>` (no reply). Guests keep no buddies.
+- Shim (`src/web/wolapi.c`): IChat slots 55-57 and 24, 26; events from the vtables (YR CChatEventSink at
+  `0x007F76B4`, RA2 at `0x007AF77C`, slot = ordinal + 3): ordinal 34 the list (hr, User chain; YR `0x007AC220`,
+  RA2 `0x007656B0`), 35/36 add/delete (both `xor eax,eax; ret 0xc`, ignored), 23 the find (hr, Channel*; YR
+  `0x007A9970`, RA2 `0x00762F70`; hr `0x00040130` not online, `0x00040131` in no channel, `0x00040132` find
+  off). Finds wait in a queue of 8 matched by nick. A server without the verbs (421) fails each request.
+- HTTP: `GET /v1/friends`, `PUT` / `DELETE /v1/friends/:name`, member Bearer auth, `?account=` as the clan
+  routes; the launcher's CORS methods now include PUT and DELETE. Status `offline`, `lobby`, `game`, `online`
+  (connected, in no channel, or in a Quick Match lobby), `hidden`; the FRIENDS page leaves out a chat lobby's
+  key ("In the lobby"), and names a game room.
+- Launcher: `web/src/screens/launcher/FriendsScreen.tsx`, `web/src/friends/api.ts`, the FRIENDS tab after CLAN.
+  RA2 has no Buddy List dialog; `/on <nick>` works in both editions.
+
+**Seen (both editions, `web/e2e/buddies-pm.mjs`):** two members; a adds b through `PUT /v1/friends` and
+`GET` shows b in the lobby; b writes from the panel, a's MESSAGES reads "Messages, 1 unread", a answers from
+the panel and b gets it; `/on <b>` prints `mb66709 is in channel Lob_41_0.`; YR's Buddy List lists b as
+`Online/Available`. The FRIENDS page in the launcher lists a friend, refuses a second add ("already a
+friend"). Gaps: the dialog's Join for a buddy in a game room (room names longer than 16 characters are cut in
+the shim's channel record) and Page Buddy were not driven.
+
 ## Ladder and high-score records, rank in the lobby, the welcome's stats (21 November)
 
 `INetUtil` (the shim's `WolChannel` object) now answers `RequestLadderList` (slot 5), `RequestLocaleLadderList` (12),

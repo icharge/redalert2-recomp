@@ -15,6 +15,7 @@ const TABS = [
   { label: "MODS", to: "/mods", end: false },
   { label: "LADDER", to: "/ladder", end: false },
   { label: "CLAN", to: "/clan", end: false },
+  { label: "FRIENDS", to: "/friends", end: false },
   { label: "GAME", to: "/manage", end: false },
 ];
 
