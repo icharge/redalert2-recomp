@@ -32,6 +32,7 @@
 #ifdef __EMSCRIPTEN__
 void web_presenter_dialog_created(uint32_t hwnd, uint32_t resource_id);
 void web_map_search_dialog(uint32_t hwnd, uint32_t resource_id);   /* src/web/map_search.c */
+void web_chat_box_dialog(uint32_t hwnd, uint32_t resource_id);     /* src/web/chat_box.c */
 void web_map_search_start(void);
 #include "web_api.h"
 void ra2_setting(int key, int value, int extra);  /* src/web/presenter.c */
@@ -139,6 +140,7 @@ static void dialog_created(uint32_t h, uint32_t id) {
 #ifdef __EMSCRIPTEN__
     web_presenter_dialog_created(h, id);
     web_map_search_dialog(h, id);
+    web_chat_box_dialog(h, id);
 #endif
     if (id == 0xE2 && !__sync_lock_test_and_set(&g_menu_open, 1)) {
         g_t0 = now_ms();

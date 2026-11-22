@@ -593,7 +593,10 @@ static void update_page_cursor(void) {
 
 /* ---- input: the page's side, then the game's ------------------------------- */
 
-enum { IN_MOVE, IN_DOWN, IN_UP, IN_KEYDOWN, IN_KEYUP, IN_CHAR, IN_QUIT, IN_FOCUS, IN_SETTING, IN_WHEEL };
+enum { IN_MOVE, IN_DOWN, IN_UP, IN_KEYDOWN, IN_KEYUP, IN_CHAR, IN_QUIT, IN_FOCUS, IN_SETTING, IN_WHEEL, IN_CHAT, IN_MATCH_CHAT, IN_MATCH_CHAT_END };
+void web_chat_box_char(uint32_t character);              /* chat_box.c */
+void web_match_chat_unit(uint32_t unit);                 /* match_chat.c */
+void web_match_chat_end(uint32_t target);                /* match_chat.c */
 typedef struct { uint32_t kind, a, b, c; } input_t;
 #define RING 512
 static input_t g_ring[RING];
@@ -634,7 +637,8 @@ static uint8_t cp874_character(uint32_t codepoint) {
     return '?';
 }
 
-EMSCRIPTEN_KEEPALIVE void ra2_input_text(const char *text) {
+/* Each character of UTF-8 text, in the game's encoding, to push(kind, character). */
+static void push_text(uint32_t kind, const char *text) {
     const uint8_t *p = (const uint8_t *)text;
     if (!p) return;
     while (*p) {
@@ -650,8 +654,21 @@ EMSCRIPTEN_KEEPALIVE void ra2_input_text(const char *text) {
                         ((uint32_t)(p[2] & 0x3f) << 6) | (p[3] & 0x3f), length = 4;
         else codepoint = '?', length = 1;
         p += length;
-        push(IN_CHAR, cp874_character(codepoint), 0, 0);
+        push(kind, cp874_character(codepoint), 0, 0);
     }
+}
+
+EMSCRIPTEN_KEEPALIVE void ra2_input_text(const char *text) { push_text(IN_CHAR, text); }
+/* A line from the page's chat box (chat_box.c): typed into the game's chat line, then Enter. */
+EMSCRIPTEN_KEEPALIVE void ra2_chat_send(const char *text) {
+    push_text(IN_CHAT, text);
+    push(IN_CHAT, 0, 0, 0);
+}
+/* A line from the page's match chat panel (match_chat.c), to target 1 listeners, 2 allies or 3 all:
+ * the game sends it at its next frame of a LAN or online match. */
+EMSCRIPTEN_KEEPALIVE void ra2_match_chat_send(const char *text, int target) {
+    push_text(IN_MATCH_CHAT, text);
+    push(IN_MATCH_CHAT_END, (uint32_t)target, 0, 0);
 }
 EMSCRIPTEN_KEEPALIVE void ra2_quit(void) { push(IN_QUIT, 0, 0, 0); }
 EMSCRIPTEN_KEEPALIVE void ra2_focus(int focused) { push(IN_FOCUS, (uint32_t)(focused != 0), 0, 0); }
@@ -698,6 +715,9 @@ static void drain_input(void) {
             break;
         }
         case IN_SETTING: web_settings_command((int)e.a, (int)e.b, (int)e.c); break;
+        case IN_CHAT: web_chat_box_char(e.a); break;
+        case IN_MATCH_CHAT: web_match_chat_unit(e.a); break;
+        case IN_MATCH_CHAT_END: web_match_chat_end(e.a); break;
         case IN_QUIT:
             /* The page has flushed what it keeps; skip the guest's close path. */
             hle_exit(0);
@@ -745,11 +765,15 @@ void web_presenter_start(int (*menus_use_windows_cursor)(void)) {
 }
 
 void web_map_search_pump(void);                          /* map_search.c */
+void web_chat_box_pump(void);                            /* chat_box.c */
+void web_match_chat_pump(void);                          /* match_chat.c */
 void web_presenter_pump(void) {
     static uint32_t next_fps, last_frames;
     static int fps_started;
     drain_input();
     web_map_search_pump();
+    web_chat_box_pump();
+    web_match_chat_pump();
     update_cursor();
     update_page_cursor();
     /* Dialog paints can finish without a primary Unlock. Sample the game's

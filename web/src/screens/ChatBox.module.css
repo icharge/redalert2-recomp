@@ -1,0 +1,24 @@
+/* The page's chat box over the game's chat line (ChatBox.tsx). It sits on the game's picture, so it
+   takes the game's dark field and light text rather than the launcher's tokens. */
+.box {
+  position: absolute;
+  z-index: 2;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0 4px;
+  border: 1px solid #5a5a5a;
+  border-radius: 0;
+  background: #000;
+  color: #f0f0f0;
+  font-family: "Segoe UI", "Leelawadee UI", Tahoma, "Noto Sans Thai", sans-serif;
+  line-height: 1;
+  outline: none;
+}
+
+.box:focus {
+  border-color: #c9a227;
+}
+
+.box::placeholder {
+  color: #7d7d7d;
+}

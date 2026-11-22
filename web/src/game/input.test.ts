@@ -68,6 +68,62 @@ describe("toGamePixels", () => {
 });
 
 describe("attachInput", () => {
+  it("under Pointer Lock, gives the page's panel the game cursor's hover, clicks and wheel", () => {
+    const canvas = document.createElement("canvas");
+    canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: 800, height: 600 }) as DOMRect;
+    const panel = document.createElement("section");
+    panel.setAttribute("data-page-overlay", "");
+    const tab = document.createElement("button");
+    const list = document.createElement("ol");
+    list.setAttribute("data-page-scroll", "");
+    list.scrollBy = vi.fn();
+    panel.append(tab, list);
+    document.body.append(panel);
+    const hovers: boolean[] = [];
+    panel.addEventListener("pageoverlay", (e) => hovers.push((e as CustomEvent<boolean>).detail));
+    const clicked = vi.fn();
+    tab.addEventListener("click", clicked);
+    let under: Element | null = null;
+    document.elementFromPoint = () => under;
+    const game = {
+      ra2_input_pointer: vi.fn(),
+      ra2_input_key: vi.fn(),
+      ra2_focus: vi.fn(),
+      ra2_input_wheel: vi.fn(),
+    };
+    const detach = attachInput(canvas, game, { picture: () => ({ width: 800, height: 600 }) });
+    Object.defineProperty(document, "pointerLockElement", { configurable: true, value: canvas });
+    under = tab;
+    canvas.dispatchEvent(new MouseEvent("mousemove"));
+    expect(hovers).toEqual([true]);
+    canvas.dispatchEvent(new MouseEvent("mousedown", { button: 0 }));
+    canvas.dispatchEvent(new MouseEvent("mouseup", { button: 0 }));
+    expect(clicked).toHaveBeenCalledOnce();
+    expect(game.ra2_input_pointer).not.toHaveBeenCalledWith(
+      PointerKind.Down,
+      expect.anything(),
+      expect.anything(),
+      0,
+    );
+    expect(game.ra2_input_pointer).not.toHaveBeenCalledWith(
+      PointerKind.Up,
+      expect.anything(),
+      expect.anything(),
+      0,
+    );
+    canvas.dispatchEvent(new WheelEvent("wheel", { deltaY: 100 }));
+    expect(list.scrollBy).toHaveBeenCalledWith({ top: 100 });
+    expect(game.ra2_input_wheel).not.toHaveBeenCalled();
+    under = canvas;
+    canvas.dispatchEvent(new MouseEvent("mousemove"));
+    expect(hovers).toEqual([true, false]);
+    canvas.dispatchEvent(new MouseEvent("mousedown", { button: 0 }));
+    expect(game.ra2_input_pointer).toHaveBeenLastCalledWith(PointerKind.Down, 400, 300, 0);
+    detach();
+    panel.remove();
+    Reflect.deleteProperty(document, "elementFromPoint");
+  });
+
   it("uses game coordinates independently of the HD or scaled canvas, and follows cursor warps under Pointer Lock", () => {
     const canvas = document.createElement("canvas");
     canvas.width = 1600;

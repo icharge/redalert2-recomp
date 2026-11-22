@@ -18,7 +18,10 @@ const partRace = process.argv.includes("--part-race");
 const finish = process.argv.includes("--finish");
 const rematch = process.argv.includes("--rematch");
 const three = process.argv.includes("--three");
-const play = process.argv.includes("--play") || partRace || finish || rematch;
+// --match-chat (with --play): each player sends a line from the page's match chat panel; it must show in
+// every other player's panel under the sender's colour (docs/web/match-chat.md). Shots chat-<name>.
+const matchChat = process.argv.includes("--match-chat");
+const play = process.argv.includes("--play") || partRace || finish || rematch || matchChat;
 const roomPassword = process.argv.includes("--password") || wrongPassword ? "pocpass" : null;
 const clients = {};
 const redact = (value) =>
@@ -51,6 +54,59 @@ function simulationFrame(run) {
   // Without replay recording the simulation still prints its own frame line.
   const game = run.all.findLast((line) => /^\[game\] Frame \d+,/.test(line));
   return Number(/^\[game\] Frame (\d+),/.exec(game ?? "")?.[1] ?? 0);
+}
+
+const panelText = (run) =>
+  run.page
+    .getByRole("region", { name: "Match chat" })
+    .textContent({ timeout: 1000 })
+    .catch(() => "");
+
+async function chatCheck(players) {
+  const names = Object.keys(clients);
+  const tag = Date.now().toString(36).slice(-4);
+  for (const [index, run] of players.entries()) {
+    await run.page.locator("canvas").first().focus();
+    await run.page.keyboard.press("Enter");
+    const box = run.page.getByRole("textbox", { name: /^Message to / });
+    await box.waitFor({ timeout: 10000 });
+    await box.fill(`hello from ${names[index]} ${tag}`);
+    await box.press("Enter");
+    await box.waitFor({ state: "detached", timeout: 10000 });
+  }
+  for (const [index, run] of players.entries()) {
+    const deadline = Date.now() + 20000;
+    for (;;) {
+      const text = await panelText(run);
+      const missing = names.filter((name) => !text.includes(`hello from ${name} ${tag}`));
+      if (!missing.length) break;
+      assert.ok(
+        Date.now() < deadline,
+        `${names[index]}'s panel lacks ${missing.join(", ")}: ${text}`,
+      );
+      await run.page.waitForTimeout(250);
+    }
+  }
+  const colours = players.map((run) =>
+    run.all
+      .filter((l) => l.includes('"matchChat"') && l.includes('"own":true'))
+      .map((l) => JSON.parse(l.slice(l.indexOf("{"))).colour)
+      .at(-1),
+  );
+  console.log(
+    `CHAT every panel shows all ${players.length} lines; colours ${JSON.stringify(colours)}`,
+  );
+  assert.equal(new Set(colours).size, players.length, "each player chats in a colour of their own");
+  for (const [index, run] of players.entries()) {
+    // the game's cursor over the panel opens it (input.ts sends this under Pointer Lock)
+    await run.page.evaluate(() =>
+      document
+        .querySelector("[data-page-overlay]")
+        ?.dispatchEvent(new CustomEvent("pageoverlay", { detail: true })),
+    );
+    await run.page.waitForTimeout(500);
+    await run.shot(`chat-${names[index]}`);
+  }
 }
 
 async function verifyPlaying(players) {
@@ -128,12 +184,21 @@ async function pickBiggerMap(host) {
     await host.clickGame(375, 158); // Kalifornia (2-6)
   }
   await host.page.waitForTimeout(500);
+  const mark = host.wire.length;
   await host.clickGame(720, 221); // Use Map
-  const map = ra2 ? "MP01T4.MAP" : "XKaliforn.MAP";
-  await waitWire(
-    host,
-    (l) => l.startsWith("> topic ") && l.includes(map),
-    "a map for three players",
+  // the row holds a map for more players (the list's order differs between installs); the room's
+  // new topic names it
+  const deadline = Date.now() + 15000;
+  while (!host.wire.slice(mark).some((l) => l.startsWith("> topic "))) {
+    assert.ok(Date.now() < deadline, "timed out waiting for a map for three players");
+    await host.page.waitForTimeout(100);
+  }
+  console.log(
+    "MAP",
+    host.wire
+      .slice(mark)
+      .find((l) => l.startsWith("> topic "))
+      .slice(0, 160),
   );
   await host.page.waitForTimeout(500);
 }
@@ -783,6 +848,7 @@ try {
         }
         for (const name of Object.keys(clients)) await dump(name, "start-handoff");
         if (play) await verifyPlaying(players);
+        if (matchChat) await chatCheck(players);
         if (finish) await finishYuriMatch(host, guest);
         if (rematch) await rematchAfterReconnect(host, guest);
         // --hold <seconds> keeps both clients running after the handoff, to watch the match load and play.

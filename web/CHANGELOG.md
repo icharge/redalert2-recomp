@@ -57,6 +57,20 @@ Changes since 0.2.1.
   announces joins and leaves, its announcements also reach players in a match,
   and its lines can show without its name and in a colour the server picks.
   Chat lines read `YuriBOT: hello` (no space before the colon).
+- **A chat box for typing in the lobby**: the lobby, the game rooms and the
+  Page dialogs get a real text box over the game's chat line, so a phone's
+  keyboard and an input method (Thai and other languages) type into
+  something you can see. Enter sends it as the game's own chat, commands
+  included. It replaces the TYPE button of the star tray. The game draws Thai;
+  other scripts show as "?".
+- **Match messages and chat**: a panel at the bottom left of every match
+  keeps a log of the game's messages (mission text, defeats, YuriBOT's
+  announcements), each line with its time (Settings > Launcher > ONLINE >
+  Chat times). In a LAN or online match it is also the chat: each player's
+  lines in their colour, Enter opens the line to type into, Tab switches
+  between all and allies, Enter sends and Escape closes. Lines fade after a
+  while; pointing at the panel with the game's cursor shows the whole
+  history, and clicking its tab keeps it open.
 
 ### Changed
 
@@ -73,6 +87,11 @@ Changes since 0.2.1.
 - A ranked match's result report is sent to the server and the server's
   answer (pending, scored, unscored, disputed, incomplete or expired) is
   understood, instead of being rejected as unknown. (cd1a95e9)
+- Red Alert 2: chat in a Quick Match reaches the other player. Each game
+  dropped the other's lines, as Yuri's Revenge did before 0.3.0.
+- In-match chat with three or more players no longer loses lines at random.
+  The fix for the game name wrote 4 bytes past the name, into the packet
+  the game was handling.
 
 ## [0.2.1] - 2026-11-09
 

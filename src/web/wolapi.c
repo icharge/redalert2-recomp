@@ -625,15 +625,19 @@ static char g_host_name[32];
  * hash differs from its own (0x0048D8DD, gate byte 0xA8D60D). A game the matchbot made has no
  * client that ran Create: its host (the room operator) is a guest to the game like the other
  * player, so each player's name is the other's and no message from one is ever drawn by the
- * other (the score screen chat). Put the room operator's name there on every player. */
+ * other (the score screen chat). Put the room operator's name there on every player.
+ * The name holds 20 units (19 characters and the NUL; 0xA3F618 in RA2 too): the packet buffer starts
+ * right after it (YR 0xA8D638, RA2 0xA3F640). A longer write overwrote the kind of whatever packet was
+ * in the buffer, so this saw a change at every poll and a chat packet caught in between was dropped. */
+#define GAME_NAME_UNITS 20u
 static void apply_game_name(void) {
     if (!g_game_name || !g_host_name[0]) return;
-    uint16_t wide[22] = { 0 };
-    for (uint32_t i = 0; i < 20 && g_host_name[i]; i++) wide[i] = (uint8_t)g_host_name[i];
-    for (uint32_t i = 0; i < 22; i++) {
+    uint16_t wide[GAME_NAME_UNITS] = { 0 };
+    for (uint32_t i = 0; i + 1 < GAME_NAME_UNITS && g_host_name[i]; i++) wide[i] = (uint8_t)g_host_name[i];
+    for (uint32_t i = 0; i < GAME_NAME_UNITS; i++) {
         if (MEM16(g_game_name + 2 * i) == wide[i]) continue;
         fprintf(stderr, "[wol] game name set to the room host %s\n", g_host_name);
-        for (uint32_t j = 0; j < 22; j++) MEM16(g_game_name + 2 * j) = wide[j];
+        for (uint32_t j = 0; j < GAME_NAME_UNITS; j++) MEM16(g_game_name + 2 * j) = wide[j];
         return;
     }
 }

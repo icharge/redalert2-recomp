@@ -31,6 +31,29 @@ export interface OpenLink {
 /** The map search's status (src/web/map_search.c): the list's place, and whether nothing matched. */
 export type MapSearchStatus = Omit<Extract<GameEvent, { e: "mapSearch" }>, "e">;
 
+/** The game's chat line, where the page lays its chat box (src/web/chat_box.c). */
+export type ChatField = Omit<Extract<GameEvent, { e: "chatField" }>, "e">;
+
+/**
+ * A line of the match's messages (src/web/match_chat.c), numbered as it came: a player's chat line,
+ * or (system) a row of the game's own (mission text, a player defeated, a page), with no name.
+ */
+export type MatchChatLine = Omit<Extract<GameEvent, { e: "matchChat" }>, "e"> & {
+  id: number;
+  /** milliseconds since the epoch */
+  at: number;
+  system?: boolean;
+};
+
+/** The match's chat: whether the panel can send, and the lines so far (oldest first). */
+export interface MatchChat {
+  ready: boolean;
+  lines: readonly MatchChatLine[];
+}
+
+/** How many match chat lines are kept. */
+export const MATCH_CHAT_LINES = 100;
+
 export interface GameState {
   phase: Phase;
   /** what is being loaded, while it loads (a file name, "game files") */
@@ -50,6 +73,8 @@ export interface GameState {
   /** a WOL-era link: the page shows our dialog instead of the system browser */
   openLink: OpenLink | null;
   mapSearchStatus: MapSearchStatus;
+  chatField: ChatField;
+  matchChat: MatchChat;
   settings: HostSettings | null;
   restart: { mod: string } | null;
 }
@@ -69,6 +94,8 @@ const INITIAL: GameState = {
   saveReferencePrompt: null,
   openLink: null,
   mapSearchStatus: { open: false, noMatches: false, x: 0, y: 0, w: 0, h: 0 },
+  chatField: { open: false, x: 0, y: 0, w: 0, h: 0 },
+  matchChat: { ready: false, lines: [] },
   settings: null,
   restart: null,
 };
@@ -170,6 +197,43 @@ export class GameStore {
             h: event.h,
           },
         });
+        return;
+      case "chatField":
+        this.set({
+          chatField: { open: event.open, x: event.x, y: event.y, w: event.w, h: event.h },
+        });
+        return;
+      case "matchChat": {
+        const { name, text, colour, own, to } = event;
+        const line = { name, text, colour, own, to };
+        const last = this.state.matchChat.lines.at(-1);
+        const lines = [
+          ...this.state.matchChat.lines,
+          { ...line, id: (last?.id ?? 0) + 1, at: Date.now() },
+        ].slice(-MATCH_CHAT_LINES);
+        this.set({ matchChat: { ...this.state.matchChat, lines } });
+        return;
+      }
+      case "matchMessage": {
+        const last = this.state.matchChat.lines.at(-1);
+        const line: MatchChatLine = {
+          name: "",
+          text: event.text,
+          colour: -1,
+          own: false,
+          to: 0,
+          system: true,
+          id: (last?.id ?? 0) + 1,
+          at: Date.now(),
+        };
+        const lines = [...this.state.matchChat.lines, line].slice(-MATCH_CHAT_LINES);
+        this.set({ matchChat: { ...this.state.matchChat, lines } });
+        return;
+      }
+      case "matchChatReady":
+        // the lines stay: like a chat window's history, across matches (MATCH_CHAT_LINES at most)
+        if (event.on !== this.state.matchChat.ready)
+          this.set({ matchChat: { ...this.state.matchChat, ready: event.on } });
         return;
       case "fps":
         this.set({ fps: event.fps, ms: event.ms, pacing: event.pacing });

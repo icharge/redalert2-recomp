@@ -45,6 +45,9 @@ int ra2_web_save_reference_prompt(void) { return 0; }
 void web_chat_time(uint32_t text) { (void)text; }
 void web_chat_motd(int on) { (void)on; }
 void web_bare_page(uint32_t text) { (void)text; }
+void web_match_chat(uint32_t packet, uint32_t target) { (void)packet, (void)target; }
+void web_match_message(uint32_t name, uint32_t text, uint32_t scheme, uint32_t style) { (void)name, (void)text, (void)scheme, (void)style; }
+int web_match_chat_take(uint32_t mode, uint32_t chunk, uint32_t target) { (void)mode, (void)chunk, (void)target; return 0; }
 #endif
 
 #define RA2_IMAGE_BASE 0x00400000u

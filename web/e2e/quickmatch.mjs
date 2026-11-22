@@ -33,6 +33,10 @@
 //   --row 10    two guests in a match; the admin's POST /admin/announce pages both, and each game takes the
 //               page (shots announce-a, announce-b show its grey message row). With --nameless the setting
 //               lobbyBot.namelessAnnouncements is on for the row: a NOTICE, and the row shows the text alone.
+//   --row 11    the page's match chat panel (docs/web/match-chat.md), two guests in a match: A presses Enter,
+//               types a line (with Thai) and Enter; it shows in B's panel under A's name and in A's own
+//               panel; B answers to allies (Tab) and A answers B; an admin announcement shows as a game row
+//               in both panels. Shots match-chat-a, match-chat-b.
 //
 // Options: --server http://127.0.0.1:9090, --server-log FILE (the server's stdout), --label NAME, --guests,
 // plus the shared ones of lib.mjs (--game, --shots, --headed). Scratch: --shots.
@@ -672,7 +676,92 @@ async function rowAnnounce() {
   info(`frames after the announcement: A ${frameOf(a)}, B ${frameOf(b)}`);
 }
 
+/** As until, for a test that returns a promise. */
+const untilAsync = async (run, what, test, ms = 60000) => {
+  const deadline = Date.now() + ms;
+  for (;;) {
+    if (await test()) return;
+    assert.ok(Date.now() < deadline, `${run.nick}: timed out waiting for ${what}`);
+    await run.page.waitForTimeout(200);
+  }
+};
+
+async function chatFrom(run, text, { allies = false } = {}) {
+  await run.page.locator("canvas").first().focus();
+  await run.page.keyboard.press("Enter");
+  const box = run.page.getByRole("textbox", { name: /^Message to / });
+  await box.waitFor({ timeout: 10000 });
+  if (allies) await box.press("Tab");
+  await box.fill(text);
+  await box.press("Enter");
+  await box.waitFor({ state: "detached", timeout: 10000 });
+}
+
+const panelHas = (run, text) =>
+  run.page
+    .getByRole("region", { name: "Match chat" })
+    .textContent({ timeout: 1000 })
+    .then((t) => (t ?? "").includes(text))
+    .catch(() => false);
+
+async function rowChat() {
+  const a = await open("a", true);
+  const b = await open("b", true);
+  await startMatch(a, b);
+  for (const run of [a, b])
+    await untilAsync(run, "the chat panel's prompt", () =>
+      run.page
+        .getByRole("button", { name: /press Enter to chat/ })
+        .count()
+        .then((n) => n > 0),
+    );
+  check("both pages show the match chat panel");
+  const first = `hello from A ${tag}`;
+  await chatFrom(a, `${first} สวัสดี`);
+  await untilAsync(b, "A's line in B's panel", () => panelHas(b, first), 20000);
+  await untilAsync(a, "A's own line in A's panel", () => panelHas(a, first), 20000);
+  check("A's line went through the game to B, and A's panel shows it too");
+  const second = `answer from B ${tag}`;
+  await chatFrom(b, second, { allies: true });
+  await untilAsync(b, "B's own allies line", () => panelHas(b, `[Allies] ${b.nick}`), 20000);
+  info(
+    `B's allies line reached A: ${await panelHas(a, second)} (A is not B's ally, so false is right)`,
+  );
+  const third = `to all again ${tag}`;
+  await chatFrom(b, third, { allies: true }); // the panel kept Allies: Tab goes back to All
+  await untilAsync(a, "B's line in A's panel", () => panelHas(a, third), 20000);
+  check("B sent to allies (A did not get it) and to everyone (A got it)");
+  const text = (run) =>
+    run.page
+      .getByRole("region", { name: "Match chat" })
+      .textContent()
+      .catch(() => "");
+  info(`A's panel: ${await text(a)}`);
+  info(`B's panel: ${await text(b)}`);
+  for (const [name, run] of [
+    ["A", a],
+    ["B", b],
+  ])
+    info(
+      `${name}'s matchChatReady events: ${run.all.filter((l) => l.includes('"matchChatReady"')).length}`,
+    );
+  assert.ok(
+    (await panelHas(b, second)) && (await panelHas(b, third)),
+    "B's panel keeps B's own lines",
+  );
+  // the game's own rows reach the panel too: YuriBOT's page, read-only
+  const notice = `Panel announcement ${tag}`;
+  info(`announce: ${JSON.stringify(await admin("POST", "/admin/announce", { text: notice }))}`);
+  for (const run of [a, b])
+    await untilAsync(run, "the announcement row in the panel", () => panelHas(run, notice), 30000);
+  check("the server's announcement shows as a game row in both panels");
+  await a.page.mouse.move(60, a.page.viewportSize().height - 60);
+  await a.page.waitForTimeout(800);
+  await Promise.all([a.shot("match-chat-a"), b.shot("match-chat-b")]);
+}
+
 const ROWS = {
+  11: rowChat,
   10: rowAnnounce,
   1: rowMaps,
   2: rowMaps,
@@ -704,7 +793,7 @@ try {
     );
     console.error(
       c.all
-        .filter((l) => l.startsWith("[dialog]"))
+        .filter((l) => l.startsWith("[dialog]") || l.startsWith("[match chat]"))
         .slice(-8)
         .join(" "),
     );

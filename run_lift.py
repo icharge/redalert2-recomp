@@ -896,6 +896,50 @@ def bare_page_patches(code, cs, target):
                  '/* browser: a bot notice without its sender, run_lift.py bare_page_patches */' % offset)}
 
 
+# The browser's match chat panel (docs/web/match-chat.md). Player chat in a LAN or online match arrives
+# in packet 0x0C in the shared packet buffer and is added to the message list by one call in
+# Network__ProcessGlobalPackets; the player's own line is echoed by one call in the key pre-hook's send
+# block (in several lifted fragments). C after each call hands the buffer to the host, which tells the
+# page. To send, C after the pre-hook's `mov edx, [ebp]` puts a line the page queued into the message
+# list's overflow chunk, sets the chat target and joins the game's own path for an overflowed line
+# (result 4): online commands first, then the send block and the echo. Byte-checked.
+MATCH_CHAT_SITES = {
+    # (receive call, echo call, Add_Message, packet buffer, the chat target dword,
+    #  the pre-hook's mov, its bytes, the overflow chunk, GameMode, the label the send joins)
+    'gamemd': (0x0048D979, 0x0055F0F5, 0x005D3BA0, 0x00A8D638, 0x00ABCE18,
+               0x0055E46C, '8b5500', 0x00A8BDCC, 0x00A8B238, 0x0055E7B3),
+    'game': (0x004828A3, 0x005418F5, 0x005B4DA0, 0x00A3F640, 0x00A6EBE0,
+             0x00540C6C, '8b5500', 0x00A3DDDC, 0x00A3D298, 0x00540FB3),
+}
+
+
+def match_chat_patches(code, cs, target):
+    """Show the match's player chat in the page's panel and send the panel's lines (docs/web/match-chat.md)."""
+    recv, echo, add, packet, chat_target, mov, shape, chunk, mode, label = MATCH_CHAT_SITES[target]
+    raw = bytes.fromhex(shape)
+    entry = bytes.fromhex('81ec4c010000')   # Add_Message's `sub esp, 0x14c`
+    if (code[mov - cs:mov - cs + len(raw)] != raw or not _call_matches(code, cs, recv, add)
+            or not _call_matches(code, cs, echo, add) or code[add - cs:add - cs + len(entry)] != entry):
+        print('[*] match_chat_patches: the match chat sites do not match this build; no chat panel')
+        return {}
+    return {
+        # every row the game adds to its message list (mission text, defeats, pages): after the frame,
+        # name, text, colour scheme and style are at [esp+0x150], +0x158, +0x15C and +0x160
+        add: ('{ extern void web_match_message(uint32_t, uint32_t, uint32_t, uint32_t); '
+              'web_match_message(MEM32(esp + 0x150u), MEM32(esp + 0x158u), MEM32(esp + 0x15Cu), MEM32(esp + 0x160u)); } '
+              '/* browser: a message row to the page, run_lift.py match_chat_patches */'),
+        recv: ('{ extern void web_match_chat(uint32_t, uint32_t); web_match_chat(0x%08Xu, 0u); } '
+               '/* browser: player chat to the page, run_lift.py match_chat_patches */' % packet),
+        echo: ('{ extern void web_match_chat(uint32_t, uint32_t); web_match_chat(0x%08Xu, MEM32(0x%08Xu)); } '
+               '/* browser: the own line to the page, run_lift.py match_chat_patches */' % (packet, chat_target)),
+        mov: ('{ extern int web_match_chat_take(uint32_t, uint32_t, uint32_t); '
+              'if (web_match_chat_take(MEM32(0x%08Xu), 0x%08Xu, 0x%08Xu)) '
+              '{ edi = 4u; ebp = 4u; ebx = 0u; MEM32(esp + 0x10u) = 4u; goto L_%08X; } } '
+              '/* browser: the panel line, as an overflowed line, run_lift.py match_chat_patches */'
+              % (mode, chunk, chat_target, label)),
+    }
+
+
 # Red Alert 2 itself (game.exe, the same install) is a second target: its own
 # catalog in work/game, its lift in src/recomp/gen_game, its own seeds, hooks
 # and patches. Everything address-bound the host needs comes to it through
@@ -1774,7 +1818,7 @@ def targets():
                                                  **live_resize_menu_patches(code, cs),
                                                  **web_exit_confirmation_patches(code, cs, 'gamemd'),
                                                  **web_url_patches(code, cs, 'gamemd'),
-                                                 **wol_icon_surface_patches(code, cs, 'gamemd'), **chat_time_patches(code, cs, 'gamemd'), **bare_page_patches(code, cs, 'gamemd'),
+                                                 **wol_icon_surface_patches(code, cs, 'gamemd'), **chat_time_patches(code, cs, 'gamemd'), **bare_page_patches(code, cs, 'gamemd'), **match_chat_patches(code, cs, 'gamemd'),
                                                  **net_timing_event_patches(code, cs, 'gamemd')}),
         'game': dict(exe=os.path.join(_HERE, 'game', 'game.exe'),
                      catalog=os.path.join(_HERE, 'work', 'game', 'functions.json'),
@@ -1804,7 +1848,7 @@ def targets():
                                                **reconnect_patches(code, cs, 'game'),
                                                **live_resize_patches(code, cs, 'game'),
                                                **web_url_patches(code, cs, 'game'),
-                                               **wol_icon_surface_patches(code, cs, 'game'), **chat_time_patches(code, cs, 'game'), **bare_page_patches(code, cs, 'game'),
+                                               **wol_icon_surface_patches(code, cs, 'game'), **chat_time_patches(code, cs, 'game'), **bare_page_patches(code, cs, 'game'), **match_chat_patches(code, cs, 'game'),
                                                **net_timing_event_patches(code, cs, 'game')}),
     }
 

@@ -836,6 +836,7 @@ int main(int argc, char **argv) {
 #ifdef RA2_TARGET_GAME
     ra2_wolapi_set_no_router_flag(0x00A402D0u);   /* Session (0xA3D298) + 0x3038 */
     ra2_wolapi_set_ipx_manager(0x00A40978u);
+    ra2_wolapi_set_game_name(0x00A3F618u);        /* UTF-16 game name, checked by the chat receiver (0x00482807) */
     hle_dialog_template_hook = ra2_dialog_template_hook;
 #else
     ra2_wolapi_set_no_router_flag(0x00A8E2C8u);   /* Session (0xA8B238) + 0x3090 */

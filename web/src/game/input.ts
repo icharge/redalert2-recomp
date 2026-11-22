@@ -133,6 +133,30 @@ export function attachInput(
       y: box.top + (box.height - size.height * scale) / 2 + virtual.y * scale,
     };
   };
+  /**
+   * The page's own parts over the game (marked data-page-overlay: the match panel) under the game's
+   * cursor while the pointer is locked, when the real pointer reaches nothing on the page. The
+   * root is told with a "pageoverlay" event (detail: true over it, false off it); a click there is
+   * the element's, not the game's, and the wheel scrolls its [data-page-scroll] part.
+   */
+  let overlayRoot: HTMLElement | null = null;
+  const swallowed = new Set<number>();
+  const overlayAt = (): HTMLElement | null => {
+    if (document.pointerLockElement !== canvas || typeof document.elementFromPoint !== "function")
+      return null;
+    const at = virtualClient(canvas.getBoundingClientRect(), picture());
+    const element = document.elementFromPoint(at.x, at.y);
+    return element instanceof HTMLElement && element.closest("[data-page-overlay]")
+      ? element
+      : null;
+  };
+  const hoverOverlay = (element: HTMLElement | null) => {
+    const root = element?.closest<HTMLElement>("[data-page-overlay]") ?? null;
+    if (root === overlayRoot) return;
+    overlayRoot?.dispatchEvent(new CustomEvent("pageoverlay", { detail: false }));
+    overlayRoot = root;
+    root?.dispatchEvent(new CustomEvent("pageoverlay", { detail: true }));
+  };
   const held = new Map<string, KeyPair>();
   const buttons = new Set<number>();
   let composing = false;
@@ -182,12 +206,22 @@ export function attachInput(
     if (options.enabled?.() === false) return;
     const p = point(event, true);
     if (p) game.ra2_input_pointer(PointerKind.Move, p.x, p.y, 0);
+    hoverOverlay(overlayAt());
   };
   const onButton = (kind: number) => (event: MouseEvent) => {
     if (options.enabled?.() === false) return;
     const p = point(event);
     if (!p) return;
     event.preventDefault();
+    const over = kind === PointerKind.Down ? overlayAt() : null;
+    if (over) {
+      // a press on the page's panel: its button, not an order on the battlefield
+      swallowed.add(event.button);
+      if (event.button === 0)
+        (over.closest<HTMLElement>("button, [role='button']") ?? over).click();
+      return;
+    }
+    if (kind === PointerKind.Up && swallowed.delete(event.button)) return;
     if (kind === PointerKind.Down && document.activeElement !== options.textInput) canvas.focus();
     if (kind === PointerKind.Down) buttons.add(event.button);
     else buttons.delete(event.button);
@@ -205,6 +239,14 @@ export function attachInput(
     const p = point(event);
     if (!p) return;
     event.preventDefault();
+    const over = overlayAt();
+    if (over) {
+      over
+        .closest("[data-page-overlay]")
+        ?.querySelector("[data-page-scroll]")
+        ?.scrollBy({ top: event.deltaY });
+      return;
+    }
     wheelRest +=
       event.deltaMode === 1
         ? event.deltaY / 3
@@ -326,10 +368,14 @@ export function attachInput(
     game.ra2_focus(0);
   };
   // Focus leaving the game area for the page's own controls: the game pauses, as when the window blurs
-  // (the text box for typing is the game's own input, so going there is not leaving it)
+  // (the text box for typing and the page's chat boxes, marked data-game-text, type for the game, so
+  // going there is not leaving it)
   const onCanvasBlur = (event: FocusEvent) => {
     release();
-    if (event.relatedTarget !== options.textInput) game.ra2_focus(0);
+    const to = event.relatedTarget;
+    const typing =
+      to === options.textInput || (to instanceof HTMLElement && "gameText" in to.dataset);
+    if (!typing) game.ra2_focus(0);
   };
   const onLock = () => {
     if (document.pointerLockElement !== canvas) {

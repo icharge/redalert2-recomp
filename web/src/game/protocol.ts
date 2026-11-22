@@ -46,6 +46,21 @@ export type GameEvent =
       w: number;
       h: number;
     }
+  /** The game's chat line showing (src/web/chat_box.c): its place in game pixels, for the page's chat box. */
+  | { e: "chatField"; open: boolean; x: number; y: number; w: number; h: number }
+  /**
+   * A player's line in a LAN or online match (src/web/match_chat.c): the game's own units (Thai as
+   * Windows-874 bytes widened to U+00A1..), the sender's colour index, and for the own line the
+   * target it went to (1 listeners, 2 allies, 3 all).
+   */
+  | { e: "matchChat"; name: string; text: string; colour: number; own: boolean; to: number }
+  /**
+   * A row the game added to its message list that is not player chat (mission text, a player
+   * defeated, a page): the game's units, its colour scheme index and text style.
+   */
+  | { e: "matchMessage"; text: string; scheme: number; style: number }
+  /** A LAN or online match runs, where the page's chat panel can send (or it ended). */
+  | { e: "matchChatReady"; on: boolean }
   | { e: "fps"; fps: number; ms: number; pacing: Pacing | null }
   | { e: "exit"; code: number }
   | { e: "exitConfirm"; request: number }
@@ -150,6 +165,37 @@ export function parseEventLine(line: string): GameEvent | null {
             h: value.h,
           }
         : null;
+    case "chatField":
+      return typeof value.open === "boolean" &&
+        typeof value.x === "number" &&
+        typeof value.y === "number" &&
+        typeof value.w === "number" &&
+        typeof value.h === "number"
+        ? { e: "chatField", open: value.open, x: value.x, y: value.y, w: value.w, h: value.h }
+        : null;
+    case "matchChat":
+      return typeof value.name === "string" &&
+        typeof value.text === "string" &&
+        typeof value.colour === "number" &&
+        typeof value.own === "boolean" &&
+        typeof value.to === "number"
+        ? {
+            e: "matchChat",
+            name: value.name,
+            text: value.text,
+            colour: value.colour,
+            own: value.own,
+            to: value.to,
+          }
+        : null;
+    case "matchMessage":
+      return typeof value.text === "string" &&
+        typeof value.scheme === "number" &&
+        typeof value.style === "number"
+        ? { e: "matchMessage", text: value.text, scheme: value.scheme, style: value.style }
+        : null;
+    case "matchChatReady":
+      return typeof value.on === "boolean" ? { e: "matchChatReady", on: value.on } : null;
     case "fps":
       return typeof value.fps === "number" && typeof value.ms === "number"
         ? { e: "fps", fps: value.fps, ms: value.ms, pacing: pacingOf(value) }
@@ -353,6 +399,10 @@ export interface Ra2Exports {
   ra2_input_wheel?(delta: number, x: number, y: number): void;
   /** committed Unicode text; the game host converts supported characters to CP874 WM_CHAR messages */
   ra2_input_text(text: string): void;
+  /** a line for the game's showing chat line (the chatField event): typed into it, then Enter; missing in older builds */
+  ra2_chat_send?(text: string): void;
+  /** a line for the match's chat (the matchChatReady event), to 1 listeners, 2 allies or 3 all; missing in older builds */
+  ra2_match_chat_send?(text: string, target: number): void;
   ra2_crash_report(why: string): void;
 }
 
@@ -377,5 +427,7 @@ export const EXPORT_SIGNATURES: {
   ra2_input_key: { returns: null, args: ["number", "number", "number"] },
   ra2_input_wheel: { returns: null, args: ["number", "number", "number"] },
   ra2_input_text: { returns: null, args: ["string"] },
+  ra2_chat_send: { returns: null, args: ["string"] },
+  ra2_match_chat_send: { returns: null, args: ["string", "number"] },
   ra2_crash_report: { returns: null, args: ["string"] },
 };

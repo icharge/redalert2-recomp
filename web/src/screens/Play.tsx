@@ -4,7 +4,6 @@ import {
   ExitFullScreenIcon,
   FileTextIcon,
   GearIcon,
-  KeyboardIcon,
 } from "@radix-ui/react-icons";
 import { Button, Callout, Flex, Heading, Text } from "@radix-ui/themes";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -31,6 +30,8 @@ import { CrashDialog } from "./CrashDialog";
 import { SaveReferencePrompt } from "./SaveReferencePrompt";
 import { ExitConfirm } from "./ExitConfirm";
 import { MapSearchStatus } from "./MapSearchStatus";
+import { ChatBox } from "./ChatBox";
+import { MatchChat } from "../components/MatchChat";
 import {
   argsFromQuery,
   GameNotBuilt,
@@ -109,7 +110,6 @@ function startOnce(files: FileSource, thaiFontFix: ThaiFontPreference): Promise<
 export function Play({ files }: { files: FileSource }) {
   const stage = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement | null>(null);
-  const textInput = useRef<HTMLTextAreaElement>(null);
   const cursor = useRef<HTMLImageElement>(null);
   const [startError, setStartError] = useState<Error | null>(null);
   const [statsOn, setStatsOn] = useState(() => statsWanted(window.location.search));
@@ -121,10 +121,10 @@ export function Play({ files }: { files: FileSource }) {
   const [fullscreen, setFullscreen] = useState(false);
   const [pointerLocked, setPointerLocked] = useState(false);
   const [browseFiles, setBrowseFiles] = useState(false);
-  const [textInputOpen, setTextInputOpen] = useState(false);
   const [browserError, setBrowserError] = useState<string | null>(null);
   const [trayQuiet, setTrayQuiet] = useState(false);
   const [pmOpen, setPmOpen] = useState(false);
+  const [chatTyping, setChatTyping] = useState(false);
   const gameId = sourceStorage(files);
   const [thaiFontFix] = useState(() => readThaiFontPreference(gameId));
   const [fullscreenPreference] = useState<FullscreenPreference>(() =>
@@ -143,6 +143,8 @@ export function Play({ files }: { files: FileSource }) {
   const saveReferencePrompt = useGameState((s) => s.saveReferencePrompt);
   const openLink = useGameState((s) => s.openLink);
   const mapSearchStatus = useGameState((s) => s.mapSearchStatus);
+  const chatField = useGameState((s) => s.chatField);
+  const matchChat = useGameState((s) => s.matchChat);
   // The game's Ladder and Clan buttons open the launcher's own page in a new tab; the game keeps
   // running. A browser that blocks the tab leaves the dialog, whose Open goes to the same page.
   const [blockedLauncherLink, setBlockedLauncherLink] = useState<number | null>(null);
@@ -532,8 +534,6 @@ export function Play({ files }: { files: FileSource }) {
           detach = attachInput(target, game.exports, {
             picture: () => presenter!.gameSize(),
             warp: () => presenter!.cursorWarp(),
-            textInput: textInput.current ?? undefined,
-            sendText: (text) => game.exports.ra2_input_text(text),
             enabled: () =>
               runtimeLive() &&
               !gameStore.getSnapshot().settings?.open &&
@@ -548,6 +548,18 @@ export function Play({ files }: { files: FileSource }) {
                       ? leaveFullscreen()
                       : enterFullscreen(document.documentElement)
                   ).catch((e: unknown) => setBrowserError(String(e)));
+                return true;
+              }
+              // Enter in a LAN or online match opens the page's chat line instead of the game's
+              if (
+                event.code === "Enter" &&
+                !event.altKey &&
+                !event.ctrlKey &&
+                !event.repeat &&
+                gameStore.getSnapshot().matchChat.ready &&
+                game.exports.ra2_match_chat_send
+              ) {
+                setChatTyping(true);
                 return true;
               }
               if (event.code === "F12" && !event.ctrlKey) {
@@ -776,24 +788,42 @@ export function Play({ files }: { files: FileSource }) {
         stage={stage}
         canvas={canvas}
       />
+      <ChatBox
+        field={chatField}
+        presenter={presenter}
+        stage={stage}
+        canvas={canvas}
+        send={
+          presenter && handle.current?.exports.ra2_chat_send
+            ? (text) => handle.current?.exports.ra2_chat_send?.(text)
+            : null
+        }
+      />
+      {presenter && (trayQuiet || chatTyping) && (
+        <MatchChat
+          chat={matchChat}
+          typing={chatTyping}
+          onTyping={(typing) => {
+            setChatTyping(typing);
+            if (!typing) canvas.current?.focus();
+          }}
+          thai={thaiFontFix.enabled}
+          presenter={presenter}
+          stage={stage}
+          canvas={canvas}
+          send={
+            handle.current?.exports.ra2_match_chat_send
+              ? (text, target) => handle.current?.exports.ra2_match_chat_send?.(text, target)
+              : null
+          }
+        />
+      )}
       {pageCursorMode && (
         <canvas ref={pageCursorCanvas} className={styles.pageCursor} aria-hidden="true" />
       )}
       {cursorDebugMode && (
         <div ref={cursorMarker} className={styles.cursorMarker} aria-hidden="true" />
       )}
-      <textarea
-        ref={textInput}
-        className={styles.textInput}
-        aria-label="Game text input"
-        autoCapitalize="off"
-        autoComplete="off"
-        enterKeyHint="done"
-        inputMode="text"
-        spellCheck={false}
-        onFocus={() => setTextInputOpen(true)}
-        onBlur={() => setTextInputOpen(false)}
-      />
       <img ref={cursor} className={styles.cursor} alt="" aria-hidden="true" />
       <GameTray quiet={trayQuiet}>
         <button
@@ -803,26 +833,6 @@ export function Play({ files }: { files: FileSource }) {
         >
           <GearIcon aria-hidden="true" />
           SETTINGS <kbd>F10</kbd>
-        </button>
-        <button
-          type="button"
-          className={trayItem}
-          aria-pressed={textInputOpen}
-          disabled={!presenter}
-          onPointerDown={(event) => {
-            if (document.activeElement === textInput.current) event.preventDefault();
-          }}
-          onClick={() => {
-            if (document.activeElement === textInput.current) {
-              textInput.current?.blur();
-              canvas.current?.focus();
-            } else {
-              textInput.current?.focus();
-            }
-          }}
-        >
-          <KeyboardIcon aria-hidden="true" />
-          TYPE
         </button>
         {liveFiles && (
           <button type="button" className={trayItem} onClick={() => setBrowseFiles(true)}>

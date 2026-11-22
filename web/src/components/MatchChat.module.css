@@ -1,0 +1,132 @@
+/* The match chat panel (MatchChat.tsx), bottom left over the battlefield. Closed, it is only text and
+   lets the mouse through; open (hovered or typing), it gets a dark backing and its tab. */
+.panel {
+  position: absolute;
+  z-index: 3;
+  left: 12px;
+  bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  width: min(480px, calc(100vw - 24px));
+  color: #f0f0f0;
+  font-family: "Segoe UI", "Leelawadee UI", Tahoma, "Noto Sans Thai", sans-serif;
+  font-size: 14px;
+  line-height: 1.35;
+  pointer-events: none;
+  text-shadow:
+    0 0 2px #000,
+    1px 1px 1px #000;
+}
+
+.panel[data-open] {
+  pointer-events: auto;
+}
+
+/* the bottom row: the tab, then the line to type into; it stays put while the history opens above */
+.bar {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.tab {
+  padding: 2px 14px 3px;
+  border: 1px solid rgb(255 255 255 / 0.18);
+  background: rgb(20 20 24 / 0.55);
+  color: rgb(240 240 240 / 0.7);
+  font: inherit;
+  font-weight: 600;
+  text-shadow: inherit;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.panel[data-open] .tab {
+  background: rgb(20 20 24 / 0.85);
+  color: #f0f0f0;
+}
+
+.lines {
+  margin: 0;
+  padding: 4px 8px;
+  list-style: none;
+  max-height: 9.5em;
+  overflow: hidden;
+}
+
+.panel[data-open] .lines {
+  max-height: 14em;
+  overflow-y: auto;
+  border: 1px solid rgb(255 255 255 / 0.18);
+  background: rgb(10 10 14 / 0.72);
+  scrollbar-width: thin;
+}
+
+.line {
+  overflow-wrap: anywhere;
+}
+
+.name {
+  font-weight: 600;
+}
+
+.time {
+  color: #a8a8a8;
+  font-variant-numeric: tabular-nums;
+}
+
+/* the game's own rows: its message gold */
+.system {
+  color: #f2d34b;
+}
+
+.to {
+  color: #8fd18a;
+}
+
+.prompt,
+.compose {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border: 1px solid rgb(255 255 255 / 0.12);
+  background: rgb(10 10 14 / 0.6);
+  font: inherit;
+  text-align: left;
+  pointer-events: auto;
+}
+
+.prompt {
+  color: #b8b8b8;
+  cursor: text;
+}
+
+.target {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #8fd18a;
+  font: inherit;
+  cursor: pointer;
+}
+
+.compose {
+  background: rgb(10 10 14 / 0.85);
+  border-color: #c9a227;
+}
+
+.input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #fff;
+  font: inherit;
+  outline: none;
+}

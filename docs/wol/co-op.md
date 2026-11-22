@@ -276,7 +276,9 @@ between rounds; the log shows `[wol] game name set to the room host <name>`). In
 the host, which already holds its own name there, so nothing changes for it. After the fix both clients read
 `[0xA8D610] = "zab63fc"` (the operator), the chat line's hash is `0x260b` on both, and B draws A's line
 (`coop.mjs`: `C-3 step 3: B's game drew the chat line`). It applies to every matchbot game of Yuri's Revenge, so it
-also covers in-game chat of a Quick Match. `game.exe` is not touched (its address is not known and it has no co-op).
+also covers in-game chat of a Quick Match. Red Alert 2 (`game.exe`, no co-op) has the same check (game name `0x00A3F618`,
+gate byte `0x00A3F615`, receiver `0x00482807`) and the same drop in a Quick Match; `main.c` gives the shim that address
+too (22 November, docs/web/match-chat.md), and `quickmatch.mjs --row 11` shows chat both ways in both games.
 
 **C-2, Continue on the score screen: works after the same fix.** Before it: nothing asked of the server and the
 clients stayed on `0xBC6` for 25 s and for 60 s (only 28 and 75 byte relay keepalives; the greyed Continue and a ready
