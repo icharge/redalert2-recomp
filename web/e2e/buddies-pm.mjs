@@ -13,7 +13,7 @@
 // Shots: pm-panel-a, pm-panel-b, on-a, buddy-list-a.
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
-import { startPage, options } from "./lib.mjs";
+import { startPage, options, isWolChatSocket } from "./lib.mjs";
 
 const argv = process.argv.slice(2);
 const option = (name, fallback) => (argv.includes(name) ? argv[argv.indexOf(name) + 1] : fallback);
@@ -88,7 +88,8 @@ async function open(name) {
   Object.assign(run, who);
   run.wire = [];
   run.page.on("websocket", (ws) => {
-    if (!ws.url().startsWith(server.replace(/^http/, "ws")) || ws.url().includes("/gserv")) return;
+    // the server itself, or the dev server's /ra2web/ proxy of it (src/wol-endpoint.ts)
+    if (!isWolChatSocket(ws.url(), server, run.page.url())) return;
     const add = (dir) => (f) => {
       for (const line of String(f.payload).split(/\r?\n/)) if (line) run.wire.push({ dir, line });
     };
