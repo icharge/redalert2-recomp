@@ -49,6 +49,14 @@ void web_match_chat(uint32_t packet, uint32_t target) { (void)packet, (void)targ
 void web_match_message(uint32_t name, uint32_t text, uint32_t scheme, uint32_t style) { (void)name, (void)text, (void)scheme, (void)style; }
 int web_match_chat_take(uint32_t mode, uint32_t chunk, uint32_t target) { (void)mode, (void)chunk, (void)target; return 0; }
 int web_match_chat_open(uint32_t mode, uint32_t target) { (void)mode, (void)target; return 0; }
+
+/* The browser WOL patches in the lift (run_lift.py wol_icon_surface_patches and
+ * net_timing_event_patches) call into src/web, which only the web build
+ * compiles. The lift is the same for every host, so native builds take these:
+ * no icon hook, and the game's own timing values (the stock argument back). */
+void web_wol_icon_surface(uint32_t hwnd, uint32_t surface) { (void)hwnd; (void)surface; }
+uint32_t ra2_net_tuning_timing_send_rate(uint32_t stock) { return stock; }
+uint32_t ra2_net_tuning_timing_max_ahead(uint32_t stock) { return stock; }
 #endif
 
 #define RA2_IMAGE_BASE 0x00400000u

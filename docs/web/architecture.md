@@ -4,6 +4,41 @@ How the native Linux build maps onto a browser. The lifted C and `win32hle`
 stay what they are. What changes is underneath them: threads, the screen,
 sound, files and faults.
 
+## From a retail install to a browser frame
+
+1. **Translate the engine.** `disasm32.py` catalogs x86 functions in the
+   supported retail executable. `run_lift.py` uses the catalog and the
+   executable to generate C in `src/recomp/gen_game/` for Red Alert 2
+   (`game.exe`) or `src/recomp/gen/` for Yuri's Revenge (`gamemd.exe`).
+2. **Build the browser module.** CMake and Emscripten link the generated C,
+   the web host in `src/web/`, and pcrecomp's `win32hle`, which implements
+   the Windows APIs the game expects. The build publishes the edition's JS,
+   Wasm and data files, `build.json`, and the matching executable and
+   `Blowfish.dll` runtime bundle to `web/public/game/`. The host maps the
+   original executable image into guest memory and reads the DLL's cipher
+   tables to decrypt MIX archive headers. Vite serves the launcher and the
+   local bundle. See [Toolchain](toolchain.md) and [Runtime bundle](runtime-bundle.md).
+3. **Launch with the player's data.** The launcher imports the player's
+   content archives into the browser's origin-private file system (OPFS).
+   When Play selects an edition, `web/src/game/loader.ts` reads `build.json`
+   and loads the matching Emscripten script. It mounts OPFS, stages the
+   runtime files, and makes the content available under `/game` in WasmFS
+   before starting the game. See [Storage](storage.md).
+4. **Exchange inputs and frames.** Emscripten runs the game's `main()` in a
+   worker. The browser's main thread converts mouse and key events into
+   input for the worker. The worker publishes completed frames in shared
+   Wasm memory. The page reads them and paints the canvas using WebGL2 or
+   the Canvas 2D fallback.
+
+For local development, `build-web.cmd` (or `build-web.sh`) compiles and
+publishes the engine bundle after checking the lift. From `web/`, `pnpm dev`
+serves the React launcher and the published bundle with the cross-origin
+isolation headers that enable shared memory. `pnpm build:prod` packages the
+launcher frontend as a separate build step. See the [build commands](toolchain.md#build-commands)
+and [local launcher setup](../../web/README.md#try-it-locally).
+
+## Browser processes and threads
+
 ```
 ┌──────────── Main thread: the page (web/, React) ──────────────────────┐
 │  Launcher (Play, Mods, Game, Settings), Install, the game page        │

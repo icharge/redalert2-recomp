@@ -16,6 +16,117 @@ are the ones the game itself logs.
 At 60 fps, `MaxAhead` 4 is the command delay the player feels: **66.7 ms**.
 The game's own `Response time` lines in the same runs were 9–10 ms.
 
+## Eight-human WOL capacity check (2026-11-11)
+
+The published Yuri's Revenge build does **not** currently admit eight human
+WOL clients through the native Custom Match screen. Six clients joined Death
+trap (2–8); the seventh saw `woltst1's_game 6/6` with Join disabled and sent no
+`joingame` request. This is a capacity blocker before gameplay, not evidence
+of an eight-peer transport or performance failure.
+
+The map picker showed eight start positions and outgoing GAMEOPT specified
+eight map slots (`XDeath.MAP`). Nevertheless, the host sent `MODE +l6` and
+`WOLAPI2:0,1,6,0`. Rows seven and eight were Closed; their dropdown offered
+Closed and AI difficulties, with no Open choice. The native setup routine
+at YR `0x005EB060` uses six as the normal WOL/session-mode-4 human cutoff;
+the Open entry is omitted beyond that bound near `0x005EB4AA`. Map capacity, advertised room capacity and current player count are
+separate fields. This test did not establish that the server/bridge supplies
+those fields correctly, so the observed six-slot UI branch does not prove
+that eight humans are inherently unsupported. The create request supplied
+7, the selected map supplied 8 slots, and the subsequent room metadata
+supplied 6. The user identified incorrect server slot/player reporting as
+the suspected cause; tracing these values into the native callbacks is the
+next check. No limit patch or forged eight-player STARTG was used.
+
+Environment: dirty working tree based on `292930fa`, existing published YR
+build ID `585dcbc90af6034a`, Wasm SHA-256
+`9e7ab7e8cdbc5923975380de5e9454779cf0db5850b18c99e589333fb7ee7837`;
+RA2Web server revision `02b934d157f32984494336e22f26978f2ebff653`, in-memory
+storage on loopback port 9090. No game compilation ran. Chrome 156 on a
+Ryzen 5 7600X (12 logical processors), approximately 31.2 GiB physical RAM.
+Other desktop workloads were running, so process measurements describe
+this local concurrency test rather than a dedicated-machine benchmark.
+
+The task fixture supplies 12-byte empty `movmd03.mix` and `movies01.mix`
+through `serveGame` overrides, following the normal importer's movie-stub
+convention. Without those missing archives, the development folder exits
+during initialization with "Failed to initialize. Please reinstall." before
+any WOL login. The source installation is unchanged. The fixture copies
+content into each client's memory; its memory costs include that staging
+and do not represent an OPFS installation's footprint.
+
+Reproduction and the small retained evidence are described in
+[`work/tasks/wol-eight/README.md`](../../work/tasks/wol-eight/README.md).
+The regular `web/e2e/wol.mjs` still supports only two or three clients.
+The task runner generalizes the real UI login/join/start flow and accepts
+`WOL_PLAYERS=8` for the capacity attempt or `WOL_PLAYERS=6` for gameplay at
+the observed limit. Base RA2, internet links, long matches and busy late-game
+battles were not established by this capacity check.
+
+### Six-client observations and test limitations
+
+At the supported human limit, all six native clients received the same
+authenticated STARTG handoff, negotiated the scenario, passed frame 300,
+and ran for approximately five minutes. Every client logged five FRAMESYNC
+receives and five distinct remote destinations, exercising all 15 peer
+pairs. The logs contained no scenario-negotiation failure, late-packet
+warning, moved-event warning, sync-file write, desync/reconnection dialog,
+browser error or runtime crash. A same-instant collection of the six log
+tails was within four frames; the final per-client dumps were sequential
+and must not be interpreted as a simultaneous drift measurement.
+
+These are instrumented observations, **not a passed performance or visual
+playability benchmark**:
+
+| Observation | Result |
+|---|---|
+| Positive match FPS reports | 291–293 per client; median 30 FPS each, mean about 28.4 FPS |
+| Low FPS tail | Fifth percentile 16–18 FPS, depending on client |
+| Largest reported frame gap | 828–977 ms across the six clients |
+| Game timing | MaxAhead settled at 4, sending every 2 frames |
+| Task process working set | About 15.05 GiB median during input/gameplay; 16.92 GiB peak including setup |
+| Task private committed memory | 16.04 GiB peak including setup |
+| CPU use during input/gameplay | Median 8.76 logical cores, approximately 73% of this 12-thread CPU |
+
+The FPS/gap figures come from the game's own positive `@ra2 fps` events;
+zero/menu reports are excluded. OS figures cover the test Node process and
+its Chrome descendants, not the WOL/Vite servers or unrelated workloads.
+Process memory is not a Wasm-heap growth measurement. The snapshots use the
+800×600 game mode with a 1280×960 page viewport, HD vehicles off, initial
+game speed 5 and ten starting units. This is a light setup, not a busy battle.
+
+**Visual limitation:** the final host and guest screenshots show a black
+battlefield/shroud with the sidebar and 10,000 credits still drawn. Advancing
+simulation frames alone do not establish correct rendering or playable
+unit interaction. A retained screenshot is in the evidence directory.
+[The native testing guide](../testing.md) and [bring-up notes](../bringup.md)
+describe a prior automation edge-scroll problem that moved the camera into
+the black map margin. That is a hypothesis for this case, not its diagnosed
+cause. The next discriminating check is to center the pointer/camera before
+orders and capture non-black battlefield frames both before and after them.
+
+**Automation limitation:** the temporary runner issued Q, D and left-click
+inputs sequentially. The first two client input sequences took approximately
+92 and 105 seconds to return. Those times are automation API completion
+times, not measured in-game command latency. They exhausted the 120-second
+sampling window before the first structured sample, and the runner exited
+1 with a `TypeError` reading the missing last sample. The log/OS summaries
+above remain observable evidence; there is no successful `metrics.json`
+benchmark or memory-soak result. The retained runner now starts its sampling
+window after the input phase and captures a pre-input screenshot, but that
+adjustment received syntax validation only, not another game run. The
+underlying input delay remains unexplained.
+
+Useful follow-up: verify and correct server/bridge slot and player-count
+reporting before deciding whether any native capacity change is needed,
+resolve the black-view/input-fixture case, then repeat an eight-client test
+with bounded input actions, visual assertions and reliable live sampling.
+Raw captures were summarized, but automatic approval review rejected task-only
+cleanup with "blocked by policy", including a narrower file-only deletion
+attempt. Approximately 105 MiB of task captures and the compact evidence remain
+under the linked task README, with ownership and cleanup instructions. The
+task's WOL/Vite servers stopped; no game/runtime behavior was changed.
+
 ## Where the delay goes
 
 | Component | Cost | Where |
