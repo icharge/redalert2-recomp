@@ -540,7 +540,8 @@ node work/t11/video-modes-selftest.js   # video modes selftest: ok
 ```
 
 With Vite on `http://localhost:5173`, local RA2Web on `127.0.0.1:9090`
-(`pnpm wol-server`), and the
+(`pnpm wol-server`; the dev page reaches it through its own `/ra2web/` proxy,
+`web/src/wol-endpoint.ts`), and the
 game modules built, run the original menu smoke check from `web/`:
 
 ```powershell
@@ -595,8 +596,13 @@ A launch ticket's automatic login, end to end (LW-8): the script mints a ticket 
 launcher's PLAY does (a new member with a new game account, or `--guest` with a guest name),
 opens the game with `#ticket=`, presses Internet and checks the lobby JOIN carries that nick, with
 no login dialog and no `/register` or `/login` from the page. `pnpm wol-server` lets the dev
-origins (5173, 5175) call the launcher routes (`LAUNCHER_ORIGINS`). Seen passing in both editions,
-member and guest, on 15 November with `--game ../game` and Vite on 5175:
+origins (5173, 5175) call the launcher routes (`LAUNCHER_ORIGINS`). On the dev server the page calls
+the server through its own origin (`/ra2web/`, forwarded by Vite to `RA2_WOL_PROXY_TARGET`,
+default `http://127.0.0.1:9090`), so the member's `ra2refresh` cookie is first-party and a reload
+keeps the member signed in on `localhost` as well as `127.0.0.1`; `--url 'http://localhost:5173/'`
+works the same way. Before that proxy, a page on `localhost` calling `127.0.0.1:9090` was cross-site,
+the browser dropped the SameSite=Lax cookie, and every reload was a guest. Seen passing in both
+editions, member and guest, on 15 November with `--game ../game` and Vite on 5175:
 
 ```powershell
 node e2e/launch-login.mjs --url 'http://127.0.0.1:5175/?target=game' --game ../game

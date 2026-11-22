@@ -5,6 +5,7 @@ import { defineConfig } from "vitest/config";
 import { devGame } from "./vite.dev-game";
 import { precompressedWasm } from "./vite.precompressed-wasm";
 import { gameModuleHashes } from "./vite.game-hashes";
+import { DEV_PROXY_TARGET, wolDevProxy } from "./src/wol-endpoint";
 
 // The game uses threads, so the page must be cross-origin isolated
 // (docs/web/deploy.md). A host that cannot send these headers gets them from the
@@ -60,7 +61,13 @@ export default defineConfig(({ mode }) => {
     ],
     // the archive import's worker bundles 7-Zip's ES module (src/storage/archive.worker.ts)
     worker: { format: "es" as const },
-    server: { headers: isolation, port: 5173 },
+    // The WOL server under the page's own origin (src/wol-endpoint.ts): its refresh cookie is then
+    // first-party, so a reload keeps the member signed in whatever host the page is opened on.
+    server: {
+      headers: isolation,
+      port: 5173,
+      proxy: wolDevProxy(env.RA2_WOL_PROXY_TARGET || DEV_PROXY_TARGET),
+    },
     preview: { headers: isolation, port: 4173 },
     test: {
       environment: "jsdom",

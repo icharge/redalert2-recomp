@@ -9,6 +9,8 @@
  * one in flight per page here, and a Web Lock (`navigator.locks`) across the tabs of this origin.
  */
 
+import { wolHttpUrl } from "../wol-endpoint";
+
 export interface Member {
   id: number;
   login: string;
@@ -85,9 +87,7 @@ export class OfflineError extends Error {
 }
 
 /** The operator's WOL HTTP server, the same one the game loader redeems tickets at. */
-export function wolHttpUrl(): string {
-  return import.meta.env.VITE_WOL_HTTP_URL ?? "http://127.0.0.1:9090";
-}
+export { wolHttpUrl } from "../wol-endpoint";
 
 const LOCK_NAME = "ra2-account-refresh";
 

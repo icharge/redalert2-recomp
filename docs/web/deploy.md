@@ -186,8 +186,13 @@ the project policy requires.
 
 ## WOL server endpoints
 
-The native Internet / Custom Match bridge defaults to the local RA2Web server
-at `http://127.0.0.1:9090`. An operator can select a trusted server using Vite
+On the dev server (`pnpm dev`) the launcher and the native Internet / Custom
+Match bridge default to the page's own origin under `/ra2web/`, which Vite
+forwards, HTTP and WebSockets, to the local RA2Web server at
+`http://127.0.0.1:9090` (`RA2_WOL_PROXY_TARGET` changes it). Same-origin keeps
+the member's `ra2refresh` cookie (SameSite=Lax over plain http) first-party,
+so a reload stays signed in whether the page is opened on `localhost` or
+`127.0.0.1` (`web/src/wol-endpoint.ts`). An operator can select a trusted server using Vite
 environment variables before starting development or building the frontend:
 
 ```powershell
