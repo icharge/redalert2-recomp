@@ -6,10 +6,12 @@
  *
  * Refreshes are serialized. The server rotates the cookie on every use and treats a second use of
  * an old value as theft (it signs the member out everywhere), so two refreshes must never overlap:
- * one in flight per page here, and a Web Lock (`navigator.locks`) across the tabs of this origin.
+ * one in flight per page here, and a Web Lock (`navigator.locks`) across the tabs of this origin, or
+ * a lease in `localStorage` where the page has no Web Locks (tab-lock.ts).
  */
 
 import { wolHttpUrl } from "../wol-endpoint";
+import { storageLocks } from "./tab-lock";
 
 export interface Member {
   id: number;
@@ -101,17 +103,33 @@ const LOCK_NAME = "ra2-account-refresh";
 
 type LockRunner = <T>(name: string, run: () => Promise<T>) => Promise<T>;
 
-/** Web Locks when the browser has them (a secure page); otherwise the page-wide promise alone. */
+/**
+ * Web Locks when the browser has them (a secure page); otherwise a lease in `localStorage`
+ * (tab-lock.ts); with neither, the page-wide promise alone.
+ */
+export function pickLocks(
+  nav: Navigator | undefined,
+  storage: Storage | undefined,
+): LockRunner | null {
+  const locks = nav?.locks;
+  if (locks) return async (name, run) => await locks.request(name, run);
+  return storage ? storageLocks(storage) : null;
+}
+
 function browserLocks(): LockRunner | null {
-  const locks = typeof navigator === "undefined" ? undefined : navigator.locks;
-  if (!locks) return null;
-  return async (name, run) => await locks.request(name, run);
+  let storage: Storage | undefined;
+  try {
+    storage = typeof localStorage === "undefined" ? undefined : localStorage;
+  } catch {
+    storage = undefined; // storage blocked: no cross-tab lock
+  }
+  return pickLocks(typeof navigator === "undefined" ? undefined : navigator, storage);
 }
 
 export interface ClientOptions {
   baseUrl?: string;
   fetch?: typeof fetch;
-  /** Runs `run` while holding the named cross-tab lock. `null` turns the lock off (no Web Locks). */
+  /** Runs `run` while holding the named cross-tab lock. `null` turns the lock off. */
   locks?: LockRunner | null;
 }
 
