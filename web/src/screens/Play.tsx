@@ -34,6 +34,10 @@ function useReplyTo(pm: PmStore | undefined): string | null {
     () => pm?.getSnapshot().lastFrom ?? null,
   );
 }
+/** Whether the player is on WOL: a page (/page, /r) reaches someone (not in a LAN match). */
+function useOnline(pm: PmStore | undefined): boolean {
+  return useSyncExternalStore(pm?.subscribe ?? noSubscribe, () => !!pm?.getSnapshot().nick);
+}
 /** The newest invitation to a game room (the MESSAGES store). */
 function useLastInvite(pm: PmStore | undefined) {
   return useSyncExternalStore(
@@ -53,6 +57,7 @@ import { chatBoxPlace } from "./ChatBox";
 import { PlayerMenu } from "../components/PlayerMenu";
 import { addFriendFor } from "../components/FriendsTab";
 import { MatchChat, Target, resolveTarget } from "../components/MatchChat";
+import { pageOf } from "../game/chat-commands";
 import { LADDER_SKU } from "../ladder/api";
 import {
   argsFromQuery,
@@ -194,13 +199,20 @@ export function Play({ files }: { files: FileSource }) {
     chatTargetRef.current = target;
     setChatTarget(target);
   }, []);
+  // the player the line whispers to after a /r or /p: Enter opens to them again; Backspace, \ and
+  // a new match leave it
+  const [chatWhisper, setChatWhisper] = useState<string | null>(null);
+  const chatOnline = useOnline(presenter ? handle.current?.pm : undefined);
   useEffect(() => {
-    if (matchChat.ready) rememberTarget(Target.all);
+    if (!matchChat.ready) return;
+    rememberTarget(Target.all);
+    setChatWhisper(null);
   }, [matchChat.ready, rememberTarget]);
   const chatOpen = matchChat.open;
   useEffect(() => {
     if (!chatOpen) return;
     const target = resolveTarget(chatOpen.to, chatTargetRef.current);
+    if (chatOpen.to === Target.allies || chatOpen.to === Target.all) setChatWhisper(null);
     rememberTarget(target);
     setChatTyping(target);
   }, [chatOpen, rememberTarget]);
@@ -947,6 +959,9 @@ export function Play({ files }: { files: FileSource }) {
           typing={chatTyping}
           remembered={chatTarget}
           replyTo={replyTo}
+          whisper={chatWhisper}
+          onWhisper={setChatWhisper}
+          whispers={chatOnline}
           onHint={chatHint}
           onTarget={rememberTarget}
           onTyping={(typing) => {
@@ -962,11 +977,11 @@ export function Play({ files }: { files: FileSource }) {
               ? (text, target) => {
                   // the player's own whisper: the panel's PM tab keeps it beside the answers
                   // (a whisper received shows as "(sender) text", match_chat.c)
-                  const whisper = /^\/page\s+(\S+)\s+(.+)$/i.exec(text);
+                  const whisper = pageOf(text);
                   if (whisper)
                     gameStore.apply({
                       e: "matchMessage",
-                      text: `(to ${whisper[1]}) ${whisper[2]}`,
+                      text: `(to ${whisper.to}) ${whisper.text}`,
                       scheme: -1,
                       style: 0,
                       pm: true,

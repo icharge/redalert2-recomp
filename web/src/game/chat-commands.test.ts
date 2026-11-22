@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { expandChatCommand, replyWithoutTarget } from "./chat-commands";
+import { expandChatCommand, pageOf, replyWithoutTarget, whisperTarget } from "./chat-commands";
 
 describe("expandChatCommand", () => {
   it("writes /p out as /page, keeping the rest", () => {
@@ -38,5 +38,33 @@ describe("expandChatCommand", () => {
     expect(replyWithoutTarget("/r hi", "Bob")).toBe(false);
     expect(replyWithoutTarget("/rr hi", null)).toBe(false);
     expect(replyWithoutTarget("hello", null)).toBe(false);
+  });
+});
+
+describe("whisperTarget", () => {
+  it("names the player once the command and the name are typed", () => {
+    expect(whisperTarget("/r ", "Bob")).toBe("Bob");
+    expect(whisperTarget("/Reply ", "Bob")).toBe("Bob");
+    expect(whisperTarget("/r ", null)).toBeNull();
+    expect(whisperTarget("/p ann ", null)).toBe("ann");
+    expect(whisperTarget("/MSG ann ", null)).toBe("ann");
+    expect(whisperTarget("/page ann ", null)).toBe("ann");
+  });
+
+  it("waits for the space, and leaves other lines", () => {
+    expect(whisperTarget("/r", "Bob")).toBeNull();
+    expect(whisperTarget("/p ann", null)).toBeNull();
+    expect(whisperTarget("/p ann hi", null)).toBeNull();
+    expect(whisperTarget("/me waves ", null)).toBeNull();
+    expect(whisperTarget("hello there ", null)).toBeNull();
+  });
+});
+
+describe("pageOf", () => {
+  it("reads a page's name and text", () => {
+    expect(pageOf("/page bob hi there")).toEqual({ to: "bob", text: "hi there" });
+    expect(pageOf("/PAGE bob hi")).toEqual({ to: "bob", text: "hi" });
+    expect(pageOf("/page bob")).toBeNull();
+    expect(pageOf("hello")).toBeNull();
   });
 });

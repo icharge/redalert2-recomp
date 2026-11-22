@@ -352,7 +352,11 @@ The chat panel and the lobby chat box (22 November).
   the panel: the game's line stays closed`.
 - **Tabs** (22 November): the open panel has All, Allies, PM and System tabs
   over its history (`inTab` in `MatchChat.tsx`). Closed, it fades only the
-  selected tab's lines.
+  selected tab's lines. Open, the history has one height (14em) under every
+  tab, lines at the bottom, so the tabs over it stay in place.
+  - All: the players' lines and whispers. The game's other rows are under
+    System only (the game still draws them itself). Outside a LAN or online
+    match, where nobody talks, All shows the game's rows too.
   - Allies: player lines with `to` 2. That covers the player's own lines and
     lines from players on this build (the tag in section 4); lines from others
     count as to everyone.
@@ -363,6 +367,36 @@ The chat panel and the lobby chat box (22 November).
     `(to nick) text` line on the page (`Play.tsx`).
   - System: the game's other rows.
   - A tab not on show is marked when it has lines newer than the last seen there.
+- **Hiding** (23 November): closed, the panel hides altogether
+  (`data-idle`: no opacity, no pointer events, so the battlefield gets the
+  mouse) `MATCH_CHAT_IDLE_MS` (6 s) after its last line faded and after it was
+  last open. The game's chat keys, a new line or the player's pin bring it
+  back.
+- **Whispering to a player** (23 November), online only (`whispers`: the
+  player has a WOL nick; in a LAN match `/page` reaches nobody):
+  - `/r ` or `/p name ` (`/m`, `/msg`, `/pm`, `/page`) typed at the start of
+    the line, with the space, makes the line whisper to that player
+    (`whisperTarget` in `chat-commands.ts`): the target shows `[name]` in the
+    PM colour and the text after it goes as `/page name text`.
+  - A page sent in full (`/p bob hi`) does the same for the next lines.
+  - `Play.tsx` keeps the player (`chatWhisper`) for the match: Enter opens to
+    them again. Backspace, `\` and a new match go back to allies, everyone
+    and All.
+  - Tab goes All, Allies, then the player last whispered to (or, before
+    that, the last who whispered), then All.
+  - A line starting with `/` is still a command, not a whisper.
+  - The line holds 111 units less `/page name ` (`lineLimit`), 97 at most.
+- **Commands in the game rooms**: the lobby box sends its line as the game's
+  own typing, so the game's commands work wherever the box shows.
+  `e2e/chat-box.mjs` creates a game room and checks a line to the room,
+  `/p` (a private line, not text to the room), `/on` (`find`) and YuriBOT's
+  `/help`.
+  - YuriBOT's commands in a game room (23 November): the game sends any other
+    `/` line to the room as `privmsg #room :/help`. The server gave such lines
+    to the bot only in the chat lobbies, so in a room they went to the other
+    players as text. ra2web `WolServer.handlePrivmsg` now gives them to the bot
+    in game rooms too (not in the Quick Match lobbies); the answer is private.
+    The game still echoes the player's own `/help` line on their own screen.
 - **Escape in a chat box** closes the box and does not release the capture:
   `browser-controls.ts` skips its own release for `[data-game-text]`. In
   fullscreen, where Keyboard Lock gives the page Escape, the mouse stays

@@ -37,7 +37,9 @@
 //               types a line (with Thai) and Enter; it shows in B's panel under A's name and in A's own
 //               panel; /p (as /page) and /r whisper from the panel; B answers with Backspace (allies: A does not get it) and with \ (all: A does);
 //               the game's own keys open the page's line to those targets; an admin announcement shows as a game row
-//               in both panels. Shots match-chat-a, match-chat-b.
+//               in both panels. After a page the line stays on that player (A's Enter opens to B), and B's "/r "
+//               switches B's line to A. The tabs keep one place; B's closed panel hides, and \ shows it again.
+//               Shots match-chat-a, match-chat-b, match-chat-b-whisper-target, match-chat-b-hidden.
 //
 // Options: --server http://127.0.0.1:9090, --server-log FILE (the server's stdout), --label NAME, --guests,
 // plus the shared ones of lib.mjs (--game, --shots, --headed). Scratch: --shots.
@@ -765,6 +767,32 @@ async function rowChat() {
   await chatFrom(b, `/r ${answer}`, "Backslash");
   await untilAsync(a, "B's /r in A's panel", () => panelHas(a, answer), 20000);
   check("A paged B from the panel with /p, and B answered with /r");
+  // after a page the line keeps whispering to that player: A's Enter opens to B, and what A types
+  // goes to B with no /p
+  const sticky = `still to you ${tag}`;
+  await chatFrom(a, sticky, "Enter", b.nick);
+  await untilAsync(b, "A's line to B (no /p) in B's panel", () => panelHas(b, sticky), 20000);
+  // the page shows the player's own page as "(to nick) text" (Play.tsx)
+  assert.ok(await panelHas(a, `(to ${b.nick}) ${sticky}`), "A's line went as a page to B");
+  // "/r " typed at the start of a line makes it whisper to the last player who whispered: B's line
+  // to everyone turns into one to A, and the text after it goes to A
+  {
+    await b.page.locator("canvas").first().focus();
+    await b.page.keyboard.press("Backslash");
+    const box = b.page.getByRole("textbox", { name: "Message to all" });
+    await box.waitFor({ timeout: 10000 });
+    await box.pressSequentially("/r ", { delay: 40 });
+    const toA = b.page.getByRole("textbox", { name: `Message to ${a.nick}` });
+    await toA.waitFor({ timeout: 5000 });
+    assert.equal(await toA.inputValue(), "", "the command left the line");
+    await b.shot("match-chat-b-whisper-target");
+    const live = `typed to you ${tag}`;
+    await toA.fill(live);
+    await toA.press("Enter");
+    await toA.waitFor({ state: "detached", timeout: 10000 });
+    await untilAsync(a, "B's line after /r in A's panel", () => panelHas(a, live), 20000);
+  }
+  check("a page keeps the line on that player, and /r switches the line to the last whisperer");
   // a page from the panel does not reopen the game's own chat line ("From me:/page<nick>")
   for (const run of [a, b])
     assert.ok(
@@ -775,8 +803,20 @@ async function rowChat() {
   // the game's own rows reach the panel too: YuriBOT's page, read-only
   const notice = `Panel announcement ${tag}`;
   info(`announce: ${JSON.stringify(await admin("POST", "/admin/announce", { text: notice }))}`);
+  // (a game row is under the System tab, not All: look in the panel's history)
+  const historyHas = (run, text) =>
+    run.page.evaluate(
+      (needle) =>
+        (window.ra2Store?.getSnapshot().matchChat.lines ?? []).some((l) => l.text.includes(needle)),
+      text,
+    );
   for (const run of [a, b])
-    await untilAsync(run, "the announcement row in the panel", () => panelHas(run, notice), 30000);
+    await untilAsync(
+      run,
+      "the announcement row in the panel",
+      () => historyHas(run, notice),
+      30000,
+    );
   check("the server's announcement shows as a game row in both panels");
   // B's line to everyone reached A with its target (the page's tag in the packet, match_chat.c)
   const tagged = a.all.find((l) => l.includes('"matchChat"') && l.includes(third));
@@ -791,11 +831,16 @@ async function rowChat() {
   check("B's line carried its target to A, and whispers are flagged as PMs");
   // the tabs
   const region = (run) => run.page.getByRole("region", { name: "Match chat" });
+  /** the open history's place under each tab: it keeps one size, so the tabs do not move */
+  const boxes = new Set();
   const tabShows = async (run, name) => {
     // under Pointer Lock the canvas takes the mouse (a player reaches the panel with the game's cursor)
     await region(run).getByRole("tab", { name, exact: true }).dispatchEvent("click");
     await run.page.waitForTimeout(200);
     await run.shot(`match-chat-${run.name}-${name.toLowerCase()}`);
+    const tabs = await region(run).getByRole("tablist").boundingBox();
+    const list = await region(run).getByRole("list").boundingBox();
+    boxes.add(`${run.name} ${Math.round(tabs?.y ?? -1)} ${Math.round(list?.height ?? -1)}`);
     return (await region(run).getByRole("list").textContent()) ?? "";
   };
   await region(a).getByRole("button", { name: "Chat", exact: true }).dispatchEvent("click");
@@ -810,17 +855,42 @@ async function rowChat() {
   assert.ok(system.includes(notice) && !system.includes(answer), "A's System tab: the game's rows");
   const all = await tabShows(a, "All");
   assert.ok(
-    all.includes(first) && all.includes(notice) && all.includes(answer),
-    "A's All tab: everything",
+    all.includes(first) && all.includes(answer) && !all.includes(notice),
+    "A's All tab: the players' lines and whispers, not the game's rows",
   );
   await region(b).getByRole("button", { name: "Chat", exact: true }).dispatchEvent("click");
   const allies = await tabShows(b, "Allies");
   info(`B's Allies tab: ${allies}`);
   assert.ok(allies.includes(second) && !allies.includes(third), "B's Allies tab: B's allies lines");
   check("the panel's All, Allies, PM and System tabs sort the lines");
+  info(`the tabs' and history's place per tab: ${[...boxes].join("; ")}`);
+  assert.equal(
+    new Set([...boxes].map((box) => box.split(" ")[0])).size,
+    boxes.size,
+    "the tabs and the history keep one place under every tab",
+  );
+  check("the open history keeps its height under every tab");
   await a.page.mouse.move(60, a.page.viewportSize().height - 60);
   await a.page.waitForTimeout(800);
   await Promise.all([a.shot("match-chat-a"), b.shot("match-chat-b")]);
+  // let B's panel close: a while after its last line has gone it hides altogether
+  await region(b).getByRole("button", { name: "Chat", exact: true }).dispatchEvent("click");
+  await untilAsync(
+    b,
+    "B's panel to hide",
+    () =>
+      region(b)
+        .getAttribute("data-idle")
+        .then((v) => v !== null),
+    60000,
+  );
+  await b.shot("match-chat-b-hidden");
+  await b.page.locator("canvas").first().focus();
+  await b.page.keyboard.press("Backslash");
+  await b.page.getByRole("textbox", { name: "Message to all" }).waitFor({ timeout: 10000 });
+  assert.equal(await region(b).getAttribute("data-idle"), null, "the chat key shows it again");
+  await b.page.keyboard.press("Escape");
+  check("the idle panel hides, and the game's chat key brings it back");
 }
 
 const ROWS = {

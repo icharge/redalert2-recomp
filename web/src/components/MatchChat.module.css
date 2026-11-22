@@ -16,6 +16,17 @@
   text-shadow:
     0 0 2px #000,
     1px 1px 1px #000;
+  transition: opacity 0.4s;
+}
+
+/* closed, with nothing on show for a while: gone, and the mouse goes to the battlefield */
+.panel[data-idle] {
+  opacity: 0;
+}
+
+.panel[data-idle] .tab,
+.panel[data-idle] .prompt {
+  pointer-events: none;
 }
 
 .panel[data-open] {
@@ -93,8 +104,12 @@
   overflow: hidden;
 }
 
+/* open, the history keeps one height under every tab (the tabs stay put), newest at the bottom */
 .panel[data-open] .lines {
-  max-height: 14em;
+  display: flex;
+  flex-direction: column;
+  height: 14em;
+  max-height: none;
   overflow-y: auto;
   border: 1px solid rgb(255 255 255 / 0.18);
   background: rgb(10 10 14 / 0.72);
@@ -103,6 +118,10 @@
 
 .line {
   overflow-wrap: anywhere;
+}
+
+.panel[data-open] .line:first-child {
+  margin-top: auto;
 }
 
 .name {
@@ -156,6 +175,11 @@
   color: #8fd18a;
   font: inherit;
   cursor: pointer;
+}
+
+/* the line whispers to a player */
+.target[data-pm] {
+  color: #e59cff;
 }
 
 .compose {

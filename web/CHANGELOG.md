@@ -16,9 +16,27 @@ commit after each entry is where to read more.
 - **Tabs in the match panel**: All, Allies, PM (whispers, yours too) and
   System (the game's own messages). A tab with something new is marked. Lines
   to allies show `[Allies]` for everyone on this build, not only for you.
+- **Whispering from the match panel keeps the player**: after `/r` or
+  `/p name`, the line shows `[name]` and the next lines go to that player
+  without typing the command again. Typing `/r ` or `/p name ` at the start
+  of a line switches it at once. Tab goes All, Allies, then the player;
+  Backspace and `\` go back to allies and everyone.
+
+### Changed
+
+- The match panel hides when you aren't using it: a few seconds after its
+  last line fades, the whole panel goes and the battlefield gets the mouse.
+  The game's chat keys bring it back.
+- The open match panel keeps one height under every tab, so the tabs stay
+  put when you switch.
+- The match panel's All tab shows the players' lines and whispers; the
+  game's own messages are under System only.
 
 ### Fixed
 
+- YuriBOT's commands (`/help`, `/stats`, `/top` ...) did nothing in a game
+  room: the line went to the other players as text. YuriBOT now answers them
+  there too, privately (a server change).
 - Typing in the lobby went into the game's own chat line under the chat box
   when the box wasn't focused. Typing now goes to the box. The game's other
   text fields (the LAN player name, a password prompt) still take their own.

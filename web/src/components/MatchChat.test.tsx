@@ -3,12 +3,14 @@ import { describe, expect, it, vi } from "vitest";
 import { GameStore, type MatchChatLine } from "../game/store";
 import {
   MATCH_CHAT_FADE_MS,
+  MATCH_CHAT_IDLE_MS,
   MatchChat,
   Target,
   gameText,
   lineTime,
   panelAnchor,
   playerColour,
+  lineLimit,
   resolveTarget,
 } from "./MatchChat";
 
@@ -257,18 +259,19 @@ describe("MatchChat", () => {
     ];
     render(
       <MatchChat
-        chat={{ ready: false, lines }}
+        chat={{ ready: true, lines }}
         typing={null}
         onTyping={() => {}}
         thai={false}
-        send={null}
+        send={vi.fn()}
         now={() => 1000}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Messages" }));
+    fireEvent.click(screen.getByRole("button", { name: "Chat" }));
     const shown = () =>
       screen.getAllByRole("listitem").map((item) => item.textContent?.replace(/^\d\d:\d\d /, ""));
-    expect(shown()).toHaveLength(4);
+    // All is the players' talk and whispers; the game's rows are under System only
+    expect(shown()).toEqual(["alice: to all", "[Allies] alice: to allies", "(bob) psst"]);
     expect(screen.getByRole("tab", { name: "All" })).toHaveAttribute("aria-selected", "true");
     // nothing seen yet under the other tabs
     expect(screen.getByRole("tab", { name: "PM" })).toHaveAttribute("data-new");
@@ -279,6 +282,105 @@ describe("MatchChat", () => {
     expect(screen.getByRole("tab", { name: "Allies" })).not.toHaveAttribute("data-new");
     fireEvent.click(screen.getByRole("tab", { name: "System" }));
     expect(shown()).toEqual(["Objective"]);
+  });
+
+  it("hides altogether a while after its last line went, until it is used again", () => {
+    let at = 1000;
+    const props = {
+      chat: { ready: true, lines: [line(1)] },
+      onTyping: () => {},
+      thai: false,
+      send: vi.fn(),
+      now: () => at,
+    };
+    const { rerender } = render(<MatchChat {...props} typing={null} />);
+    const panel = screen.getByRole("region", { name: "Match chat" });
+    expect(panel).not.toHaveAttribute("data-idle");
+    at = 1000 + MATCH_CHAT_FADE_MS + 1; // the line has gone; the row stays a while after it
+    rerender(<MatchChat {...props} typing={null} />);
+    expect(panel).not.toHaveAttribute("data-idle");
+    at = 1000 + MATCH_CHAT_FADE_MS + MATCH_CHAT_IDLE_MS;
+    rerender(<MatchChat {...props} typing={null} />);
+    expect(panel).toHaveAttribute("data-idle");
+    rerender(<MatchChat {...props} typing={Target.all} />);
+    expect(screen.getByRole("region", { name: "Match chat" })).not.toHaveAttribute("data-idle");
+  });
+
+  it("whispers to the player /r or /p names, until Tab or the game's keys leave them", () => {
+    const send = vi.fn();
+    const onWhisper = vi.fn();
+    const onTarget = vi.fn();
+    const props = {
+      chat: { ready: true, lines: [] },
+      onTyping: () => {},
+      onWhisper,
+      onTarget,
+      thai: false,
+      send,
+      whispers: true,
+      replyTo: "Ann",
+    };
+    const { rerender } = render(<MatchChat {...props} typing={Target.all} />);
+    let box = screen.getByRole("textbox", { name: "Message to all" });
+    fireEvent.change(box, { target: { value: "/r " } });
+    expect(onWhisper).toHaveBeenLastCalledWith("Ann");
+    box = screen.getByRole("textbox", { name: "Message to Ann" });
+    expect(box).toHaveValue("");
+    expect(screen.getByRole("button", { name: "[Ann]" })).toHaveAttribute("data-pm");
+    fireEvent.change(box, { target: { value: "on my way" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(send).toHaveBeenLastCalledWith("/page Ann on my way", Target.all);
+    expect(onTarget).not.toHaveBeenCalled();
+
+    // the caller keeps the whisper: the next line opens to Ann again
+    rerender(<MatchChat {...props} typing={null} whisper="Ann" />);
+    expect(screen.getByRole("button", { name: /press Enter to chat/ })).toHaveTextContent(
+      "[Ann] (press Enter to chat)",
+    );
+    rerender(<MatchChat {...props} typing={Target.all} whisper="Ann" />);
+    box = screen.getByRole("textbox", { name: "Message to Ann" });
+    // a command still goes as typed
+    fireEvent.change(box, { target: { value: "/p Bob hi there" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(send).toHaveBeenLastCalledWith("/page Bob hi there", Target.all);
+    expect(onWhisper).toHaveBeenLastCalledWith("Bob");
+
+    rerender(<MatchChat {...props} typing={null} whisper="Bob" />);
+    rerender(<MatchChat {...props} typing={Target.all} whisper="Bob" />);
+    box = screen.getByRole("textbox", { name: "Message to Bob" });
+    expect(box).toHaveAttribute("maxLength", String(lineLimit("Bob")));
+    // Tab: from the player back to All, then Allies, then the player again
+    fireEvent.keyDown(box, { key: "Tab" });
+    expect(onWhisper).toHaveBeenLastCalledWith(null);
+    box = screen.getByRole("textbox", { name: "Message to all" });
+    fireEvent.keyDown(box, { key: "Tab" });
+    box = screen.getByRole("textbox", { name: "Message to allies" });
+    fireEvent.keyDown(box, { key: "Tab" });
+    expect(screen.getByRole("textbox", { name: "Message to Bob" })).toBeInTheDocument();
+  });
+
+  it("leaves /r and /p alone where pages reach nobody (a LAN match)", () => {
+    const send = vi.fn();
+    render(
+      <MatchChat
+        chat={{ ready: true, lines: [] }}
+        typing={Target.all}
+        onTyping={() => {}}
+        thai={false}
+        send={send}
+        replyTo="Ann"
+      />,
+    );
+    const box = screen.getByRole("textbox", { name: "Message to all" });
+    fireEvent.change(box, { target: { value: "/p bob " } });
+    expect(box).toHaveValue("/p bob ");
+    expect(screen.getByRole("textbox", { name: "Message to all" })).toBeInTheDocument();
+  });
+
+  it("keeps a page's line inside the packet", () => {
+    expect(lineLimit(null)).toBe(97);
+    expect(lineLimit("Bob")).toBe(97);
+    expect(lineLimit("LongName9")).toBe(95);
   });
 
   it("shows nothing outside a LAN or online match with no lines", () => {

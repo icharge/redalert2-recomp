@@ -26,6 +26,24 @@ export function expandChatCommand(line: string, replyTo: string | null = null): 
   return long ? `/${long}${rest}` : line;
 }
 
+/**
+ * Who a line starts whispering to as it is typed: "/r " (the last player who whispered) or
+ * "/p bob " ("/m", "/msg", "/pm", "/page" too), with the space after. The match panel then shows
+ * the name as its target and sends what follows as a page. null for anything else.
+ */
+export function whisperTarget(text: string, replyTo: string | null): string | null {
+  if (/^\/(r|reply) $/i.test(text)) return replyTo;
+  const page = /^\/(\S+) (\S+) $/.exec(text);
+  const command = page?.[1]?.toLowerCase();
+  return page && command && (command === "page" || ALIASES[command]) ? page[2]! : null;
+}
+
+/** A page's name and text ("/page bob hi"), or null for any other line. */
+export function pageOf(line: string): { to: string; text: string } | null {
+  const page = /^\/page\s+(\S+)\s+(.+)$/i.exec(line);
+  return page ? { to: page[1]!, text: page[2]! } : null;
+}
+
 /** What the chat boxes say when /r has nobody to answer, instead of sending the line. */
 export const NO_REPLY_HINT = "No one has messaged you yet. Use /pm name message.";
 

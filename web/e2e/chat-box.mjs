@@ -8,7 +8,8 @@
 //     (`privmsg #Lob_NN_0 :...`; the game keeps Thai as Windows-874 bytes widened to U+00A1..)
 //   - `/r` style commands still reach the game: `/on <nick>` asks `find <nick>`, and `/msg <nick> <text>`
 //     (the page's short /page) goes out as a private line
-// Shots: chat-box-lobby.
+//   - in a game room it creates, a line goes to the room, and /p and /on work as in the lobby
+// Shots: chat-box-lobby, chat-box-room.
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { startPage, options, isWolChatSocket } from "./lib.mjs";
@@ -211,6 +212,74 @@ try {
   console.log("ok  /msg in the box went out as the game's /page (a private line)");
   await run.page.waitForTimeout(1500);
   await run.shot("chat-box-lobby");
+
+  {
+    // a game room (the lobby's Create Game, then the dialog's OK): the same box over the room's
+    // chat line, where the lines and the commands work as in the lobby
+    mark = wire.length;
+    const dialogs = run.all.length;
+    await run.clickGame(720, 220);
+    await until("the Create Game dialog", () =>
+      run.all.slice(dialogs).some((l) => l.includes("[dialog] open 0xC3")),
+    );
+    await run.page.waitForTimeout(700);
+    await run.clickGame(283, ra2 ? 377 : 357);
+    await until("joingame", () => sent(mark, (l) => l.startsWith("joingame ")));
+    const room = /^joingame (#\S+)/
+      .exec(wire.slice(mark).find((w) => w.dir === ">" && w.line.startsWith("joingame "))?.line)
+      ?.at(1)
+      ?.toLowerCase();
+    assert.ok(room, "the room's name");
+    await run.page.waitForTimeout(2500);
+    await box.waitFor({ timeout: 15000 });
+    console.log(`ok  the chat box shows in the game room ${room}`);
+
+    mark = wire.length;
+    const said = `in the room ${tag}`;
+    await box.click();
+    await box.fill(said);
+    await box.press("Enter");
+    await until("the room line", () =>
+      sent(mark, (l) => l.toLowerCase().startsWith(`privmsg ${room} :`) && l.includes(said)),
+    );
+    console.log("ok  a line in the room's box went out to the room");
+
+    mark = wire.length;
+    await box.fill(`/p zz${tag} room psst ${tag}`);
+    await box.press("Enter");
+    await until("the page from the room", () =>
+      sent(mark, (l) => l.toLowerCase() === `privmsg zz${tag} :room psst ${tag}`),
+    );
+    assert.ok(
+      !sent(mark, (l) => l.toLowerCase().startsWith(`privmsg ${room} :`)),
+      "the page did not go to the room as text",
+    );
+    console.log("ok  /p in the room's box went out as the game's /page (a private line)");
+
+    mark = wire.length;
+    await box.fill(`/on zz${tag}`);
+    await box.press("Enter");
+    await until("find from the room", () => sent(mark, (l) => l.toLowerCase() === `find zz${tag}`));
+    console.log("ok  /on in the room's box reaches the game (find)");
+
+    // YuriBOT's commands work in a game room too: /help is answered privately (the server keeps
+    // the line from the room)
+    mark = wire.length;
+    await box.fill("/help");
+    await box.press("Enter");
+    await until("YuriBOT's answer in the room", () =>
+      wire.some(
+        (w, i) =>
+          i >= mark &&
+          w.dir === "<" &&
+          /^:YuriBOT!\S* PRIVMSG /i.test(w.line) &&
+          w.line.includes(nick),
+      ),
+    );
+    console.log("ok  /help in the room's box is answered by YuriBOT");
+    await run.page.waitForTimeout(1500);
+    await run.shot("chat-box-room");
+  }
   console.log(`PASS ${edition.toUpperCase()}`);
 } catch (error) {
   console.error("FAIL:", error?.message ?? error);
