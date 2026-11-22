@@ -1,5 +1,72 @@
 # Toolchain
 
+For build reuse and the lifecycle of test outputs and findings, follow
+[the development workflow](../development-workflow.md). Reuse the edition's
+web/Wasm production cache directly in `build/ra2/` or `build/ra2md/`.
+The approved fast caches are `build/ra2-fast/` and `build/ra2md-fast/`.
+Create only the edition/mode needed, then reuse it for subsequent work.
+Both modes publish the complete runnable edition to `web/public/game/`,
+with its absolute path as `WEB_OUT`. Ask the user before creating any
+other build folder. If the needed cache is busy, ask whether to wait or
+create a separate build. Coordinate publication between modes of the same
+edition; the last successfully published mode is what the page serves.
+
+## Build commands
+
+Run from the repository root (PowerShell or cmd):
+
+```powershell
+.\build-web.cmd --mode prod --edition ra2
+.\build-web.cmd --mode prod --edition ra2md
+.\build-web.cmd --mode fast --edition ra2
+.\build-web.cmd --mode fast --edition ra2md
+.\build-web.cmd --mode prod --edition both
+.\build-web.cmd --mode fast --edition both
+.\build-web.cmd --mode all --edition both
+```
+
+On macOS/Linux, use `./build-web.sh` with the same arguments. With no
+arguments, build both editions in production mode; `RA2_TARGET=game` or
+`gamemd` can set the default edition. `--mode all` builds both fast caches
+first, then production, so the page ends with production modules. Each
+edition builds sequentially into its own reusable cache. `--jobs 12`
+limits parallel compiler jobs; `--verbose` shows the underlying build.
+Use `--dry-run` to inspect commands without creating outputs or activating
+emsdk, or `--help` for options. The wrappers use `python` on Windows and
+`python3` on Unix; `PYTHON` can name another Python executable.
+
+The commands take an OS-held lock per edition across both modes. A busy
+edition fails immediately with its owning PID/mode; the command does not
+wait, stop it or create a fallback folder. The agent must ask the user
+what to do. The command also stops on Ninja activity markers in the
+selected, standard and same-edition legacy caches. A marker can mean a
+running or interrupted build; it is not deleted automatically. Direct
+CMake/Ninja invocations do not acquire the wrapper's lock, and marker
+checks cannot detect every external configure/build or prevent one
+starting afterward. Inspect direct processes separately before building.
+
+For a compatible legacy cache, or a user-approved exception, pass
+`--build-dir PATH` with exactly one edition and one mode. `BUILD_DIR`
+is also accepted under that restriction. Use
+`--cmake-arg=-DNAME=VALUE` for additional configuration; `CMAKE_ARGS`
+accepts a list of `-D` settings using the platform's quoting rules.
+The command owns the edition, Release build type, mode's link option,
+toolchain and `WEB_OUT`. A cached `PCRECOMP` runtime path is preserved
+unless explicitly overridden by the environment or a `-DPCRECOMP` setting.
+New caches discover the sibling runtime. Caches belonging to
+another checkout, edition or toolchain are rejected. Custom cached
+`WEB_LINK_OPT` memory/profiling settings are rejected rather than silently
+discarded; preserve that configuration when arranging its reuse.
+
+Every successful selection builds its `ra2_publish` or `ra2md_publish`
+target. These targets republish even if no link is needed, so selecting
+cached production after fast restores production files to the page.
+Compressed sidecars are reused inside the build cache when the Wasm and
+compressor are unchanged. Publication follows the target's actual output
+directory and also copies emitted worker, source-map, debug-Wasm and
+symbol sidecars. Existing legacy folders are not moved or
+deleted by these commands; see the workflow's existing-folder transition.
+
 ## What it needs
 
 | Tool               | Version                                              | Why                                                     |
@@ -53,16 +120,16 @@ warning.
 | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `cmake/emscripten.cmake`                                    | toolchain file: wraps emsdk's `Emscripten.cmake` and sets the flags below                                                                                                                                                                                                          |
 | `CMakeLists.txt`                                            | an `if(EMSCRIPTEN)` branch beside the Linux one: `src/web/*.c`, `win32hle`, the generated C                                                                                                                                                                                        |
-| `build-web.sh`, `build-web.cmd`                             | configure and build both edition modules in one tree into `build-web/` (`RA2_TARGET=gamemd` or `game` builds one, `game` into `build-web-game/`); copy each module set into the flat `web/public/game/` directory and merge it into the shared `build.json` (post-build steps in `CMakeLists.txt`; `WEB_OUT` changes the root) |
+| `build-web.sh`, `build-web.cmd`, `tools/build_web.py` | select edition/mode, reuse the workflow's cache, build and publish to `web/public/game/` |
+| `cmake/web_publish.cmake`, `cmake/publish_web.cmake.in` | publication after linking and through explicit publish targets for cached builds |
 | `tools/build-ffmpeg-web.sh`, `.cmd`, `tools/ffmpeg-web.mjs` | configure FFmpeg for the Bink decoder and list the files to compile (no GNU make here)                                                                                                                                                                                             |
 | `src/web/main.c`                                            | the browser host: `src/linux/main.c` without signals, `popen` or the watchdog, plus the exported functions in [protocol.md](protocol.md)                                                                                                                                           |
 
-`build-web.sh` and `build-web.cmd` build both editions in one CMake tree by
-default: the `all` targets `ra2md` (Yuri's Revenge) and `ra2` (Red Alert 2),
-each from its own lifted sources (`src/recomp/gen/` and `src/recomp/gen_game/`).
-Set `RA2_TARGET=gamemd` or `RA2_TARGET=game` to build one, for iteration or when
-`game/` holds only that install. Both targets share the `win32hle` and FFmpeg
-objects, so the second edition costs its generated C and its link, not the host.
+The wrappers configure each selected edition in its own cache, using
+`RA2_TARGET=game` or `gamemd` and its matching lifted sources
+(`src/recomp/gen_game/` or `src/recomp/gen/`). Direct CMake still supports
+`RA2_TARGET=both` in one tree for legacy configurations; the workflow's
+commands use the edition/mode layout above.
 
 After linking, each target copies its files into the flat `web/public/game/`
 directory, named after the edition: `ra2md.js/.wasm/.data` for Yuri's Revenge,
@@ -73,6 +140,13 @@ loader selects the edition-specific JS and maps its Wasm/data requests to the
 matching names. `build.json` hashes the original, uncompressed files. These
 generated game files stay in the ignored local build output and must not be
 copied into a public deployment.
+
+The post-build manifest step also copies the required executable and
+`Blowfish.dll` into `web/public/game/runtime/<edition>/` and writes its
+`runtime.json`. Publish this complete bundle after a successful link,
+including fast iteration builds. Keep the linked files in the edition's
+CMake cache for incremental builds; the post-build copy makes them
+available to the page without creating another private publication tree.
 
 ## Compile flags
 
@@ -112,9 +186,21 @@ module (`-sMODULARIZE`), so `node ra2.js` works too and the page reads
 the release build has no debug info, and `-g` on this much code makes `wasm-opt`
 crash.
 
-The `wasm-opt` pass at `-O3` takes about ten minutes of the link. To try a change
-quickly, configure with `-DWEB_LINK_OPT=-O1` (a link takes seconds), and without
-it for a release.
+The `wasm-opt` pass at `-O3` takes about ten minutes of the link. Both
+production and fast Wasm builds use `CMAKE_BUILD_TYPE=Release`, with
+generated C compiled at `GEN_OPT=-O2` by default. They differ at link time:
+
+| Mode | Cache | Link configuration |
+|---|---|---|
+| Production | `build/ra2/` or `build/ra2md/` | `-DCMAKE_BUILD_TYPE=Release -DWEB_LINK_OPT=`: default `-O3`, including Wasm optimization |
+| Fast | `build/ra2-fast/` or `build/ra2md-fast/` | `-DCMAKE_BUILD_TYPE=Release -DWEB_LINK_OPT=-O1`: skips the expensive Wasm optimization pass for iteration |
+
+A fast link typically takes seconds. The commands above select these
+paths and settings automatically. Both modes use `WEB_OUT` pointing to
+`web/public/game/`. Explicitly clear a production
+cache's link override with `-DWEB_LINK_OPT=`; omitting the flag does not
+clear an earlier cached value. The page's `pnpm build:prod` builds the
+frontend and does not change these Wasm settings.
 
 The game's `printf` and `fprintf(stderr)` go to `Module.print` and
 `Module.printErr`. The page keeps the last few thousand lines for the crash
@@ -159,8 +245,8 @@ measurement from the release row above:
 ## Running without a browser
 
 ```
-./build-web.sh
-node build-web/ra2md.js --run --game /path/to/game --headless --mute
+./build-web.sh --mode fast --edition ra2md
+node web/public/game/ra2md.js --run --game /path/to/game --headless --mute
 ```
 
 Under Node the game folder is a WasmFS Node-backend mount at `/game` (`src/web/main.c`; `Module.ra2MountGame` in

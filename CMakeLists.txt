@@ -157,6 +157,7 @@ if(EMSCRIPTEN)
   set(RA2_GAME_DIR "${CMAKE_SOURCE_DIR}/game" CACHE PATH "local licensed game install used for runtime inputs")
   file(GLOB _runtime_candidates LIST_DIRECTORIES false "${RA2_GAME_DIR}/*")
   find_program(NODE_EXECUTABLE node REQUIRED)
+  include(cmake/web_publish.cmake)
 
   # One module per listed edition: its own lifted C, its own runtime bundle, and
   # its own publish step. "all" builds every edition in RA2_EDITIONS.
@@ -205,32 +206,21 @@ if(EMSCRIPTEN)
     if(NOT exe_source OR NOT blowfish_source)
       message(FATAL_ERROR "Runtime bundle inputs are missing from ${RA2_GAME_DIR}: need ${exe_name} and Blowfish.dll")
     endif()
-    add_custom_command(TARGET ${target} POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E make_directory ${WEB_OUT}
-      COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:${target}> ${WEB_OUT}/${target}.js
-      COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE_DIR:${target}>/${target}.wasm ${WEB_OUT}/${target}.wasm
-      COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE_DIR:${target}>/${target}.data ${WEB_OUT}/${target}.data
-      COMMAND ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/compress-wasm.mjs
-              ${WEB_OUT}/${target}.wasm
-              ${WEB_OUT}/${target}.wasm.br
-              ${WEB_OUT}/${target}.wasm.gz
-      VERBATIM)
     if(edition STREQUAL "game")
       add_custom_command(TARGET ${target} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E rm -rf ${WEB_OUT}/ra2
         VERBATIM)
     endif()
-    # build.json: which games this build runs, the exe each was lifted from, and
-    # an id for each build (cmake/build_json.cmake). Written when cmake
-    # configures, and again after each link, which is when there is a module to
-    # take the id from; the lock lets both editions publish in either order.
+    # Publish after linking and through an explicit target for up-to-date caches.
+    # build_json.cmake merges the edition into the manifest only after copying.
     set(target_h ${CMAKE_SOURCE_DIR}/${gen_dir}/recomp_target.h)
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
       ${target_h} "${exe_source}" "${blowfish_source}")
-    set(build_json ${CMAKE_COMMAND} -DTARGET_H=${target_h} -DOUT=${WEB_OUT}/build.json -DLOCK=${CMAKE_SOURCE_DIR}/.build-json.publish-lock -DRUNTIME_EXE_SOURCE=${exe_source} -DRUNTIME_EXE_NAME=${exe_name} -DRUNTIME_BLOWFISH_SOURCE=${blowfish_source} -DRUNTIME_DIR=${WEB_OUT}/runtime/${target})
-    # Advertise a module only after a successful link and copy.
+    ra2_add_web_publication(${target} "${target_h}" "${exe_source}" "${exe_name}" "${blowfish_source}"
+                           "$<TARGET_FILE_DIR:${target}>")
     add_custom_command(TARGET ${target} POST_BUILD
-      COMMAND ${build_json} -DWASM=$<TARGET_FILE_DIR:${target}>/${target}.wasm -P ${CMAKE_SOURCE_DIR}/cmake/build_json.cmake)
+      COMMAND ${CMAKE_COMMAND} -P "${CMAKE_CURRENT_BINARY_DIR}/publish-${target}.cmake"
+      VERBATIM)
   endfunction()
 
   foreach(edition IN LISTS RA2_EDITIONS)

@@ -19,7 +19,7 @@ with a message and exits 0, so it can sit in CI without the corpus.
     py -3 tools/conformance.py --host web   # the browser build (build-web.sh) under Node
     py -3 tools/conformance.py --host web --memfs   # ...with the files in memory, as in a browser
 
---host web boots build-web/ra2md.js (or build-web/ra2.js for RA2_TARGET=game)
+--host web prefers the selected web/public/game/ra2md.js (or ra2.js for RA2_TARGET=game)
 under Node with game/ mounted, headless, and stops the moment the main menu
 opens. Its milestones are the lines the web host prints (the intro is a Bink
 movie, which the browser build does not play yet, so that milestone is the
@@ -90,6 +90,9 @@ def _web_host():
     """The Node-runnable module. A tree that builds both editions names them
     after the edition (ra2md.js for Yuri's Revenge, ra2.js for Red Alert 2); an
     older single-edition tree holds ra2.js for either."""
+    published = os.path.join(ROOT, 'web', 'public', 'game', 'ra2.js' if GAME else 'ra2md.js')
+    if os.path.exists(published):
+        return published
     both_tree = os.path.join(ROOT, 'build-web', 'ra2md.js')
     if GAME:
         if os.path.exists(os.path.join(ROOT, 'build-web-game', 'ra2.js')):

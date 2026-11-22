@@ -2,6 +2,9 @@
 
 Issues and pull requests are welcome.
 
+For build reuse, temporary output ownership, organizing findings, and task
+completion, follow [the development workflow](docs/development-workflow.md).
+
 ## The one rule
 
 **Nothing from the game goes in the repository.** No game files, no lifted C
@@ -31,5 +34,9 @@ game running are fine.
   [pcrecomp](https://github.com/sp00nznet/pcrecomp), not here.
 - A fix to the game itself is a patch in `run_lift.py`, found by the shape of
   the code where it can be, with a comment that says what it fixes and why.
+- What you worked out about a function goes in `names/gamemd.json` or
+  `names/game.json`, with the evidence in the binary for it
+  ([docs/reverse-engineering.md](docs/reverse-engineering.md)). The next lift
+  writes the name into the generated C.
 - A wall you got past goes in `docs/bringup.md`: what it looked like, what it
   was, what moved it.

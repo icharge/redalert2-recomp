@@ -5,6 +5,18 @@ on:
 permissions:
   contents: read
 jobs:
+  wasm-build-commands:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: python -B -m unittest discover -s tools -p test_build_web.py -v
+      - run: python -B -m unittest discover -s tools -p test_web_publish.py -v
   page:
     runs-on: ubuntu-latest
     defaults:

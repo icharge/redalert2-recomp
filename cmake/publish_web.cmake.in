@@ -1,0 +1,44 @@
+# Configured per edition/cache by web_publish.cmake.
+set(module_dir "@module_dir@")
+set(module "@target@")
+set(output "@WEB_OUT@")
+set(compressor "@publish_tools@/tools/compress-wasm.mjs")
+set(WASM "${module_dir}/${module}.wasm")
+foreach(ext js wasm data)
+  if(NOT EXISTS "${module_dir}/${module}.${ext}")
+    message(FATAL_ERROR "Build ${module} before publishing: missing ${module}.${ext}")
+  endif()
+endforeach()
+set(brotli "${WASM}.br")
+set(gzip "${WASM}.gz")
+if(NOT EXISTS "${brotli}" OR NOT EXISTS "${gzip}" OR
+   "${WASM}" IS_NEWER_THAN "${brotli}" OR "${WASM}" IS_NEWER_THAN "${gzip}" OR
+   "${compressor}" IS_NEWER_THAN "${brotli}" OR "${compressor}" IS_NEWER_THAN "${gzip}")
+  execute_process(COMMAND "@NODE_EXECUTABLE@" "${compressor}" "${WASM}" "${brotli}" "${gzip}"
+                  RESULT_VARIABLE compressed)
+  if(NOT compressed EQUAL 0)
+    message(FATAL_ERROR "Wasm compression failed: ${compressed}")
+  endif()
+endif()
+file(MAKE_DIRECTORY "${output}")
+foreach(ext js wasm data wasm.br wasm.gz)
+  configure_file("${module_dir}/${module}.${ext}" "${output}/${module}.${ext}" COPYONLY)
+endforeach()
+# Options such as Wasm workers and source maps can emit ancillary runtime files.
+file(GLOB sidecars LIST_DIRECTORIES false
+  "${module_dir}/${module}.*.js" "${module_dir}/${module}.*.wasm"
+  "${module_dir}/${module}.*.map" "${module_dir}/${module}.*.symbols"
+  "${module_dir}/${module}.js.mem")
+foreach(sidecar IN LISTS sidecars)
+  get_filename_component(sidecar_name "${sidecar}" NAME)
+  configure_file("${sidecar}" "${output}/${sidecar_name}" COPYONLY)
+endforeach()
+set(TARGET_H "@target_h@")
+set(OUT "${output}/build.json")
+set(LOCK "@CMAKE_SOURCE_DIR@/.build-json.publish-lock")
+set(RUNTIME_EXE_SOURCE "@exe_source@")
+set(RUNTIME_EXE_NAME "@exe_name@")
+set(RUNTIME_BLOWFISH_SOURCE "@blowfish_source@")
+set(RUNTIME_DIR "${output}/runtime/${module}")
+# Merge the manifest last, only after files and runtime inputs are ready.
+include("@publish_tools@/cmake/build_json.cmake")
