@@ -1,0 +1,36 @@
+{
+ "format": 1,
+ "target": "gamemd",
+ "names": [
+  {
+   "address": "0x0049F5C0",
+   "name": "CopyProtection__Is_Launcher_Running",
+   "evidence": "Its debug messages are \"COPYPROTECTION - Checking if launcher is running\" and \"result was %d\"; it uses the name 48BC11BD-C4D7-466b-8A31-C6ABBAD47B3E. One caller. The Steam and EA App exes overwrite its first bytes with mov al, 1; ret (docs/RECON.md); the retail 1.001 exe keeps the body."
+  },
+  {
+   "address": "0x0049F620",
+   "name": "CopyProtection__Notify_Launcher",
+   "evidence": "Its debug messages are \"COPYPROTECTION - Notify launcher\", \"Launcher notified.\", \"Waiting for message from launcher.\" and \"***** Failed to notify launcher!\"; it uses the name D6E7FC97-64F9-4d28-B52C-754EDF721C6F. Three callers."
+  },
+  {
+   "address": "0x005312A0",
+   "name": "Init__Boot_Screen",
+   "evidence": "Pushes \"GLSMD.PAL\" first (0x005312AA) and uses GLSSMD.SHP, GLSLMD.SHP, TXT_COPYRIGHT and GUI:WWBrand; an assert names Init.CPP. It is the call at 0x0052C5F3 that run_lift.py's yr_startup_order_patches moves, and moving it moves the loading picture with the copyright line."
+  },
+  {
+   "address": "0x005BED40",
+   "name": "Movie__Play_Movie",
+   "evidence": "Prints \"Play_Movie() as Bink!\" (0x005BEDA8) and \"Stretching movie %dx%d -> %dx%d\" (0x005BF026) and uses the extension \".bik\" (0x005BED92). 34 callers; the call at 0x0052C5EE passes \"EA_WWLOGO\" (0x00825F20) and the logo plays. 0x005C07D0 prints the same first message without the stretch and stays unnamed."
+  },
+  {
+   "address": "0x007C5F00",
+   "name": "Math__ftol",
+   "evidence": "Bytes: fnstcw [esp]; cmp the control word with [0x00822D80]; when they differ, fldcw [0x00822D80] and leave it loaded; fistp qword; return edx:eax. The float-to-integer helper the compiler calls, with the game's own control word in place of a save and restore. 1624 direct callers."
+  },
+  {
+   "address": "0x007CA650",
+   "name": "CRT__chkstk",
+   "evidence": "Bytes: push ecx; cmp eax, 0x1000; lea ecx, [esp + 8]; then sub ecx, 0x1000 / test [ecx], eax a page at a time; last, mov esp, ecx and return through the saved return address. MSVC 6's stack probe (_chkstk, also __alloca_probe): eax is the frame size. 39 direct callers."
+  }
+ ]
+}

@@ -1,0 +1,36 @@
+{
+ "format": 1,
+ "target": "game",
+ "names": [
+  {
+   "address": "0x004918F0",
+   "name": "CopyProtection__Is_Launcher_Running",
+   "evidence": "Its debug message is \"COPYPROTECTION - Checking if launcher is running\"; it uses the name 48BC11BD-C4D7-466b-8A31-C6ABBAD47B3E, as Yuri's Revenge's 0x0049F5C0 does. One caller."
+  },
+  {
+   "address": "0x00491930",
+   "name": "CopyProtection__Notify_Launcher",
+   "evidence": "Its debug messages are \"COPYPROTECTION - Notify launcher\", \"Launcher notified.\" and \"***** Failed to notify launcher!\"; it uses the name D6E7FC97-64F9-4d28-B52C-754EDF721C6F, as Yuri's Revenge's 0x0049F620 does."
+  },
+  {
+   "address": "0x00516560",
+   "name": "Init__Boot_Screen",
+   "evidence": "Uses GLS.PAL, GLSS.SHP, GLSL.SHP, TXT_COPYRIGHT and GUI:WWBrand; an assert names Init.CPP. It is the call at 0x00511808 that run_lift.py's ra2_startup_order_patches moves. Yuri's Revenge's is 0x005312A0."
+  },
+  {
+   "address": "0x005A02D0",
+   "name": "Movie__Play_Movie",
+   "evidence": "Prints \"Play_Movie() as Bink!\" and \"Stretching movie %dx%d -> %dx%d\" and uses the extension \".bik\". 27 callers, the start-up logo's among them (0x0051269A and 0x005126EE, run_lift.py's RA2_STARTUP_ORDER). 0x005A1D30 prints the same first message without the stretch and stays unnamed. Yuri's Revenge's is 0x005BED40."
+  },
+  {
+   "address": "0x0077F110",
+   "name": "Math__ftol",
+   "evidence": "The same 61 bytes as Yuri's Revenge's 0x007C5F00 apart from the global's address, 0x007D8964 here: fnstcw [esp]; cmp the control word with the global; when they differ, fldcw it and leave it loaded; fistp qword; return edx:eax."
+  },
+  {
+   "address": "0x00783850",
+   "name": "CRT__chkstk",
+   "evidence": "The same 47 bytes as Yuri's Revenge's 0x007CA650, and the only place in game.exe's code they occur: MSVC 6's stack probe, eax the frame size."
+  }
+ ]
+}

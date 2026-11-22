@@ -397,7 +397,9 @@ the binary itself names (pcrecomp's `tools/lift/name_lift.py`): virtual
 methods by their class and vtable slot from RTTI (`UnitClass__virtual_42`,
 COM's by name: `OverlayClass__Load`), constructors, destructors and
 `operator_delete` by their shape, and functions that print their own name in
-a debug message by it. Each function has a header saying how it was named,
+a debug message by it. A name someone worked out comes from that edition's
+ledger (`names/`, [docs/reverse-engineering.md](docs/reverse-engineering.md)),
+where each one carries its evidence; its header says `named by the host`. Each function has a header saying how it was named,
 its `this` class, the strings it uses, the Windows calls it makes and how many
 places call it, and a constant that is a string's or a vtable's address has a
 comment. A function with no such evidence keeps its address name

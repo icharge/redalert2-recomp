@@ -40,12 +40,14 @@ if not os.path.isdir(_KIT) and os.path.isdir(os.path.join(_HERE, '..', 'tools', 
 _TOOLS = os.path.join(os.environ.get('PCRECOMP', _KIT), 'tools')
 sys.path.insert(0, os.path.join(_TOOLS, 'lift'))
 sys.path.insert(0, os.path.join(_TOOLS, 'pe'))
+sys.path.insert(0, os.path.join(_HERE, 'tools'))
 
 from capstone import Cs, CS_ARCH_X86, CS_MODE_32          # noqa: E402
 from generate import (EXTENT_REACH, closure, find_splits, true_extent,  # noqa: E402
                       linear_disassemble_function, lift_function_linear, write_chunk)
 from lift32 import Lifter                                  # noqa: E402
 from pe_analyze import analyze_pe, build_iat_map           # noqa: E402
+import names_ledger                                        # noqa: E402
 
 EXE = os.path.join(_HERE, 'game', 'gamemd.exe')
 CATALOG = os.path.join(_HERE, 'work', 'functions.json')
@@ -1951,6 +1953,14 @@ def main():
         args.seeds = os.path.join(os.path.dirname(tgt['catalog']), 'run_seeds.json')
     if not os.path.exists(args.catalog):
         sys.exit('no catalog at %s -- run disasm32.py first (README, Step by step)' % args.catalog)
+    # The names people worked out (tools/names_ledger.py). Read before the
+    # lift, so a bad ledger stops it now and not after the minutes it takes.
+    hook_names = {va: 'hook_%s' % hook for va, hook in tgt['hooks'].items()}
+    try:
+        ledger = names_ledger.load(names_ledger.path_for(args.target), args.target)
+        host_names = names_ledger.merge(hook_names, ledger)
+    except names_ledger.LedgerError as e:
+        sys.exit(str(e))
 
     # The patches below are at this build's addresses; another build lifts,
     # but they land in the wrong code, and it crashes in game (issue #2).
@@ -2120,10 +2130,13 @@ def main():
     else:
         rtti_path = os.path.join(os.path.dirname(tgt['seeds']), 'rtti.json')
         rtti = json.load(open(rtti_path)) if os.path.exists(rtti_path) else {}
-        known = {va: 'hook_%s' % hook for va, hook in tgt['hooks'].items()}
-        named = name_lift.name_lift(args.out, name_lift.Image(args.exe), rtti, known)
-        print('[*] names: %d of %d functions named from the binary\'s own evidence'
-              % (sum(1 for f in named.values() if f.name), len(named)))
+        named = name_lift.name_lift(args.out, name_lift.Image(args.exe), rtti, host_names)
+        print('[*] names: %d of %d functions named from the binary\'s own evidence and the ledger (%d names, %s)'
+              % (sum(1 for f in named.values() if f.name), len(named), len(ledger),
+                 os.path.relpath(names_ledger.path_for(args.target), _HERE)))
+        for va, name in names_ledger.not_function_starts(ledger, named):
+            print('[!] names: 0x%08X (%s) is not the start of a lifted function; the ledger entry names nothing'
+                  % (va, name))
 
     lines = sum(sum(1 for _ in open(os.path.join(args.out, fn), encoding='utf-8', errors='replace'))
                 for fn in os.listdir(args.out))
