@@ -6,8 +6,12 @@
  *
  * Refreshes are serialized. The server rotates the cookie on every use and treats a second use of
  * an old value as theft (it signs the member out everywhere), so two refreshes must never overlap:
- * one in flight per page here, and a Web Lock (`navigator.locks`) across the tabs of this origin.
+ * one in flight per page here, and a Web Lock (`navigator.locks`) across the tabs of this origin, or
+ * a lease in `localStorage` where the page has no Web Locks (tab-lock.ts).
  */
+
+import { wolHttpUrl } from "../wol-endpoint";
+import { storageLocks } from "./tab-lock";
 
 export interface Member {
   id: number;
@@ -76,6 +80,14 @@ export class AccountError extends Error {
   }
 }
 
+/** The refusals that end the session: the cookie or token is gone for good, sign in again. */
+export const SESSION_ENDED: ReadonlySet<string> = new Set([
+  "invalid_refresh",
+  "refresh_reused",
+  "unauthorized",
+  "inactive",
+]);
+
 /** The server could not be reached at all (no network, refused, blocked by CORS). */
 export class OfflineError extends Error {
   constructor(cause?: unknown) {
@@ -85,25 +97,39 @@ export class OfflineError extends Error {
 }
 
 /** The operator's WOL HTTP server, the same one the game loader redeems tickets at. */
-export function wolHttpUrl(): string {
-  return import.meta.env.VITE_WOL_HTTP_URL ?? "http://127.0.0.1:9090";
-}
+export { wolHttpUrl } from "../wol-endpoint";
 
 const LOCK_NAME = "ra2-account-refresh";
 
 type LockRunner = <T>(name: string, run: () => Promise<T>) => Promise<T>;
 
-/** Web Locks when the browser has them (a secure page); otherwise the page-wide promise alone. */
+/**
+ * Web Locks when the browser has them (a secure page); otherwise a lease in `localStorage`
+ * (tab-lock.ts); with neither, the page-wide promise alone.
+ */
+export function pickLocks(
+  nav: Navigator | undefined,
+  storage: Storage | undefined,
+): LockRunner | null {
+  const locks = nav?.locks;
+  if (locks) return async (name, run) => await locks.request(name, run);
+  return storage ? storageLocks(storage) : null;
+}
+
 function browserLocks(): LockRunner | null {
-  const locks = typeof navigator === "undefined" ? undefined : navigator.locks;
-  if (!locks) return null;
-  return async (name, run) => await locks.request(name, run);
+  let storage: Storage | undefined;
+  try {
+    storage = typeof localStorage === "undefined" ? undefined : localStorage;
+  } catch {
+    storage = undefined; // storage blocked: no cross-tab lock
+  }
+  return pickLocks(typeof navigator === "undefined" ? undefined : navigator, storage);
 }
 
 export interface ClientOptions {
   baseUrl?: string;
   fetch?: typeof fetch;
-  /** Runs `run` while holding the named cross-tab lock. `null` turns the lock off (no Web Locks). */
+  /** Runs `run` while holding the named cross-tab lock. `null` turns the lock off. */
   locks?: LockRunner | null;
 }
 
@@ -200,8 +226,9 @@ export class AccountClient {
     const attempt = locked
       .then((session) => this.adopt(session))
       .catch((error: unknown) => {
-        // a refused refresh ends the session; an unreachable server keeps what the page holds
-        if (error instanceof AccountError) this.token = null;
+        // a refused refresh ends the session; an unreachable, rate-limited or failing server keeps
+        // what the page holds
+        if (error instanceof AccountError && SESSION_ENDED.has(error.code)) this.token = null;
         throw error;
       })
       .finally(() => {

@@ -25,6 +25,20 @@ export const sharedProfile =
 
 let lastReason = null;
 /** Why the last `fail` ended the process (for a caller's exit handler), or null. */
+/**
+ * Whether a page's WebSocket is the WOL chat socket: one to `server` (an http(s) or ws(s) URL, or a
+ * bare host:port), or, on the dev server, the page's own `/ra2web/` proxy of it
+ * (src/wol-endpoint.ts). Never the game relay (`/gserv`).
+ */
+export function isWolChatSocket(socketUrl, server, pageUrl) {
+  if (socketUrl.includes("/gserv")) return false;
+  const host = server.replace(/^\w+:\/\//, "").replace(/\/.*$/, "");
+  if (new URL(socketUrl).host === host) return true;
+  const page = new URL(pageUrl);
+  const proxied = new URL(socketUrl);
+  return proxied.host === page.host && proxied.pathname.startsWith("/ra2web/");
+}
+
 export const lastFailure = () => lastReason;
 
 export function options(argv) {

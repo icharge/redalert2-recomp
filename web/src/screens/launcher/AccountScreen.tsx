@@ -403,7 +403,7 @@ export function AccountScreen({ store = account }: { store?: AccountStore }) {
         {state.status === "offline" && (
           <section className={page.panel} aria-label="Offline">
             <p className={page.warn} role="status">
-              {describeAccountError(new OfflineError())}
+              {state.notice ?? describeAccountError(new OfflineError())}
             </p>
             <div className={styles.actions}>
               <button type="button" className={page.outline} onClick={() => void store.retry()}>

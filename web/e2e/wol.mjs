@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
-import { startPage, options } from "./lib.mjs";
+import { isWolChatSocket, startPage, options } from "./lib.mjs";
 
 const opts = options(process.argv.slice(2));
 opts.pageArgs.push("--mute", "--debuglog");
@@ -458,8 +458,10 @@ async function open(name, username) {
     window.WebSocket = class extends Socket {
       constructor(url, protocols) {
         super(url, protocols);
-        if (String(url).includes(wolHost) && !String(url).includes("/gserv"))
-          window.wolTestSocket = this;
+        // the server itself, or the dev server's /ra2web/ proxy of it (src/wol-endpoint.ts)
+        const chat =
+          String(url).includes(wolHost) || new URL(String(url)).pathname.startsWith("/ra2web/");
+        if (chat && !String(url).includes("/gserv")) window.wolTestSocket = this;
         if (String(url).endsWith("/gserv/native")) window.wolTestRelaySocket = this;
       }
     };
@@ -467,7 +469,7 @@ async function open(name, username) {
   run.wire = [];
   run.page.on("websocket", (ws) => {
     // The chat socket: /wol behind a proxy, the server root locally. Not the game relay.
-    if (!ws.url().includes(wolHost) || ws.url().includes("/gserv")) return;
+    if (!isWolChatSocket(ws.url(), wolHost, run.page.url())) return;
     ws.on("framesent", (f) => run.wire.push("> " + wirePayload(f.payload)));
     ws.on("framereceived", (f) => run.wire.push("< " + wirePayload(f.payload)));
     ws.on("close", () => run.wire.push("[closed]"));

@@ -211,6 +211,21 @@ describe("AccountClient", () => {
     }).register("carol", "secret-pass");
     expect(server.calls[0]?.fullPath).toBe("/a/v1/members/register");
   });
+
+  it("a page on another site never keeps the SameSite=Lax cookie, so a reload is not signed in", async () => {
+    // localhost and 127.0.0.1 are different sites; the port does not count
+    const server = new FakeServer();
+    server.pageOrigin = "http://localhost:5173";
+    const client = (baseUrl: string) =>
+      new AccountClient({ baseUrl, fetch: server.fetch, locks: null });
+    await client("http://127.0.0.1:9090").register("carol", "secret-pass");
+    await expect(client("http://127.0.0.1:9090").refresh()).rejects.toMatchObject({
+      code: "invalid_refresh",
+    });
+    await client("http://localhost:9090").login("carol", "secret-pass");
+    const reloaded = await client("http://localhost:9090").refresh();
+    expect(reloaded.member.login).toBe("carol");
+  });
 });
 
 describe("describeAccountError", () => {

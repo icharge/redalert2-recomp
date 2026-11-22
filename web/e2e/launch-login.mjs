@@ -4,13 +4,16 @@
 // from web/:
 //   node e2e/launch-login.mjs --url 'http://127.0.0.1:5175/?target=game' --game ../game          (RA2, member)
 //   node e2e/launch-login.mjs --url 'http://127.0.0.1:5175/' --game ../game --guest              (YR, guest)
+//   node e2e/launch-login.mjs --url 'http://localhost:5173/' --game ../game                       (localhost)
+// On the dev server the page reaches the server through its own /ra2web/ proxy (src/wol-endpoint.ts),
+// so any host works; --server is where this script mints the ticket, the server itself.
 // It does what PLAY does (web/src/account): a member is registered, given a new game account and a
 // ticket for it (POST /v1/members/register, /v1/members/game-accounts, /v1/auth/launch-ticket); a
 // guest asks POST /v1/auth/guest. The page opens with #ticket=; then Internet must reach the lobby
 // as that nick, with no login dialog (0x10F) and no /register or /login from the page.
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
-import { startPage, options } from "./lib.mjs";
+import { isWolChatSocket, startPage, options } from "./lib.mjs";
 
 const argv = process.argv.slice(2);
 const option = (name, fallback) => (argv.includes(name) ? argv[argv.indexOf(name) + 1] : fallback);
@@ -79,7 +82,7 @@ const wire = [];
 const requests = [];
 run.page.on("request", (r) => requests.push(r.url()));
 run.page.on("websocket", (ws) => {
-  if (!ws.url().startsWith(server.replace(/^http/, "ws")) || ws.url().includes("/gserv")) return;
+  if (!isWolChatSocket(ws.url(), server, opts.url)) return;
   ws.on("framereceived", (f) => wire.push(String(f.payload)));
 });
 const waitNative = async (text, after = 0, ms = 30000) => {

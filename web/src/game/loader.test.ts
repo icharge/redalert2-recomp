@@ -309,7 +309,8 @@ describe("startGame", () => {
         const packet = new Uint8Array([0, 255, 128]);
         module.ra2WolReport!(41, 1, packet);
         packet.fill(0);
-        expect(sentUrl).toBe("http://127.0.0.1:9090/native-results/g1-old");
+        // the dev default: the page's origin, through the proxy (src/wol-endpoint.ts)
+        expect(sentUrl).toBe(`${location.origin}/ra2web/native-results/g1-old`);
         expect(sentPacket).toEqual(new Uint8Array([0, 255, 128]));
         if (next === "next-match" || next === "ranked-next-match")
           sockets[0]!.receive(":wol STARTG #next :ws://127.0.0.1:9090/gserv :g2-new 2 ticket");

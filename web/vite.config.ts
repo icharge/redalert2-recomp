@@ -5,6 +5,7 @@ import { defineConfig } from "vitest/config";
 import { devGame } from "./vite.dev-game";
 import { precompressedWasm } from "./vite.precompressed-wasm";
 import { gameModuleHashes } from "./vite.game-hashes";
+import { DEV_PROXY_TARGET, assertSecureEndpoint, wolDevProxy } from "./src/wol-endpoint";
 
 // The game uses threads, so the page must be cross-origin isolated
 // (docs/web/deploy.md). A host that cannot send these headers gets them from the
@@ -18,10 +19,27 @@ export default defineConfig(({ mode }) => {
   // RA2_BASE may come from .env, .env.production or .env.<mode> (a shell value
   // still wins); VITE_* below come from those files through import.meta.env.
   const env = loadEnv(mode, process.cwd(), "RA2_");
+  const wol = loadEnv(mode, process.cwd(), "VITE_WOL_");
   return {
     base: env.RA2_BASE || "/",
     plugins: [
       react(),
+      {
+        // A build sends passwords and the session cookie to the WOL server: never over plain
+        // http to another machine (src/wol-endpoint.ts checks again when the page starts).
+        name: "ra2-secure-wol-server",
+        apply: "build",
+        configResolved(config) {
+          for (const name of ["VITE_WOL_HTTP_URL", "VITE_WOL_SOCKET_URL"]) {
+            const url = wol[name];
+            if (url) assertSecureEndpoint(url);
+          }
+          if (!wol.VITE_WOL_HTTP_URL)
+            config.logger.warn(
+              "VITE_WOL_HTTP_URL is unset: this build talks to http://127.0.0.1:9090, a local server only.",
+            );
+        },
+      },
       devGame(),
       precompressedWasm(),
       gameModuleHashes(),
@@ -60,7 +78,13 @@ export default defineConfig(({ mode }) => {
     ],
     // the archive import's worker bundles 7-Zip's ES module (src/storage/archive.worker.ts)
     worker: { format: "es" as const },
-    server: { headers: isolation, port: 5173 },
+    // The WOL server under the page's own origin (src/wol-endpoint.ts): its refresh cookie is then
+    // first-party, so a reload keeps the member signed in whatever host the page is opened on.
+    server: {
+      headers: isolation,
+      port: 5173,
+      proxy: wolDevProxy(env.RA2_WOL_PROXY_TARGET || DEV_PROXY_TARGET),
+    },
     preview: { headers: isolation, port: 4173 },
     test: {
       environment: "jsdom",
