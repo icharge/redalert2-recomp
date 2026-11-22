@@ -78,6 +78,14 @@ export class AccountError extends Error {
   }
 }
 
+/** The refusals that end the session: the cookie or token is gone for good, sign in again. */
+export const SESSION_ENDED: ReadonlySet<string> = new Set([
+  "invalid_refresh",
+  "refresh_reused",
+  "unauthorized",
+  "inactive",
+]);
+
 /** The server could not be reached at all (no network, refused, blocked by CORS). */
 export class OfflineError extends Error {
   constructor(cause?: unknown) {
@@ -200,8 +208,9 @@ export class AccountClient {
     const attempt = locked
       .then((session) => this.adopt(session))
       .catch((error: unknown) => {
-        // a refused refresh ends the session; an unreachable server keeps what the page holds
-        if (error instanceof AccountError) this.token = null;
+        // a refused refresh ends the session; an unreachable, rate-limited or failing server keeps
+        // what the page holds
+        if (error instanceof AccountError && SESSION_ENDED.has(error.code)) this.token = null;
         throw error;
       })
       .finally(() => {

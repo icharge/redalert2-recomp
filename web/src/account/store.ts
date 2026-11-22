@@ -3,6 +3,8 @@ import {
   AccountClient,
   AccountError,
   OfflineError,
+  SESSION_ENDED,
+  describeAccountError,
   type GameAccount,
   type GameAccountPasswordResult,
   type GameAccountResult,
@@ -15,7 +17,9 @@ import {
  * What the launcher knows about who is playing.
  * - `unknown`: the first refresh is still running.
  * - `guest`: no member signed in (no cookie, a refused one, or signed out).
- * - `offline`: the server could not be reached; the launcher works as a guest.
+ * - `offline`: the server could not be reached, or answered with something other than "this session
+ *   is over" (rate limited, an origin it refuses, a server error); the cookie may still be good, so
+ *   the launcher works as a guest and offers a retry.
  * - `member`: signed in.
  */
 export type AccountState =
@@ -64,10 +68,7 @@ export class AccountStore {
 
   /** A refused session (an `unauthorized` that survived the refresh) ends the member's state. */
   private ended(error: unknown): void {
-    if (
-      error instanceof AccountError &&
-      ["invalid_refresh", "refresh_reused", "unauthorized", "inactive"].includes(error.code)
-    ) {
+    if (error instanceof AccountError && SESSION_ENDED.has(error.code)) {
       this.set({
         status: "guest",
         notice:
@@ -78,7 +79,10 @@ export class AccountStore {
     }
   }
 
-  /** On page load: one refresh restores the session. No cookie is a guest; no server is offline. */
+  /**
+   * On page load: one refresh restores the session. Only an answer that ends the session (no or a
+   * refused cookie, a suspended member) is a guest; anything else is offline, to retry.
+   */
   restore(): Promise<void> {
     this.restoring ??= this.client.refresh().then(
       (session) => this.set(memberState(session)),
@@ -89,7 +93,8 @@ export class AccountStore {
             status: "guest",
             notice: "You were signed out on every device. Sign in again.",
           });
-        else this.set(GUEST);
+        else if (error instanceof AccountError && SESSION_ENDED.has(error.code)) this.set(GUEST);
+        else this.set({ status: "offline", notice: describeAccountError(error) });
       },
     );
     return this.restoring;
