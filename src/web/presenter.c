@@ -147,15 +147,33 @@ static struct { uint32_t hwnd, surface; } g_wol_icon_surfaces[256];
 #endif
 static void present_now(void);
 
+#define WOL_ICON_SLOTS (sizeof g_wol_icon_surfaces / sizeof g_wol_icon_surfaces[0])
+
 void web_wol_icon_surface(uint32_t hwnd, uint32_t surface) {
     if (!hwnd || !surface) return;
-    for (size_t i = 0; i < sizeof g_wol_icon_surfaces / sizeof g_wol_icon_surfaces[0]; i++) {
-        if (g_wol_icon_surfaces[i].hwnd == hwnd || !g_wol_icon_surfaces[i].hwnd) {
-            g_wol_icon_surfaces[i].hwnd = hwnd;
+    size_t free_slot = WOL_ICON_SLOTS;
+    for (size_t i = 0; i < WOL_ICON_SLOTS; i++) {
+        if (g_wol_icon_surfaces[i].hwnd == hwnd) {
             g_wol_icon_surfaces[i].surface = surface;
             return;
         }
+        if (!g_wol_icon_surfaces[i].hwnd && free_slot == WOL_ICON_SLOTS) free_slot = i;
     }
+    if (free_slot < WOL_ICON_SLOTS) {
+        g_wol_icon_surfaces[free_slot].hwnd = hwnd;
+        g_wol_icon_surfaces[free_slot].surface = surface;
+    }
+}
+
+/* A window is being destroyed (WM_NCDESTROY, through script.c's message hook). user32 hands its
+ * handle to the next window made, so a control of a later screen (the score screen, the profile
+ * page's text) would otherwise be drawn with this one's icon, where it now sits (docs/web/issues.md,
+ * issue 18). */
+void web_presenter_window_destroyed(uint32_t hwnd) {
+    for (size_t i = 0; i < WOL_ICON_SLOTS; i++)
+        if (g_wol_icon_surfaces[i].hwnd == hwnd) g_wol_icon_surfaces[i].hwnd = 0, g_wol_icon_surfaces[i].surface = 0;
+    if (hwnd == g_wol_legend_dialog) g_wol_legend_dialog = 0;
+    if (hwnd == g_wol_lobby_dialog) g_wol_lobby_dialog = 0;
 }
 
 /* WOL's legend stores PCX-backed BSurface objects on Static child windows.
@@ -174,7 +192,7 @@ static void composite_wol_icons(uint32_t dlg, double ready_at, int center, uint8
     for (uint32_t child = hle_window_first_child(dlg); child; child = hle_window_next_sibling(child)) {
         if (strcmp(hle_window_class(child), "Static") != 0 || !(hle_window_style(child) & 0x10000000u)) continue;
         uint32_t surface = 0;
-        for (size_t i = 0; i < sizeof g_wol_icon_surfaces / sizeof g_wol_icon_surfaces[0]; i++)
+        for (size_t i = 0; i < WOL_ICON_SLOTS; i++)
             if (g_wol_icon_surfaces[i].hwnd == child) { surface = g_wol_icon_surfaces[i].surface; break; }
         if (!surface || MEM32(surface) != WOL_BSURFACE_VTABLE) continue;
         int sw = (int)MEM32(surface + 4), sh = (int)MEM32(surface + 8);

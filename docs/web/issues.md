@@ -157,7 +157,18 @@ Right-drag pans without Pointer Lock now (the page sends the position and the
 button, as for any click); W4.13's virtual cursor is only needed for edge scrolling
 at the canvas's border, which is W9.5.
 
-## 18, flags left on the Westwood Online page (open)
+## 18, flags left on the Westwood Online page (fixed, 22 Nov 2026)
+
+Cause: the presenter's WOL icon map (`g_wol_icon_surfaces` in `src/web/presenter.c`, which
+`composite_wol_icons` draws over the legend page `0x10E` and the lobby `0x113`) kept a window's
+entry after the window was destroyed. user32 hands the lowest free handle to the next window made
+(`HWND_OF` has no generation), so a control of a later screen got the old control's icon, drawn
+where the new control sits: the score screen `0x108` after a match showed the lobby's icons, and
+the profile page's text rows the game room's flags. Fix: `web_presenter_window_destroyed`, called
+on WM_NCDESTROY from `script.c`'s message hook, drops the window's entry and forgets the two
+dialogs.
+
+The notes below are from before the cause was known.
 
 Reported with a screenshot of the Westwood Online "My Information" page: two flag-and-emblem pairs
 (USA) over the icon legend, 24 game pixels apart, after returning from the Quick Co-op screen.

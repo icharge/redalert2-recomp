@@ -31,6 +31,7 @@
 
 #ifdef __EMSCRIPTEN__
 void web_presenter_dialog_created(uint32_t hwnd, uint32_t resource_id);
+void web_presenter_window_destroyed(uint32_t hwnd);
 void web_map_search_dialog(uint32_t hwnd, uint32_t resource_id);   /* src/web/map_search.c */
 void web_chat_box_dialog(uint32_t hwnd, uint32_t resource_id);     /* src/web/chat_box.c */
 void web_map_search_start(void);
@@ -243,6 +244,9 @@ static void rclick(uint32_t h, uint32_t lp) {
 static volatile uint32_t g_watch_btn;
 static volatile int g_watch_ctrl, g_watch_up, g_watch_cmd;
 static void watch(uint32_t h, uint32_t m, uint32_t w, uint32_t l) {
+#ifdef __EMSCRIPTEN__
+    if (m == 0x0082u) web_presenter_window_destroyed(h);   /* WM_NCDESTROY: the presenter's icon map */
+#endif
     if (!g_watch_btn) return;
     if (m == WM_LBUTTONUP && h == g_watch_btn) g_watch_up++;
     if (m == WM_COMMAND && l == g_watch_btn && (int)(w & 0xFFFF) == g_watch_ctrl && (w >> 16) == 0) g_watch_cmd++;
