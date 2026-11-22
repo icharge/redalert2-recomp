@@ -9,7 +9,8 @@
 //   - YuriBOT is in both players' NAMES list (353)
 //   - A types /help in the lobby's chat edit (native keys): a private PRIVMSG from YuriBOT comes back to A,
 //     and the lobby sees no /help line: B's socket never carries that text
-//   - B joining is announced by YuriBOT to the lobby (a channel line both receive)
+//   - B joining is announced by YuriBOT to the lobby (a channel line A receives); B gets no join line,
+//     only a one-line private greeting with the players online, so B's chat keeps the MOTD
 //   - A selects YuriBOT in the Players list and types a line: a private reply comes back
 //   - A types /who: the reply names both players
 // Options: --server http://127.0.0.1:9090, plus the shared ones (--game, --shots, --headed).
@@ -165,22 +166,38 @@ try {
       (w) => w.dir === "<" && w.line.includes(`:${b.nick}!`) && w.line.includes(" JOIN "),
     ),
   );
-  // b's join announced by the bot: a channel line (not private) that both players receive; a NOTICE
+  // b's join announced by the bot: a channel line (not private) to the others in the lobby; a NOTICE
   // (shown without "[YuriBOT] :") while lobbyBot.namelessJoins is on, the default
-  for (const run of [a, b]) {
-    await until(run, `${BOT} announcing ${b.nick}`, () =>
-      run.wire.some(
-        (w) =>
-          w.dir === "<" &&
-          w.line.startsWith(`:${BOT}!`) &&
-          // an IRC colour code may come first (lobbyBot.joinColour)
-          new RegExp(
-            ` (PRIVMSG|NOTICE) ${lobby} :(\\x03\\d{1,2})?${b.nick} joined the channel`,
-          ).test(w.line),
-      ),
+  const announced = (run) =>
+    run.wire.some(
+      (w) =>
+        w.dir === "<" &&
+        w.line.startsWith(`:${BOT}!`) &&
+        // an IRC colour code may come first (lobbyBot.joinColour)
+        new RegExp(` (PRIVMSG|NOTICE) ${lobby} :(\\x03\\d{1,2})?${b.nick} joined the channel`).test(
+          w.line,
+        ),
     );
-  }
-  check(`${BOT} announced ${b.nick} joining ${lobby} to both players`);
+  await until(a, `${BOT} announcing ${b.nick}`, () => announced(a));
+  // the joiner gets no join line (the game already says "You joined channel") and a greeting of one
+  // row, so the lobby's eight chat rows still show the MOTD
+  await b.page.waitForTimeout(1500);
+  assert.ok(!announced(b), `${b.nick} was not told of their own join`);
+  const greeting = b.wire.filter(
+    (w) =>
+      w.dir === "<" && w.line.startsWith(`:${BOT}!`) && w.line.includes(` PRIVMSG ${b.nick} :`),
+  );
+  console.log(
+    `    ${b.nick}'s greeting: ${greeting.map((w) => w.line.slice(w.line.indexOf(" :") + 2)).join(" | ")}`,
+  );
+  assert.equal(greeting.length, 1, `${b.nick} got a greeting of one line`);
+  assert.match(
+    greeting[0].line,
+    /Players online: \d+\. Type \/help/,
+    "it says who is online and /help",
+  );
+  await b.shot("lobby-bot-joiner");
+  check(`${BOT} announced ${b.nick} joining to ${a.nick} only; ${b.nick} got a one-line greeting`);
 
   // the Players list with both players: YuriBOT first, with the operator icon
   await a.page.waitForTimeout(1500);

@@ -665,7 +665,9 @@ RA2Web lists YuriBOT as `@YuriBOT,0,0,0`, the first entry of a chat lobby's NAME
 
 The retail client takes the Quick Match lobby's operator for the matchmaker; the bot is never in those lobbies.
 
-**Join announcements.** When a player joins a chat lobby the bot says `{nick} joined the channel. Welcome!` to the whole lobby, the joiner too (a channel `PRIVMSG` after the `JOIN`, `LobbyBot.announceJoin`), once per lobby per session, so coming back from a game room is not announced again. Both editions show an operator's channel line as `[YuriBOT] : ...`. The console settings `lobbyBot.announceJoins` and `lobbyBot.joinMessage` (`{nick}`, `{bot}`; empty says nothing) change it live; the private greeting (`lobbyBot.greeting`) still follows it.
+**Join announcements.** When a player joins a chat lobby the bot says `{nick} joined the channel. Welcome!` to the others in the lobby (a channel line after the `JOIN`, `LobbyBot.announceJoin`), once per lobby per session, so coming back from a game room is not announced again. Both editions show an operator's channel line as `[YuriBOT] : ...`. The console settings `lobbyBot.announceJoins` and `lobbyBot.joinMessage` (`{nick}`, `{bot}`; empty says nothing) change it live.
+
+Since 23 November the joiner is left out of the announcement: it duplicated the game's own `You joined channel ...`. The private greeting is one row: `Welcome, {nick}! Players online: {online}. Type /help for commands, /info for rules.` (`{online}` is the number of signed-in players; any bot text takes it). The lobby's chat shows eight rows, which a typical MOTD, the date row and `You joined channel` already fill. The old join line and two-line greeting pushed the MOTD's top out of view; now one row of it scrolls. The greeting's console description says to keep it to one line.
 Evidence: `web/e2e/lobby-bot.mjs` in both editions (6 checks each: the bot selected on row 0, the join announcement), its `lobby-bot-players.png`.
 
 ## Announcements during a match: a page from YuriBOT (21 November)
