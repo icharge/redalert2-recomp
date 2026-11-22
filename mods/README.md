@@ -27,3 +27,13 @@ mod that ships its own `gamemd.exe` is played with this one's, and a MIX file
 that its own exe loads by another name needs renaming to an `expandmd##.mix`
 name the game looks for (`NPatch.mix` to `expandmd90.mix`, for a mod made on
 NPatch). Rules, art, maps, sounds and MIX files are what a mod can bring.
+
+## XCC mod packs (`.xmlf`, `.exe`)
+
+Mods distributed as one file by XCC Mod Creator, and opened by XCC Mod
+Launcher, hold the same files in an XIF container. The MODS tab installs a
+`.xmlf` or `.exe` with INSTALL MOD (pick the folder that holds it) or by
+dropping it: the pack is detected and unpacked into a folder of this kind.
+Sounds, launcher art and a few image conversions are not brought yet, and the
+launcher says so after the copy. The container and everything that is extracted
+are in [docs/mod-packs.md](../docs/mod-packs.md).

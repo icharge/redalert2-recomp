@@ -505,6 +505,17 @@ async function loadDevFiles(
       video && file.name.toLowerCase() === gameIni(game)
         ? new TextEncoder().encode(withVideoSize(new TextDecoder("latin1").decode(bytes), video))
         : bytes;
+    // A dev/test folder can hold a mod's own subfolder (`mods/<name>/...`); MEMFS
+    // needs each parent before the file.
+    const parts = file.name.split("/");
+    for (let index = 1; index < parts.length; index++) {
+      const dir = `/game/${parts.slice(0, index).join("/")}`;
+      try {
+        fs.mkdir(dir);
+      } catch {
+        // already there
+      }
+    }
     fs.writeFile(`/game/${file.name}`, stored);
     doneBytes += bytes.length;
     doneFiles++;

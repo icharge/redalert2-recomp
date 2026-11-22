@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { decodeLatin1, type GameSettingsDeps } from "../../storage/game-settings";
 import type { GameId } from "../../storage/install";
 import type { GameRecord, Manifest } from "../../storage/manifest";
+import { buildXif } from "../../storage/modpack/fixtures";
 import type { ModRecord } from "../../storage/mods";
 import type { CopyTarget } from "../../storage/opfs";
 import { ModsScreen } from "./ModsScreen";
@@ -99,6 +100,52 @@ function folderFile(folder: string, name: string, text: string): File {
 let manifestState: ReturnType<typeof fakeManifest>;
 let targetState: ReturnType<typeof fakeTarget>;
 let settings: ReturnType<typeof settingsStore>;
+
+function bytesFile(name: string, bytes: Uint8Array): File {
+  const copy = new Uint8Array(bytes.length);
+  copy.set(bytes);
+  const file = new File([copy], name);
+  Object.defineProperty(file, "webkitRelativePath", { value: name });
+  Object.defineProperty(file, "stream", {
+    value: () =>
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(bytes.slice());
+          controller.close();
+        },
+      }),
+  });
+  return file;
+}
+
+/** A minimal XCC pack: one raw INI, so the import needs no base game data. */
+function packWithRules(): Uint8Array {
+  return buildXif({
+    keys: [
+      [
+        2,
+        {
+          keys: [
+            [
+              0,
+              {
+                values: [
+                  [3, "rules.ini"],
+                  [4, { int32: 16 }],
+                  [5, new TextEncoder().encode("[General]\nSpeed=7\n")],
+                ],
+              },
+            ],
+          ],
+        },
+      ],
+    ],
+    values: [
+      [11, { int32: 6 }],
+      [12, "Packed Mod"],
+    ],
+  });
+}
 
 beforeEach(() => {
   manifestState = fakeManifest({ "ra2-1": [mod("Rise", 96e6)], "ra2md-1": [mod("Mental Omega")] });
@@ -218,10 +265,59 @@ describe("ModsScreen", () => {
     await screen.findByRole("heading", { name: "Mental Omega" });
     const file = folderFile("Dropped", "rules.ini", "abc");
     dropped.files = [file];
-    fireEvent.drop(screen.getByText("Drop a mod folder"), {
+    fireEvent.drop(screen.getByText("Drop a mod folder or pack"), {
       dataTransfer: { items: [], files: [] },
     });
     expect(await screen.findByRole("heading", { name: "Dropped" })).toBeInTheDocument();
+  });
+
+  it("a dropped XCC mod pack installs its files", async () => {
+    renderMods({ editions: [yr] });
+    await screen.findByRole("heading", { name: "Mental Omega" });
+    dropped.files = [bytesFile("pack.xmlf", packWithRules())];
+    fireEvent.drop(screen.getByText("Drop a mod folder or pack"), {
+      dataTransfer: { items: [], files: [] },
+    });
+    expect(await screen.findByRole("heading", { name: "Packed Mod" })).toBeInTheDocument();
+    expect(
+      (manifestState.settings.get("mods:ra2md-1") as ModRecord[]).map((m) => m.name),
+    ).toContain("Packed Mod");
+    expect(targetState.files.has("game/ra2md-1/mods/Packed Mod/expandmd98.mix")).toBe(true);
+  });
+
+  it("a folder that holds a pack installs the pack", async () => {
+    renderMods({ editions: [yr] });
+    await screen.findByRole("heading", { name: "Mental Omega" });
+    const bytes = packWithRules();
+    const copy = new Uint8Array(bytes.length);
+    copy.set(bytes);
+    const file = new File([copy], "pack.xmlf");
+    Object.defineProperty(file, "webkitRelativePath", { value: "Packed/pack.xmlf" });
+    Object.defineProperty(file, "stream", {
+      value: () =>
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(bytes.slice());
+            controller.close();
+          },
+        }),
+    });
+    await userEvent.upload(screen.getByLabelText("Mod folder"), [file]);
+    await waitFor(() =>
+      expect(
+        (manifestState.settings.get("mods:ra2md-1") as ModRecord[]).map((m) => m.name),
+      ).toContain("Packed Mod"),
+    );
+  });
+
+  it("a file that is not a pack shows why", async () => {
+    renderMods({ editions: [yr] });
+    await screen.findByRole("heading", { name: "Mental Omega" });
+    dropped.files = [bytesFile("fake.exe", new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]))];
+    fireEvent.drop(screen.getByText("Drop a mod folder or pack"), {
+      dataTransfer: { items: [], files: [] },
+    });
+    expect(await screen.findByRole("alert")).toHaveTextContent(/mod pack/);
   });
 
   it("REMOVE asks first, then removes", async () => {

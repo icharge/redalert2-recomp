@@ -9,6 +9,12 @@ import type { GameSettingsDeps } from "../../storage/game-settings";
 import { droppedSource, fileListSource, type FolderSource } from "../../storage/importer";
 import type { GameId } from "../../storage/install";
 import type { GameRecord, Manifest } from "../../storage/manifest";
+import {
+  createBaseData,
+  buildPackSource,
+  isPackName,
+  opfsInstallFiles,
+} from "../../storage/modpack";
 import { importMod, listMods, removeMod, type ModRecord } from "../../storage/mods";
 import type { CopyTarget } from "../../storage/opfs";
 import page from "./Page.module.css";
@@ -17,6 +23,17 @@ import styles from "./ModsScreen.module.css";
 type Filter = "all" | GameId;
 
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+/** The .xmlf/.exe files of a drop (a pack, possibly with its module files). */
+function packFiles(items: DataTransferItemList): File[] {
+  const files: File[] = [];
+  for (const item of Array.from(items)) {
+    if (item.kind !== "file") continue;
+    const file = item.getAsFile();
+    if (file && isPackName(file.name)) files.push(file);
+  }
+  return files;
+}
 
 const FolderIcon = () => (
   <svg
@@ -164,6 +181,7 @@ export function ModsScreen({
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [choosing, setChoosing] = useState(false);
   const [dragging, setDragging] = useState(false);
   const pending = useRef<FolderSource | null>(null);
@@ -209,10 +227,22 @@ export function ModsScreen({
   async function install(game: GameRecord, source: FolderSource) {
     setBusy(true);
     setFailure(null);
+    setNotice(null);
     try {
-      await importMod(source, game.storage, manifest, target, (done, total) =>
+      setProgress("Preparing the mod…");
+      const pack = await buildPackSource(
+        source,
+        createBaseData(game.id, opfsInstallFiles(game.storage)),
+      );
+      setProgress(null);
+      await importMod(pack?.source ?? source, game.storage, manifest, target, (done, total) =>
         setProgress(`Copying ${formatBytes(done)} of ${formatBytes(total)}`),
       );
+      if (pack?.warnings.length) {
+        const shown = pack.warnings.slice(0, 3).join(" ");
+        const more = pack.warnings.length > 3 ? ` (+${pack.warnings.length - 3} more)` : "";
+        setNotice(`Imported with warnings: ${shown}${more}`);
+      }
       await refresh();
       onChanged();
     } catch (error) {
@@ -251,6 +281,7 @@ export function ModsScreen({
   async function remove(game: GameRecord, mod: ModRecord) {
     setBusy(true);
     setFailure(null);
+    setNotice(null);
     try {
       await removeMod(manifest, target, game.storage, mod);
       if (activeMods[game.storage] === mod.name) await writeActiveMod(game, "", gameSettingsDeps);
@@ -265,6 +296,7 @@ export function ModsScreen({
 
   async function play(game: GameRecord, mod: ModRecord) {
     setFailure(null);
+    setNotice(null);
     try {
       await writeActiveMod(game, mod.name, gameSettingsDeps);
       onEdition?.(game);
@@ -281,8 +313,16 @@ export function ModsScreen({
     if (busy) return;
     try {
       const source = await droppedSource(event.dataTransfer.items);
-      if (source) startInstall(source);
-      else setFailure("Drop a folder, not a file.");
+      if (source) {
+        startInstall(source);
+        return;
+      }
+      const files = packFiles(event.dataTransfer.items);
+      if (files.length) {
+        startInstall(fileListSource(files));
+        return;
+      }
+      setFailure("Drop a mod folder, or a .xmlf / .exe mod pack.");
     } catch (error) {
       setFailure(message(error));
     }
@@ -355,9 +395,9 @@ export function ModsScreen({
           }}
         />
 
-        {(progress || failure) && (
+        {(progress || failure || notice) && (
           <p className={failure ? page.failure : page.status} role={failure ? "alert" : "status"}>
-            {failure ?? progress}
+            {failure ?? progress ?? notice}
           </p>
         )}
 
@@ -396,7 +436,7 @@ export function ModsScreen({
           >
             <path d="M8 10.5V2.5M5 5.5l3-3 3 3M2.5 10v3.5h11V10" />
           </svg>
-          <span>Drop a mod folder</span>
+          <span>Drop a mod folder or pack</span>
         </div>
       </div>
 

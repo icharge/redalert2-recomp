@@ -127,7 +127,7 @@ export interface FoundMod {
 
 /** Files a data mod may have; the rest of a mod folder is not read (mods.ts imports these). */
 export const MOD_DATA =
-  /\.(mix|ini|csf|mmx|map|mpr|yrm|shp|vxl|hva|pal|pcx|wav|aud|bag|idx|fnt|tem|sno|urb|des|lun|ubn)$/i;
+  /\.(mix|ini|csf|mmx|map|mpr|yrm|shp|vxl|hva|pal|pcx|wav|aud|bag|idx|fnt|tem|sno|urb|des|lun|ubn|pkt|avi|bik)$/i;
 /** A mod with these patches the exe (Ares, Phobos), which the recompiled game cannot run. */
 export const MOD_PATCH = /\.(dll|exe)$/i;
 export const MOD_PATCH_PROBLEM =

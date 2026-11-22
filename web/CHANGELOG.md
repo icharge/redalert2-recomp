@@ -45,6 +45,10 @@ Changes since 0.3.0.
   into the game room a friend is in, and while you are in a room INVITE asks
   a friend into it. The friend sees the invitation in their chat and in
   MESSAGES with a JOIN button.
+- **XCC mod packs in the MODS tab**: install a .xmlf or .exe made by XCC Mod
+  Creator with INSTALL MOD or by dropping it. Its rules, art, maps and string
+  table are unpacked into a mod folder, and the launcher lists what it could
+  not bring yet.
 
 ### Changed
 
