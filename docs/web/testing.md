@@ -173,7 +173,10 @@ report, and the complete game log go to `--shots`.
 imports the same folder twice, checks both editions in one slot and separate
 data in another, opens and refreshes a direct game URL, verifies save
 restoration/isolation, then removes the installations independently.
-Use a production build and preview configured with `--base=/emu/`.
+Use a production build and preview configured with `--base=/emu/`, built with
+`VITE_E2E_HOOKS=1`: only such a build (or the dev server) exposes
+`window.ra2Store`, which the e2e scripts read, and only under `?e2e` or
+`?test=1` (`web/src/debug-global.ts`). A normal production build never does.
 
 `node e2e/router-offline.mjs --url http://127.0.0.1:4177/emu/` verifies that
 build metadata is actually cached, then exercises an offline deep route and
@@ -301,7 +304,7 @@ started and observed does:
 
 | Linux and Windows | Browser |
 |---|---|
-| start the exe with arguments | Playwright opens `http://localhost:4173/?test=1&arg=...` (the built page on `vite preview`, with COOP/COEP) |
+| start the exe with arguments | Playwright opens `http://localhost:4173/?test=1&arg=...` (the built page on `vite preview`, with COOP/COEP; build it with `VITE_E2E_HOOKS=1` so `window.ra2Store` exists) |
 | game folder on disk | under `?test=1`, the page mounts a folder Playwright serves from the local `game/`, instead of OPFS, so no import is needed per run |
 | `--press DLG:CTRL@s` and the other script events | the same strings, passed as `arg=` and handled by `src/linux/script.c`, unchanged |
 | `--waitlog TEXT` | the same, inside the game |

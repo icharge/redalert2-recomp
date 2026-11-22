@@ -2,7 +2,8 @@
 // cross-origin isolation headers (a host like GitHub Pages): the page must make itself isolated, and after one
 // play it must start, and start the game, with the network off.
 //
-//   pnpm build && node e2e/offline.mjs [--game ../game]
+//   VITE_E2E_HOOKS=1 pnpm build && node e2e/offline.mjs [--game ../game]
+// (VITE_E2E_HOOKS=1: the build exposes window.ra2Store under ?e2e, src/debug-global.ts)
 //
 // Needs a built game (web/public/game, copied into dist by the build).
 import { chromium } from "playwright-core";
@@ -28,7 +29,7 @@ const flag = (name, fallback) => {
 const gameDir = path.resolve(flag("--game", "../game"));
 const dist = path.resolve("dist");
 if (!existsSync(path.join(dist, "sw.js"))) {
-  console.error("no dist/sw.js: run `pnpm build` first");
+  console.error("no dist/sw.js: run `VITE_E2E_HOOKS=1 pnpm build` first");
   process.exit(1);
 }
 const base = options(argv);
