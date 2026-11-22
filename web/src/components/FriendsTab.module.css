@@ -1,0 +1,121 @@
+/* The FRIENDS tab of the MESSAGES panel (FriendsTab.tsx), in the panel's own look (PmPanel.module.css). */
+.tab {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.add {
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.field {
+  flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border: 1px solid #3a3b40;
+  background: rgba(0, 0, 0, 0.5);
+  color: var(--text);
+  font: inherit;
+}
+.field:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: -1px;
+}
+
+.small {
+  padding: 4px 8px;
+  border: 0;
+  background: var(--red);
+  color: #fff;
+  font-family: var(--font-label);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+}
+.small:hover:not(:disabled) {
+  background: var(--red-dark);
+}
+.small:disabled {
+  background: #2a2b30;
+  color: #6d6e74;
+  cursor: not-allowed;
+}
+
+.list {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(70px, 1fr) minmax(0, 1.4fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 6px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.name {
+  overflow: hidden;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.actions {
+  display: flex;
+  gap: 4px;
+}
+
+.remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.remove:hover:not(:disabled) {
+  color: var(--text);
+  background: rgba(211, 38, 43, 0.18);
+}
+
+.small:focus-visible,
+.remove:focus-visible,
+.link:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: -2px;
+}
+
+.note,
+.error {
+  margin: 0;
+  padding: 10px 12px;
+  color: var(--muted);
+}
+.error {
+  color: #ff8a80;
+}
+
+.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--amber);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}

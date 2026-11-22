@@ -73,7 +73,11 @@ export class FriendsClient {
  * (no error code) for a 400, 404 or 409: that sentence is shown as the server wrote it. Anything
  * else (a lapsed session, no network) is the account client's wording.
  */
-export function describeFriendsError(error: unknown): string {
+export function describeFriendsError(error: unknown, name?: string): string {
+  // the server keeps friends only between player accounts: a guest's name is nobody's, so the next
+  // guest could play under it
+  if (error instanceof AccountError && error.status === 404 && name)
+    return `${name} has no player account (a guest, or no such player): only members can be friends.`;
   if (
     error instanceof AccountError &&
     error.code === "unknown" &&

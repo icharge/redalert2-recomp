@@ -15,6 +15,45 @@ function online() {
 }
 
 describe("PmPanel", () => {
+  it("has MESSAGES and FRIENDS tabs, and shows a conversation's player's profile until BACK", async () => {
+    const { pm } = online();
+    pm.handleIncoming(":Ann!a@h PRIVMSG Me :hi");
+    render(<PmPanel pm={pm} onClose={() => {}} sku={18688} />);
+    expect(screen.getByRole("tab", { name: "MESSAGES" })).toHaveAttribute("aria-selected", "true");
+    await userEvent.click(screen.getByRole("button", { name: "PROFILE" }));
+    expect(screen.getByRole("region", { name: "Profile of Ann" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "← BACK" }));
+    expect(screen.getByRole("log", { name: "Conversation with Ann" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: "FRIENDS" }));
+    expect(screen.getByRole("tab", { name: "FRIENDS" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByRole("log")).toBeNull();
+  });
+
+  it("opens on FRIENDS when asked for the tab (the game's Page and Buddy List)", () => {
+    const { pm } = online();
+    render(<PmPanel pm={pm} onClose={() => {}} focus={{ seq: 1, tab: "friends" }} />);
+    expect(screen.getByRole("tab", { name: "FRIENDS" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("shows an invitation with JOIN", async () => {
+    const { pm } = online();
+    pm.handleIncoming(":Bob!b@h PRIVMSG Me :\u0001INVITE Bob's_game\u0001");
+    const onJoin = vi.fn();
+    render(<PmPanel pm={pm} onClose={() => {}} onJoin={onJoin} />);
+    expect(screen.getByRole("log", { name: "Conversation with Bob" })).toHaveTextContent(
+      "invites you to their game Bob's_game",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "JOIN" }));
+    expect(onJoin).toHaveBeenCalledWith("Bob's_game");
+  });
+
+  it("offers no profile without a ladder to read it from", () => {
+    const { pm } = online();
+    pm.handleIncoming(":Ann!a@h PRIVMSG Me :hi");
+    render(<PmPanel pm={pm} onClose={() => {}} />);
+    expect(screen.queryByRole("button", { name: "PROFILE" })).toBeNull();
+  });
+
   it("lists the conversations and shows the thread of the one with something new", () => {
     const { pm } = online();
     pm.handleIncoming(":Ann!a@h PRIVMSG Me :older");

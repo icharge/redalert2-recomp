@@ -163,6 +163,21 @@ it("releases on Escape immediately and still lets the key reach the game", async
   control.dispose();
 });
 
+it("keeps the capture on Escape in a page chat box", async () => {
+  const { canvas, request, control } = setup();
+  control.update(true);
+  await settle();
+  const box = document.createElement("input");
+  box.setAttribute("data-game-text", "");
+  document.body.append(box);
+  box.dispatchEvent(new KeyboardEvent("keydown", { code: "Escape", bubbles: true }));
+  expect(document.pointerLockElement).toBe(canvas);
+  for (let i = 0; i < 5; i++) control.update(true);
+  expect(request).toHaveBeenCalledOnce();
+  box.remove();
+  control.dispose();
+});
+
 it("keeps pause-menu clicks unlocked and recaptures after Resume", async () => {
   const { canvas, request, control } = setup();
   control.update(true);

@@ -1,24 +1,25 @@
-/* The page's chat box over the game's chat line (ChatBox.tsx). It sits on the game's picture, so it
-   takes the game's dark field and light text rather than the launcher's tokens. */
+/* The page's chat box over the game's chat line (ChatBox.tsx). It is see-through, with no frame of
+   its own: the game's own line and frame show under it, and the text takes the game's chat yellow
+   (#FFFF00, as its chat lists draw it) and a bold face close to its font. */
 .box {
   position: absolute;
   z-index: 2;
   box-sizing: border-box;
   margin: 0;
   padding: 0 4px;
-  border: 1px solid #5a5a5a;
+  border: 0;
   border-radius: 0;
-  background: #000;
-  color: #f0f0f0;
-  font-family: "Segoe UI", "Leelawadee UI", Tahoma, "Noto Sans Thai", sans-serif;
+  background: transparent;
+  color: #ff0;
+  caret-color: #ff0;
+  font-family: Arial, "Leelawadee UI", Tahoma, "Noto Sans Thai", sans-serif;
+  font-weight: 700;
   line-height: 1;
   outline: none;
-}
-
-.box:focus {
-  border-color: #c9a227;
+  text-shadow: 1px 1px 0 #000;
 }
 
 .box::placeholder {
-  color: #7d7d7d;
+  color: rgb(255 255 0 / 0.45);
+  font-weight: 400;
 }

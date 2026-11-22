@@ -9,7 +9,7 @@
 //   - b opens the page's MESSAGES panel, starts a conversation with a and sends a line: a's socket gets
 //     it, a's MESSAGES button counts it unread, a opens the panel and answers from it, b gets the answer
 //   - a types `/on <b>` in the lobby chat: the game asks `find <b>` and the server answers 615 found
-//   - YR only: a presses Buddy List: `buddylist` brings b (610), and the dialog finds b (615 found)
+//   - a presses the lobby's Buddy List: the page's FRIENDS opens, with b listed
 // Shots: pm-panel-a, pm-panel-b, on-a, buddy-list-a.
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
@@ -26,7 +26,6 @@ const lobby = `#Lob_${ra2 ? 33 : 41}_0`;
 const origin = new URL(opts.url).origin;
 const tag = randomBytes(4).toString("hex").slice(0, 5);
 const CHAT_EDIT = [300, 545];
-const BUDDY_LIST = [720, 304]; // YR's lobby button, in the game's 800x600
 
 async function call(method, route, body, token) {
   const response = await fetch(`${server}${route}`, {
@@ -47,10 +46,16 @@ async function call(method, route, body, token) {
 }
 
 async function member(name) {
-  const session = await call("POST", "/v1/members/register", {
-    login: `e2e-${name}-${tag}`,
-    password: `pw-${tag}-e2e`,
+  // registering signs in: its ra2refresh cookie gives the browser the launcher session, so the
+  // in-game MESSAGES panel's FRIENDS tab knows the member (as after signing in at the launcher)
+  const registered = await fetch(`${server}/v1/members/register`, {
+    method: "POST",
+    headers: { "content-type": "application/json", origin },
+    body: JSON.stringify({ login: `e2e-${name}-${tag}`, password: `pw-${tag}-e2e` }),
   });
+  assert.ok(registered.ok, `register ${name}: ${registered.status}`);
+  const session = await registered.json();
+  const refresh = /ra2refresh=([^;]+)/.exec(registered.headers.get("set-cookie") ?? "")?.[1];
   const nick = `m${name}${tag}`;
   await call(
     "POST",
@@ -64,7 +69,7 @@ async function member(name) {
     { gameAccount: nick, edition },
     session.accessToken,
   );
-  return { nick: minted.user, ticket: minted.ticket, token: session.accessToken };
+  return { nick: minted.user, ticket: minted.ticket, token: session.accessToken, refresh };
 }
 
 const clients = {};
@@ -76,6 +81,9 @@ async function open(name) {
     ...opts,
     url: url.toString(),
     shots: `${opts.shots}/buddies-pm-${name}`,
+    cookies: who.refresh
+      ? [{ name: "ra2refresh", value: who.refresh, url: `${server}/v1/auth` }]
+      : [],
   });
   Object.assign(run, who);
   run.wire = [];
@@ -214,6 +222,64 @@ try {
     await run.page.waitForTimeout(300);
   }
 
+  // 2b. the panel's FRIENDS tab: b listed with where they are, and b's profile from it
+  await openPanel(a);
+  await a.page.getByRole("tab", { name: "FRIENDS" }).click();
+  const friendsList = a.page.getByRole("list", { name: /^Friends of / });
+  await friendsList.waitFor({ timeout: 15000 });
+  await until(a, `${b.nick} in the FRIENDS tab`, async () =>
+    ((await friendsList.textContent()) ?? "").toLowerCase().includes(b.nick.toLowerCase()),
+  );
+  const friendRow = await friendsList.textContent();
+  await a.shot("friends-a");
+  await friendsList.getByRole("button", { name: "PROFILE" }).first().click();
+  await a.page
+    .getByRole("region", { name: new RegExp(`^Profile of `, "i") })
+    .waitFor({ timeout: 10000 });
+  await a.page.waitForTimeout(1500);
+  await a.shot("profile-a");
+  await a.page.getByRole("button", { name: "← BACK" }).click();
+  await a.page.getByRole("tab", { name: "MESSAGES" }).click();
+  await a.page.keyboard.press("Escape");
+  check(`${a.nick}'s FRIENDS tab lists ${b.nick} (${friendRow}) and shows a profile`);
+
+  // 2c. a right-click on a player in the lobby's list: the player menu; Add friend and Profile
+  const menuFor = async (run, nick) => {
+    for (let y = 40; y <= 150; y += 9) {
+      await run.clickGame(ra2 ? 420 : 430, y, "right");
+      const menu = run.page.getByRole("menu");
+      if (!(await menu.count())) {
+        await run.page.waitForTimeout(150);
+        if (!(await menu.count())) continue;
+      }
+      const label = (await menu.getAttribute("aria-label")) ?? "";
+      if (label.toLowerCase() === `player ${nick.toLowerCase()}`) return menu;
+      await run.page.keyboard.press("Escape");
+    }
+    throw new Error(`${run.nick}: no player menu for ${nick} in the lobby's list`);
+  };
+  let menu = await menuFor(b, a.nick);
+  const notices = b.all.length;
+  await menu.getByRole("menuitem", { name: "Add friend" }).click();
+  await until(b, "the Add friend line in the chat log", () =>
+    b.all.slice(notices).some((l) => l.includes("[wol] notice from YuriNET")),
+  );
+  const bList = await call("GET", `/v1/friends?account=${b.nick}`, undefined, b.token);
+  assert.ok(
+    bList.friends.some((f) => f.name.toLowerCase() === a.nick.toLowerCase()),
+    `${b.nick} has ${a.nick} as a friend: ${JSON.stringify(bList)}`,
+  );
+  menu = await menuFor(b, a.nick);
+  await b.shot("player-menu-b");
+  await menu.getByRole("menuitem", { name: "Profile" }).click();
+  await b.page.getByRole("region", { name: /^Profile of /i }).waitFor({ timeout: 10000 });
+  await b.page.waitForTimeout(800);
+  await b.shot("player-profile-b");
+  await b.page.keyboard.press("Escape");
+  check(
+    `${b.nick} right-clicked ${a.nick} in the lobby: Add friend made them friends, Profile opened`,
+  );
+
   // 3. /on <b>: RequestFind, answered 615 found
   markA = a.wire.length;
   await say(a, `/on ${b.nick}`);
@@ -225,34 +291,36 @@ try {
   await a.shot("on-a");
   check(`${a.nick} /on ${b.nick}: the game asked find and the server answered found`);
 
-  // 4. YR: the Buddy List dialog
-  if (!ra2) {
+  // 4. the lobby's Buddy List button opens the page's FRIENDS (the game's own Buddy List screen no
+  // longer opens): b is listed there
+  {
     markA = a.wire.length;
-    await a.clickGame(...BUDDY_LIST);
-    await until(a, "buddylist sent", () => sent(a, markA, (l) => l === "buddylist"));
-    await until(a, `610 ${b.nick}`, () =>
-      got(a, markA, (l) => / 610 /.test(l) && l.toLowerCase().endsWith(` ${b.nick.toLowerCase()}`)),
+    const dialogs = a.all.length;
+    await a.page.getByRole("button", { name: "Buddy List (opens friends)" }).click();
+    await a.page.locator('[aria-label="Private messages"]').waitFor({ timeout: 10000 });
+    const list = a.page.getByRole("list", { name: /^Friends of / });
+    await list.waitFor({ timeout: 15000 });
+    await until(a, `${b.nick} in FRIENDS`, async () =>
+      ((await list.textContent()) ?? "").toLowerCase().includes(b.nick.toLowerCase()),
     );
-    await until(
-      a,
-      "the dialog's find",
-      () => sent(a, markA, (l) => l.toLowerCase() === `find ${b.nick}`),
-      40000,
+    assert.ok(!sent(a, markA, (l) => l === "buddylist"), "the game's Buddy List did not open");
+    assert.ok(
+      !a.all.slice(dialogs).some((l) => l.includes("[dialog] open 0x116")),
+      "no Buddy List dialog",
     );
-    await until(
-      a,
-      "615 found for the dialog",
-      () => got(a, markA, (l) => / 615 /.test(l) && / found /.test(l)),
-      40000,
-    );
-    await a.page.waitForTimeout(2500);
     await a.shot("buddy-list-a");
-    check(`${a.nick} Buddy List: ${b.nick} listed and found`);
+    check(`${a.nick} Buddy List opened FRIENDS with ${b.nick}`);
   }
   console.log(`PASS ${edition.toUpperCase()} (${results.length} checks)`);
 } catch (error) {
   console.error("FAIL:", error?.message ?? error);
   for (const [name, run] of Object.entries(clients)) {
+    console.error(
+      run.all
+        .filter((l) => l.startsWith("[chat box]"))
+        .slice(-12)
+        .join("\n"),
+    );
     console.error(`--- ${name} ${run.nick}: last wire`);
     console.error(
       run.wire

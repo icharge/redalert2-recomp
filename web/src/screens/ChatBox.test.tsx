@@ -3,7 +3,21 @@ import { createRef } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { ChatBox, chatBoxPlace } from "./ChatBox";
 
-const field = { open: true, x: 14, y: 516, w: 772, h: 28 };
+const field = {
+  open: true,
+  x: 14,
+  y: 516,
+  w: 772,
+  h: 28,
+  px: 0,
+  py: 0,
+  pw: 0,
+  ph: 0,
+  bx: 0,
+  by: 0,
+  bw: 0,
+  bh: 0,
+};
 const presenter = {
   pictureRect: () => ({ x: 0, y: 0, width: 1, height: 1 }),
   gameSize: () => ({ width: 800, height: 600 }),
@@ -40,7 +54,11 @@ describe("chatBoxPlace", () => {
   });
 });
 
-function renderBox(send: ((text: string) => void) | null, open = true) {
+function renderBox(
+  send: ((text: string) => void) | null,
+  open = true,
+  onHint?: (text: string) => void,
+) {
   const stage = createRef<HTMLDivElement>();
   const canvas = createRef<HTMLCanvasElement>();
   return render(
@@ -52,6 +70,7 @@ function renderBox(send: ((text: string) => void) | null, open = true) {
         stage={stage}
         canvas={canvas}
         send={send}
+        onHint={onHint}
       />
     </div>,
   );
@@ -66,6 +85,21 @@ describe("ChatBox", () => {
     fireEvent.keyDown(box, { key: "Enter" });
     expect(send).toHaveBeenCalledWith("สวัสดี ครับ");
     expect(box).toHaveValue("");
+  });
+
+  it("tells the player (in the chat log) to use /pm when /r has nobody to answer, and keeps the line", () => {
+    const send = vi.fn();
+    const onHint = vi.fn();
+    renderBox(send, true, onHint);
+    const box = screen.getByRole("textbox", { name: "Chat message" });
+    fireEvent.change(box, { target: { value: "/r thanks" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(send).not.toHaveBeenCalled();
+    expect(onHint).toHaveBeenCalledWith(expect.stringContaining("Use /pm name message."));
+    expect(box).toHaveValue("/r thanks");
+    fireEvent.change(box, { target: { value: "/pm Bob thanks" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(send).toHaveBeenCalledWith("/page Bob thanks");
   });
 
   it("does not send while an IME is composing, or an empty line", () => {

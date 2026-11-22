@@ -212,6 +212,11 @@ export interface GameHandle {
   saves: SaveSync | null;
   /** the private messages the WOL connection carried, and where the page's panel sends (pm.ts) */
   pm: PmStore;
+  /**
+   * Shows `text` in the game's chat as a line from the server to this player only (a NOTICE the game
+   * draws without a sender, in yellow): nothing is sent. False when not logged in to WOL.
+   */
+  notice(text: string): boolean;
 }
 
 /** Where /game comes from. The import (stage 6) adds OPFS; for now the dev server's folder. */
@@ -619,6 +624,14 @@ function createHandle(
     files: liveGameFileSource(module.FS, game === "ra2" ? "Red Alert 2" : "Yuri's Revenge"),
     saves,
     pm,
+    notice: (text) => {
+      const nick = pm.getSnapshot().nick;
+      if (!nick || !pm.getSnapshot().online || !module.ra2WolReceiveLine) return false;
+      // the colour code 08: yellow (wolapi.c k_irc_colours); one line, as the server would send it
+      const line = text.replace(/[\r\n]/g, " ");
+      module.ra2WolReceiveLine(`:YuriNET!local@local NOTICE ${nick} :\u000308${line}`);
+      return true;
+    },
   };
 }
 

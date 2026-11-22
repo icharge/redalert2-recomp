@@ -115,6 +115,9 @@ export function attachInput(
     warp?: () => { seq: number; x: number; y: number };
     textInput?: HTMLTextAreaElement;
     sendText?: (text: string) => void;
+    /** a right-button press on the game (not under Pointer Lock), at that game pixel: Play asks the
+     * game whose name is there (the player menu); the game gets the press as well */
+    onSecondaryDown?: (point: { x: number; y: number }) => void;
   } = {},
 ): () => void {
   const picture = options.picture ?? (() => ({ width: canvas.width, height: canvas.height }));
@@ -223,6 +226,8 @@ export function attachInput(
     }
     if (kind === PointerKind.Up && swallowed.delete(event.button)) return;
     if (kind === PointerKind.Down && document.activeElement !== options.textInput) canvas.focus();
+    if (kind === PointerKind.Down && event.button === 2 && document.pointerLockElement !== canvas)
+      options.onSecondaryDown?.(p);
     if (kind === PointerKind.Down) buttons.add(event.button);
     else buttons.delete(event.button);
     game.ra2_input_pointer(kind, p.x, p.y, event.button);

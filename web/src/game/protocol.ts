@@ -47,7 +47,24 @@ export type GameEvent =
       h: number;
     }
   /** The game's chat line showing (src/web/chat_box.c): its place in game pixels, for the page's chat box. */
-  | { e: "chatField"; open: boolean; x: number; y: number; w: number; h: number }
+  | {
+      e: "chatField";
+      open: boolean;
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+      /** Yuri's Revenge's Page button on the same screen (pw 0: none); the page's FRIENDS opens from it */
+      px: number;
+      py: number;
+      pw: number;
+      ph: number;
+      /** the lobby's Buddy List button (bw 0: none); the page's FRIENDS opens from it too */
+      bx: number;
+      by: number;
+      bw: number;
+      bh: number;
+    }
   /**
    * A player's line in a LAN or online match (src/web/match_chat.c): the game's own units (Thai as
    * Windows-874 bytes widened to U+00A1..), the sender's colour index, and for the own line the
@@ -59,6 +76,15 @@ export type GameEvent =
    * defeated, a page): the game's units, its colour scheme index and text style.
    */
   | { e: "matchMessage"; text: string; scheme: number; style: number }
+  /**
+   * One of the game's chat keys was pressed in a LAN or online match (src/web/match_chat.c): open the
+   * panel's line to that target (1 the players ticked under Chat in Diplomacy, 2 allies, 3 everyone).
+   */
+  | { e: "matchChatOpen"; to: number }
+  /** After ra2_join_room: the game pressed Join on that room (ok), or why not ("not in the lobby", "not listed"). */
+  | { e: "joinRoom"; room: string; ok: boolean; reason: string }
+  /** The name in the lobby's player list at x, y (game pixels), after ra2_player_pick; "" for none. */
+  | { e: "playerPick"; name: string; x: number; y: number }
   /** A LAN or online match runs, where the page's chat panel can send (or it ended). */
   | { e: "matchChatReady"; on: boolean }
   | { e: "fps"; fps: number; ms: number; pacing: Pacing | null }
@@ -171,7 +197,23 @@ export function parseEventLine(line: string): GameEvent | null {
         typeof value.y === "number" &&
         typeof value.w === "number" &&
         typeof value.h === "number"
-        ? { e: "chatField", open: value.open, x: value.x, y: value.y, w: value.w, h: value.h }
+        ? {
+            e: "chatField",
+            open: value.open,
+            x: value.x,
+            y: value.y,
+            w: value.w,
+            h: value.h,
+            // older builds tell no Page button
+            px: typeof value.px === "number" ? value.px : 0,
+            py: typeof value.py === "number" ? value.py : 0,
+            pw: typeof value.pw === "number" ? value.pw : 0,
+            ph: typeof value.ph === "number" ? value.ph : 0,
+            bx: typeof value.bx === "number" ? value.bx : 0,
+            by: typeof value.by === "number" ? value.by : 0,
+            bw: typeof value.bw === "number" ? value.bw : 0,
+            bh: typeof value.bh === "number" ? value.bh : 0,
+          }
         : null;
     case "matchChat":
       return typeof value.name === "string" &&
@@ -194,6 +236,20 @@ export function parseEventLine(line: string): GameEvent | null {
         typeof value.style === "number"
         ? { e: "matchMessage", text: value.text, scheme: value.scheme, style: value.style }
         : null;
+    case "joinRoom":
+      return typeof value.room === "string" &&
+        typeof value.ok === "boolean" &&
+        typeof value.reason === "string"
+        ? { e: "joinRoom", room: value.room, ok: value.ok, reason: value.reason }
+        : null;
+    case "playerPick":
+      return typeof value.name === "string" &&
+        typeof value.x === "number" &&
+        typeof value.y === "number"
+        ? { e: "playerPick", name: value.name, x: value.x, y: value.y }
+        : null;
+    case "matchChatOpen":
+      return typeof value.to === "number" ? { e: "matchChatOpen", to: value.to } : null;
     case "matchChatReady":
       return typeof value.on === "boolean" ? { e: "matchChatReady", on: value.on } : null;
     case "fps":
@@ -403,6 +459,10 @@ export interface Ra2Exports {
   ra2_chat_send?(text: string): void;
   /** a line for the match's chat (the matchChatReady event), to 1 listeners, 2 allies or 3 all; missing in older builds */
   ra2_match_chat_send?(text: string, target: number): void;
+  /** whose name is at x, y (game pixels) on a chat screen's player list: a playerPick event; missing in older builds */
+  ra2_player_pick?(x: number, y: number): void;
+  /** join a game room from the lobby (a friend's game, an invitation): a joinRoom event; missing in older builds */
+  ra2_join_room?(room: string): void;
   ra2_crash_report(why: string): void;
 }
 
@@ -429,5 +489,7 @@ export const EXPORT_SIGNATURES: {
   ra2_input_text: { returns: null, args: ["string"] },
   ra2_chat_send: { returns: null, args: ["string"] },
   ra2_match_chat_send: { returns: null, args: ["string", "number"] },
+  ra2_player_pick: { returns: null, args: ["number", "number"] },
+  ra2_join_room: { returns: null, args: ["string"] },
   ra2_crash_report: { returns: null, args: ["string"] },
 };

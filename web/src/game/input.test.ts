@@ -68,6 +68,24 @@ describe("toGamePixels", () => {
 });
 
 describe("attachInput", () => {
+  it("tells a right-button press, at its game pixel, for the player menu", () => {
+    const canvas = document.createElement("canvas");
+    canvas.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 1600, height: 1200 }) as DOMRect;
+    const game = { ra2_input_pointer: vi.fn(), ra2_input_key: vi.fn(), ra2_focus: vi.fn() };
+    const onSecondaryDown = vi.fn();
+    const detach = attachInput(canvas, game, {
+      picture: () => ({ width: 800, height: 600 }),
+      onSecondaryDown,
+    });
+    canvas.dispatchEvent(new MouseEvent("mousedown", { button: 0, clientX: 800, clientY: 600 }));
+    expect(onSecondaryDown).not.toHaveBeenCalled();
+    canvas.dispatchEvent(new MouseEvent("mousedown", { button: 2, clientX: 860, clientY: 120 }));
+    expect(onSecondaryDown).toHaveBeenCalledWith({ x: 430, y: 60 });
+    expect(game.ra2_input_pointer).toHaveBeenLastCalledWith(PointerKind.Down, 430, 60, 2);
+    detach();
+  });
+
   it("under Pointer Lock, gives the page's panel the game cursor's hover, clicks and wheel", () => {
     const canvas = document.createElement("canvas");
     canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: 800, height: 600 }) as DOMRect;

@@ -52,13 +52,13 @@ function useLoad<T>(load: Loader<T> | null, again = 0): Load<T> | null {
 
 const number = new Intl.NumberFormat("en-US");
 
-function winRate(wins: number, losses: number): string {
+export function winRate(wins: number, losses: number): string {
   const games = wins + losses;
   return games === 0 ? "—" : `${Math.round((wins / games) * 100)}%`;
 }
 
 /** The rank insignia: chevrons for the badge, a dash before a first ranked finish. */
-function RankIcon({ badge, large }: { badge: number | null; large?: boolean }) {
+export function RankIcon({ badge, large }: { badge: number | null; large?: boolean }) {
   const count = chevrons(badge);
   const first = 10 - (4 + (count - 1) * 4.5) / 2 + 4;
   const d = Array.from({ length: count }, (_, i) => `M4 ${first + i * 4.5}l6-4 6 4`).join("");
@@ -82,7 +82,7 @@ function RankIcon({ badge, large }: { badge: number | null; large?: boolean }) {
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+export function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className={styles.stat}>
       <span className={styles.statLabel}>{label}</span>
@@ -92,7 +92,7 @@ function Stat({ label, value }: { label: string; value: string }) {
 }
 
 /** The last ten games as win / loss blocks, newest first. */
-function Form({ games }: { games: PlayerProfile["games"] }) {
+export function Form({ games }: { games: PlayerProfile["games"] }) {
   const last = games.slice(0, 10);
   const wins = last.filter((game) => game.won).length;
   const draws = last.filter((game) => !game.won && game.resultType === 2).length;

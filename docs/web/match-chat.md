@@ -245,9 +245,33 @@ The chat panel and the lobby chat box (22 November).
   to YR `0x0055E7B3` / RA2 `0x00540FB3`. This is recommendation 1 above.
 - **Ready:** the same pre-hook call tells the page `matchChatReady` on while
   GameMode is 3 or 4, and the presenter's pump sends off 1.5 s after the
-  pre-hook last ran in one. Enter in the game then opens the page's line instead
-  of the game's own line for listeners (`Play.tsx`'s shortcut). Tab switches
-  between all (3) and allies (2).
+  pre-hook last ran in one.
+- **The game's chat keys open the panel:** the keys are fixed in code; the
+  Keyboard options have no chat commands. After KeyToASCII the pre-hook
+  compares the character:
+
+  | Key | Character | Target |
+  |---|---|---|
+  | Enter | `0x0D` | 1, the players ticked under Chat in Diplomacy (all at a match's start, `0x01010101` at YR `0x004FC239`) |
+  | Backspace | `0x08` | 2, allies |
+  | `\` | `0x5C` | 3, everyone |
+
+  It sets the target dword, then consumes the key (`mov [ebp], edi`, YR
+  `0x0055E57E`, RA2 `0x00540D7E`, byte-checked). The patch after that
+  instruction calls `web_match_chat_open(GameMode, target)` when `bl` is 0
+  (`bl` set means the line is a selected beacon's label, which stays the
+  game's). In a LAN or online match it sends `matchChatOpen {to}`, clears the
+  target and leaves by the pre-hook's exit (YR `0x0055F1C8`, RA2 `0x005419C8`,
+  the path a frame without a key takes). The page grabs no key itself, so
+  keyboard layouts and the beacon label behave as the game decides.
+- **Which target the line opens to** (`resolveTarget` in `MatchChat.tsx`):
+  - Backspace opens to Allies and `\` to All.
+  - Enter, the game's target 1, opens to the target last used in this match,
+    starting at All. The Diplomacy "Chat" ticks are not used by the panel.
+  - Tab switches between All and Allies.
+  - The remembered target changes on Tab, on a line sent, and on Backspace or
+    `\`. `Play.tsx` keeps it, and it goes back to All when `matchChatReady`
+    turns on for a new match.
 - **The lobby chat box** (`src/web/chat_box.c`, `web/src/screens/ChatBox.tsx`)
   covers the chat line, Edit `0x540`, of the lobby `0x113`, the game rooms and
   LAN setup screens (`0xBB`, `0xBC`, `0xBD`, `0xC2`, `0xC9`), the Page dialogs
@@ -256,6 +280,19 @@ The chat panel and the lobby chat box (22 November).
     game's control over the Edit as `WM_CHAR` units followed by a Return key
     (`ra2_chat_send`), so the game's commands still work.
   - It replaces the page's TYPE button.
+  - It is see-through and has no frame, so the game's own line and frame show under it. The text is
+    the game's chat yellow (`#FFFF00`), bold.
+  - **Page and Buddy List open the page's FRIENDS** (the MESSAGES panel on its FRIENDS tab), in place
+    of the game's old Page dialog (`0x11B`) and Buddy List screen (`0x116`).
+    - `chatField` carries two rectangles: `px`..`ph` for Yuri's Revenge's Page button (`0x5C2`,
+      `GUI:PageButton`) in the game rooms `0xC2` and `0xC9` (the Page dialogs reuse `0x5C2`, so only
+      those screens count), and `bx`..`bh` for the lobby's Buddy List (`0x689`, both games). All are
+      0 where there is none.
+    - Yuri's Revenge's lobby Page button is hidden, because the lobby's Buddy List does its job: YR's
+      template hook (`web_chat_box_template`, `main.c`) clears its WS_VISIBLE before `0x113` is made.
+    - `PageButton.tsx` lays a see-through button over each, so the game never gets the click.
+      Mouse moves go on to the canvas, so the game's cursor and the button's tip still follow.
+    - Red Alert 2 has no Page button, and no Buddy List screen behind its Buddy List.
 - **Red Alert 2's game name:** in a matchbot game the receiver dropped every
   line, because the game-name hash differed (`docs/wol/co-op.md`, C-3). That
   fix covered only Yuri's Revenge. `main.c` now passes RA2's name too:
@@ -280,6 +317,11 @@ The chat panel and the lobby chat box (22 November).
   - the panel gets a `pageoverlay` event, which opens it while hovered;
   - a press goes to its button and not to the game;
   - the wheel scrolls its `[data-page-scroll]` list.
+- **Escape in a chat box** closes the box and does not release the capture:
+  `browser-controls.ts` skips its own release for `[data-game-text]`. In
+  fullscreen, where Keyboard Lock gives the page Escape, the mouse stays
+  captured. In a window the browser itself still releases on Escape, and pages
+  cannot stop that; Enter on an empty line closes the box and keeps the capture.
 - **The game name overflowed (fixed):** `apply_game_name` wrote 22 units at the
   name, which holds 20, so it overwrote the first 4 bytes of the packet buffer
   (YR `0xA8D638`, RA2 `0xA3F640`). The check then saw a change at every poll and

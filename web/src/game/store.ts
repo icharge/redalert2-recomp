@@ -49,6 +49,8 @@ export type MatchChatLine = Omit<Extract<GameEvent, { e: "matchChat" }>, "e"> & 
 export interface MatchChat {
   ready: boolean;
   lines: readonly MatchChatLine[];
+  /** the last time a chat key of the game asked for the panel's line (seq counts them) */
+  open?: { seq: number; to: number };
 }
 
 /** How many match chat lines are kept. */
@@ -74,6 +76,10 @@ export interface GameState {
   openLink: OpenLink | null;
   mapSearchStatus: MapSearchStatus;
   chatField: ChatField;
+  /** the last right-click on a lobby player (seq counts them): the player menu opens for it */
+  playerPick: { seq: number; name: string; x: number; y: number } | null;
+  /** the last join the page asked for (ra2_join_room) and how it went; seq counts them */
+  joinRoom: { seq: number; room: string; ok: boolean; reason: string } | null;
   matchChat: MatchChat;
   settings: HostSettings | null;
   restart: { mod: string } | null;
@@ -94,7 +100,23 @@ const INITIAL: GameState = {
   saveReferencePrompt: null,
   openLink: null,
   mapSearchStatus: { open: false, noMatches: false, x: 0, y: 0, w: 0, h: 0 },
-  chatField: { open: false, x: 0, y: 0, w: 0, h: 0 },
+  chatField: {
+    open: false,
+    x: 0,
+    y: 0,
+    w: 0,
+    h: 0,
+    px: 0,
+    py: 0,
+    pw: 0,
+    ph: 0,
+    bx: 0,
+    by: 0,
+    bw: 0,
+    bh: 0,
+  },
+  playerPick: null,
+  joinRoom: null,
   matchChat: { ready: false, lines: [] },
   settings: null,
   restart: null,
@@ -200,7 +222,21 @@ export class GameStore {
         return;
       case "chatField":
         this.set({
-          chatField: { open: event.open, x: event.x, y: event.y, w: event.w, h: event.h },
+          chatField: {
+            open: event.open,
+            x: event.x,
+            y: event.y,
+            w: event.w,
+            h: event.h,
+            px: event.px,
+            py: event.py,
+            pw: event.pw,
+            ph: event.ph,
+            bx: event.bx,
+            by: event.by,
+            bw: event.bw,
+            bh: event.bh,
+          },
         });
         return;
       case "matchChat": {
@@ -230,6 +266,34 @@ export class GameStore {
         this.set({ matchChat: { ...this.state.matchChat, lines } });
         return;
       }
+      case "joinRoom":
+        this.set({
+          joinRoom: {
+            seq: (this.state.joinRoom?.seq ?? 0) + 1,
+            room: event.room,
+            ok: event.ok,
+            reason: event.reason,
+          },
+        });
+        return;
+      case "playerPick":
+        this.set({
+          playerPick: {
+            seq: (this.state.playerPick?.seq ?? 0) + 1,
+            name: event.name,
+            x: event.x,
+            y: event.y,
+          },
+        });
+        return;
+      case "matchChatOpen":
+        this.set({
+          matchChat: {
+            ...this.state.matchChat,
+            open: { seq: (this.state.matchChat.open?.seq ?? 0) + 1, to: event.to },
+          },
+        });
+        return;
       case "matchChatReady":
         // the lines stay: like a chat window's history, across matches (MATCH_CHAT_LINES at most)
         if (event.on !== this.state.matchChat.ready)

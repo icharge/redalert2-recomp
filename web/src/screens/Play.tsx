@@ -6,7 +6,7 @@ import {
   GearIcon,
 } from "@radix-ui/react-icons";
 import { Button, Callout, Flex, Heading, Text } from "@radix-ui/themes";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { SoundControl } from "../components/SoundControl";
 import { SettingsDialog } from "../components/SettingsDialog";
 import { LinkDialog } from "../components/LinkDialog";
@@ -24,6 +24,23 @@ import { attachInput } from "../game/input";
 import { PageCursor } from "../game/cursor-layer";
 import { LanPanel } from "../components/LanPanel";
 import { PmPanel, PmTrayButton } from "../components/PmPanel";
+import type { PmStore } from "../game/pm";
+
+const noSubscribe = () => () => {};
+/** The last player who whispered to this one (the MESSAGES store): where /r answers. */
+function useReplyTo(pm: PmStore | undefined): string | null {
+  return useSyncExternalStore(
+    pm?.subscribe ?? noSubscribe,
+    () => pm?.getSnapshot().lastFrom ?? null,
+  );
+}
+/** The newest invitation to a game room (the MESSAGES store). */
+function useLastInvite(pm: PmStore | undefined) {
+  return useSyncExternalStore(
+    pm?.subscribe ?? noSubscribe,
+    () => pm?.getSnapshot().lastInvite ?? null,
+  );
+}
 import { FileExplorer } from "../components/FileExplorer";
 import { GameTray, trayItem } from "./GameTray";
 import { CrashDialog } from "./CrashDialog";
@@ -31,7 +48,12 @@ import { SaveReferencePrompt } from "./SaveReferencePrompt";
 import { ExitConfirm } from "./ExitConfirm";
 import { MapSearchStatus } from "./MapSearchStatus";
 import { ChatBox } from "./ChatBox";
-import { MatchChat } from "../components/MatchChat";
+import { PageButton } from "./PageButton";
+import { chatBoxPlace } from "./ChatBox";
+import { PlayerMenu } from "../components/PlayerMenu";
+import { addFriendFor } from "../components/FriendsTab";
+import { MatchChat, Target, resolveTarget } from "../components/MatchChat";
+import { LADDER_SKU } from "../ladder/api";
 import {
   argsFromQuery,
   GameNotBuilt,
@@ -124,7 +146,7 @@ export function Play({ files }: { files: FileSource }) {
   const [browserError, setBrowserError] = useState<string | null>(null);
   const [trayQuiet, setTrayQuiet] = useState(false);
   const [pmOpen, setPmOpen] = useState(false);
-  const [chatTyping, setChatTyping] = useState(false);
+  const [chatTyping, setChatTyping] = useState<Target | null>(null);
   const gameId = sourceStorage(files);
   const [thaiFontFix] = useState(() => readThaiFontPreference(gameId));
   const [fullscreenPreference] = useState<FullscreenPreference>(() =>
@@ -144,7 +166,44 @@ export function Play({ files }: { files: FileSource }) {
   const openLink = useGameState((s) => s.openLink);
   const mapSearchStatus = useGameState((s) => s.mapSearchStatus);
   const chatField = useGameState((s) => s.chatField);
+  const playerPick = useGameState((s) => s.playerPick);
+  /** the lobby player menu, where it opens in the stage */
+  const [playerMenu, setPlayerMenu] = useState<{ name: string; left: number; top: number } | null>(
+    null,
+  );
+  /** what the MESSAGES panel should open on (the player menu's Message and Profile) */
+  const [pmFocus, setPmFocus] = useState<{
+    seq: number;
+    name?: string;
+    profile?: boolean;
+    tab?: "messages" | "friends";
+  } | null>(null);
   const matchChat = useGameState((s) => s.matchChat);
+  const replyTo = useReplyTo(presenter ? handle.current?.pm : undefined);
+  // a line for this player only: the game's chat log (a NOTICE from the page), or with no WOL
+  // connection (a LAN match) the match panel's own log
+  const chatHint = useCallback((text: string) => {
+    if (handle.current?.notice(text)) return;
+    gameStore.apply({ e: "matchMessage", text, scheme: -1, style: 0 });
+  }, []);
+  // the game's chat keys (Enter, Backspace, \) open the panel's line to the target they chose
+  // Enter opens to the target last used in this match (everyone at first); a new match forgets it
+  const [chatTarget, setChatTarget] = useState<Target>(Target.all);
+  const chatTargetRef = useRef<Target>(Target.all);
+  const rememberTarget = useCallback((target: Target) => {
+    chatTargetRef.current = target;
+    setChatTarget(target);
+  }, []);
+  useEffect(() => {
+    if (matchChat.ready) rememberTarget(Target.all);
+  }, [matchChat.ready, rememberTarget]);
+  const chatOpen = matchChat.open;
+  useEffect(() => {
+    if (!chatOpen) return;
+    const target = resolveTarget(chatOpen.to, chatTargetRef.current);
+    rememberTarget(target);
+    setChatTyping(target);
+  }, [chatOpen, rememberTarget]);
   // The game's Ladder and Clan buttons open the launcher's own page in a new tab; the game keeps
   // running. A browser that blocks the tab leaves the dialog, whose Open goes to the same page.
   const [blockedLauncherLink, setBlockedLauncherLink] = useState<number | null>(null);
@@ -260,6 +319,53 @@ export function Play({ files }: { files: FileSource }) {
   useEffect(() => {
     if (trayQuiet && pmOpen) canvas.current?.focus();
   }, [trayQuiet, pmOpen]);
+
+  // MESSAGES on one player: their conversation, or their profile (the player menu)
+  const openPmOn = (name: string, profile: boolean) => {
+    setPmFocus((last) => ({ seq: (last?.seq ?? 0) + 1, name, profile }));
+    if (!pmOpen) togglePm();
+  };
+  const closePlayerMenu = useCallback(() => setPlayerMenu(null), []);
+  const openFriends = () => {
+    setPmFocus((last) => ({ seq: (last?.seq ?? 0) + 1, tab: "friends" }));
+    if (!pmOpen) togglePm();
+  };
+  // JOIN (a friend's game, an invitation): the lobby's own Join, through the game
+  const joinRoom = (room: string) => {
+    if (pmOpen) togglePm();
+    handle.current?.exports.ra2_join_room?.(room);
+  };
+  const joinAsked = useGameState((s) => s.joinRoom);
+  useEffect(() => {
+    if (!joinAsked || joinAsked.ok) return;
+    chatHint(
+      joinAsked.reason === "not in the lobby"
+        ? `To join ${joinAsked.room}, go to the Custom Match lobby first.`
+        : `${joinAsked.room} is not in the games list: it may have started or closed.`,
+    );
+  }, [joinAsked, chatHint]);
+  const lastInvite = useLastInvite(presenter ? handle.current?.pm : undefined);
+  useEffect(() => {
+    if (lastInvite)
+      chatHint(
+        `${lastInvite.from} invites you to their game ${lastInvite.room}. Open MESSAGES to join.`,
+      );
+  }, [lastInvite, chatHint]);
+  // a right-click on a lobby player: the menu opens where the click was
+  useEffect(() => {
+    if (!playerPick?.name || !presenter) return;
+    const stageRect = stage.current?.getBoundingClientRect();
+    const canvasRect = canvas.current?.getBoundingClientRect();
+    const game = presenter.gameSize();
+    if (!stageRect || !canvasRect || game.width <= 0 || game.height <= 0) return;
+    const at = chatBoxPlace(canvasRect, stageRect, presenter.pictureRect(), game, {
+      x: playerPick.x,
+      y: playerPick.y,
+      w: 0,
+      h: 0,
+    });
+    setPlayerMenu({ name: playerPick.name, left: at.left, top: at.top });
+  }, [playerPick, presenter]);
 
   const toggleFullscreen = () => {
     void (
@@ -540,6 +646,11 @@ export function Play({ files }: { files: FileSource }) {
               !gameStore.getSnapshot().exitConfirmation &&
               !gameStore.getSnapshot().saveReferencePrompt &&
               !gameStore.getSnapshot().openLink,
+            // a right-click on a chat screen: the game says whose name is there (playerPick)
+            onSecondaryDown: (point) => {
+              if (gameStore.getSnapshot().chatField.open)
+                game.exports.ra2_player_pick?.(point.x, point.y);
+            },
             shortcut: (event) => {
               if (event.code === "F11" || (event.code === "Enter" && event.altKey)) {
                 if (!event.repeat)
@@ -548,18 +659,6 @@ export function Play({ files }: { files: FileSource }) {
                       ? leaveFullscreen()
                       : enterFullscreen(document.documentElement)
                   ).catch((e: unknown) => setBrowserError(String(e)));
-                return true;
-              }
-              // Enter in a LAN or online match opens the page's chat line instead of the game's
-              if (
-                event.code === "Enter" &&
-                !event.altKey &&
-                !event.ctrlKey &&
-                !event.repeat &&
-                gameStore.getSnapshot().matchChat.ready &&
-                game.exports.ra2_match_chat_send
-              ) {
-                setChatTyping(true);
                 return true;
               }
               if (event.code === "F12" && !event.ctrlKey) {
@@ -790,6 +889,8 @@ export function Play({ files }: { files: FileSource }) {
       />
       <ChatBox
         field={chatField}
+        replyTo={replyTo}
+        onHint={chatHint}
         presenter={presenter}
         stage={stage}
         canvas={canvas}
@@ -799,13 +900,53 @@ export function Play({ files }: { files: FileSource }) {
             : null
         }
       />
-      {presenter && (trayQuiet || chatTyping) && (
+      {playerMenu && (
+        <PlayerMenu
+          name={playerMenu.name}
+          left={playerMenu.left}
+          top={playerMenu.top}
+          self={
+            playerMenu.name.toLowerCase() ===
+            (handle.current?.pm.getSnapshot().nick ?? "").toLowerCase()
+          }
+          onAddFriend={() =>
+            void addFriendFor(handle.current?.pm.getSnapshot().nick ?? null, playerMenu.name).then(
+              chatHint,
+            )
+          }
+          onMessage={() => openPmOn(playerMenu.name, false)}
+          onProfile={() => openPmOn(playerMenu.name, true)}
+          onClose={closePlayerMenu}
+        />
+      )}
+      {/* the game's Page and Buddy List buttons open the panel's FRIENDS, not the game's old screens */}
+      <PageButton
+        rect={{ x: chatField.px, y: chatField.py, w: chatField.pw, h: chatField.ph }}
+        label="Page (opens friends)"
+        presenter={presenter}
+        stage={stage}
+        canvas={canvas}
+        onOpen={openFriends}
+      />
+      <PageButton
+        rect={{ x: chatField.bx, y: chatField.by, w: chatField.bw, h: chatField.bh }}
+        label="Buddy List (opens friends)"
+        presenter={presenter}
+        stage={stage}
+        canvas={canvas}
+        onOpen={openFriends}
+      />
+      {presenter && (trayQuiet || chatTyping !== null) && (
         <MatchChat
           chat={matchChat}
           typing={chatTyping}
+          remembered={chatTarget}
+          replyTo={replyTo}
+          onHint={chatHint}
+          onTarget={rememberTarget}
           onTyping={(typing) => {
             setChatTyping(typing);
-            if (!typing) canvas.current?.focus();
+            if (typing === null) canvas.current?.focus();
           }}
           thai={thaiFontFix.enabled}
           presenter={presenter}
@@ -883,7 +1024,13 @@ export function Play({ files }: { files: FileSource }) {
         </button>
       </GameTray>
       {pmOpen && !trayQuiet && presenter && handle.current && (
-        <PmPanel pm={handle.current.pm} onClose={togglePm} />
+        <PmPanel
+          pm={handle.current.pm}
+          onClose={togglePm}
+          sku={LADDER_SKU[sourceGame(files)]}
+          focus={pmFocus}
+          onJoin={joinRoom}
+        />
       )}
       {browseFiles && liveFiles && (
         <FileExplorer source={liveFiles} onClose={() => setBrowseFiles(false)} />

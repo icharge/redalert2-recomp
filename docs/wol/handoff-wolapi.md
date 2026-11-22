@@ -813,6 +813,32 @@ a types `/r back`: a's socket sends `privmsg zb90560 :back`, b receives it, and 
 `00:31 [za90560 > zb90560] back`. Selftest: `wolapi_selftest.c` (the buffer filled by a player's private line, not
 by a `NOTICE` or `PAGE`; slot 62 sends one line to the first name with a garbage `next`; ordinal 24 from the pump).
 
+- **`/msg`, `/m`, `/pm` and `/p`** are the page's short forms of `/page`: the lobby chat box and the
+  match panel write `/msg <name> <text>` out as `/page <name> <text>` before the game reads it
+  (`web/src/game/chat-commands.ts`).
+- **`/r` and `/reply` from the page's boxes** become `/page <the last player who whispered> <text>`.
+  The MESSAGES store (`pm.ts`, `lastFrom`) knows that player from every private `PRIVMSG` to this
+  player, so the reply does not depend on the game's reply name. With nobody yet, nothing is sent and
+  the box keeps the line. "No one has messaged you yet. Use /pm name message." appears as a yellow line
+  in the game's chat log, for this player only: `GameHandle.notice` hands the game a local `NOTICE`
+  from "YuriNET" through `ra2WolReceiveLine`, with colour code 08. With no WOL connection (a LAN
+  match) the line goes into the match panel's own log. `pm.ts` now counts operators (YuriBOT) only from a lobby's NAMES (`#Lob_…`). A game
+  room's operator is a player, and that player's whispers were being left out of MESSAGES and of `/r`.
+- **The bot is never `/r`'s target.** `pm.ts` counts as the bot the name `YuriBOT` (the server's
+  default `LOBBY_BOT_NICK`) and every lobby operator seen this session, so a match room that lacks the
+  bot still knows it. A welcome whisper can arrive before the lobby's NAMES shows its sender is the
+  operator; when the NAMES comes, its conversation is dropped and it stops being `lastFrom`.
+  The game itself knows only `/page`.
+- **In a match** (later, 22 November):
+  - A private `PRIVMSG` went to the private-message event (38). In a match that event has no chat list
+    to write into, so whispers sent with `/page` or `/r` to a player in a match were lost. While
+    `ra2_wolapi_match_active()` holds, `receive_chat` hands them to the page sink (41) instead, which
+    draws an in-match row, "(sender) text". The wire line stays a `PRIVMSG`, so MESSAGES counts it.
+  - The reply name skipped any channel operator, to keep YuriBOT from taking `/r`. In a matchbot game
+    room the operator is a player, so `/r` in a match had nobody to answer. The operator rule now applies
+    only outside a match; there YuriBOT only pages and notices, and those never set the reply name.
+  - Tested: `quickmatch.mjs --row 11` (A sends `/p` to B from the panel, B answers `/r`) in both games.
+
 ## The MESSAGES panel and buddies (LB-14, LB-15, 22 November)
 
 **MESSAGES panel (web only).** `web/src/game/pm.ts` (`PmStore`) keeps a conversation per player for the page;
@@ -848,6 +874,54 @@ the panel and b gets it; `/on <b>` prints `mb66709 is in channel Lob_41_0.`; YR'
 `Online/Available`. The FRIENDS page in the launcher lists a friend, refuses a second add ("already a
 friend"). Gaps: the dialog's Join for a buddy in a game room (room names longer than 16 characters are cut in
 the shim's channel record) and Page Buddy were not driven.
+
+- **FRIENDS and profiles in the MESSAGES panel** (later, 22 November). The panel has two tabs, MESSAGES
+  and FRIENDS. The same panel opens from the star tray, YR's Page button and RA2's Buddy List.
+  - FRIENDS (`components/FriendsTab.tsx`) is the friends list of the name being played; for a member
+    with several names, the one matching the WOL nick. It is the same list as the launcher's FRIENDS
+    page and YR's Buddy List, through `/v1/friends` with the launcher's session (the `ra2refresh`
+    cookie). Each row has an Add box above it, the friend's status and room, and MESSAGE (opens the
+    conversation), PROFILE and remove. A guest gets a note that friends are for members.
+  - PROFILE (`components/PlayerProfile.tsx`) is the player's `/players` ladder profile for the game
+    being played (`LADDER_SKU`). It reuses the LADDER page's insignia, stats and last-ten blocks, and
+    shows over either tab until BACK. A conversation has a PROFILE button for its player too.
+  - Tested: Vitest (`FriendsTab.test.tsx`, `PmPanel.test.tsx`). `e2e/buddies-pm.mjs` hands the browser
+    member A's session cookie (`startPage`'s new `cookies` option); A's FRIENDS tab then lists B "In the
+    lobby" and opens B's profile (shots `friends-a`, `profile-a`).
+- **Right-click a player in the lobby** (later, 22 November): a menu with Add friend, Message and
+  Profile. Only the player's own name gets Profile alone.
+  - The page's right-button press (`input.ts` `onSecondaryDown`, outside Pointer Lock, on a chat
+    screen) calls `ra2_player_pick(x, y)` through the input ring. On the game's thread,
+    `web_chat_box_pick` (`chat_box.c`) finds the row of the lobby's player list (`0x53E`) under the
+    point.
+  - The list is owner-drawn and keeps no text: a row's data is the index of the user in the roster the
+    shim gave the game, so `ra2_wolapi_user_name(index)` gives the name. The answer is a `playerPick`
+    event, and the game still gets the right-click.
+  - Add friend calls `/v1/friends` like the FRIENDS tab, and tells the result as a chat-log line for
+    this player only. Message and Profile open the MESSAGES panel on that player.
+  - Tested: `e2e/buddies-pm.mjs` in both games. B right-clicks A, Add friend makes A B's friend (the
+    server agrees), and Profile opens (shot `player-menu-b`).
+- **Join a friend's game, and invitations** (later, 22 November).
+  - **JOIN** (FRIENDS tab, for a friend in a game room; and an invitation's JOIN) calls
+    `ra2_join_room(room)` through the input ring. On the lobby screen (`0x113`), `chat_box.c` finds the
+    room's row in the games list (`0x6EE`). That list is owner-drawn like the player list: a row's data
+    is the channel's index in the shim's list, so `ra2_wolapi_channel_name` names it. Names compare
+    without case, a leading `#`, spaces against underscores, and the shim's 16-character cut. It then
+    selects the row (`LB_SETCURSEL` and `LBN_SELCHANGE`) and posts the Join button's `WM_COMMAND`
+    (`0x62D`). The game then does its own Join: password, room full and so on.
+    - The page hears the outcome as a `joinRoom` event. "not in the lobby" or "not listed" becomes a
+      chat-log line: go to the Custom Match lobby first, or the room may have started or closed.
+  - **INVITE** (FRIENDS tab, while in a game room, for a friend who is online and not in it). `pm.ts`
+    knows the room from the player's own `JOINGAME`, `JOIN` and `PART` lines (not lobbies), and sends
+    `privmsg <friend> :INVITE <room>`.
+    - On the invited side, `wolapi.c`'s `receive_chat` drops that line, so neither the game's chat nor
+      `/r` sees it. `pm.ts` adds it to the conversation as "invites you to their game ROOM" with a JOIN
+      button, and Play adds a chat-log line "A invites you to their game ROOM. Open MESSAGES to join."
+  - Tested: `e2e/invite-join.mjs` in both games. A creates a room and invites B from FRIENDS. B gets
+    the chat-log line, B's FRIENDS offers JOIN for A, and B's invitation JOIN joins A's room (shots
+    `invitation-b`, `joined-b`).
+  - Not done: a running match cannot be joined (the game's rule). The right-click menu has no
+    Invite: a player in a room sees no lobby list to right-click.
 
 ## Ladder and high-score records, rank in the lobby, the welcome's stats (21 November)
 

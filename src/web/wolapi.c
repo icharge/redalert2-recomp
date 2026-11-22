@@ -83,6 +83,16 @@ static wol_user g_users[32];
 static int32_t g_user_ping[32];
 static wol_user g_locale_user;
 static uint32_t g_channel_count, g_user_count, g_channel_type = WOL_LOBBY_TYPE;
+/* The name of the channel's user at `index` in the list the game was given (its player list keeps
+ * that index as each row's data, chat_box.c), or NULL. */
+const char *ra2_wolapi_user_name(uint32_t index) {
+    return index < g_user_count && g_users[index].name[0] ? g_users[index].name : NULL;
+}
+/* The name (no '#') of the channel at `index` in the list the game was given (its games list keeps
+ * that index as each row's data, chat_box.c), or NULL. */
+const char *ra2_wolapi_channel_name(uint32_t index) {
+    return index < g_channel_count && g_channels[index].name[0] ? g_channels[index].name : NULL;
+}
 /* The game publishes its map slot count in GAMEOPT, separately from the room
  * limit it later sends with MODE +l. Keep both so the lobby and server use the
  * smaller, actually playable capacity. */
@@ -1087,6 +1097,9 @@ static void receive_chat(const char *line) {
     const char *text = strstr(line, " :");
     if (!text) return;
     int colour = irc_colour(text + 2, &text); /* text: what follows " :" and any colour code */
+    /* An invitation to a game room ("\x01INVITE <room>\x01", from the page's FRIENDS tab) is for the
+     * invited player's page (pm.ts shows it with a JOIN button), not for the game's chat. */
+    if (!public && !strncmp(text, "\x01INVITE ", 8)) return;
     wol_user user = { 0 };
     copy_text(user.name, sizeof user.name, sender);
     for (uint32_t i = 0; i < g_user_count; i++)
@@ -1096,7 +1109,13 @@ static void receive_chat(const char *line) {
      * name in a 16-byte buffer (YR 0x00B77E30, RA2 0x00B2AC48) that only its ANSI page sink fills,
      * so a private PRIVMSG fills it here. Not from an operator (the bot: its replies and pages would
      * take /r away from the player) nor from a NOTICE (docs/wol/handoff-wolapi.md, "/r and /reply"). */
-    if (!public && !page && !(user.flags & 1u)) copy_text((char *)(uintptr_t)WOL_REPLY_TARGET, 16, sender);
+    /* In a match the operator is a player (the room's), not the bot, which only pages and notices there. */
+    if (!public && !page && (!(user.flags & 1u) || ra2_wolapi_match_active()))
+        copy_text((char *)(uintptr_t)WOL_REPLY_TARGET, 16, sender);
+    /* In a match the private-message event (38) has no chat list to write into and the line is lost;
+     * the page sink (41) draws it as an in-match row, "(sender) text". So a whisper (/page, /r) to a
+     * player in a match is shown as a page; the wire line stays a PRIVMSG (the page's MESSAGES counts it). */
+    if (!public && !page && ra2_wolapi_match_active()) page = 1;
     uint16_t wide[WOL_LINE_CAP];
     MAIN_THREAD_EM_ASM({
         var text = UTF8ToString($0);

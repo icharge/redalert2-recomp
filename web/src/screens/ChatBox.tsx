@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import type { GamePresenter, PictureRect } from "../game/presenter";
 import type { ChatField } from "../game/store";
+import { NO_REPLY_HINT, expandChatCommand, replyWithoutTarget } from "../game/chat-commands";
 import styles from "./ChatBox.module.css";
 
 interface Place {
@@ -47,12 +48,18 @@ export function ChatBox({
   stage,
   canvas,
   send,
+  replyTo = null,
+  onHint,
 }: {
   field: ChatField;
   presenter: Pick<GamePresenter, "pictureRect" | "gameSize"> | null;
   stage: RefObject<HTMLDivElement | null>;
   canvas: RefObject<HTMLCanvasElement | null>;
   send: ((text: string) => void) | null;
+  /** the last player who whispered: where /r goes (PmStore's lastFrom) */
+  replyTo?: string | null;
+  /** a line for the player only (the game's chat log): /r with nobody to answer */
+  onHint?: (text: string) => void;
 }) {
   const [place, setPlace] = useState<Place | null>(null);
   const [text, setText] = useState("");
@@ -91,35 +98,43 @@ export function ChatBox({
   if (!showing || !place) return null;
   const fontSize = Math.max(12, Math.min(20, Math.round(place.height * 0.8)));
   return (
-    <input
-      data-game-text
-      className={styles.box}
-      style={{ ...place, fontSize }}
-      aria-label="Chat message"
-      placeholder="Type a message, Enter to send"
-      value={text}
-      maxLength={CHAT_MAX_LENGTH}
-      autoComplete="off"
-      autoCapitalize="off"
-      spellCheck={false}
-      enterKeyHint="send"
-      onChange={(event) => setText(event.target.value)}
-      onCompositionStart={() => (composing.current = true)}
-      onCompositionEnd={() => (composing.current = false)}
-      onKeyDown={(event) => {
-        // Enter confirms an IME candidate first; only a plain Enter sends.
-        if (composing.current || event.nativeEvent.isComposing || event.keyCode === 229) return;
-        if (event.key === "Enter") {
-          event.preventDefault();
-          const line = text.trim();
-          if (line) send?.(line);
-          setText("");
-        } else if (event.key === "Escape") {
-          event.preventDefault();
-          event.currentTarget.blur();
-          canvas.current?.focus();
-        }
-      }}
-    />
+    <>
+      <input
+        data-game-text
+        className={styles.box}
+        style={{ ...place, fontSize }}
+        aria-label="Chat message"
+        placeholder="Type a message, Enter to send"
+        value={text}
+        maxLength={CHAT_MAX_LENGTH}
+        autoComplete="off"
+        autoCapitalize="off"
+        spellCheck={false}
+        enterKeyHint="send"
+        onChange={(event) => {
+          setText(event.target.value);
+        }}
+        onCompositionStart={() => (composing.current = true)}
+        onCompositionEnd={() => (composing.current = false)}
+        onKeyDown={(event) => {
+          // Enter confirms an IME candidate first; only a plain Enter sends.
+          if (composing.current || event.nativeEvent.isComposing || event.keyCode === 229) return;
+          if (event.key === "Enter") {
+            event.preventDefault();
+            const line = text.trim();
+            if (replyWithoutTarget(line, replyTo)) {
+              onHint?.(NO_REPLY_HINT); // keep the line: the player can make it a /pm
+              return;
+            }
+            if (line) send?.(expandChatCommand(line, replyTo));
+            setText("");
+          } else if (event.key === "Escape") {
+            event.preventDefault();
+            event.currentTarget.blur();
+            canvas.current?.focus();
+          }
+        }}
+      />
+    </>
   );
 }

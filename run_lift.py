@@ -911,6 +911,16 @@ MATCH_CHAT_SITES = {
     'game': (0x004828A3, 0x005418F5, 0x005B4DA0, 0x00A3F640, 0x00A6EBE0,
              0x00540C6C, '8b5500', 0x00A3DDDC, 0x00A3D298, 0x00540FB3),
 }
+# The game's own chat keys open the page's line instead of its own: Enter (the players ticked under
+# Chat in Diplomacy), Backspace (allies) and \ (everyone) set the chat target, then the key is
+# consumed at `mov [ebp], edi` (bl is set when the line is a beacon's label instead, which stays the
+# game's). After it the host is told, the target is cleared and the pre-hook leaves by its own exit
+# (the one a frame without a key takes; nothing is left on the stack there).
+MATCH_CHAT_OPEN_SITES = {
+    # (the mov, its bytes, the pre-hook's exit)
+    'gamemd': (0x0055E57E, '897d00', 0x0055F1C8),
+    'game': (0x00540D7E, '897d00', 0x005419C8),
+}
 
 
 def match_chat_patches(code, cs, target):
@@ -922,7 +932,19 @@ def match_chat_patches(code, cs, target):
             or not _call_matches(code, cs, echo, add) or code[add - cs:add - cs + len(entry)] != entry):
         print('[*] match_chat_patches: the match chat sites do not match this build; no chat panel')
         return {}
+    opener, opener_shape, leave = MATCH_CHAT_OPEN_SITES[target]
+    raw = bytes.fromhex(opener_shape)
+    opens = {}
+    if code[opener - cs:opener - cs + len(raw)] == raw:
+        opens[opener] = ('{ extern int web_match_chat_open(uint32_t, uint32_t); '
+                         'if (!LO8(ebx) && web_match_chat_open(MEM32(0x%08Xu), MEM32(0x%08Xu))) '
+                         '{ MEM32(0x%08Xu) = 0u; goto L_%08X; } } '
+                         '/* browser: the chat key opens the page line, run_lift.py match_chat_patches */'
+                         % (mode, chat_target, chat_target, leave))
+    else:
+        print('[*] match_chat_patches: the chat key site does not match this build; the game opens its own line')
     return {
+        **opens,
         # every row the game adds to its message list (mission text, defeats, pages): after the frame,
         # name, text, colour scheme and style are at [esp+0x150], +0x158, +0x15C and +0x160
         add: ('{ extern void web_match_message(uint32_t, uint32_t, uint32_t, uint32_t); '

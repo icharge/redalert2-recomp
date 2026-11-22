@@ -143,3 +143,15 @@ void web_match_message(uint32_t name, uint32_t text, uint32_t scheme, uint32_t s
              text_json, (int)scheme, style);
     web_event_json(event);
 }
+
+/* The pre-hook, after one of the game's chat keys set the chat target (1 the players ticked under
+ * Chat in Diplomacy, 2 allies, 3 everyone): in a LAN or online match where the page's panel listens,
+ * the panel opens its line to that target and the game opens none (1); otherwise 0, and the game
+ * opens its own line. */
+int web_match_chat_open(uint32_t mode, uint32_t target) {
+    if ((mode != 3u && mode != 4u) || !g_told_ready || target < 1u || target > 3u) return 0;
+    char event[48];
+    snprintf(event, sizeof event, "{\"e\":\"matchChatOpen\",\"to\":%u}", target);
+    web_event_json(event);
+    return 1;
+}

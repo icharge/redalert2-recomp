@@ -48,8 +48,24 @@ Changes since 0.2.1.
 - **MESSAGES**: a private-message panel beside the game, opened from the star
   tray, with a conversation per player and an unread count. Whispers and `/r`
   typed in the game show there too.
+- **FRIENDS and profiles in the game**: the MESSAGES panel has a FRIENDS tab.
+  Add a friend by game name, see where each friend is, and message them,
+  remove them or open their profile (rating, rank, wins and losses, last ten
+  matches). A conversation has a PROFILE button too. Members only; it is the
+  same list as the launcher's FRIENDS page.
+- **Right-click a player** in the lobby's player list: Add friend, Message or
+  Profile.
+- **Join a friend's game and invite friends**: in FRIENDS, JOIN takes you
+  into the game room a friend is in, and while you are in a room INVITE asks a
+  friend into it. The friend sees the invitation in their chat and in MESSAGES
+  with a JOIN button.
 - **`/r` and `/reply`** answer the last player who wrote to you privately, in
-  the lobby, a game room or a match.
+  the lobby, a game room or a match: `/r text` is a private message to them.
+  With nobody to answer yet, a line in the chat log (only you see it) says to
+  use `/pm name message`.
+- **`/msg`, `/m`, `/pm` and `/p`** send a private message in the lobby's
+  chat box and in the match panel: `/msg name hello` whispers to that player,
+  as the game's `/page` does.
 - **Chat times**: every lobby and game-room chat line starts with your local
   time, with a date row when the day changes. Settings > Launcher > ONLINE >
   Chat times turns it off.
@@ -60,15 +76,20 @@ Changes since 0.2.1.
 - **A chat box for typing in the lobby**: the lobby, the game rooms and the
   Page dialogs get a real text box over the game's chat line, so a phone's
   keyboard and an input method (Thai and other languages) type into
-  something you can see. Enter sends it as the game's own chat, commands
-  included. It replaces the TYPE button of the star tray. The game draws Thai;
+  something you can see. It is see-through, with the game's yellow text.
+  Enter sends it as the game's own chat, commands included. It replaces the
+  TYPE button of the star tray. The lobby's Buddy List button opens the
+  page's FRIENDS instead of the game's old Buddy List, and so does Yuri's
+  Revenge's Page button in game rooms (the lobby's Page button is gone). The game draws Thai;
   other scripts show as "?".
 - **Match messages and chat**: a panel at the bottom left of every match
   keeps a log of the game's messages (mission text, defeats, YuriBOT's
   announcements), each line with its time (Settings > Launcher > ONLINE >
   Chat times). In a LAN or online match it is also the chat: each player's
-  lines in their colour, Enter opens the line to type into, Tab switches
-  between all and allies, Enter sends and Escape closes. Lines fade after a
+  lines in their colour, and the game's own chat keys open the line to type
+  into: Backspace to allies, \ to everyone, and Enter to whoever you last
+  chatted to in this match (everyone at first). Tab switches between all and
+  allies, Enter sends and Escape closes. Lines fade after a
   while; pointing at the panel with the game's cursor shows the whole
   history, and clicking its tab keeps it open.
 
@@ -89,6 +110,10 @@ Changes since 0.2.1.
   understood, instead of being rejected as unknown. (cd1a95e9)
 - Red Alert 2: chat in a Quick Match reaches the other player. Each game
   dropped the other's lines, as Yuri's Revenge did before 0.3.0.
+- Whispers in a match (`/msg`, `/page`, `/r`) reach the other player and show
+  as a row, and `/r` answers a player in a match. Before, the line was lost.
+- MESSAGES shows whispers from the player who made a game room. They were
+  left out as if they came from YuriBOT.
 - In-match chat with three or more players no longer loses lines at random.
   The fix for the game name wrote 4 bytes past the name, into the packet
   the game was handling.

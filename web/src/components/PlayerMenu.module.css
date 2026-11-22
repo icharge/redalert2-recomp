@@ -1,0 +1,38 @@
+/* The lobby player menu (PlayerMenu.tsx), in the MESSAGES panel's look. */
+.menu {
+  position: absolute;
+  z-index: 6;
+  min-width: 150px;
+  padding: 4px 0;
+  border: 1px solid #3a2023;
+  border-top: 3px solid var(--red);
+  background: rgba(12, 13, 16, 0.97);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 14px;
+}
+
+.name {
+  padding: 4px 12px 6px;
+  border-bottom: 1px solid var(--line);
+  color: var(--amber);
+  font-weight: 700;
+}
+
+.item {
+  display: block;
+  width: 100%;
+  padding: 6px 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.item:hover,
+.item:focus-visible {
+  background: rgba(211, 38, 43, 0.25);
+  outline: none;
+}

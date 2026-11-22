@@ -133,6 +133,9 @@ export function autoLockPointer(canvas: HTMLCanvasElement) {
   };
   const onEscape = (event: KeyboardEvent) => {
     if (event.code !== "Escape" && event.key !== "Escape") return;
+    // Escape in the page's chat boxes (data-game-text) closes the box, not the capture: the match
+    // goes on under the game's cursor. (Outside fullscreen the browser still lets go itself.)
+    if (event.target instanceof Element && event.target.closest("[data-game-text]")) return;
     escaped = true;
     release(); // Do not consume the key: the game still needs to open its pause menu.
   };

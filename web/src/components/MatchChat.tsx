@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import type { GamePresenter, PictureRect } from "../game/presenter";
+import { NO_REPLY_HINT, expandChatCommand, replyWithoutTarget } from "../game/chat-commands";
 import type { MatchChat as MatchChatState, MatchChatLine } from "../game/store";
 import { readChatTimePreference } from "../storage/chat-time-preferences";
 import styles from "./MatchChat.module.css";
@@ -9,8 +10,11 @@ export const MATCH_CHAT_MAX_LENGTH = 97;
 /** How long a line stays on the battlefield while the panel is not in use. */
 export const MATCH_CHAT_FADE_MS = 20_000;
 
-/** Who a line goes to: the game's chat targets. */
-export const Target = { allies: 2, all: 3 } as const;
+/**
+ * Who a line goes to: the game's chat targets. Its keys pick them: Enter the players ticked under
+ * Chat in Diplomacy (everyone at first), Backspace allies, \ everyone.
+ */
+export const Target = { chat: 1, allies: 2, all: 3 } as const;
 export type Target = (typeof Target)[keyof typeof Target];
 
 /**
@@ -96,7 +100,20 @@ function useAnchor(
 }
 
 function targetLabel(target: Target): string {
-  return target === Target.allies ? "Allies" : "All";
+  return target === Target.allies ? "Allies" : target === Target.all ? "All" : "Chat";
+}
+
+/** Tab switches between everyone and allies. */
+function nextTarget(target: Target): Target {
+  return target === Target.all ? Target.allies : Target.all;
+}
+
+/**
+ * Where a line the game's key asked for goes: Enter (the game's "Chat" target) opens to the one the
+ * player used last in this match, everyone at first; Backspace and \ open to allies and to everyone.
+ */
+export function resolveTarget(requested: number, remembered: Target): Target {
+  return requested === Target.allies || requested === Target.all ? requested : remembered;
 }
 
 /** The local time of a line, as the lobby's chat shows it: "14:05". */
@@ -141,6 +158,10 @@ export function MatchChat({
   chat,
   typing,
   onTyping,
+  remembered = Target.all,
+  onTarget,
+  replyTo = null,
+  onHint,
   thai,
   send,
   now = Date.now,
@@ -150,9 +171,17 @@ export function MatchChat({
   canvas,
 }: {
   chat: MatchChatState;
-  /** the line to type into is open */
-  typing: boolean;
-  onTyping: (typing: boolean) => void;
+  /** the line to type into is open, to that target (the key the game took: MatchChatOpen) */
+  typing: Target | null;
+  onTyping: (typing: Target | null) => void;
+  /** the target Enter opens to (the last one used in this match), shown on the prompt */
+  remembered?: Target;
+  /** the player switched the target (Tab, or the label) or sent a line to it */
+  onTarget?: (target: Target) => void;
+  /** the last player who whispered: where /r goes (PmStore's lastFrom) */
+  replyTo?: string | null;
+  /** a line for the player only (the chat log): /r with nobody to answer */
+  onHint?: (text: string) => void;
   thai: boolean;
   send: ((text: string, target: Target) => void) | null;
   now?: () => number;
@@ -165,7 +194,11 @@ export function MatchChat({
 }) {
   const anchor = useAnchor(presenter, stage, canvas);
   const [text, setText] = useState("");
-  const [target, setTarget] = useState<Target>(Target.all);
+  const [target, setTargetState] = useState<Target>(typing ?? remembered);
+  const setTarget = (next: Target) => {
+    setTargetState(next);
+    onTarget?.(next);
+  };
   const [hover, setHover] = useState(false);
   const [pinned, setPinned] = useState(false);
   const [, setTick] = useState(0);
@@ -173,12 +206,14 @@ export function MatchChat({
   const list = useRef<HTMLOListElement>(null);
   const panel = useRef<HTMLElement>(null);
   const composing = useRef(false);
-  const open = typing || hover || pinned;
+  const open = typing !== null || hover || pinned;
   // an open line stays open if the match's chat goes quiet a moment (what is typed is not lost)
-  const canSend = (chat.ready || typing) && !!send;
+  const canSend = (chat.ready || typing !== null) && !!send;
 
   useEffect(() => {
-    if (typing) input.current?.focus();
+    if (typing === null) return;
+    setTargetState(typing);
+    input.current?.focus();
   }, [typing]);
 
   // In a match the pointer is locked: the game's cursor over the panel stands for the pointer
@@ -208,7 +243,7 @@ export function MatchChat({
 
   const close = () => {
     setText("");
-    onTyping(false);
+    onTyping(null);
   };
 
   return (
@@ -238,14 +273,14 @@ export function MatchChat({
           {canSend ? "Chat" : "Messages"}
         </button>
         {canSend &&
-          (typing ? (
+          (typing !== null ? (
             <div className={styles.compose}>
               <button
                 type="button"
                 className={styles.target}
                 title="Tab switches between everyone and allies"
                 onMouseDown={(event) => event.preventDefault()}
-                onClick={() => setTarget((t) => (t === Target.all ? Target.allies : Target.all))}
+                onClick={() => setTarget(nextTarget(target))}
               >
                 [{targetLabel(target)}]
               </button>
@@ -270,21 +305,34 @@ export function MatchChat({
                   if (event.key === "Enter") {
                     event.preventDefault();
                     const line = text.trim();
-                    if (line) send?.(line, target);
+                    if (replyWithoutTarget(line, replyTo)) {
+                      onHint?.(NO_REPLY_HINT); // keep the line: the player can make it a /pm
+                      return;
+                    }
+                    if (line) {
+                      send?.(expandChatCommand(line, replyTo), target);
+                      onTarget?.(target);
+                    }
                     close();
                   } else if (event.key === "Escape") {
                     event.preventDefault();
                     close();
                   } else if (event.key === "Tab") {
                     event.preventDefault();
-                    setTarget((t) => (t === Target.all ? Target.allies : Target.all));
+                    setTarget(nextTarget(target));
                   }
                 }}
               />
             </div>
           ) : (
-            <button type="button" className={styles.prompt} onClick={() => onTyping(true)}>
-              <span className={styles.target}>[{targetLabel(target)}]</span> (press Enter to chat)
+            <button
+              type="button"
+              className={styles.prompt}
+              title="Enter: the last you used in this match. Backspace: Allies. \: All."
+              onClick={() => onTyping(remembered)}
+            >
+              <span className={styles.target}>[{targetLabel(remembered)}]</span> (press Enter to
+              chat)
             </button>
           ))}
       </div>

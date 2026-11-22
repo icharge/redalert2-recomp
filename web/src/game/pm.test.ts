@@ -36,6 +36,71 @@ describe("incoming lines", () => {
     expect(pm.getSnapshot().conversations.map((c) => c.nick)).toEqual(["Bob"]);
   });
 
+  it("remembers the last player who whispered, for /r", () => {
+    const { pm } = store();
+    expect(pm.getSnapshot().lastFrom).toBeNull();
+    pm.handleIncoming(":Bob!b@h PRIVMSG Me :hi");
+    pm.handleIncoming(":Ann!a@h PRIVMSG Me :hey");
+    expect(pm.getSnapshot().lastFrom).toBe("Ann");
+    pm.handleIncoming(":YuriBOT!bot@host PAGE Me :announcement");
+    expect(pm.getSnapshot().lastFrom).toBe("Ann");
+  });
+
+  it("never makes the bot the one /r answers", () => {
+    const { pm } = store();
+    // in a match room the bot is not listed, but its name is known
+    pm.handleIncoming(":YuriBOT!YuriBOT@local PRIVMSG Me :Type /help to see what I can do");
+    expect(pm.getSnapshot().lastFrom).toBeNull();
+    expect(pm.getSnapshot().conversations).toEqual([]);
+    // a bot of another name, whose welcome came before the lobby's NAMES showed it
+    pm.handleIncoming(":Ann!a@h PRIVMSG Me :hi");
+    pm.handleIncoming(":LobbyBot!b@local PRIVMSG Me :Welcome, Me!");
+    expect(pm.getSnapshot().lastFrom).toBe("LobbyBot");
+    pm.handleIncoming(":wol-ra2web 353 Me = #Lob_41_0 :@LobbyBot,0,0,0 Me,0,1,0");
+    expect(pm.getSnapshot().lastFrom).toBeNull();
+    expect(pm.getSnapshot().conversations.map((c) => c.nick)).toEqual(["Ann"]);
+    pm.handleIncoming(":LobbyBot!b@local PRIVMSG Me :later");
+    expect(pm.getSnapshot().lastFrom).toBeNull();
+  });
+
+  it("counts a game room's operator as a player: only a lobby's operator is the bot", () => {
+    const { pm } = store();
+    pm.handleIncoming(":wol-ra2web 353 Me = #Lob_41_0 :@YuriBOT,0,0,0 Me,0,1,0");
+    pm.handleIncoming(":wol-ra2web 353 Me = #qm_room_7 :@Ann,0,0,0 Me,0,1,0");
+    pm.handleIncoming(":Ann!a@h PRIVMSG Me :gl hf");
+    pm.handleIncoming(":YuriBOT!bot@host PRIVMSG Me :Welcome, Me!");
+    expect(pm.getSnapshot().conversations.map((c) => c.nick)).toEqual(["Ann"]);
+    expect(pm.getSnapshot().lastFrom).toBe("Ann");
+  });
+
+  it("knows the game room the player is in, from its own JOIN and PART", () => {
+    const { pm } = store();
+    pm.handleIncoming(":Me!u@h JOIN :#Lob_41_0");
+    expect(pm.getSnapshot().room).toBeNull();
+    pm.handleIncoming(":Me!u@h JOINGAME 1 8 41 0 0 0 0 :#Me's_game");
+    pm.handleIncoming(":Me!u@h PART #Lob_41_0");
+    expect(pm.getSnapshot().room).toBe("Me's_game");
+    pm.handleIncoming(":Ann!a@h JOIN :#Ann's_game");
+    expect(pm.getSnapshot().room).toBe("Me's_game");
+    pm.handleIncoming(":Me!u@h PART #Me's_game");
+    expect(pm.getSnapshot().room).toBeNull();
+  });
+
+  it("sends an invitation into the player's room, and takes one with its room", () => {
+    const { pm, sent } = store();
+    expect(pm.sendInvite("Ann")).toEqual({
+      ok: false,
+      reason: "Make or join a game room first, then invite.",
+    });
+    pm.handleIncoming(":Me!u@h JOIN :#Me's_game");
+    expect(pm.sendInvite("Ann")).toEqual({ ok: true });
+    expect(sent.at(-1)).toBe("privmsg Ann :\u0001INVITE Me's_game\u0001");
+    pm.handleIncoming(":Bob!b@h PRIVMSG Me :\u0001INVITE Bob's_game\u0001");
+    const bob = pm.getSnapshot().conversations.find((c) => c.nick === "Bob");
+    expect(bob?.messages.at(-1)).toMatchObject({ from: "them", invite: "Bob's_game" });
+    expect(pm.getSnapshot().lastInvite).toEqual({ seq: 1, from: "Bob", room: "Bob's_game" });
+  });
+
   it("takes Thai text", () => {
     const { pm } = store();
     pm.handleIncoming(":Bob!bob@host PRIVMSG Me :สวัสดี 😀");

@@ -41,7 +41,11 @@ type Load =
  * good one keeps the list on screen (`stale` says why it is old); an answer to an older read never
  * replaces a newer one.
  */
-function useFriends(client: FriendsClient, who: string | null, passAccount: string | undefined) {
+export function useFriends(
+  client: FriendsClient,
+  who: string | null,
+  passAccount: string | undefined,
+) {
   const [load, setLoad] = useState<{ key: string; value: Load } | null>(null);
   const latest = useRef(0);
   const key = who ?? "";
@@ -101,7 +105,7 @@ const STATUS_TEXT: Record<FriendStatus, string> = {
   hidden: "Hidden",
 };
 
-function StatusCell({ friend }: { friend: Friend }) {
+export function StatusCell({ friend }: { friend: Friend }) {
   // a status this launcher does not know is shown as offline rather than as nothing
   const status: FriendStatus = friend.status in STATUS_TEXT ? friend.status : "offline";
   // A chat lobby's key ("#Lob 41 0") means nothing to a player; a game room's name does.

@@ -9,6 +9,7 @@ import {
   lineTime,
   panelAnchor,
   playerColour,
+  resolveTarget,
 } from "./MatchChat";
 
 const line = (id: number, over: Partial<MatchChatLine> = {}): MatchChatLine => ({
@@ -44,6 +45,15 @@ describe("playerColour", () => {
   });
 });
 
+describe("resolveTarget", () => {
+  it("opens Enter to the remembered target, and Backspace and backslash to theirs", () => {
+    expect(resolveTarget(Target.chat, Target.all)).toBe(Target.all);
+    expect(resolveTarget(Target.chat, Target.allies)).toBe(Target.allies);
+    expect(resolveTarget(Target.allies, Target.all)).toBe(Target.allies);
+    expect(resolveTarget(Target.all, Target.allies)).toBe(Target.all);
+  });
+});
+
 describe("panelAnchor", () => {
   it("sits on the picture's bottom left corner, above the command bar", () => {
     // a 1280x748 picture at 1x at the top of a 1280x960 canvas that fills the stage
@@ -63,7 +73,7 @@ describe("MatchChat", () => {
     render(
       <MatchChat
         chat={{ ready: true, lines: [line(1), line(2, { name: "bob", colour: 2, text: "gg" })] }}
-        typing={false}
+        typing={null}
         onTyping={() => {}}
         thai={false}
         send={vi.fn()}
@@ -84,7 +94,7 @@ describe("MatchChat", () => {
     };
     const props = {
       chat,
-      typing: false,
+      typing: null,
       onTyping: () => {},
       thai: false,
       send: null,
@@ -101,7 +111,7 @@ describe("MatchChat", () => {
     render(
       <MatchChat
         chat={{ ready: false, lines: [line(1)] }}
-        typing={false}
+        typing={null}
         onTyping={() => {}}
         thai={false}
         send={vi.fn()}
@@ -111,36 +121,24 @@ describe("MatchChat", () => {
     expect(screen.queryByText("hello")).toBeNull();
   });
 
-  it("sends to everyone on Enter, to allies after Tab, and closes", () => {
+  it("opens to the target the game's key chose; Tab switches All and Allies and is remembered", () => {
     const send = vi.fn();
     const onTyping = vi.fn();
-    const { rerender } = render(
-      <MatchChat
-        chat={{ ready: true, lines: [] }}
-        typing
-        onTyping={onTyping}
-        thai={false}
-        send={send}
-      />,
-    );
+    const onTarget = vi.fn();
+    const props = { chat: { ready: true, lines: [] }, onTyping, onTarget, thai: false, send };
+    const { rerender } = render(<MatchChat {...props} typing={Target.all} />);
     let box = screen.getByRole("textbox", { name: "Message to all" });
     expect(box).toHaveFocus();
     fireEvent.change(box, { target: { value: " attack now " } });
     fireEvent.keyDown(box, { key: "Enter" });
     expect(send).toHaveBeenLastCalledWith("attack now", Target.all);
-    expect(onTyping).toHaveBeenLastCalledWith(false);
+    expect(onTarget).toHaveBeenLastCalledWith(Target.all);
+    expect(onTyping).toHaveBeenLastCalledWith(null);
 
-    rerender(
-      <MatchChat
-        chat={{ ready: true, lines: [] }}
-        typing
-        onTyping={onTyping}
-        thai={false}
-        send={send}
-      />,
-    );
+    rerender(<MatchChat {...props} typing={Target.all} />);
     box = screen.getByRole("textbox", { name: "Message to all" });
     fireEvent.keyDown(box, { key: "Tab" });
+    expect(onTarget).toHaveBeenLastCalledWith(Target.allies);
     box = screen.getByRole("textbox", { name: "Message to allies" });
     fireEvent.change(box, { target: { value: "help" } });
     fireEvent.compositionStart(box);
@@ -149,6 +147,46 @@ describe("MatchChat", () => {
     fireEvent.compositionEnd(box);
     fireEvent.keyDown(box, { key: "Enter" });
     expect(send).toHaveBeenLastCalledWith("help", Target.allies);
+    fireEvent.keyDown(box, { key: "Tab" });
+    expect(screen.getByRole("textbox", { name: "Message to all" })).toBeInTheDocument();
+  });
+
+  it("shows the remembered target on its prompt and opens to it, as Enter does", () => {
+    const onTyping = vi.fn();
+    render(
+      <MatchChat
+        chat={{ ready: true, lines: [] }}
+        typing={null}
+        onTyping={onTyping}
+        remembered={Target.allies}
+        thai={false}
+        send={vi.fn()}
+      />,
+    );
+    const prompt = screen.getByRole("button", { name: /press Enter to chat/ });
+    expect(prompt).toHaveTextContent("[Allies] (press Enter to chat)");
+    fireEvent.click(prompt);
+    expect(onTyping).toHaveBeenLastCalledWith(Target.allies);
+  });
+
+  it("answers /r to the last whisperer, or tells the player to use /pm", () => {
+    const send = vi.fn();
+    const onTyping = vi.fn();
+    const onHint = vi.fn();
+    const props = { chat: { ready: true, lines: [] }, onTyping, onHint, thai: false, send };
+    const { rerender } = render(<MatchChat {...props} typing={Target.all} />);
+    let box = screen.getByRole("textbox", { name: "Message to all" });
+    fireEvent.change(box, { target: { value: "/r gg" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(send).not.toHaveBeenCalled();
+    expect(onTyping).not.toHaveBeenCalled();
+    expect(onHint).toHaveBeenCalledWith(expect.stringContaining("No one has messaged you yet"));
+    expect(box).toHaveValue("/r gg");
+
+    rerender(<MatchChat {...props} typing={Target.all} replyTo="Ann" />);
+    box = screen.getByRole("textbox", { name: "Message to all" });
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(send).toHaveBeenCalledWith("/page Ann gg", Target.all);
   });
 
   it("closes on Escape without sending", () => {
@@ -157,7 +195,7 @@ describe("MatchChat", () => {
     render(
       <MatchChat
         chat={{ ready: true, lines: [] }}
-        typing
+        typing={Target.all}
         onTyping={onTyping}
         thai={false}
         send={send}
@@ -167,7 +205,7 @@ describe("MatchChat", () => {
     fireEvent.change(box, { target: { value: "nope" } });
     fireEvent.keyDown(box, { key: "Escape" });
     expect(send).not.toHaveBeenCalled();
-    expect(onTyping).toHaveBeenLastCalledWith(false);
+    expect(onTyping).toHaveBeenLastCalledWith(null);
   });
 
   it("shows the game's messages read-only outside a LAN or online match", () => {
@@ -177,7 +215,7 @@ describe("MatchChat", () => {
           ready: false,
           lines: [line(1, { system: true, name: "", text: "Mission objective: hold the base" })],
         }}
-        typing={false}
+        typing={null}
         onTyping={() => {}}
         thai={false}
         send={vi.fn()}
@@ -193,7 +231,7 @@ describe("MatchChat", () => {
     render(
       <MatchChat
         chat={{ ready: false, lines: [line(1, { system: true, name: "", text: "old row" })] }}
-        typing={false}
+        typing={null}
         onTyping={() => {}}
         thai={false}
         send={null}
@@ -214,7 +252,7 @@ describe("MatchChat", () => {
     const { container } = render(
       <MatchChat
         chat={{ ready: false, lines: [] }}
-        typing={false}
+        typing={null}
         onTyping={() => {}}
         thai={false}
         send={vi.fn()}
@@ -240,6 +278,8 @@ describe("GameStore match chat", () => {
       system: true,
       text: "Player defeated",
     });
+    store.apply({ e: "matchChatOpen", to: 2 });
+    expect(store.getSnapshot().matchChat.open).toEqual({ seq: 1, to: 2 });
     store.apply({ e: "matchChatReady", on: false });
     expect(store.getSnapshot().matchChat).toMatchObject({ ready: false });
     expect(store.getSnapshot().matchChat.lines).toHaveLength(3);

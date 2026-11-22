@@ -6,7 +6,8 @@
 //   - the page's TYPE button is gone, and the chat box shows over the game's chat line
 //   - a line with Thai typed into the box and Enter goes out as the game's own lobby line
 //     (`privmsg #Lob_NN_0 :...`; the game keeps Thai as Windows-874 bytes widened to U+00A1..)
-//   - `/r` style commands still reach the game: `/on <nick>` asks `find <nick>`
+//   - `/r` style commands still reach the game: `/on <nick>` asks `find <nick>`, and `/msg <nick> <text>`
+//     (the page's short /page) goes out as a private line
 // Shots: chat-box-lobby.
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
@@ -121,6 +122,39 @@ try {
   );
   console.log(`ok  the chat box shows over the game's line (${JSON.stringify(place)})`);
 
+  {
+    // YR's Page button and RA2's Buddy List open MESSAGES, not the game's old Page dialog
+    // the lobby's Buddy List opens FRIENDS; Yuri's Revenge's lobby Page button is hidden (its game
+    // rooms keep theirs)
+    const pageButton = run.page.getByRole("button", { name: "Buddy List (opens friends)" });
+    await pageButton.waitFor({ timeout: 10000 });
+    await run.shot("chat-box-lobby-buttons");
+    const dialogs = run.all.length;
+    await pageButton.click();
+    await run.page.locator('[aria-label="Private messages"]').waitFor({ timeout: 10000 });
+    assert.equal(
+      await run.page.getByRole("tab", { name: "FRIENDS" }).getAttribute("aria-selected"),
+      "true",
+      "the panel opened on FRIENDS",
+    );
+    await run.page.waitForTimeout(800);
+    assert.ok(
+      !run.all.slice(dialogs).some((l) => l.includes("[dialog] open 0x11B")),
+      "the game's Page dialog stayed shut",
+    );
+    assert.equal(
+      await run.page.getByRole("button", { name: "Page (opens friends)" }).count(),
+      0,
+      "the lobby has no Page button",
+    );
+    await run.shot("chat-box-page-button");
+    await run.page.getByRole("button", { name: "Close messages" }).click();
+    await run.page.waitForTimeout(500);
+    console.log(
+      `ok  the lobby's Buddy List opened FRIENDS (no game screen); no Page button in the lobby`,
+    );
+  }
+
   const line = `hello ${tag} สวัสดี`;
   let mark = wire.length;
   await box.click();
@@ -137,6 +171,31 @@ try {
   await box.press("Enter");
   await until("find", () => sent(mark, (l) => l.toLowerCase() === `find zz${tag}`));
   console.log("ok  a command typed in the box reaches the game (/on asks find)");
+
+  // /r with nobody to answer: nothing goes out; the game's chat log says to use /pm (a NOTICE the
+  // page hands the game for this player only), and the box keeps the line
+  mark = wire.length;
+  const logMark = run.all.length;
+  await box.fill(`/r anyone ${tag}`);
+  await box.press("Enter");
+  await until("the hint in the chat log", () =>
+    run.all.slice(logMark).some((l) => l.includes("[wol] notice from YuriNET")),
+  );
+  assert.equal(await box.inputValue(), `/r anyone ${tag}`, "the line stays in the box");
+  await run.page.waitForTimeout(1500);
+  assert.ok(!sent(mark, (l) => l.includes(`anyone ${tag}`)), "nothing went out");
+  await run.shot("chat-box-no-reply");
+  console.log("ok  /r with nobody to answer sent nothing; the chat log says to use /pm");
+  await box.fill("");
+
+  // /msg (also /m, /pm, /p) is the page's short form of the game's /page
+  mark = wire.length;
+  await box.fill(`/msg zz${tag} psst ${tag}`);
+  await box.press("Enter");
+  await until("the page", () =>
+    sent(mark, (l) => l.toLowerCase() === `privmsg zz${tag} :psst ${tag}`),
+  );
+  console.log("ok  /msg in the box went out as the game's /page (a private line)");
   await run.page.waitForTimeout(1500);
   await run.shot("chat-box-lobby");
   console.log(`PASS ${edition.toUpperCase()}`);

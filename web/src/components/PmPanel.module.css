@@ -246,3 +246,75 @@
     width: 110px;
   }
 }
+
+/* MESSAGES | FRIENDS in the head, in place of a title */
+.tabs {
+  display: flex;
+  flex: 1;
+  gap: 4px;
+}
+.tab {
+  padding: 2px 10px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font-display);
+  font-size: 17px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+.tab[aria-selected="true"] {
+  border-bottom-color: var(--red);
+  color: var(--text);
+}
+.tab:hover {
+  color: var(--text);
+}
+.tab:focus-visible,
+.back:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: -2px;
+}
+
+/* a friend's (or the conversation's) profile, over either tab */
+.profileView {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+.back {
+  align-self: flex-start;
+  margin: 8px 8px 0;
+  padding: 2px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--amber);
+  font-family: var(--font-label);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+/* the conversation's player, with PROFILE */
+.with {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px 6px 12px;
+  border-bottom: 1px solid var(--line);
+  font-weight: 700;
+}
+.with .small {
+  padding: 3px 8px;
+  font-size: 12px;
+}
+
+/* an invitation line's JOIN */
+.text .small {
+  margin-left: 8px;
+  padding: 2px 8px;
+  font-size: 12px;
+}

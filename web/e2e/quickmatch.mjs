@@ -35,7 +35,8 @@
 //               lobbyBot.namelessAnnouncements is on for the row: a NOTICE, and the row shows the text alone.
 //   --row 11    the page's match chat panel (docs/web/match-chat.md), two guests in a match: A presses Enter,
 //               types a line (with Thai) and Enter; it shows in B's panel under A's name and in A's own
-//               panel; B answers to allies (Tab) and A answers B; an admin announcement shows as a game row
+//               panel; /p (as /page) and /r whisper from the panel; B answers with Backspace (allies: A does not get it) and with \ (all: A does);
+//               the game's own keys open the page's line to those targets; an admin announcement shows as a game row
 //               in both panels. Shots match-chat-a, match-chat-b.
 //
 // Options: --server http://127.0.0.1:9090, --server-log FILE (the server's stdout), --label NAME, --guests,
@@ -686,12 +687,15 @@ const untilAsync = async (run, what, test, ms = 60000) => {
   }
 };
 
-async function chatFrom(run, text, { allies = false } = {}) {
+/** The game's own chat key opens the page's line: Enter to Chat, Backspace to allies, \ to all. */
+/** Enter opens to the target last used in the match (everyone at first). */
+const CHAT_KEYS = { Enter: "all", Backspace: "allies", Backslash: "all" };
+
+async function chatFrom(run, text, key = "Enter", to = CHAT_KEYS[key]) {
   await run.page.locator("canvas").first().focus();
-  await run.page.keyboard.press("Enter");
-  const box = run.page.getByRole("textbox", { name: /^Message to / });
+  await run.page.keyboard.press(key);
+  const box = run.page.getByRole("textbox", { name: `Message to ${to}` });
   await box.waitFor({ timeout: 10000 });
-  if (allies) await box.press("Tab");
   await box.fill(text);
   await box.press("Enter");
   await box.waitFor({ state: "detached", timeout: 10000 });
@@ -722,14 +726,18 @@ async function rowChat() {
   await untilAsync(a, "A's own line in A's panel", () => panelHas(a, first), 20000);
   check("A's line went through the game to B, and A's panel shows it too");
   const second = `answer from B ${tag}`;
-  await chatFrom(b, second, { allies: true });
+  await chatFrom(b, second, "Backspace");
   await untilAsync(b, "B's own allies line", () => panelHas(b, `[Allies] ${b.nick}`), 20000);
   info(
     `B's allies line reached A: ${await panelHas(a, second)} (A is not B's ally, so false is right)`,
   );
   const third = `to all again ${tag}`;
-  await chatFrom(b, third, { allies: true }); // the panel kept Allies: Tab goes back to All
+  // B used Allies last: Enter now opens to allies (remembered for this match)
+  const remembered = `still allies ${tag}`;
+  await chatFrom(b, remembered, "Enter", "allies");
+  await chatFrom(b, third, "Backslash");
   await untilAsync(a, "B's line in A's panel", () => panelHas(a, third), 20000);
+  assert.ok(!(await panelHas(a, remembered)), "B's remembered allies line stays with B's allies");
   check("B sent to allies (A did not get it) and to everyone (A got it)");
   const text = (run) =>
     run.page
@@ -749,6 +757,14 @@ async function rowChat() {
     (await panelHas(b, second)) && (await panelHas(b, third)),
     "B's panel keeps B's own lines",
   );
+  // whispers from the panel: /p (the page's /page) and /r, the game's online commands in a match
+  const whisper = `psst ${tag}`;
+  await chatFrom(a, `/p ${b.nick} ${whisper}`);
+  await untilAsync(b, "A's /p in B's panel", () => panelHas(b, whisper), 20000);
+  const answer = `got it ${tag}`;
+  await chatFrom(b, `/r ${answer}`, "Backslash");
+  await untilAsync(a, "B's /r in A's panel", () => panelHas(a, answer), 20000);
+  check("A paged B from the panel with /p, and B answered with /r");
   // the game's own rows reach the panel too: YuriBOT's page, read-only
   const notice = `Panel announcement ${tag}`;
   info(`announce: ${JSON.stringify(await admin("POST", "/admin/announce", { text: notice }))}`);

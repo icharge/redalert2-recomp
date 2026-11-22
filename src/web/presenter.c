@@ -593,7 +593,9 @@ static void update_page_cursor(void) {
 
 /* ---- input: the page's side, then the game's ------------------------------- */
 
-enum { IN_MOVE, IN_DOWN, IN_UP, IN_KEYDOWN, IN_KEYUP, IN_CHAR, IN_QUIT, IN_FOCUS, IN_SETTING, IN_WHEEL, IN_CHAT, IN_MATCH_CHAT, IN_MATCH_CHAT_END };
+enum { IN_MOVE, IN_DOWN, IN_UP, IN_KEYDOWN, IN_KEYUP, IN_CHAR, IN_QUIT, IN_FOCUS, IN_SETTING, IN_WHEEL, IN_CHAT, IN_MATCH_CHAT, IN_MATCH_CHAT_END, IN_PICK, IN_JOIN };
+void web_chat_box_pick(int x, int y);                     /* chat_box.c */
+void web_chat_box_join_char(uint32_t character);         /* chat_box.c */
 void web_chat_box_char(uint32_t character);              /* chat_box.c */
 void web_match_chat_unit(uint32_t unit);                 /* match_chat.c */
 void web_match_chat_end(uint32_t target);                /* match_chat.c */
@@ -666,6 +668,13 @@ EMSCRIPTEN_KEEPALIVE void ra2_chat_send(const char *text) {
 }
 /* A line from the page's match chat panel (match_chat.c), to target 1 listeners, 2 allies or 3 all:
  * the game sends it at its next frame of a LAN or online match. */
+/* A right-click at x, y (game pixels) on a chat screen: which player there (chat_box.c, a playerPick event). */
+EMSCRIPTEN_KEEPALIVE void ra2_player_pick(int x, int y) { push(IN_PICK, (uint32_t)x, (uint32_t)y, 0); }
+/* Join the game room `room` from the lobby (a friend's game, an invitation): chat_box.c, a joinRoom event. */
+EMSCRIPTEN_KEEPALIVE void ra2_join_room(const char *room) {
+    for (const char *p = room; p && *p; p++) push(IN_JOIN, (uint8_t)*p, 0, 0);
+    push(IN_JOIN, 0, 0, 0);
+}
 EMSCRIPTEN_KEEPALIVE void ra2_match_chat_send(const char *text, int target) {
     push_text(IN_MATCH_CHAT, text);
     push(IN_MATCH_CHAT_END, (uint32_t)target, 0, 0);
@@ -718,6 +727,8 @@ static void drain_input(void) {
         case IN_CHAT: web_chat_box_char(e.a); break;
         case IN_MATCH_CHAT: web_match_chat_unit(e.a); break;
         case IN_MATCH_CHAT_END: web_match_chat_end(e.a); break;
+        case IN_PICK: web_chat_box_pick((int)e.a, (int)e.b); break;
+        case IN_JOIN: web_chat_box_join_char(e.a); break;
         case IN_QUIT:
             /* The page has flushed what it keeps; skip the guest's close path. */
             hle_exit(0);

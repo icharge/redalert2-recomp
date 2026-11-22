@@ -84,6 +84,8 @@ export async function startPage(opts) {
     browser = await chromium.launch(launch);
     context = await browser.newContext({ viewport, serviceWorkers: "block" });
   }
+  // opts.cookies: cookies the browser has before the page loads (a launcher session, for one)
+  if (opts.cookies?.length) await context.addCookies(opts.cookies);
   // Pin a test's module without overwriting another developer's published build.
   if (opts.gameBuild) {
     // Stream the large debug WASM over HTTP; CDP fulfill bodies exceed Chrome's

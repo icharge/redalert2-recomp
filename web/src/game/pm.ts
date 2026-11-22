@@ -11,6 +11,8 @@ export interface PmMessage {
   text: string;
   /** milliseconds since the epoch */
   at: number;
+  /** an invitation to this game room (from them: the panel offers JOIN) */
+  invite?: string;
 }
 
 export interface PmConversation {
@@ -29,6 +31,12 @@ export interface PmSnapshot {
   conversations: readonly PmConversation[];
   /** the sum of every conversation's unread */
   unread: number;
+  /** the last player who whispered to this one: where `/r` answers (chat-commands.ts) */
+  lastFrom: string | null;
+  /** the game room this player is in (no '#'), or null in a lobby or out of WOL: what INVITE offers */
+  room: string | null;
+  /** the newest invitation that came (seq counts them), for the chat log's line */
+  lastInvite: { seq: number; from: string; room: string } | null;
 }
 
 export type PmSendResult = { ok: true } | { ok: false; reason: string };
@@ -73,8 +81,17 @@ export function splitText(text: string, max = PM_MAX_BYTES): string[] {
 
 const INCOMING = /^:([^\s!@]+)(?:!([^\s@]*))?(?:@(\S*))? (PRIVMSG|NOTICE|PAGE) (\S+) :(.*)$/i;
 /** A NAMES reply (353): `:server 353 me = #chan :@bot,0,0,0 nick,0,1,0 ...`. */
-const NAMES = /^:\S+ 353 \S+ \S+ \S+ :(.*)$/;
+const NAMES = /^:\S+ 353 \S+ \S+ (\S+) :(.*)$/;
+/** The lobbies, where the operator is the bot; a game room's operator is a player. */
+const LOBBY = /^#Lob_/i;
 const OUTGOING = /^privmsg\s+(\S+)\s+:(.*)$/i;
+/**
+ * The player's own JOIN or PART of a channel: `:me!u@h JOIN :#room`, `:me!u@h PART #room`, and a game
+ * room's `:me!u@h JOINGAME <flags> :#room`.
+ */
+const MEMBERSHIP = /^:([^\s!@]+)\S* (JOINGAME|JOIN|PART)\b.*?:?#(\S+)\s*$/i;
+/** An invitation to a game room, as the page sends it (wolapi.c keeps it out of the game's chat). */
+const INVITE = /^\u0001INVITE ([^\s\u0001]+)\u0001?$/;
 
 /** The text of a CTCP ACTION (`/me`) as a line, or the text itself, without formatting codes. */
 function plain(text: string): string {
@@ -95,12 +112,27 @@ export class PmStore {
   private readonly listeners = new Set<() => void>();
   private nick: string | null = null;
   private online = false;
-  /** Operators seen in a NAMES reply (`@name`): the lobby bot. Their lines stay in the game's chat. */
-  private readonly operators = new Set<string>();
+  /**
+   * The lobby bot: its default name (the server's LOBBY_BOT_NICK) and every operator seen in a lobby's
+   * NAMES reply (`@name`), kept for the session, so a match room that lacks it still knows it. Its
+   * lines stay in the game's chat, and `/r` never answers it.
+   */
+  private readonly operators = new Set<string>(["yuribot"]);
   private transport: ((line: string) => void) | null = null;
   /** true while send() hands its own line to the transport, which the loader also reports */
   private sending = false;
-  private snapshot: PmSnapshot = { online: false, nick: null, conversations: [], unread: 0 };
+  private lastFrom: string | null = null;
+  private room: string | null = null;
+  private lastInvite: PmSnapshot["lastInvite"] = null;
+  private snapshot: PmSnapshot = {
+    online: false,
+    nick: null,
+    conversations: [],
+    unread: 0,
+    lastFrom: null,
+    room: null,
+    lastInvite: null,
+  };
 
   constructor(now: () => number = Date.now) {
     this.now = now;
@@ -136,8 +168,32 @@ export class PmStore {
   handleIncoming(line: string): void {
     const names = NAMES.exec(line);
     if (names) {
-      for (const entry of (names[1] ?? "").split(" "))
-        if (entry.startsWith("@")) this.operators.add(entry.slice(1).split(",")[0]!.toLowerCase());
+      if (!LOBBY.test(names[1] ?? "")) return;
+      let changed = false;
+      for (const entry of (names[2] ?? "").split(" ")) {
+        if (!entry.startsWith("@")) continue;
+        const bot = entry.slice(1).split(",")[0]!.toLowerCase();
+        this.operators.add(bot);
+        // its welcome can come before the NAMES that shows it is the bot: take that back
+        if (this.conversations.delete(bot)) changed = true;
+        if (this.lastFrom?.toLowerCase() === bot) {
+          this.lastFrom = null;
+          changed = true;
+        }
+      }
+      if (changed) this.emit();
+      return;
+    }
+    const membership = MEMBERSHIP.exec(line);
+    if (membership) {
+      const [, who = "", what = "", channel = ""] = membership;
+      if (!this.nick || who.toLowerCase() !== this.nick.toLowerCase()) return;
+      const room = LOBBY.test(`#${channel}`) ? null : channel;
+      const next = what.toUpperCase() !== "PART" ? room : this.room === channel ? null : this.room;
+      if (next !== this.room) {
+        this.room = next;
+        this.emit();
+      }
       return;
     }
     const match = INCOMING.exec(line);
@@ -150,9 +206,23 @@ export class PmStore {
     // a bare server name (no user part) is not someone to answer
     if (user === undefined && host === undefined) return;
     if (from.toLowerCase() === this.nick.toLowerCase()) return;
+    const invite = INVITE.exec(raw);
+    if (invite) {
+      const room = invite[1]!;
+      this.add(
+        from,
+        { from: "them", text: `invites you to their game ${room}`, at: this.now(), invite: room },
+        true,
+      );
+      this.lastFrom = from;
+      this.lastInvite = { seq: (this.lastInvite?.seq ?? 0) + 1, from, room };
+      this.emit();
+      return;
+    }
     const text = plain(raw);
     if (!text) return;
     this.add(from, { from: "them", text, at: this.now() }, true);
+    this.lastFrom = from;
     this.emit();
   }
 
@@ -189,6 +259,27 @@ export class PmStore {
     } finally {
       this.sending = false;
     }
+    this.emit();
+    return { ok: true };
+  }
+
+  /** Invites `nick` to the game room this player is in: a private line the other page shows with JOIN. */
+  sendInvite(nick: string): PmSendResult {
+    const target = nick.trim();
+    if (!NICK.test(target)) return { ok: false, reason: "That is not a valid nick." };
+    if (!this.room) return { ok: false, reason: "Make or join a game room first, then invite." };
+    if (!this.online || !this.transport) return { ok: false, reason: "Not connected." };
+    this.sending = true;
+    try {
+      this.transport(`privmsg ${target} :\u0001INVITE ${this.room}\u0001`);
+    } finally {
+      this.sending = false;
+    }
+    this.add(
+      target,
+      { from: "me", text: `invited ${target} to ${this.room}`, at: this.now() },
+      false,
+    );
     this.emit();
     return { ok: true };
   }
@@ -248,6 +339,9 @@ export class PmStore {
       nick: this.nick,
       conversations,
       unread: conversations.reduce((sum, c) => sum + c.unread, 0),
+      lastFrom: this.lastFrom,
+      room: this.room,
+      lastInvite: this.lastInvite,
     };
     this.listeners.forEach((listener) => listener());
   }
