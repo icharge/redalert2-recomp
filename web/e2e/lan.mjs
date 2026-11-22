@@ -58,9 +58,15 @@ try {
   assert.notDeepEqual(keys[0], keys[1], "LAN clients must receive distinct WOL keys");
 
   await Promise.all([openLan(host), openLan(guest)]);
-  await host.page.getByRole("button", { name: "CREATE", exact: true }).click();
+  // the dialog says PREPARING until its LAN module is up; CREATE before that makes no invitation
+  const create = host.page.getByRole("button", { name: "CREATE", exact: true });
   const hostOffer = host.page.getByLabel("LAN invitation", { exact: true });
   await hostOffer.waitFor({ timeout: 45000 });
+  for (const deadline = Date.now() + 60000; Date.now() < deadline;) {
+    if ((await hostOffer.inputValue()).trim()) break;
+    if (await create.isEnabled()) await create.click();
+    await host.page.waitForTimeout(1000);
+  }
   const offer = await hostOffer.inputValue();
   const offerFields = await host.page.locator("textarea").evaluateAll((fields) =>
     fields.map((field) => ({
@@ -94,6 +100,12 @@ try {
   await join.click();
   const guestAnswer = guest.page.getByLabel("LAN answer", { exact: true });
   await guestAnswer.waitFor();
+  // the answer is filled in once the guest's side has gathered its candidates
+  await guest.page.waitForFunction(
+    () => document.querySelector('[aria-label="LAN answer"]')?.value?.trim(),
+    undefined,
+    { timeout: 60000 },
+  );
   const answer = await guestAnswer.inputValue();
 
   await host.page.getByLabel("LAN answer to connect", { exact: true }).fill(answer);
@@ -122,6 +134,29 @@ try {
   await Promise.all([waitForLog(host, "open 0xBB"), waitForLog(guest, "open 0xBB")]);
   await host.shot("lan-host-lobby");
   await guest.shot("lan-guest-lobby");
+
+  // The page's chat box takes only the typing meant for the chat line: the LAN screen's own name
+  // field ("Your Name", Edit 0x541, at 134..273 x 16..37 in the 800x600 menu) keeps its keys.
+  {
+    const box = host.page.getByRole("textbox", { name: "Chat message" });
+    await box.waitFor({ timeout: 15000 });
+    await host.clickGame(205, 27);
+    await host.page.waitForTimeout(500);
+    assert.equal((await host.state()).chatField.keys, false, "the game's name field has the focus");
+    await host.page.keyboard.type("Zq", { delay: 80 });
+    await host.page.waitForTimeout(300);
+    assert.equal(await box.inputValue(), "", "typing in the name field stays out of the chat box");
+    assert.notEqual(
+      await box.evaluate((el) => el === document.activeElement),
+      true,
+      "the chat box did not take the focus",
+    );
+    await host.shot("lan-host-name-field");
+    for (let i = 0; i < 2; i++) await host.page.keyboard.press("Backspace", { delay: 80 });
+    await host.page.waitForTimeout(300);
+    assert.equal(await box.inputValue(), "", "Backspace in the name field stays with the game too");
+    console.log("ok  the LAN screen's name field keeps its typing; the chat box takes none");
+  }
 
   await host.clickGame(720, 221); // New
   await waitForLog(host, "open 0xBC");

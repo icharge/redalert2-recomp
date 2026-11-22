@@ -43,6 +43,8 @@ export type MatchChatLine = Omit<Extract<GameEvent, { e: "matchChat" }>, "e"> & 
   /** milliseconds since the epoch */
   at: number;
   system?: boolean;
+  /** a whisper (to or from this player): the panel's PM tab */
+  pm?: boolean;
 };
 
 /** The match's chat: whether the panel can send, and the lines so far (oldest first). */
@@ -114,6 +116,7 @@ const INITIAL: GameState = {
     by: 0,
     bw: 0,
     bh: 0,
+    keys: false,
   },
   playerPick: null,
   joinRoom: null,
@@ -236,6 +239,7 @@ export class GameStore {
             by: event.by,
             bw: event.bw,
             bh: event.bh,
+            keys: event.keys,
           },
         });
         return;
@@ -259,6 +263,7 @@ export class GameStore {
           own: false,
           to: 0,
           system: true,
+          ...(event.pm ? { pm: true } : {}),
           id: (last?.id ?? 0) + 1,
           at: Date.now(),
         };

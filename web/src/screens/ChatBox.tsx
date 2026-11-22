@@ -101,6 +101,8 @@ export function ChatBox({
     <>
       <input
         data-game-text
+        data-chat-box
+        data-page-overlay
         className={styles.box}
         style={{ ...place, fontSize }}
         aria-label="Chat message"

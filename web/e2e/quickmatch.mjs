@@ -44,7 +44,7 @@
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { options, startPage } from "./lib.mjs";
+import { isWolChatSocket, options, startPage } from "./lib.mjs";
 
 const argv = process.argv.slice(2);
 const option = (name, fallback) => (argv.includes(name) ? argv[argv.indexOf(name) + 1] : fallback);
@@ -159,9 +159,9 @@ async function open(name, guest) {
   run.wire = []; // WOL chat frames: { t, dir, line }
   run.http = []; // requests to the server other than the chat socket: { t, text }
   run.frames = []; // { t, frame } each time the game's frame counter moved
-  const wsBase = server.replace(/^http/, "ws");
   run.page.on("websocket", (ws) => {
-    if (!ws.url().startsWith(wsBase) || ws.url().includes("/gserv")) return;
+    // the server itself, or the dev server's /ra2web/ proxy of it (src/wol-endpoint.ts)
+    if (!isWolChatSocket(ws.url(), server, run.page.url())) return;
     const add = (dir) => (f) => {
       for (const line of String(f.payload).split(/\r?\n/))
         if (line) run.wire.push({ t: Date.now(), dir, line });
@@ -765,12 +765,59 @@ async function rowChat() {
   await chatFrom(b, `/r ${answer}`, "Backslash");
   await untilAsync(a, "B's /r in A's panel", () => panelHas(a, answer), 20000);
   check("A paged B from the panel with /p, and B answered with /r");
+  // a page from the panel does not reopen the game's own chat line ("From me:/page<nick>")
+  for (const run of [a, b])
+    assert.ok(
+      run.all.some((l) => l.includes("the game's line stays closed")),
+      `${run.nick}: the page from the panel left the game's line closed`,
+    );
+  check("a page from the panel leaves the game's own chat line closed");
   // the game's own rows reach the panel too: YuriBOT's page, read-only
   const notice = `Panel announcement ${tag}`;
   info(`announce: ${JSON.stringify(await admin("POST", "/admin/announce", { text: notice }))}`);
   for (const run of [a, b])
     await untilAsync(run, "the announcement row in the panel", () => panelHas(run, notice), 30000);
   check("the server's announcement shows as a game row in both panels");
+  // B's line to everyone reached A with its target (the page's tag in the packet, match_chat.c)
+  const tagged = a.all.find((l) => l.includes('"matchChat"') && l.includes(third));
+  info(`A's event for B's line: ${tagged}`);
+  assert.ok(tagged?.includes('"to":3'), "B's line to everyone carries its target to A");
+  // whispers are flagged for the PM tab; the announcement is not
+  const flagged = (run, text) =>
+    run.all.find((l) => l.includes('"matchMessage"') && l.includes(text)) ?? "";
+  assert.ok(flagged(b, whisper).includes('"pm":true'), "A's whisper is a PM row for B");
+  assert.ok(flagged(a, answer).includes('"pm":true'), "B's /r is a PM row for A");
+  assert.ok(flagged(a, notice).includes('"pm":false'), "the announcement is not a PM");
+  check("B's line carried its target to A, and whispers are flagged as PMs");
+  // the tabs
+  const region = (run) => run.page.getByRole("region", { name: "Match chat" });
+  const tabShows = async (run, name) => {
+    // under Pointer Lock the canvas takes the mouse (a player reaches the panel with the game's cursor)
+    await region(run).getByRole("tab", { name, exact: true }).dispatchEvent("click");
+    await run.page.waitForTimeout(200);
+    await run.shot(`match-chat-${run.name}-${name.toLowerCase()}`);
+    return (await region(run).getByRole("list").textContent()) ?? "";
+  };
+  await region(a).getByRole("button", { name: "Chat", exact: true }).dispatchEvent("click");
+  const pm = await tabShows(a, "PM");
+  info(`A's PM tab: ${pm}`);
+  assert.ok(
+    pm.includes(`(to ${b.nick}) ${whisper}`) && pm.includes(answer),
+    "A's PM tab: both whispers",
+  );
+  assert.ok(!pm.includes(first) && !pm.includes(notice), "A's PM tab: nothing else");
+  const system = await tabShows(a, "System");
+  assert.ok(system.includes(notice) && !system.includes(answer), "A's System tab: the game's rows");
+  const all = await tabShows(a, "All");
+  assert.ok(
+    all.includes(first) && all.includes(notice) && all.includes(answer),
+    "A's All tab: everything",
+  );
+  await region(b).getByRole("button", { name: "Chat", exact: true }).dispatchEvent("click");
+  const allies = await tabShows(b, "Allies");
+  info(`B's Allies tab: ${allies}`);
+  assert.ok(allies.includes(second) && !allies.includes(third), "B's Allies tab: B's allies lines");
+  check("the panel's All, Allies, PM and System tabs sort the lines");
   await a.page.mouse.move(60, a.page.viewportSize().height - 60);
   await a.page.waitForTimeout(800);
   await Promise.all([a.shot("match-chat-a"), b.shot("match-chat-b")]);

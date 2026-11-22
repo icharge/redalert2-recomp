@@ -9,6 +9,25 @@ The native releases (v0.1.0 to v0.1.3) are in the repository's
 [CHANGELOG.md](../CHANGELOG.md); none of them include the browser build. The
 commit after each entry is where to read more.
 
+## [Unreleased]
+
+### Added
+
+- **Tabs in the match panel**: All, Allies, PM (whispers, yours too) and
+  System (the game's own messages). A tab with something new is marked. Lines
+  to allies show `[Allies]` for everyone on this build, not only for you.
+
+### Fixed
+
+- Typing in the lobby went into the game's own chat line under the chat box
+  when the box wasn't focused. Typing now goes to the box. The game's other
+  text fields (the LAN player name, a password prompt) still take their own.
+- A whisper from the match panel (`/pm`, `/p`, `/r`) left the game's own chat
+  line open at the top of the screen, taking keys meant for the game.
+- Icons from the online screens (flags, ladder and lock icons, connection
+  lights) were left on the score screen after a match and over the profile
+  page's text.
+
 ## [0.4.0] - 2026-11-22
 
 Changes since 0.3.0.

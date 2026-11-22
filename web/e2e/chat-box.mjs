@@ -11,7 +11,7 @@
 // Shots: chat-box-lobby.
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
-import { startPage, options } from "./lib.mjs";
+import { startPage, options, isWolChatSocket } from "./lib.mjs";
 
 const argv = process.argv.slice(2);
 const option = (name, fallback) => (argv.includes(name) ? argv[argv.indexOf(name) + 1] : fallback);
@@ -72,7 +72,8 @@ try {
   url.hash = `ticket=${minted.ticket}`;
   run = await startPage({ ...opts, url: url.toString(), shots: `${opts.shots}/chat-box` });
   run.page.on("websocket", (ws) => {
-    if (!ws.url().startsWith(server.replace(/^http/, "ws")) || ws.url().includes("/gserv")) return;
+    // the server itself, or the dev server's /ra2web/ proxy of it (src/wol-endpoint.ts)
+    if (!isWolChatSocket(ws.url(), server, run.page.url())) return;
     const add = (dir) => (f) => {
       for (const line of String(f.payload).split(/\r?\n/)) if (line) wire.push({ dir, line });
     };
@@ -121,6 +122,18 @@ try {
     `the box has a size: ${JSON.stringify(place)}`,
   );
   console.log(`ok  the chat box shows over the game's line (${JSON.stringify(place)})`);
+
+  {
+    // typing with the game focused goes to the box, not the game's own line under it
+    await run.page.locator("canvas").first().focus();
+    await run.page.keyboard.type("typed");
+    assert.equal(await box.inputValue(), "typed", "the keys typed into the page's box");
+    assert.ok(await box.evaluate((el) => el === document.activeElement), "the box took the focus");
+    await run.shot("chat-box-typed");
+    await box.fill("");
+    await run.page.locator("canvas").first().focus();
+    console.log("ok  typing with the game focused goes to the chat box");
+  }
 
   {
     // YR's Page button and RA2's Buddy List open MESSAGES, not the game's old Page dialog

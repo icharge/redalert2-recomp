@@ -11,6 +11,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <strings.h>
 
 #include "web_api.h"
 #include "wolapi.h"
@@ -59,7 +60,7 @@ static int has_page_button(uint32_t id) { return id == 0xC2u || id == 0xC9u; }
 static int has_buddy_button(uint32_t id) { return id == 0x113u; }
 
 /* What the page was last told: the chat line, the Page button and the Buddy List button (w 0: none). */
-typedef struct { int open, x, y, w, h, px, py, pw, ph, bx, by, bw, bh; } field_status;
+typedef struct { int open, x, y, w, h, px, py, pw, ph, bx, by, bw, bh, keys; } field_status;
 static field_status g_told;
 static uint32_t g_box;                    /* the game's control over the showing line */
 
@@ -100,6 +101,22 @@ static uint32_t chat_line(int *l, int *t, int *r, int *b, int *screen) {
     return 0;
 }
 
+/* Whether the focused window is one of the screen's other text fields: an Edit, or the control the
+ * game lays over one (as over the chat line; its class is the game's own), so its middle is inside
+ * an Edit of the screen other than the chat line. */
+static int over_other_edit(uint32_t dialog, uint32_t chat_edit, uint32_t focus) {
+    if (!strcasecmp(hle_window_class(focus), "Edit")) return 1;
+    int l, t, r, b;
+    if (!hle_window_screen_rect(focus, &l, &t, &r, &b)) return 0;
+    int x = (l + r) / 2, y = (t + b) / 2;
+    for (uint32_t child = hle_window_first_child(dialog); child; child = hle_window_next_sibling(child)) {
+        if (child == chat_edit || strcasecmp(hle_window_class(child), "Edit")) continue;
+        int el, et, er, eb;
+        if (hle_window_screen_rect(child, &el, &et, &er, &eb) && x >= el && x < er && y >= et && y < eb) return 1;
+    }
+    return 0;
+}
+
 /* The presenter's pump, on the game's thread. */
 void web_chat_box_pump(void) {
     field_status now = { 0 };
@@ -113,14 +130,25 @@ void web_chat_box_pump(void) {
         uint32_t buddy = has_buddy_button(g_screen_ids[screen]) ? hle_dialog_item(g_screens[screen], BUDDY_BUTTON_ID) : 0;
         if (showing(buddy) && hle_window_screen_rect(buddy, &l, &t, &r, &b) && r > l && b > t)
             now.bx = l, now.by = t, now.bw = r - l, now.bh = b - t;
+        /* the game's keyboard focus on this screen, not on a popup over it (a password prompt, a
+         * message box): the page then types into its box what would reach the game's line */
+        uint32_t focus = hle_focus_window();
+        /* another text field of the game's on that screen (the Page dialog's "To", a LAN name) keeps
+         * its typing; only the chat line itself (the Edit, or the game's control over it) and the
+         * screen's other controls (lists, buttons) give theirs to the box */
+        uint32_t chat_edit = hle_dialog_item(g_screens[screen], CHAT_EDIT_ID);
+        int own_field = focus && focus != chat_edit && focus != g_box && over_other_edit(g_screens[screen], chat_edit, focus);
+        for (int depth = 0; !own_field && focus && depth < 8 && !now.keys; depth++, focus = hle_window_parent(focus))
+            now.keys = focus == g_screens[screen];
     }
     if (!memcmp(&now, &g_told, sizeof now)) return;
-    char event[256];
+    char event[320];
     snprintf(event, sizeof event,
              "{\"e\":\"chatField\",\"open\":%s,\"x\":%d,\"y\":%d,\"w\":%d,\"h\":%d,"
-             "\"px\":%d,\"py\":%d,\"pw\":%d,\"ph\":%d,\"bx\":%d,\"by\":%d,\"bw\":%d,\"bh\":%d}",
+             "\"px\":%d,\"py\":%d,\"pw\":%d,\"ph\":%d,\"bx\":%d,\"by\":%d,\"bw\":%d,\"bh\":%d,"
+             "\"keys\":%s}",
              now.open ? "true" : "false", now.x, now.y, now.w, now.h, now.px, now.py, now.pw, now.ph,
-             now.bx, now.by, now.bw, now.bh);
+             now.bx, now.by, now.bw, now.bh, now.keys ? "true" : "false");
     web_event_json(event);
     g_told = now;
 }

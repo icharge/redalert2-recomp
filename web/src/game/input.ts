@@ -118,6 +118,9 @@ export function attachInput(
     /** a right-button press on the game (not under Pointer Lock), at that game pixel: Play asks the
      * game whose name is there (the player menu); the game gets the press as well */
     onSecondaryDown?: (point: { x: number; y: number }) => void;
+    /** the page's chat box over the game's chat line, while it shows (ChatBox.tsx): typing keys
+     * focus it and type there, so the game's own line under it gets none */
+    chatBox?: () => HTMLElement | null;
   } = {},
 ): () => void {
   const picture = options.picture ?? (() => ({ width: canvas.width, height: canvas.height }));
@@ -220,8 +223,11 @@ export function attachInput(
     if (over) {
       // a press on the page's panel: its button, not an order on the battlefield
       swallowed.add(event.button);
-      if (event.button === 0)
-        (over.closest<HTMLElement>("button, [role='button']") ?? over).click();
+      if (event.button === 0) {
+        const field = over.closest<HTMLElement>("input, textarea");
+        if (field) field.focus();
+        else (over.closest<HTMLElement>("button, [role='button']") ?? over).click();
+      }
       return;
     }
     if (kind === PointerKind.Up && swallowed.delete(event.button)) return;
@@ -285,6 +291,17 @@ export function attachInput(
         }
       }
       return;
+    }
+    // Typing on a chat screen goes to the page's box, not the game's own line under it: the box
+    // takes focus and, as the key is left alone, the key's text (or the IME) lands in it.
+    if (down && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      const box = options.chatBox?.();
+      const typing =
+        event.key.length === 1 || /^(Backspace|Delete|Enter|Process|Dead)$/.test(event.key);
+      if (box && typing && document.activeElement !== options.textInput) {
+        box.focus();
+        return;
+      }
     }
     if (down && options.shortcut?.(event)) {
       event.preventDefault();

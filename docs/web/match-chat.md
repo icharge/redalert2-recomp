@@ -207,6 +207,17 @@ ack. Fields (VERA `lan_messages/ingame.rs`; offsets checked in the send block):
 | +0x30 | 0xE0 | text, UTF-16LE, NUL-terminated: 111 units at most |
 | +0x110 | 4 | sender's Session colour index |
 | +0x114 | 4 | hash of the game name (`0x005DAC00` / `0x005BBA50`) |
+| +0x1C0 | 4 | the page's build only: tag `0x4C54414E` ("NATL") when +0x1C4 holds the target |
+| +0x1C4 | 1 | the page's build only: the line's target, 1 listeners, 2 allies, 3 all |
+
+The packet itself says nothing of who a line went to: each game sends only to
+the players in the target (with the relay, the mask at +0x2F does it). So the
+page's build tags its own lines (`set_tag` in `match_chat.c`, when
+`web_match_chat_take` hands a line to the game): the send block writes its
+fields one by one and clears nothing (checked in the lifted YR send block), so
+the tag goes out with the line. A receiver reads it in `web_match_chat` and
+clears it, so a later packet in the same buffer can't carry it over. A line
+without the tag (a native player, another build) tells `to: 0`, not known.
 
 Limits: the field holds 111 units + NUL, but the send copies with `wcscpy`
 after writing the colour and hash, so a longer text overwrites them; keep a
@@ -280,6 +291,18 @@ The chat panel and the lobby chat box (22 November).
     game's control over the Edit as `WM_CHAR` units followed by a Return key
     (`ra2_chat_send`), so the game's commands still work.
   - It replaces the page's TYPE button.
+  - Typing goes to it, not to the game's line under it: while the box shows
+    and the game's keyboard focus is on that screen (`keys` in `chatField`:
+    the focus window is the screen or inside it, so not a password prompt or
+    message box over it), a key with text, Backspace, Delete or Enter focuses
+    the box and is left to the browser (`chatBox` in `input.ts`). Under
+    Pointer Lock a click on it focuses it too (it is `[data-page-overlay]`).
+  - The game's other text fields keep their typing: `keys` is false while the
+    focus is an Edit other than the chat line, or the control the game lays
+    over one (its class is the game's own, so `over_other_edit` in
+    `chat_box.c` tests whether the focus's middle is inside another Edit).
+    Of the chat screens only the LAN screen `0xBB` has one, the player name
+    (Edit `0x541`); `e2e/lan.mjs` types into it and checks the box stays empty.
   - It is see-through and has no frame, so the game's own line and frame show under it. The text is
     the game's chat yellow (`#FFFF00`), bold.
   - **Page and Buddy List open the page's FRIENDS** (the MESSAGES panel on its FRIENDS tab), in place
@@ -317,6 +340,29 @@ The chat panel and the lobby chat box (22 November).
   - the panel gets a `pageoverlay` event, which opens it while hovered;
   - a press goes to its button and not to the game;
   - the wheel scrolls its `[data-page-scroll]` list.
+- **A page reopened the game's line:** after a page sent as an overflowed
+  line (result 4, how the panel's lines arrive), the game opens its own chat
+  line again, prefilled `From <nick>:/page<to>`, for the next page (YR
+  `0x0055E9EC`..`0x0055EA9E`, RA2 `0x005411EC`..; it calls the list's remove
+  and add-edit, `0x005D4390` and `0x005D4210`). That line sat under the panel
+  and took the game's keys. C after the `cmp dword ptr [esp+0x10], ebp` there
+  (`MATCH_CHAT_PAGE_SITES` in `run_lift.py`) jumps to the game's own branch
+  past it (YR `0x0055EDAB`, RA2 `0x005415AB`) when `web_match_chat_from_panel()`
+  says this frame's line came from the panel. Log: `[match chat] a page from
+  the panel: the game's line stays closed`.
+- **Tabs** (22 November): the open panel has All, Allies, PM and System tabs
+  over its history (`inTab` in `MatchChat.tsx`). Closed, it fades only the
+  selected tab's lines.
+  - Allies: player lines with `to` 2. That covers the player's own lines and
+    lines from players on this build (the tag in section 4); lines from others
+    count as to everyone.
+  - PM: whispers. `wolapi.c` posts a whisper as a page row and sets
+    `ra2_wolapi_whisper_posting()` around it (a PRIVMSG only: a PAGE or NOTICE is the server's), so
+    `web_match_message` sends `matchMessage` with `pm: true`. The player's own
+    `/page` (and `/msg`, `/m`, `/pm`, `/p`, `/r`) from the panel adds a
+    `(to nick) text` line on the page (`Play.tsx`).
+  - System: the game's other rows.
+  - A tab not on show is marked when it has lines newer than the last seen there.
 - **Escape in a chat box** closes the box and does not release the capture:
   `browser-controls.ts` skips its own release for `[data-game-text]`. In
   fullscreen, where Keyboard Lock gives the page Escape, the mouse stays

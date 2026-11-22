@@ -924,6 +924,15 @@ MATCH_CHAT_OPEN_SITES = {
     'game': (0x00540D7E, '897d00', 0x005419C8),
 }
 
+# After a page (/page, /r) sent as an overflowed line (result 4: the panel's lines), the game opens its
+# own chat line again, prefilled "From <nick>:/page<to>", for the next page. That line is the game's,
+# under the panel; a panel line skips it, by the game's own branch for any other line.
+MATCH_CHAT_PAGE_SITES = {
+    # (`cmp dword ptr [esp+0x10], ebp` before the reopen, its bytes, the branch past it)
+    'gamemd': (0x0055E9EC, '396c2410', 0x0055EDAB),
+    'game': (0x005411EC, '396c2410', 0x005415AB),
+}
+
 
 def match_chat_patches(code, cs, target):
     """Show the match's player chat in the page's panel and send the panel's lines (docs/web/match-chat.md)."""
@@ -945,6 +954,15 @@ def match_chat_patches(code, cs, target):
                          % (mode, chat_target, chat_target, leave))
     else:
         print('[*] match_chat_patches: the chat key site does not match this build; the game opens its own line')
+    page, page_shape, past = MATCH_CHAT_PAGE_SITES[target]
+    raw = bytes.fromhex(page_shape)
+    if code[page - cs:page - cs + len(raw)] == raw:
+        opens[page] = ('{ extern int web_match_chat_from_panel(void); '
+                       'if (web_match_chat_from_panel()) goto L_%08X; } '
+                       '/* browser: a page from the panel opens no game line, run_lift.py match_chat_patches */'
+                       % past)
+    else:
+        print('[*] match_chat_patches: the page reopen site does not match this build; a page reopens the line')
     return {
         **opens,
         # every row the game adds to its message list (mission text, defeats, pages): after the frame,

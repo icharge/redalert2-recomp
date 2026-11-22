@@ -48,6 +48,7 @@ void web_bare_page(uint32_t text) { (void)text; }
 void web_match_chat(uint32_t packet, uint32_t target) { (void)packet, (void)target; }
 void web_match_message(uint32_t name, uint32_t text, uint32_t scheme, uint32_t style) { (void)name, (void)text, (void)scheme, (void)style; }
 int web_match_chat_take(uint32_t mode, uint32_t chunk, uint32_t target) { (void)mode, (void)chunk, (void)target; return 0; }
+int web_match_chat_from_panel(void) { return 0; }
 int web_match_chat_open(uint32_t mode, uint32_t target) { (void)mode, (void)target; return 0; }
 
 /* The browser WOL patches in the lift (run_lift.py wol_icon_surface_patches and

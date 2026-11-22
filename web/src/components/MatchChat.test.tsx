@@ -248,6 +248,39 @@ describe("MatchChat", () => {
     expect(screen.queryByText("old row")).toBeNull();
   });
 
+  it("sorts the history into All, Allies, PM and System tabs, marking a tab with something new", () => {
+    const lines = [
+      line(1, { text: "to all", to: Target.all }),
+      line(2, { text: "to allies", to: Target.allies }),
+      line(3, { system: true, name: "", text: "(bob) psst", pm: true }),
+      line(4, { system: true, name: "", text: "Objective" }),
+    ];
+    render(
+      <MatchChat
+        chat={{ ready: false, lines }}
+        typing={null}
+        onTyping={() => {}}
+        thai={false}
+        send={null}
+        now={() => 1000}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Messages" }));
+    const shown = () =>
+      screen.getAllByRole("listitem").map((item) => item.textContent?.replace(/^\d\d:\d\d /, ""));
+    expect(shown()).toHaveLength(4);
+    expect(screen.getByRole("tab", { name: "All" })).toHaveAttribute("aria-selected", "true");
+    // nothing seen yet under the other tabs
+    expect(screen.getByRole("tab", { name: "PM" })).toHaveAttribute("data-new");
+    fireEvent.click(screen.getByRole("tab", { name: "Allies" }));
+    expect(shown()).toEqual(["[Allies] alice: to allies"]);
+    fireEvent.click(screen.getByRole("tab", { name: "PM" }));
+    expect(shown()).toEqual(["(bob) psst"]);
+    expect(screen.getByRole("tab", { name: "Allies" })).not.toHaveAttribute("data-new");
+    fireEvent.click(screen.getByRole("tab", { name: "System" }));
+    expect(shown()).toEqual(["Objective"]);
+  });
+
   it("shows nothing outside a LAN or online match with no lines", () => {
     const { container } = render(
       <MatchChat

@@ -651,6 +651,11 @@ export function Play({ files }: { files: FileSource }) {
               if (gameStore.getSnapshot().chatField.open)
                 game.exports.ra2_player_pick?.(point.x, point.y);
             },
+            // typing on a chat screen: the page's box over the game's chat line
+            chatBox: () =>
+              gameStore.getSnapshot().chatField.keys
+                ? document.querySelector<HTMLElement>("input[data-chat-box]")
+                : null,
             shortcut: (event) => {
               if (event.code === "F11" || (event.code === "Enter" && event.altKey)) {
                 if (!event.repeat)
@@ -954,7 +959,20 @@ export function Play({ files }: { files: FileSource }) {
           canvas={canvas}
           send={
             handle.current?.exports.ra2_match_chat_send
-              ? (text, target) => handle.current?.exports.ra2_match_chat_send?.(text, target)
+              ? (text, target) => {
+                  // the player's own whisper: the panel's PM tab keeps it beside the answers
+                  // (a whisper received shows as "(sender) text", match_chat.c)
+                  const whisper = /^\/page\s+(\S+)\s+(.+)$/i.exec(text);
+                  if (whisper)
+                    gameStore.apply({
+                      e: "matchMessage",
+                      text: `(to ${whisper[1]}) ${whisper[2]}`,
+                      scheme: -1,
+                      style: 0,
+                      pm: true,
+                    });
+                  handle.current?.exports.ra2_match_chat_send?.(text, target);
+                }
               : null
           }
         />

@@ -64,6 +64,9 @@ export type GameEvent =
       by: number;
       bw: number;
       bh: number;
+      /** the game's keyboard focus is on that screen, not a popup over it (a password prompt):
+       * typing goes to the page's chat box */
+      keys: boolean;
     }
   /**
    * A player's line in a LAN or online match (src/web/match_chat.c): the game's own units (Thai as
@@ -75,7 +78,8 @@ export type GameEvent =
    * A row the game added to its message list that is not player chat (mission text, a player
    * defeated, a page): the game's units, its colour scheme index and text style.
    */
-  | { e: "matchMessage"; text: string; scheme: number; style: number }
+  /** pm: a player's whisper to this one (shown as a page row), for the panel's PM tab */
+  | { e: "matchMessage"; text: string; scheme: number; style: number; pm?: boolean }
   /**
    * One of the game's chat keys was pressed in a LAN or online match (src/web/match_chat.c): open the
    * panel's line to that target (1 the players ticked under Chat in Diplomacy, 2 allies, 3 everyone).
@@ -213,6 +217,8 @@ export function parseEventLine(line: string): GameEvent | null {
             by: typeof value.by === "number" ? value.by : 0,
             bw: typeof value.bw === "number" ? value.bw : 0,
             bh: typeof value.bh === "number" ? value.bh : 0,
+            // older builds don't tell
+            keys: typeof value.keys === "boolean" ? value.keys : value.open,
           }
         : null;
     case "matchChat":
@@ -234,7 +240,13 @@ export function parseEventLine(line: string): GameEvent | null {
       return typeof value.text === "string" &&
         typeof value.scheme === "number" &&
         typeof value.style === "number"
-        ? { e: "matchMessage", text: value.text, scheme: value.scheme, style: value.style }
+        ? {
+            e: "matchMessage",
+            text: value.text,
+            scheme: value.scheme,
+            style: value.style,
+            pm: value.pm === true, // older builds don't tell
+          }
         : null;
     case "joinRoom":
       return typeof value.room === "string" &&

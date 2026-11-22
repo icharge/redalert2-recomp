@@ -132,6 +132,11 @@ EMSCRIPTEN_KEEPALIVE const ra2_wolapi_session *ra2_wolapi_current_session(void) 
     return g_session.game_id[0] && strcmp(g_session.channel, g_current_channel) == 0 ? &g_session : NULL;
 }
 int ra2_wolapi_match_active(void) { return g_session.game_id[0] != 0; }
+
+/* A player's whisper (a private PRIVMSG; not a PAGE or NOTICE, which the server sends) is being posted through the page sink: in a
+ * match, the row it makes is the match panel's PM (match_chat.c). */
+static int g_whisper_posting;
+int ra2_wolapi_whisper_posting(void) { return g_whisper_posting; }
 /* Locale enum from Wolapi.dll's type library, in its original numeric order. */
 static const struct { const char *name, *code; } g_locales[] = {
     { "Unknown", "" }, { "Other", "" }, { "USA", "en-US" }, { "Canada", "en-CA" },
@@ -1136,7 +1141,9 @@ static void receive_chat(const char *line) {
     if (page) {
         uint32_t values[] = { S_OK, (uint32_t)(uintptr_t)&user, (uint32_t)(uintptr_t)wide };
         fprintf(stderr, "[wol] %s from %s\n", notice ? "notice" : "page", sender);
+        g_whisper_posting = !strcmp(command, "PRIVMSG");   /* a player's; a PAGE is the server's (announcements) */
         event_call(41, 3, values); /* IChatEvent: the UTF-16 page */
+        g_whisper_posting = 0;
     } else if (public) {
         uint32_t values[] = { S_OK, (uint32_t)(uintptr_t)current_channel(), (uint32_t)(uintptr_t)&user, (uint32_t)(uintptr_t)wide };
         event_call(37, 4, values); /* IChatEvent::OnPublicUnicodeMessage */

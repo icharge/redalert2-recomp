@@ -122,6 +122,33 @@ export function lineTime(at: number): string {
   return `${String(time.getHours()).padStart(2, "0")}:${String(time.getMinutes()).padStart(2, "0")}`;
 }
 
+/** The panel's log tabs: everything, lines to allies, whispers, and the game's own rows. */
+export const LOG_TABS = ["all", "allies", "pm", "system"] as const;
+export type LogTab = (typeof LOG_TABS)[number];
+const TAB_LABELS: Record<LogTab, string> = {
+  all: "All",
+  allies: "Allies",
+  pm: "PM",
+  system: "System",
+};
+
+/**
+ * Whether a line shows under a tab. A player's line to allies is known for the player's own lines
+ * and for lines from players on this build (match_chat.c tags them); others count as to everyone.
+ */
+export function inTab(line: MatchChatLine, tab: LogTab): boolean {
+  switch (tab) {
+    case "all":
+      return true;
+    case "allies":
+      return !line.system && line.to === Target.allies;
+    case "pm":
+      return !!line.pm;
+    case "system":
+      return !!line.system && !line.pm;
+  }
+}
+
 function Time({ at, on }: { at: number; on: boolean }) {
   return on ? <span className={styles.time}>{lineTime(at)} </span> : null;
 }
@@ -131,13 +158,13 @@ function Line({ line, thai, times }: { line: MatchChatLine; thai: boolean; times
     return (
       <li className={styles.line}>
         <Time at={line.at} on={times} />
-        <span className={styles.system}>{gameText(line.text, thai)}</span>
+        <span className={line.pm ? styles.pm : styles.system}>{gameText(line.text, thai)}</span>
       </li>
     );
   return (
     <li className={styles.line}>
       <Time at={line.at} on={times} />
-      {line.own && line.to === Target.allies && <span className={styles.to}>[Allies] </span>}
+      {line.to === Target.allies && <span className={styles.to}>[Allies] </span>}
       <span className={styles.name} style={{ color: playerColour(line.colour) }}>
         {gameText(line.name, thai)}:
       </span>{" "}
@@ -200,6 +227,9 @@ export function MatchChat({
     onTarget?.(next);
   };
   const [hover, setHover] = useState(false);
+  const [tab, setTab] = useState<LogTab>("all");
+  /** the newest line id seen under each tab: a tab with newer lines is marked */
+  const [seen, setSeen] = useState<Record<LogTab, number>>({ all: 0, allies: 0, pm: 0, system: 0 });
   const [pinned, setPinned] = useState(false);
   const [, setTick] = useState(0);
   const input = useRef<HTMLInputElement>(null);
@@ -236,9 +266,17 @@ export function MatchChat({
   useLayoutEffect(() => {
     const el = list.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [chat.lines, open]);
+  }, [chat.lines, open, tab]);
 
-  const shown = open ? chat.lines : chat.lines.filter((l) => now() - l.at < MATCH_CHAT_FADE_MS);
+  const newest = (under: LogTab) => chat.lines.findLast((l) => inTab(l, under))?.id ?? 0;
+  const newestHere = newest(tab);
+  // what the open panel shows under its tab is read
+  useEffect(() => {
+    if (open && seen[tab] < newestHere) setSeen((s) => ({ ...s, [tab]: newestHere }));
+  }, [open, tab, newestHere, seen]);
+
+  const inThisTab = chat.lines.filter((l) => inTab(l, tab));
+  const shown = open ? inThisTab : inThisTab.filter((l) => now() - l.at < MATCH_CHAT_FADE_MS);
   if (!canSend && chat.lines.length === 0) return null;
 
   const close = () => {
@@ -257,6 +295,24 @@ export function MatchChat({
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >
+      {open && (
+        <div className={styles.tabs} role="tablist" aria-label="Messages to show">
+          {LOG_TABS.map((name) => (
+            <button
+              key={name}
+              type="button"
+              role="tab"
+              className={styles.logTab}
+              aria-selected={tab === name}
+              data-new={(name !== tab && newest(name) > seen[name]) || undefined}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => setTab(name)}
+            >
+              {TAB_LABELS[name]}
+            </button>
+          ))}
+        </div>
+      )}
       <ol ref={list} data-page-scroll className={styles.lines} aria-live="polite">
         {shown.map((line) => (
           <Line key={line.id} line={line} thai={thai} times={times} />

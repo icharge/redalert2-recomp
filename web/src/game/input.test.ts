@@ -337,6 +337,46 @@ describe("attachInput", () => {
     detach();
   });
 
+  it("types into the page's chat box, not the game's line under it", () => {
+    const canvas = document.createElement("canvas");
+    document.body.append(canvas);
+    const box = document.createElement("input");
+    document.body.append(box);
+    let showing: HTMLElement | null = box;
+    const game = { ra2_input_pointer: vi.fn(), ra2_input_key: vi.fn(), ra2_focus: vi.fn() };
+    const detach = attachInput(canvas, game, { chatBox: () => showing });
+    canvas.focus();
+    const typed = new KeyboardEvent("keydown", { code: "KeyH", key: "h", cancelable: true });
+    window.dispatchEvent(typed);
+    expect(document.activeElement).toBe(box);
+    expect(typed.defaultPrevented).toBe(false); // the key's text lands in the box
+    canvas.focus();
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { code: "Enter", key: "Enter", cancelable: true }),
+    );
+    expect(document.activeElement).toBe(box);
+    canvas.focus();
+    // the game's own keys still reach it: Escape, F-keys, and shortcuts
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { code: "Escape", key: "Escape", cancelable: true }),
+    );
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { code: "KeyA", key: "a", ctrlKey: true, cancelable: true }),
+    );
+    expect(game.ra2_input_key).toHaveBeenCalledWith(1, 0x1b, 1);
+    expect(game.ra2_input_key).toHaveBeenCalledWith(1, 0x41, 30);
+    // no box (another screen, or a popup has the game's focus): the game types
+    showing = null;
+    game.ra2_input_key.mockClear();
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { code: "KeyH", key: "h", cancelable: true }),
+    );
+    expect(game.ra2_input_key).toHaveBeenCalledWith(1, 0x48, 35);
+    box.remove();
+    canvas.remove();
+    detach();
+  });
+
   it("leaves paste and other editing shortcuts to a focused dialog text field", () => {
     const { game, detach } = setup();
     const textarea = document.createElement("textarea");

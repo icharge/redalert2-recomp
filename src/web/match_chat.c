@@ -16,8 +16,10 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "recomp_target.h"
 #include "web_api.h"
 #include "win32hle.h"
+#include "wolapi.h"
 
 #define MAX_UNITS 111            /* the packet's text: 111 units and a NUL (more would overwrite the colour) */
 #define MAX_LINES 4
@@ -27,6 +29,26 @@
 #define PACKET_NAME_BYTES 20
 #define PACKET_TEXT 0x30u
 #define PACKET_COLOUR 0x110u
+
+/* Who a line went to. The packet says nothing of it (each player's game sends only to the players
+ * in the target), so the page's build tags its own lines in bytes chat leaves alone: the packet is
+ * 0x1C7 bytes and kind 0x0C ends at the game-name hash (+0x114). The tag is a magic dword at +0x1C0
+ * and the target (1 listeners, 2 allies, 3 all) at +0x1C4; a line without it (another build, a
+ * native player) tells 0, not known. The send block (YR 0x0055EDBF, RA2 0x005415BF) writes its
+ * fields one by one and clears nothing, so a tag written when the line is taken goes out with it. */
+#if defined(RA2_TARGET_GAME)
+#define PACKET_BUFFER 0x00A3F640u
+#else
+#define PACKET_BUFFER 0x00A8D638u
+#endif
+#define PACKET_TAG 0x1C0u
+#define PACKET_TAG_TARGET 0x1C4u
+#define TAG_MAGIC 0x4C54414Eu      /* "NATL" */
+
+static void set_tag(uint32_t packet, uint32_t target) {
+    *(volatile uint32_t *)(uintptr_t)(packet + PACKET_TAG) = target ? TAG_MAGIC : 0u;
+    *(volatile uint8_t *)(uintptr_t)(packet + PACKET_TAG_TARGET) = (uint8_t)target;
+}
 
 typedef struct {
     uint16_t units[MAX_UNITS + 1];
@@ -78,7 +100,16 @@ void web_match_chat_pump(void) {
 /* The key pre-hook, each frame (GameMode, the overflow chunk, the chat target dword): in a LAN (3) or
  * online (4) match, the next queued line into the overflow chunk and its target into the dword; 0 with
  * nothing queued, or in any other mode. */
+/* The line the game is handling this frame came from the panel (web_match_chat_take handed it on).
+ * run_lift.py's page patch asks: a page from the panel does not reopen the game's own chat line. */
+static int g_from_panel;
+int web_match_chat_from_panel(void) {
+    if (g_from_panel) fprintf(stderr, "[match chat] a page from the panel: the game's line stays closed\n");
+    return g_from_panel;
+}
+
 int web_match_chat_take(uint32_t mode, uint32_t chunk, uint32_t target) {
+    g_from_panel = 0;
     if (mode != 3u && mode != 4u) return 0;
     uint32_t now = hle_ticks_ms();
     g_ready_at = now;
@@ -93,6 +124,8 @@ int web_match_chat_take(uint32_t mode, uint32_t chunk, uint32_t target) {
             g_lines[0].target, mode);
     memcpy((void *)(uintptr_t)chunk, g_lines[0].units, (size_t)(g_lines[0].length + 1) * sizeof(uint16_t));
     *(uint32_t *)(uintptr_t)target = g_lines[0].target;
+    set_tag(PACKET_BUFFER, g_lines[0].target);
+    g_from_panel = 1;
     memmove(g_lines, g_lines + 1, (size_t)(g_count - 1) * sizeof g_lines[0]);
     g_count--;
     return 1;
@@ -123,12 +156,20 @@ void web_match_chat(uint32_t packet, uint32_t target) {
     memcpy(text, (const void *)(uintptr_t)(packet + PACKET_TEXT), MAX_UNITS * sizeof(uint16_t));
     text[MAX_UNITS] = 0;
     int32_t colour = *(const int32_t *)(uintptr_t)(packet + PACKET_COLOUR);
+    /* the own echo knows its target; another player's line, from its tag (then cleared, so a later
+     * packet in the same buffer does not take it) */
+    uint32_t to = target;
+    if (!to && *(const uint32_t *)(uintptr_t)(packet + PACKET_TAG) == TAG_MAGIC) {
+        uint8_t tagged = *(const uint8_t *)(uintptr_t)(packet + PACKET_TAG_TARGET);
+        if (tagged >= 1u && tagged <= 3u) to = tagged;
+    }
+    set_tag(packet, 0);
     char name_json[PACKET_NAME_BYTES * 6 + 1], text_json[MAX_UNITS * 6 + 1], event[1024];
     json_units(name_json, sizeof name_json, name, PACKET_NAME_BYTES);
     json_units(text_json, sizeof text_json, text, MAX_UNITS);
     snprintf(event, sizeof event, "{\"e\":\"matchChat\",\"name\":\"%s\",\"text\":\"%s\",\"colour\":%d,\"own\":%s,\"to\":%u}",
-             name_json, text_json, (int)colour, target ? "true" : "false", target);
-    fprintf(stderr, "[match chat] %s line (colour %d, target %u)\n", target ? "own" : "a player's", (int)colour, target);
+             name_json, text_json, (int)colour, target ? "true" : "false", to);
+    fprintf(stderr, "[match chat] %s line (colour %d, target %u)\n", target ? "own" : "a player's", (int)colour, to);
     web_event_json(event);
 }
 
@@ -139,8 +180,9 @@ void web_match_message(uint32_t name, uint32_t text, uint32_t scheme, uint32_t s
     if (!units[0]) return;
     char text_json[0xA2 * 6 + 1], event[1200];
     json_units(text_json, sizeof text_json, units, 0xA1);   /* a row holds 161 units */
-    snprintf(event, sizeof event, "{\"e\":\"matchMessage\",\"text\":\"%s\",\"scheme\":%d,\"style\":%u}",
-             text_json, (int)scheme, style);
+    /* a whisper to the player (wolapi.c posts it as a page row): the panel's PM tab */
+    snprintf(event, sizeof event, "{\"e\":\"matchMessage\",\"text\":\"%s\",\"scheme\":%d,\"style\":%u,\"pm\":%s}",
+             text_json, (int)scheme, style, ra2_wolapi_whisper_posting() ? "true" : "false");
     web_event_json(event);
 }
 

@@ -65,7 +65,7 @@ function renderBox(
     <div ref={stage}>
       <canvas ref={canvas} />
       <ChatBox
-        field={{ ...field, open }}
+        field={{ ...field, open, keys: open }}
         presenter={presenter}
         stage={stage}
         canvas={canvas}
