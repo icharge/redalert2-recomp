@@ -1,0 +1,23 @@
+[package]
+name = "ra2-text"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[lib]
+name = "ra2_text"
+crate-type = ["rlib", "staticlib", "cdylib"]
+
+[dependencies]
+parley = { version = "=0.12.0", default-features = false, features = ["std", "complex-scripts"] }
+swash = { version = "=0.2.10", default-features = false, features = ["std", "scale", "render"] }
+fontique = { version = "=0.12.0", default-features = false, features = ["std"] }
+
+[features]
+# The Arabic and CJK faces (17 MB): the engine's own tests shape them. The game builds leave them
+# out (cmake/text.cmake, RA2_TEXT_ALL_SCRIPTS): the game sends the engine Thai only.
+default = ["all-scripts"]
+all-scripts = []
+
+[profile.release]
+panic = "unwind"

@@ -29,6 +29,8 @@
 #include "hdvox.h"
 #include "mods.h"
 #include "page_cursor.h"
+#include "text_guest.h"
+#include "text_input.h"
 #include "wol_pages.h"
 #include "wolapi.h"
 
@@ -642,22 +644,10 @@ EMSCRIPTEN_KEEPALIVE void ra2_input_pointer(int kind, int x, int y, int button) 
 EMSCRIPTEN_KEEPALIVE void ra2_input_wheel(int delta, int x, int y) { push(IN_WHEEL, (uint32_t)x, (uint32_t)y, (uint32_t)delta); }
 /* vk is a Windows virtual key and scan the set-1 scan code, as the page's key table gives them */
 EMSCRIPTEN_KEEPALIVE void ra2_input_key(int down, int vk, int scan) { push(down ? IN_KEYDOWN : IN_KEYUP, (uint32_t)vk, (uint32_t)scan, 0); }
-/* Browser text input arrives as UTF-8; the game's ANSI edit controls and Thai
- * FNT use Windows-874 bytes. Unsupported characters become '?' rather than
- * being misdecoded as UTF-8 bytes. */
-static uint8_t cp874_character(uint32_t codepoint) {
-    if (codepoint == '\b') return 8;
-    if (codepoint == '\r' || codepoint == '\n') return 13;
-    if (codepoint >= 0x20 && codepoint <= 0x7e) return (uint8_t)codepoint;
-    if (codepoint == 0x00a0) return 0xa0;
-    if (codepoint == 0x20ac) return 0x80;
-    if (codepoint >= 0x0e01 && codepoint <= 0x0e3a) return (uint8_t)(codepoint - 0x0d60);
-    if (codepoint == 0x0e3f) return 0xdf;
-    if (codepoint >= 0x0e40 && codepoint <= 0x0e5b) return (uint8_t)(codepoint - 0x0d60);
-    return '?';
-}
-
-/* Each character of UTF-8 text, in the game's encoding, to push(kind, character). */
+/* Browser text input arrives as UTF-8. Each code point goes through the ring as is; the game
+ * thread turns it into the game's character (web_text_char, text_input.h): the code point itself
+ * with TTF text on (the default), Windows-874 bytes with it off. Malformed UTF-8 becomes '?'
+ * rather than being misdecoded. */
 static void push_text(uint32_t kind, const char *text) {
     const uint8_t *p = (const uint8_t *)text;
     if (!p) return;
@@ -674,7 +664,7 @@ static void push_text(uint32_t kind, const char *text) {
                         ((uint32_t)(p[2] & 0x3f) << 6) | (p[3] & 0x3f), length = 4;
         else codepoint = '?', length = 1;
         p += length;
-        push(kind, cp874_character(codepoint), 0, 0);
+        push(kind, codepoint, 0, 0);
     }
 }
 
@@ -738,12 +728,12 @@ static void drain_input(void) {
             hle_input_key(e.kind == IN_KEYDOWN, e.a, e.b); break;
         case IN_CHAR: {
             uint32_t target = hle_focus_window();
-            if (target) hle_post_message(target, WM_CHAR, e.a, 0);
+            if (target) hle_post_message(target, WM_CHAR, web_text_char(e.a, text_guest_enabled()), 0);
             break;
         }
         case IN_SETTING: web_settings_command((int)e.a, (int)e.b, (int)e.c); break;
-        case IN_CHAT: web_chat_box_char(e.a); break;
-        case IN_MATCH_CHAT: web_match_chat_unit(e.a); break;
+        case IN_CHAT: web_chat_box_char(e.a ? web_text_char(e.a, text_guest_enabled()) : 0); break;
+        case IN_MATCH_CHAT: web_match_chat_unit(web_text_char(e.a, text_guest_enabled())); break;
         case IN_MATCH_CHAT_END: web_match_chat_end(e.a); break;
         case IN_PICK: web_chat_box_pick((int)e.a, (int)e.b); break;
         case IN_JOIN: web_chat_box_join_char(e.a); break;

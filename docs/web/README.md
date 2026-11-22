@@ -32,6 +32,7 @@ See [deploy.md](deploy.md) for the hosting constraint.
 | [architecture.md](architecture.md) | Threads, rendering, audio, input, files and crashes: how the native Linux build maps onto a browser |
 | [memory.md](memory.md) | The guest's address space in wasm linear memory: the pcrecomp change, which is the first risk |
 | [toolchain.md](toolchain.md) | Emscripten, `build-web.sh`, `cmake/emscripten.cmake`, the link flags and why |
+| [TTF UI rendering](../ttf-text.md) | Experimental CPU text shaping, build/runtime switches, font provenance, verification, and input work still pending |
 | [frontend.md](frontend.md) | The page: React, TypeScript and Radix; screens, state, styling, conventions |
 | [protocol.md](protocol.md) | What the page and the game say to each other: messages, exported C functions, events |
 | [install-redesign-status.md](install-redesign-status.md) | The redesigned empty Play tab and install flow (choose, review, installing, failed): what is done, what was checked in a browser, what is left |

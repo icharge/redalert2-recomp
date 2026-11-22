@@ -7,11 +7,13 @@
 void thai_font_set_enabled(int enabled);
 void recomp_thai_call(uint32_t target, recomp_func_t original);
 void recomp_thai_indirect_call(uint32_t target);
+/* The TTF text adapter (text_guest_lift.c). Returns 1 when it handled the call. */
+int recomp_ttf_call(uint32_t target);
 
 #ifdef RA2_TARGET_GAME
-#define RECOMP_THAI_TARGET(va) ((va) == 0x00432490u || (va) == 0x004318E0u || (va) == 0x00431CC0u)
+#define RECOMP_THAI_TARGET(va) ((va) == 0x00432490u || (va) == 0x004318E0u || (va) == 0x00431CC0u || (va) == 0x004314B0u)
 #else
-#define RECOMP_THAI_TARGET(va) ((va) == 0x00434CD0u || (va) == 0x00434120u || (va) == 0x00434500u)
+#define RECOMP_THAI_TARGET(va) ((va) == 0x00434CD0u || (va) == 0x00434120u || (va) == 0x00434500u || (va) == 0x00433CF0u)
 #endif
 
 /* Preserve the lifted call boundary, while letting the host adjust the font

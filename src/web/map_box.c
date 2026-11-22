@@ -3,6 +3,7 @@
  * Right move the caret (Shift selects nothing), Delete takes the character after it, and a click
  * puts it at the end. */
 #include "map_box.h"
+#include "text_input.h"
 
 #include <string.h>
 
@@ -36,6 +37,9 @@ int ra2_map_box_take(ra2_map_box *b, uint32_t message, uint32_t wParam) {
     } else if (message == WM_CHAR) {
         if (wParam == VK_BACK && b->caret) return erase(b, --b->caret), 1;
         if (wParam >= 32u && wParam <= 255u) return insert(b, (char)wParam), 1;
+        /* Unicode from --ttf-text (text_input.h): the game's box inserts it too, so keep the
+         * place, as the byte the map names would use (CP874 for Thai, '?' otherwise) */
+        if (wParam > 255u && wParam <= 0xFFFFu) return insert(b, (char)web_text_char(wParam, 0)), 1;
     } else if (message == WM_KEYDOWN) {
         if (wParam == VK_HOME) b->caret = 0;
         else if (wParam == VK_END) b->caret = b->len;

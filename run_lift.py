@@ -1824,8 +1824,9 @@ def ra2_shell_patches(code, cs):
 # Route direct font-path calls through the optional translated runtime shaper.
 # The original lifted function remains intact and is called by the wrapper.
 THAI_FONT_CALLS = {
-    'gamemd': (0x00434CD0, 0x00434120, 0x00434500),  # layout, glyph, direct text
-    'game': (0x00432490, 0x004318E0, 0x00431CC0),
+    # layout, glyph, direct text, measure (the TTF adapter measures and draws one layout)
+    'gamemd': (0x00434CD0, 0x00434120, 0x00434500, 0x00433CF0),
+    'game': (0x00432490, 0x004318E0, 0x00431CC0, 0x004314B0),
 }
 
 

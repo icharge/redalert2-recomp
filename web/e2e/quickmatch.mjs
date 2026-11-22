@@ -727,6 +727,12 @@ async function rowChat() {
   await untilAsync(b, "A's line in B's panel", () => panelHas(b, first), 20000);
   await untilAsync(a, "A's own line in A's panel", () => panelHas(a, first), 20000);
   check("A's line went through the game to B, and A's panel shows it too");
+  // Thai travels as real Unicode (the game's packet is UTF-16): B's panel shows สวัสดี itself,
+  // not its Windows-874 letters, and the game's own message row draws it (shot match-chat-thai)
+  await untilAsync(b, "the Thai of A's line in B's panel", () => panelHas(b, "สวัสดี"), 20000);
+  await b.page.waitForTimeout(500);
+  await b.shot("match-chat-thai");
+  check("A's Thai reached B's panel as Thai");
   const second = `answer from B ${tag}`;
   await chatFrom(b, second, "Backspace");
   await untilAsync(b, "B's own allies line", () => panelHas(b, `[Allies] ${b.nick}`), 20000);

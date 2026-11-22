@@ -177,6 +177,8 @@ def main(argv=None, *, root=ROOT):
                      '-DCMAKE_TOOLCHAIN_FILE=' + (root / 'cmake/emscripten.cmake').as_posix(),
                      '-DPCRECOMP=' + runtime.as_posix(),
                      '-DRA2_TARGET=' + TARGETS[edition], '-DCMAKE_BUILD_TYPE=Release',
+                     # the TrueType engine for Thai text (docs/ttf-text.md); needs Rust, see there
+                     '-DRA2_TTF_TEXT=ON',
                      '-DWEB_LINK_OPT=' + ('-O1' if mode == 'fast' else ''),
                      '-DWEB_OUT=' + (root / 'web/public/game').as_posix()],
                     ['cmake', '--build', folder.as_posix(), '--target', edition + '_publish'],

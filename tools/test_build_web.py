@@ -37,6 +37,7 @@ class BuildCommandTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertIn((ROOT / 'build' / folder).as_posix(), result.stdout)
                 self.assertIn('-DRA2_TARGET=' + target, result.stdout)
+                self.assertIn('-DRA2_TTF_TEXT=ON', result.stdout)
                 self.assertIn('-DCMAKE_BUILD_TYPE=Release', result.stdout)
                 self.assertIn(link, result.stdout)
                 self.assertIn('-DWEB_OUT=' + (ROOT / 'web/public/game').as_posix(), result.stdout)

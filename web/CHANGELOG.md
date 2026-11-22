@@ -13,6 +13,12 @@ commit after each entry is where to read more.
 
 ### Added
 
+- **Thai in chat, shaped**: Thai typed in the lobby, the game rooms and the
+  match panel now reaches the other players as Thai, and the game draws it
+  with a TrueType font (Noto Sans Thai) with the vowels and tone marks in
+  place. It works without the Thai font option. Only text with Thai is drawn
+  this way; English screens look as before.
+
 - **Tabs in the match panel**: All, Allies, PM (whispers, yours too) and
   System (the game's own messages). A tab with something new is marked. Lines
   to allies show `[Allies]` for everyone on this build, not only for you.

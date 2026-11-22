@@ -26,6 +26,7 @@
 #include "oracle.h"
 #include "present.h"
 #include "hdvox.h"
+#include "text_guest.h"
 #include "mods.h"
 #include "page_cursor.h"
 #include "startup_order.h"
@@ -1471,7 +1472,7 @@ static DWORD WINAPI watchdog(LPVOID unused) {
 
 static DWORD WINAPI guest_thread(LPVOID unused) {
     MSG msg;
-    (void)unused;
+    text_guest_set_enabled((int)(uintptr_t)unused);
     if (g_launcher_map) {
         g_launcher_tid = GetCurrentThreadId();
         PeekMessageA(&msg, NULL, 0, 0, PM_NOREMOVE);
@@ -1553,6 +1554,7 @@ int main(int argc, char** argv) {
             g_scale_mode = present_mode_from_name(argv[++i]);
         else if (!strcmp(argv[i], "--debuglog")) g_debuglog = 1;
         else if (!strcmp(argv[i], "--hd-voxels")) hdvox_configure(1, NULL);
+        else if (!strcmp(argv[i], "--ttf-text")) text_guest_set_enabled(1);
         else if (!strcmp(argv[i], "--mute")) CloseHandle(CreateThread(NULL, 0, mute_thread, NULL, 0, NULL));
         else if (!strcmp(argv[i], "--hd-voxels-dump") && i + 1 < argc) {
             static char dir[MAX_PATH];
@@ -1714,7 +1716,9 @@ int main(int argc, char** argv) {
      * start sat on 0x00400000, the guest's range. The game runs on a thread
      * with the large stack, and the launcher's message goes to that thread. */
     {
-        HANDLE t = CreateThread(NULL, 0x1000000, guest_thread, NULL, STACK_SIZE_PARAM_IS_A_RESERVATION, NULL);
+        HANDLE t = CreateThread(NULL, 0x1000000, guest_thread,
+                                (LPVOID)(uintptr_t)text_guest_enabled(),
+                                STACK_SIZE_PARAM_IS_A_RESERVATION, NULL);
         if (!t) { fprintf(stderr, "cannot start the game thread (error %lu)\n", GetLastError()); return 1; }
         WaitForSingleObject(t, INFINITE);
     }

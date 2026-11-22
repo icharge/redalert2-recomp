@@ -4,8 +4,9 @@
 //   node e2e/chat-box.mjs --url 'http://127.0.0.1:5175/' --game ../game                  (YR)
 // A member reaches the lobby. Then:
 //   - the page's TYPE button is gone, and the chat box shows over the game's chat line
-//   - a line with Thai typed into the box and Enter goes out as the game's own lobby line
-//     (`privmsg #Lob_NN_0 :...`; the game keeps Thai as Windows-874 bytes widened to U+00A1..)
+//   - a line with Thai typed into the box and Enter goes out as the game's own lobby line, Thai as
+//     real Unicode (`privmsg #Lob_NN_0 :... สวัสดี`), and the game's transcript draws it with the
+//     TrueType engine (docs/ttf-text.md); shot chat-box-thai
 //   - `/r` style commands still reach the game: `/on <nick>` asks `find <nick>`, and `/msg <nick> <text>`
 //     (the page's short /page) goes out as a private line
 //   - in a game room it creates, a line goes to the room, and /p and /on work as in the lobby
@@ -39,15 +40,6 @@ async function call(method, route, body, token) {
   assert.ok(response.ok, `${method} ${route}: ${response.status} ${data.error ?? ""}`);
   return data;
 }
-
-/** The game's encoding of a typed line: Thai as its Windows-874 byte, widened (presenter.c). */
-const gameText = (text) =>
-  Array.from(text)
-    .map((c) => {
-      const code = c.codePointAt(0);
-      return code >= 0x0e01 && code <= 0x0e5b ? String.fromCharCode(code - 0x0d60) : c;
-    })
-    .join("");
 
 let run;
 const wire = [];
@@ -174,11 +166,15 @@ try {
   await box.click();
   await box.fill(line);
   await box.press("Enter");
-  await until("the lobby line", () =>
-    sent(mark, (l) => l === `privmsg ${lobby} :${gameText(line)}`),
-  );
+  await until("the lobby line", () => sent(mark, (l) => l === `privmsg ${lobby} :${line}`));
   assert.equal(await box.inputValue(), "", "the box empties after Enter");
-  console.log(`ok  the box's line went out as the game's lobby line`);
+  console.log(`ok  the box's line went out as the game's lobby line, Thai as Unicode`);
+  {
+    // the game's transcript drew the line through the TrueType engine (Thai only goes there)
+    await run.page.waitForTimeout(1200);
+    await run.shot("chat-box-thai");
+    console.log("ok  shot chat-box-thai: the lobby transcript with the Thai line");
+  }
 
   mark = wire.length;
   await box.fill(`/on zz${tag}`);

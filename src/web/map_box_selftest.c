@@ -50,6 +50,12 @@ int main(void) {
     /* CP874 (Thai) bytes are text */
     assert(ra2_map_box_take(&b, WM_CHAR, 0xA1) && b.len == 4 && (unsigned char)b.text[3] == 0xA1);
 
+    /* with --ttf-text the box gets Unicode (text_input.h): the game inserts it, so the
+     * search keeps its place, holding Thai as its CP874 byte and anything else as '?' */
+    assert(ra2_map_box_take(&b, WM_CHAR, 0x0E32) && b.len == 5 && (unsigned char)b.text[4] == 0xD2);
+    assert(ra2_map_box_take(&b, WM_CHAR, 0x4E2D) && b.len == 6 && b.text[5] == '?' && b.caret == 6);
+    assert(ra2_map_box_take(&b, WM_CHAR, 8) && ra2_map_box_take(&b, WM_CHAR, 8) && !strcmp(b.text, "xla\xA1"));
+
     /* the game's box takes any length: past the buffer only the count is kept, until it empties */
     ra2_map_box l = { 0 };
     for (unsigned i = 0; i < sizeof l.text + 10; i++) type(&l, " ");
