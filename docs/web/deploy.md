@@ -202,6 +202,13 @@ $env:VITE_WOL_SOCKET_URL = 'wss://service.thaira2.com/wol'
 pnpm dev
 ```
 
+A build refuses plain `http://` and `ws://` server URLs to another machine:
+`vite build` stops with `InsecureWolServer`, and the page throws the same error
+when it starts (`web/src/wol-endpoint.ts`), because the member's password,
+refresh cookie and game logins travel there. Only loopback (`127.0.0.1`,
+`localhost`, `[::1]`) may stay plain http, for a local preview build; an unset
+`VITE_WOL_HTTP_URL` means `http://127.0.0.1:9090` and the build warns.
+
 Restart Vite after changing these settings. For a production frontend, set them
 before `pnpm build` — in the environment or in `web/.env.production` (see
 [Build-time settings from `.env` files](#build-time-settings-from-env-files)).

@@ -2,7 +2,13 @@ import { describe, expect, it } from "vitest";
 import { AccountClient } from "./account/api";
 import { FakeServer } from "./account/fake-server";
 import { AccountStore } from "./account/store";
-import { DEV_PROXY_PATH, resolveWolHttpUrl, wolDevProxy } from "./wol-endpoint";
+import {
+  DEV_PROXY_PATH,
+  InsecureWolServer,
+  assertSecureEndpoint,
+  resolveWolHttpUrl,
+  wolDevProxy,
+} from "./wol-endpoint";
 
 describe("resolveWolHttpUrl", () => {
   it("on the dev server with no setting, the server is the page's own origin, through the proxy", () => {
@@ -32,6 +38,32 @@ describe("resolveWolHttpUrl", () => {
     const reloaded = page();
     await reloaded.restore();
     expect(reloaded.getState()).toMatchObject({ status: "member", member: { login: "carol" } });
+  });
+});
+
+describe("a production build", () => {
+  const prod = (configured?: string) =>
+    resolveWolHttpUrl({ configured, dev: false, origin: "https://launcher.example" });
+
+  it("refuses a plain-http server: the cookie and passwords would cross the network in clear", () => {
+    expect(() => prod("http://service.example/")).toThrow(InsecureWolServer);
+    expect(() => prod("http://192.168.1.10:9090")).toThrow(/https/);
+  });
+
+  it("takes an https server", () => {
+    expect(prod("https://service.example/")).toBe("https://service.example/");
+  });
+
+  it("allows plain http only to this machine (a local preview build)", () => {
+    expect(prod("http://127.0.0.1:9090")).toBe("http://127.0.0.1:9090");
+    expect(prod("http://localhost:9090")).toBe("http://localhost:9090");
+    expect(prod("http://[::1]:9090")).toBe("http://[::1]:9090");
+  });
+
+  it("checks the WebSocket URL the same way", () => {
+    expect(() => assertSecureEndpoint("ws://service.example/wol")).toThrow(InsecureWolServer);
+    expect(assertSecureEndpoint("wss://service.example/wol")).toBe("wss://service.example/wol");
+    expect(assertSecureEndpoint("ws://127.0.0.1:9090/")).toBe("ws://127.0.0.1:9090/");
   });
 });
 

@@ -53,8 +53,14 @@ import {
   type HeldSession,
 } from "./wol";
 import { PmStore } from "./pm";
-import { wolHttpUrl as wolEndpoint } from "../wol-endpoint";
+import { assertSecureEndpoint, wolHttpUrl as wolEndpoint } from "../wol-endpoint";
 import { UdpRelay, parseStartHandoff } from "./udp-relay";
+
+/** The WOL chat socket: the operator's setting, or the HTTP server's as ws(s); wss in a build. */
+function wolSocketUrl(httpUrl: string): string {
+  const url = import.meta.env.VITE_WOL_SOCKET_URL || toWolSocketUrl(httpUrl);
+  return import.meta.env.DEV ? url : assertSecureEndpoint(url);
+}
 
 /** The two edition bundles share /game and use edition-specific filenames. */
 export const gameScript = (game: GameId) =>
@@ -721,7 +727,7 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
     let setLaunchLogin: (nick: string) => void = () => {};
     const wolServer = {
       httpUrl: wolHttpUrl,
-      socketUrl: import.meta.env.VITE_WOL_SOCKET_URL ?? toWolSocketUrl(wolHttpUrl),
+      socketUrl: wolSocketUrl(wolHttpUrl),
     };
     module.ra2WolStart = (username, password) => {
       udpRelay?.stop();

@@ -7,6 +7,10 @@
  * is cross-site, so the browser drops that cookie and a reload signs the member out. On the dev
  * server the default is therefore the page's own origin, under {@link DEV_PROXY_PATH}, which Vite
  * forwards to the real server (vite.config.ts, {@link wolDevProxy}).
+ *
+ * A build (not the dev server) sends the member's password, refresh cookie and game logins to this
+ * server, so it must be https (and the socket wss): plain http is refused, at build time by
+ * vite.config.ts and again when the page starts, except to this machine (a local preview build).
  */
 
 /** The dev server's prefix for the WOL server (HTTP and WebSockets). */
@@ -16,6 +20,33 @@ export const DEV_PROXY_PATH = "/ra2web/";
 export const DEV_PROXY_TARGET = "http://127.0.0.1:9090";
 
 const FALLBACK = "http://127.0.0.1:9090";
+
+/** A WOL server URL a build refuses: plain http or ws to another machine. */
+export class InsecureWolServer extends Error {
+  constructor(readonly url: string) {
+    super(
+      `The WOL server ${url} is not https/wss. A build sends passwords and the session cookie ` +
+        "there; set VITE_WOL_HTTP_URL (and VITE_WOL_SOCKET_URL) to https:// and wss:// URLs.",
+    );
+    this.name = "InsecureWolServer";
+  }
+}
+
+function loopback(hostname: string): boolean {
+  return (
+    hostname === "localhost" ||
+    hostname.endsWith(".localhost") ||
+    hostname === "[::1]" ||
+    /^127(\.\d{1,3}){3}$/.test(hostname)
+  );
+}
+
+/** `url` when it is https/wss or stays on this machine; otherwise {@link InsecureWolServer}. */
+export function assertSecureEndpoint(url: string): string {
+  const { protocol, hostname } = new URL(url);
+  if (protocol === "https:" || protocol === "wss:" || loopback(hostname)) return url;
+  throw new InsecureWolServer(url);
+}
 
 export interface EndpointEnv {
   /** `VITE_WOL_HTTP_URL`, when the operator set one. */
@@ -27,9 +58,8 @@ export interface EndpointEnv {
 }
 
 export function resolveWolHttpUrl(env: EndpointEnv): string {
-  if (env.configured) return env.configured;
-  if (env.dev) return `${env.origin}${DEV_PROXY_PATH}`;
-  return FALLBACK;
+  if (env.dev) return env.configured ?? `${env.origin}${DEV_PROXY_PATH}`;
+  return assertSecureEndpoint(env.configured ?? FALLBACK);
 }
 
 /** The server for this page, from the build's settings. */
