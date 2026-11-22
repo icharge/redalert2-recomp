@@ -742,6 +742,7 @@ int main(int argc, char **argv) {
         argc = ac, argv = av;
         break;
     }
+    const char *test_map = NULL;
     for (int i = 1; i < argc; i++) {
         int n = script_arg(argc, argv, i);
         if (n) { i += n - 1; continue; }
@@ -768,6 +769,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--trap") && i + 1 < argc) g_trap_after = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--hd-voxels")) hdvox_configure(1, NULL);
         else if (!strcmp(argv[i], "--speedcontrol")) g_speed_control = 1;
+        else if (!strcmp(argv[i], "--test-map") && i + 1 < argc) test_map = argv[++i];   /* FA2EX: one skirmish, no menus (test_map.c) */
         else if (!strcmp(argv[i], "--classic-latency")) g_classic_latency = 1;
         else if (!strcmp(argv[i], "--net-delay") && i + 1 < argc) g_net_delay_ms = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--hd-voxels-dump") && i + 1 < argc) {
@@ -784,13 +786,17 @@ int main(int argc, char **argv) {
             g_dump_dir = dir;                /* the run chdirs into the game folder */
         }
         else {
-            printf("usage: ra2 [--run] [--headless | --fullscreen] [--scale sharp|smooth|crt|nearest|integer] [--game DIR] [--mod NAME|none] [--thai-font-fix --thai-font-id ID] [--debuglog] [--mute] [--trace] [--heartbeat S] [--memfs] [--intro | --no-intro] [--trap N] [--dump-frames DIR] [--hd-voxels] [--hd-voxels-dump DIR] [--clockstats] [--speedcontrol] [--classic-latency] [--net-delay MS]\n"
+            printf("usage: ra2 [--run] [--headless | --fullscreen] [--scale sharp|smooth|crt|nearest|integer] [--game DIR] [--mod NAME|none] [--thai-font-fix --thai-font-id ID] [--debuglog] [--mute] [--trace] [--heartbeat S] [--memfs] [--intro | --no-intro] [--trap N] [--dump-frames DIR] [--hd-voxels] [--hd-voxels-dump DIR] [--clockstats] [--speedcontrol] [--test-map INI] [--classic-latency] [--net-delay MS]\n"
                    "           [--press DLG:CTRL@s] [--select DLG:CTRL=N@s] [--waitlog TEXT@s] [--move|--click x,y@s]\n"
                    "           [--key [c][s][a]+vk@s] [--wait VA@s] [--drag x1,y1,x2,y2@s]\n");
             return !strcmp(argv[i], "--help") || !strcmp(argv[i], "-h") ? 0 : 1;
         }
     }
     game = mount_node_game(game);
+    if (test_map) {   /* read after the mount: under Node the file is in the mounted game folder */
+        extern int ra2_test_map_load(const char *);
+        if (!ra2_test_map_load(test_map)) return fail("no test map settings at %s", test_map);
+    }
     char game_full[PATH_MAX], exe_host[PATH_MAX + 16];
     if (!realpath(game, game_full)) return fail("no game folder at %s", game);
     hle_set_drive('C', game_full);

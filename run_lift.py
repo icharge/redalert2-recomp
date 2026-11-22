@@ -962,6 +962,40 @@ def match_chat_patches(code, cs, target):
     }
 
 
+# FA2EX's Test Map (docs/web/test-map.md): with the web host's --test-map, Select_Game skips the main
+# menu into its own Skirmish case, the skirmish dialog's call is replaced by
+# src/runtime/test_map_fill.inc (the dialog's writes, from the staged INI), and the match's
+# end-of-scenario routine (the score screen) is left out so the page can return to the editor.
+# (menu-loop compare, its bytes, the Skirmish case, its bytes, the dialog call, the dialog,
+#  the end-of-scenario call, the routine). Yuri's Revenge only so far; RA2's set is not mapped.
+TEST_MAP_SITES = {
+    'gamemd': (0x0052DC87, '83fe12', 0x0052E10F, 'c70538b2a80005000000', 0x0052E168, 0x006AE2C0,
+               0x0055D14A, 0x00685670),
+}
+
+
+def test_map_patches(code, cs, target):
+    """Start one skirmish on the staged map with no menus, for FA2EX's Test Map."""
+    if target not in TEST_MAP_SITES:
+        return {}
+    cmp_va, cmp_raw, case_va, case_raw, dialog_call, dialog, end_call, end = TEST_MAP_SITES[target]
+    if (code[cmp_va - cs:cmp_va - cs + 3] != bytes.fromhex(cmp_raw)
+            or code[case_va - cs:case_va - cs + 10] != bytes.fromhex(case_raw)
+            or not _call_matches(code, cs, dialog_call, dialog) or not _call_matches(code, cs, end_call, end)):
+        print('[*] test_map_patches: the sites do not match this build; no Test Map')
+        return {}
+    return {
+        cmp_va: ('{ extern int ra2_test_map_pending(void); if (ra2_test_map_pending()) goto L_%08X; } '
+                 '/* FA2EX Test Map: past the main menu, run_lift.py test_map_patches */' % case_va),
+        dialog_call: ('@replace:{ extern int ra2_test_map_pending(void); if (ra2_test_map_pending()) {\n'
+                      '#include "test_map_fill.inc"\n'
+                      '    } else RECOMP_CALL(sub_%08X); } /* FA2EX Test Map: the dialog\'s work, run_lift.py test_map_patches */'
+                      % dialog),
+        end_call: ('@replace:{ extern int ra2_test_map_done(void); if (!ra2_test_map_done()) RECOMP_CALL(sub_%08X); } '
+                   '/* FA2EX Test Map: no score screen, run_lift.py test_map_patches */' % end),
+    }
+
+
 # Red Alert 2 itself (game.exe, the same install) is a second target: its own
 # catalog in work/game, its lift in src/recomp/gen_game, its own seeds, hooks
 # and patches. Everything address-bound the host needs comes to it through
@@ -1840,7 +1874,7 @@ def targets():
                                                  **live_resize_menu_patches(code, cs),
                                                  **web_exit_confirmation_patches(code, cs, 'gamemd'),
                                                  **web_url_patches(code, cs, 'gamemd'),
-                                                 **wol_icon_surface_patches(code, cs, 'gamemd'), **chat_time_patches(code, cs, 'gamemd'), **bare_page_patches(code, cs, 'gamemd'), **match_chat_patches(code, cs, 'gamemd'),
+                                                 **wol_icon_surface_patches(code, cs, 'gamemd'), **chat_time_patches(code, cs, 'gamemd'), **bare_page_patches(code, cs, 'gamemd'), **match_chat_patches(code, cs, 'gamemd'), **test_map_patches(code, cs, 'gamemd'),
                                                  **net_timing_event_patches(code, cs, 'gamemd')}),
         'game': dict(exe=os.path.join(_HERE, 'game', 'game.exe'),
                      catalog=os.path.join(_HERE, 'work', 'game', 'functions.json'),
