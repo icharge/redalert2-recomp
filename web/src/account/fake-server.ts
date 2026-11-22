@@ -2,8 +2,8 @@ import type { GameAccount, Member } from "./api";
 
 /**
  * A stand-in for the ra2web member routes, as a `fetch`: for the tests of the account client and
- * screens. It keeps the pieces that matter to the page: the cookie jar (shared by every "tab"),
- * rotation with reuse detection (a refresh that arrives with an old cookie signs everyone out),
+ * screens. It keeps the pieces that matter to the page: the cookie jar (shared by every "tab"), the
+ * cookie's SameSite=Lax rule (set `pageOrigin`), rotation with reuse detection (a refresh that arrives with an old cookie signs everyone out),
  * access tokens that expire, the game account limit and claims.
  */
 export class FakeServer {
@@ -16,6 +16,12 @@ export class FakeServer {
   }[] = [];
   /** The `ra2refresh` cookie of the browser; `null` is no cookie. */
   cookie: string | null = null;
+  /**
+   * The page's origin. Set, the cookie is SameSite=Lax as on the real server: a request from a page
+   * on another site (scheme and host; `localhost` and `127.0.0.1` differ, ports do not count)
+   * neither sends it nor keeps the one its answer sets. `null` skips the rule.
+   */
+  pageOrigin: string | null = null;
   /** When set, every request fails as if the network were down. */
   down = false;
   maxGameAccounts = 1;
@@ -37,6 +43,8 @@ export class FakeServer {
   private rotated = new Set<string>();
   private serial = 0;
   private nextId = 1;
+  /** Whether the request being answered is same-site: only then does its answer set the cookie. */
+  private sameSite = true;
 
   /** Make every access token invalid, as a server restart or 15 minutes would. */
   expireAccessTokens(): void {
@@ -54,7 +62,7 @@ export class FakeServer {
     this.access.set(accessToken, login.toLowerCase());
     const refresh = this.token("r");
     this.refreshTokens.set(refresh, login.toLowerCase());
-    this.cookie = refresh;
+    if (this.sameSite) this.cookie = refresh;
     return {
       member: entry.member,
       gameAccounts: entry.games,
@@ -95,9 +103,11 @@ export class FakeServer {
       credentials: String(init?.credentials),
     });
     // the request is read now (this is the cookie it carries), answered a moment later
-    const sentCookie = this.cookie;
+    const sameSite = this.pageOrigin === null || site(this.pageOrigin) === site(url.origin);
+    const sentCookie = sameSite ? this.cookie : null;
     await Promise.resolve();
     await Promise.resolve();
+    this.sameSite = sameSite;
     if (this.down) throw new TypeError("Failed to fetch");
     const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, string>) : {};
     const who = bearer ? this.access.get(bearer) : undefined;
@@ -165,7 +175,7 @@ export class FakeServer {
       }
       case "POST /v1/auth/logout": {
         if (sentCookie) this.refreshTokens.delete(sentCookie);
-        this.cookie = null;
+        if (sameSite) this.cookie = null;
         return this.respond(200, { ok: true });
       }
       case "POST /v1/members/logout-everywhere": {
@@ -248,6 +258,18 @@ export class FakeServer {
   log(): string[] {
     return this.calls.map((call) => `${call.method} ${call.path}`);
   }
+}
+
+/**
+ * A URL's site as SameSite sees it: the scheme and the registrable domain. An IP address or a
+ * single-label host (`localhost`) is its own site; a name keeps its last two labels, which is
+ * enough for these tests (no public-suffix list).
+ */
+export function site(origin: string): string {
+  const { protocol, hostname } = new URL(origin);
+  const ip = /^[\d.]+$/.test(hostname) || hostname.startsWith("[");
+  const labels = hostname.split(".");
+  return `${protocol}//${ip || labels.length < 2 ? hostname : labels.slice(-2).join(".")}`;
 }
 
 /** A cross-tab lock like `navigator.locks.request` for one name: runs go one after another. */
