@@ -969,30 +969,54 @@ def match_chat_patches(code, cs, target):
 # (menu-loop compare, its bytes, the Skirmish case, its bytes, the dialog call, the dialog,
 #  the end-of-scenario call, the routine). Yuri's Revenge only so far; RA2's set is not mapped.
 TEST_MAP_SITES = {
-    'gamemd': (0x0052DC87, '83fe12', 0x0052E10F, 'c70538b2a80005000000', 0x0052E168, 0x006AE2C0,
-               0x0055D14A, 0x00685670),
+    # menu: Select_Game's menu-loop compare (the menu choice is esi in YR, ebp in RA2);
+    # skirmish: its Skirmish case; dialog: the skirmish dialog call; end: the end-of-scenario call;
+    # single: the new-campaign difficulty block (needs eax = Scen, ebx = 0, and in RA2 esi = 1);
+    # campaign: the campaign-or-file test before Start_Scenario; file: Start_Scenario on the
+    # scenario's own file name, which sits at Scen + name. RA2's set was found by aligning its
+    # instructions with YR's and checked against game.exe (docs/web/test-map.md).
+    'gamemd': dict(menu=(0x0052DC87, '83fe12'), skirmish=(0x0052E10F, 'c70538b2a80005000000'),
+                   dialog=(0x0052E168, 0x006AE2C0), end=(0x0055D14A, 0x00685670),
+                   single=(0x0052E527, '8b0d64eba800'), campaign=(0x0052E6E0, '391d38b2a800'),
+                   file=(0x0052E737, 'a130b2a800'), scen=0x00A8B230, name=0x125C,
+                   difficulty=0x00A8EB64, single_regs=''),
+    'game': dict(menu=(0x005138D6, '83fd12'), skirmish=(0x00513D93, 'c70598d2a30005000000'),
+                 dialog=(0x00513DEC, 0x00683BF0), end=(0x0053F9BA, 0x0065D7F0),
+                 single=(0x0051411E, '8b0d1c0ba400'), campaign=(0x0051429A, '391d98d2a300'),
+                 file=(0x005142F1, 'a190d2a300'), scen=0x00A3D290, name=0x083C,
+                 difficulty=0x00A40B1C, single_regs=' esi = 1u;'),
 }
 
 
 def test_map_patches(code, cs, target):
-    """Start one skirmish on the staged map with no menus, for FA2EX's Test Map."""
+    """Start one match on the staged map with no menus, for FA2EX's Test Map: a skirmish on a
+    multiplayer map, or the mission itself on a singleplayer one."""
     if target not in TEST_MAP_SITES:
         return {}
-    cmp_va, cmp_raw, case_va, case_raw, dialog_call, dialog, end_call, end = TEST_MAP_SITES[target]
-    if (code[cmp_va - cs:cmp_va - cs + 3] != bytes.fromhex(cmp_raw)
-            or code[case_va - cs:case_va - cs + 10] != bytes.fromhex(case_raw)
-            or not _call_matches(code, cs, dialog_call, dialog) or not _call_matches(code, cs, end_call, end)):
+    t = TEST_MAP_SITES[target]
+    raw = lambda va, shape: code[va - cs:va - cs + len(bytes.fromhex(shape))] == bytes.fromhex(shape)
+    if (not all(raw(*t[k]) for k in ('menu', 'skirmish', 'single', 'campaign', 'file'))
+            or not _call_matches(code, cs, *t['dialog']) or not _call_matches(code, cs, *t['end'])):
         print('[*] test_map_patches: the sites do not match this build; no Test Map')
         return {}
     return {
-        cmp_va: ('{ extern int ra2_test_map_pending(void); if (ra2_test_map_pending()) goto L_%08X; } '
-                 '/* FA2EX Test Map: past the main menu, run_lift.py test_map_patches */' % case_va),
-        dialog_call: ('@replace:{ extern int ra2_test_map_pending(void); if (ra2_test_map_pending()) {\n'
-                      '#include "test_map_fill.inc"\n'
-                      '    } else RECOMP_CALL(sub_%08X); } /* FA2EX Test Map: the dialog\'s work, run_lift.py test_map_patches */'
-                      % dialog),
-        end_call: ('@replace:{ extern int ra2_test_map_done(void); if (!ra2_test_map_done()) RECOMP_CALL(sub_%08X); } '
-                   '/* FA2EX Test Map: no score screen, run_lift.py test_map_patches */' % end),
+        t['menu'][0]: ('{ extern int ra2_test_map_pending(void); extern int ra2_test_map_single(char *, int); '
+                       'if (ra2_test_map_pending()) { '
+                       'const int tm_d = ra2_test_map_single((char *)ADDR(MEM32(0x%08Xu) + 0x%Xu), 0x104); '
+                       'if (tm_d >= 0) { MEM32(0x%08Xu) = (uint32_t)tm_d; eax = MEM32(0x%08Xu); ebx = 0u;%s goto L_%08X; } '
+                       'goto L_%08X; } } /* FA2EX Test Map: past the main menu, run_lift.py test_map_patches */'
+                       % (t['scen'], t['name'], t['difficulty'], t['scen'], t['single_regs'], t['single'][0],
+                          t['skirmish'][0])),
+        t['campaign'][0]: ('{ extern int ra2_test_map_single_active(void); '
+                           'if (ra2_test_map_single_active()) goto L_%08X; } '
+                           '/* FA2EX Test Map: the staged mission, not the campaign\'s, run_lift.py test_map_patches */'
+                           % t['file'][0]),
+        t['dialog'][0]: ('@replace:{ extern int ra2_test_map_pending(void); if (ra2_test_map_pending()) {\n'
+                         '#include "test_map_fill.inc"\n'
+                         '    } else RECOMP_CALL(sub_%08X); } /* FA2EX Test Map: the dialog\'s work, run_lift.py test_map_patches */'
+                         % t['dialog'][1]),
+        t['end'][0]: ('@replace:{ extern int ra2_test_map_done(void); if (!ra2_test_map_done()) RECOMP_CALL(sub_%08X); } '
+                      '/* FA2EX Test Map: no score screen, run_lift.py test_map_patches */' % t['end'][1]),
     }
 
 
@@ -1904,7 +1928,7 @@ def targets():
                                                **reconnect_patches(code, cs, 'game'),
                                                **live_resize_patches(code, cs, 'game'),
                                                **web_url_patches(code, cs, 'game'),
-                                               **wol_icon_surface_patches(code, cs, 'game'), **chat_time_patches(code, cs, 'game'), **bare_page_patches(code, cs, 'game'), **match_chat_patches(code, cs, 'game'),
+                                               **wol_icon_surface_patches(code, cs, 'game'), **chat_time_patches(code, cs, 'game'), **bare_page_patches(code, cs, 'game'), **match_chat_patches(code, cs, 'game'), **test_map_patches(code, cs, 'game'),
                                                **net_timing_event_patches(code, cs, 'game')}),
     }
 

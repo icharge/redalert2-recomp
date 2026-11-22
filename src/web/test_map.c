@@ -24,6 +24,7 @@ static tm_entry g_entries[TM_MAX_KEYS];
 static int g_count;
 static int g_pending;     /* set by a readable --test-map file; cleared once the dialog is skipped */
 static int g_active;      /* a test-map match was started: its end goes to the page */
+static int g_single;      /* the staged map is a singleplayer mission, started as a campaign one */
 
 const char *ra2_test_map_str(const char *section, const char *key, const char *def);
 
@@ -113,6 +114,26 @@ void ra2_test_map_note(int what, uint32_t n) {
     else
         fprintf(stderr, "[test-map] %s is not offered under the default game mode; check [Basic] GameMode\n", map);
 }
+
+/* Patch site 1, a singleplayer map ([Settings] Mode=singleplayer): writes the file name into the
+ * scenario's own name (Scen + 0x125C, RA2 + 0x83C) and returns the campaign difficulty index for
+ * Select_Game's new-campaign block (0 easiest .. 4 hardest, 2 Normal); -1 for a skirmish. The
+ * campaign-or-file test then takes the file (ra2_test_map_single_active). */
+int ra2_test_map_single(char *name, int cap) {
+    const char *mode = ra2_test_map_str("Settings", "Mode", "skirmish");
+    if (strcasecmp(mode, "singleplayer")) return -1;
+    snprintf(name, (size_t)cap, "%s", ra2_test_map_str("Settings", "Scenario", ""));
+    int d = ra2_test_map_int("Settings", "Difficulty", 2);
+    if (d < 0) d = 0;
+    if (d > 4) d = 4;
+    void ra2_test_map_started(int ok);
+    g_single = 1;
+    fprintf(stderr, "[test-map] singleplayer mission %s, difficulty %d\n", name, d);
+    ra2_test_map_started(1);
+    return d;
+}
+
+int ra2_test_map_single_active(void) { return g_single && g_active; }
 
 /* Patch site 1 (the menu loop's head) and 2 (the skirmish dialog's call). */
 int ra2_test_map_pending(void) { return g_pending; }

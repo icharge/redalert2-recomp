@@ -1,8 +1,36 @@
-# FA2EX Test Map: one skirmish, no menus
+# FA2EX Test Map: one match, no menus
 
-FA2EX (the browser map editor) tests a map by starting the web build straight into a skirmish on
-it. Nothing is clicked for the player: no main menu, no skirmish dialog, no score screen. Yuri's
-Revenge only so far; Red Alert 2's addresses are not mapped.
+FA2EX (the browser map editor) tests a map by starting the web build straight into it: a
+skirmish on a multiplayer map, the mission itself on a singleplayer one. Nothing is clicked for
+the player: no main menu, no skirmish dialog, no score screen. Both editions: `src/runtime/
+test_map_sites.h` holds each one's addresses, `run_lift.py`'s `TEST_MAP_SITES` its patch sites.
+
+## The settings file
+
+`[Settings]` `Mode=skirmish|singleplayer`, `Scenario=` the staged file. A skirmish adds `Name`,
+`Country` (−2 random), `Color`, `Start` (YR only; −1 random), `Credits`, `UnitCount`, `GameSpeed`
+and the option flags, and `[AI1]`..`[AI7]` (`Difficulty` 0 Easy, 1 Normal, 2 Hard; `Country`,
+`Color`, YR `Start`). A mission adds `Difficulty` 0 (easiest) to 4 (hardest), 2 Normal.
+
+## A singleplayer map
+
+The menu-loop patch writes `Scenario` into the scenario's own file name (Scen + 0x125C, RA2
++ 0x83C), sets the campaign difficulty (`[0xA8EB64]`, RA2 `[0xA40B1C]`) and jumps to Select_Game's
+new-campaign block (`0x52E527`, RA2 `0x51411E`; it wants eax = Scen, ebx = 0, and in RA2 esi = 1),
+which sets the difficulty and session type 0. The campaign-or-file test before Start_Scenario
+(`0x52E6E0`, RA2 `0x51429A`) is then sent to the file path (`0x52E737`, RA2 `0x5142F1`), so the
+staged map plays instead of the campaign's next mission. A mission is opened by name through the
+game's files, so a stock mission inside the archives works too (used for the check below).
+
+## Red Alert 2
+
+Its sites and the fill's addresses were found by aligning game.exe's instructions with
+gamemd.exe's (Select_Game 0x0052D9A0 ↔ 0x005135F0, the skirmish dialog's handler 0x006ACEE0 ↔
+0x006829F0, its WM_INITDIALOG 0x006AE6E0 ↔ 0x00683FC0, the end-of-game block 0x0055CFD0 ↔
+0x0053F840), then each read back from game.exe. Differences: the menu choice is in ebp; the
+skirmish has no team or start choice (starts are random); AI rows are level 0xA3D2DC, country
+0xA3D2FC, colour 0xA3D31C; the player record is 0x75 bytes; skirmish maps are listed as loose
+`*.MPR` (`0x6712C3`).
 
 ## How it runs
 
@@ -31,7 +59,7 @@ Revenge only so far; Red Alert 2's addresses are not mapped.
 | Step | From the dialog | Globals |
 |---|---|---|
 | Game mode | `0x6AEADD`, `0x6AEAF1` | default mode `0x5D5E10`, then `0x5E2F80`: mode `0xA8B3C4`/`0xA8B250`, object `0xA8B23C` |
-| Scenario | `0x6AEB3C`, `0x6AEB62` | list items `[0xA8B8CC]`, count `[0xA8B8D8]`, file name at item + 0x58; `0x5E7BF0(ecx = index)` fills `0xA8B8E0` and Scen + 0x125C; `0x5D63E0` checks the mode offers it; index `0xA8B254`/`0xA8B3C8` |
+| Scenario | `0x6AEB3C`, `0x6AEB62` | list items `[0xA8B8CC]`, count `[0xA8B8D8]`, file name at item + 0x58; `0x5E7BF0(ecx = index)` fills `0xA8B8E0` and Scen + 0x125C; `0x5D63E0` checks the mode offers it (it takes the list item, `[0xA8B8CC][index]`, not the index: `0x6AEB5A`); index `0xA8B254`/`0xA8B3C8` |
 | Handle | `0x6AD39F` | `0x735090(ecx = 0xA8B380, edx = text, -1)`. **The text is 16-bit**: an 8-bit name comes out as every other letter ("Tester" became "Tse") |
 | Human | `0x6AD3BA`, `0x6AD636`, `0x6AD63B` | country `0x69B760(country, 1)` (−2 random), colour `0x69B7E0(colour, 1)` (−2 random), team `0xA8B39C` (−1), start `0xA8B3A4` (−1 random) |
 | AI rows | `0x6AD3C1`–`0x6AD4F2` | five 8-entry arrays, row r at index r + 1, written only for a row holding an AI: level `0xA8B27C` (Hard 0, Normal 1, Easy 2), country `0xA8B29C`, colour `0xA8B2BC`, team `0xA8B2DC`, start `0xA8B2FC` |
@@ -58,6 +86,16 @@ Yuri's Revenge map staged as `fa2ex-test.yrm`:
   Points` for house 0 (Americans) and house 1 (Alliance), `Capture_Mouse()`, and the picture keeps
   changing (the AI builds);
 - no AI: the match starts and keeps running; it does not end by itself in 200 s.
+
+And with `build/ra2md-fast` and `build/ra2-fast` after the singleplayer and RA2 work (each: no
+menu, `Capture_Mouse()`, game frames advancing):
+
+- YR mission: `Mode=singleplayer`, `Scenario=all01umd.map` (inside the archives): `Reading
+  scenario: ALL01UMD.MAP`;
+- YR skirmish again (after the `0x5D63E0` item fix): Americans and a Hard AI (Russians);
+- RA2 skirmish on a stock four-start map staged as `fa2ex-test.mpr`: Americans and a Normal AI
+  (British);
+- RA2 mission: `Scenario=all01t.map`: `Reading scenario: ALL01T.MAP`.
 
 Not checked yet: the end of a match (`testMapDone`, patch 3) and the Abort Mission path; the
 launcher end to end in a browser.

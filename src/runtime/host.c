@@ -51,6 +51,8 @@ int web_match_chat_take(uint32_t mode, uint32_t chunk, uint32_t target) { (void)
 int web_match_chat_open(uint32_t mode, uint32_t target) { (void)mode, (void)target; return 0; }
 /* run_lift.py test_map_patches: the web host reads --test-map (src/web/test_map.c); native has none. */
 int ra2_test_map_pending(void) { return 0; }
+int ra2_test_map_single(char *name, int cap) { (void)name, (void)cap; return -1; }
+int ra2_test_map_single_active(void) { return 0; }
 int ra2_test_map_done(void) { return 0; }
 int ra2_test_map_int(const char *s, const char *k, int def) { (void)s, (void)k; return def; }
 const char *ra2_test_map_str(const char *s, const char *k, const char *def) { (void)s, (void)k; return def; }
