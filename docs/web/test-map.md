@@ -102,8 +102,20 @@ menu, `Capture_Mouse()`, game frames advancing):
   (British);
 - RA2 mission: `Scenario=all01t.map`: `Reading scenario: ALL01T.MAP`.
 
-Not checked yet: the end of a match (`testMapDone`, patch 3) and the Abort Mission path; the
-launcher end to end in a browser.
+In Chrome (2026-11-23, `build/ra2-fast` and `build/ra2md-fast` after merging into `web-port`;
+FA2EX's dev server on 4001 passing `/emu/` to the launcher's on 5175), with an RA2-only import:
+
+- FA2EX's own hand-off (an RA2 skirmish map, `fa2ex-test.mpr`) at
+  `/emu/game?testmap=1&edition=ra2&return=/emu/`: both files staged in `/game`, the arguments
+  end in `--test-map /game/fa2ex-test.ini`, straight to the loading screen and into the match;
+- a `testMapDone` line fed to the page (`Module.print`) sent it to `/emu/?testmap=done`;
+- RA2 missions (`all01t.map`, `sov01t.map`) said "Unable to read scenario!": that import has only
+  `maps01.mix`. The same build under Node with `--memfs` on a full install reads `ALL01T.MAP` and
+  starts it.
+
+Not checked yet: a match that ends by itself (`testMapDone` from patch 3); Yuri's Revenge in a
+browser (no YR import there). **Abort Mission does not end a test**: Options → Abort Mission →
+Quit lands in the real skirmish dialog with the test's settings, and the page gets no event.
 
 ## Map requirements
 
