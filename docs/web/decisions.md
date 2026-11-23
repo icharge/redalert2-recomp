@@ -313,13 +313,13 @@ integration-test questions.
 
 ## D13. Browser LAN play: one peer over WebRTC, manual SDP exchange
 
-**Planned UI follow-up (2026-10-25).** Keep this transport decision and move
-pairing into the game's Network entry flow: show the original LAN screen,
-then intercept with a browser Create/Join WebRTC session dialog. Follow the
-Exit interception's request/reply and input isolation pattern, without
-blocking the LAN pump. Continue returns focus to native LAN setup after
-pairing. See [the implementation plan](lan-webrtc-joining-plan.md) and
-W12.4–W12.8; this UI follow-up is not implemented yet.
+**Implemented (2026-10-26).** Pairing starts from the game's native Network
+button. The original LAN screen paints before the browser Create/Join WebRTC
+dialog appears. The request/reply hook keeps the LAN pump running and gates
+game input while the dialog owns focus; Continue resumes native lobby setup.
+Both editions have real two-browser match and failure-flow evidence recorded
+in [testing](testing.md#lan-transport-two-real-browsers) and the
+[implementation plan](lan-webrtc-joining-plan.md).
 
 **Decided.** Stage 12 is one-to-one browser LAN play. IPX datagrams use an
 unreliable, unordered WebRTC data channel. Players pair by copying an offer

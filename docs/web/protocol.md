@@ -129,6 +129,7 @@ hook (`hle_set_pump_hook`).
 | `ra2_quit`                    | none                                    | ends the runtime with `hle_exit(0)` (the page has already flushed settings and saves)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `ra2_exit_confirmation_reply` | `uint32 request, int exit_game` → `int` | replies to the intercepted Exit confirmation; 0 means Stay, 1 means Exit; returns 1 if the pending request matched. Exit ends the runtime after the reply, without the guest's save-and-teardown path                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `ra2_web_save_reference_reply` | `uint32 request, int ignore` → `int` | answers the saved-game unresolved-reference prompt; 1 ignores unmatched references for this load, 0 cancels it; returns 1 when the request matched                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `ra2_lan_session_reply`       | `uint32 request, int connected` → `int` | queues one LAN decision; 0 means cancel, 1 means continue; returns 1 once for a matching pending request                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `ra2_crash_report`            | `const char *why`                       | prints the lifted function, the registers, the indirect-call ring and the guest stack to stderr. Safe after the game thread has died, because it only reads memory                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
 There is no `ra2_script`: a test's scripted events (`--press`, `--click`, ...)
@@ -168,6 +169,8 @@ in test logs.
 | `testMapStarted` | none                                            | a `--test-map` match was set up and its map starts loading; the page drops its cover so the game's loading screen shows ([test-map.md](test-map.md)) |
 | `testMapDone`   | none                                             | a `--test-map` match ended (the score screen is skipped); the page leaves for FA2EX ([test-map.md](test-map.md)) |
 | `testMapFailed` | none                                             | the `--test-map` settings could not be applied; the game falls back to its menus and the page leaves for FA2EX |
+| `lanSession`    | `request`                                        | the native LAN screen has painted and its frame was published; reply with `ra2_lan_session_reply`                                                                                                                                                              |
+| `lanSessionEnd` | `request`                                        | the game returned to the overall main menu; the matching LAN transport can be released                                                                                                                                                                         |
 | `error`         | `message`                                        | something the player should see that isn't a crash (a missing file)                                                                                                                                                                                            |
 
 Example: `@ra2 {"e":"mode","w":1280,"h":720}`.
@@ -250,6 +253,27 @@ matrix and soak measurements; its fields (`fps`, `ms`, `worst`, `late`, `pub`,
 same `RA2_WEB_PROTOCOL` value is declared in `web/src/game/protocol.ts` and
 `src/web/web_api.h`.
 
+## LAN session entry
+
+The LAN entry hook is asynchronous. The web presenter arms entry only when the
+native main-menu dialog `0xE2` receives Network command `1400`. It emits
+`lanSession` only after the LAN dialog `0xBB` receives `WM_PAINT` and a frame
+is published. This preserves the native LAN background behind the browser
+dialog and prevents an unrelated main-menu repaint from creating a request.
+The main-thread reply export validates and queues the request; the regular
+game pump consumes it. Continue leaves the native LAN flow and active request
+alive for the transport. Cancel posts `WM_COMMAND` 1472 to the LAN dialog on
+the game thread. A later `0xE2` main-menu creation emits `lanSessionEnd` for
+that active request. Setup dialogs `0xBC`/`0xBD` do not end the session.
+
+The page opens this prompt from the native Network action; the game tray's
+LAN button remains an optional way to inspect the current connection.
+While pairing, browser controls own keyboard, pointer and focus. Continue is
+enabled only after the IPX data channel opens. The page uses one peer with
+`iceServers: []` and an unordered channel configured with
+`{ ordered: false, maxRetransmits: 0 }`; it preserves the four-byte
+source/destination socket prefix and the 576-byte IPX payload limit.
+
 ## Versions
 
 `protocol.ts` and `web_api.h` both carry `RA2_WEB_PROTOCOL` (an integer).
@@ -266,3 +290,7 @@ the `mapSearch` event tells the page where the map list is and whether a
 search matched nothing (the list is then drawn empty, and the page says
 "No maps match" over it). A page from before 13 calls an export that no longer
 exists. It changes no shared memory word.
+
+Protocol 14 adds the LAN session handshake (above): the `lanSession` and
+`lanSessionEnd` events and the `ra2_lan_session_reply` export. It changes no
+shared memory word.

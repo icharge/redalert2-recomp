@@ -7,14 +7,17 @@ import { options, picture, startPage } from "./lib.mjs";
 
 const opts = options(process.argv.slice(2));
 opts.pageArgs.push("--mute", "--debuglog", "--env", "HLE_NETTRACE=1");
+const iniName = opts.edition === "ra2" ? "RA2.INI" : "RA2MD.INI";
 const namedGame = (name) => {
-  const ini = readFileSync(path.resolve(opts.testGame, "RA2MD.INI"), "utf8");
+  const ini = readFileSync(path.resolve(opts.testGame, iniName), "utf8");
   const handle = [...name].map((character) => character.charCodeAt(0).toString(16)).join(",");
-  const lanIni = ini.replace(/(\[LAN\][^[]*?\bScenIndex=)\d+/i, (_match, prefix) => `${prefix}0`);
+  const lanIni = ini
+    .replace(/(\[LAN\][^[]*?\bScenIndex=)\d+/i, (_match, prefix) => `${prefix}0`)
+    .replace(/(\[LAN\][^[]*?\bUnitCount=)\d+/i, (_match, prefix) => `${prefix}0`);
   return {
     ...opts,
     gameFileOverrides: {
-      "RA2MD.INI": Buffer.from(lanIni.replace(/^Handle=.*$/m, `Handle=${handle},`)),
+      [iniName]: Buffer.from(lanIni.replace(/^Handle=.*$/m, `Handle=${handle},`)),
     },
   };
 };
@@ -30,10 +33,50 @@ const waitForLog = async (run, text, timeoutMs = 45000) => {
   );
 };
 
+const waitForPublishedFrame = (run) =>
+  run.page.waitForFunction(
+    async () => {
+      const game = await window.ra2Session;
+      const base = game.shared >> 2;
+      const heap = game.memory().HEAP32;
+      return (
+        Atomics.load(heap, base + 1) > 0 &&
+        Atomics.load(heap, base + 3) > 0 &&
+        Atomics.load(heap, base + 4) > 0
+      );
+    },
+    undefined,
+    { timeout: 45000 },
+  );
+
 const openLan = async (run) => {
-  const star = run.page.getByRole("button", { name: "Page controls" });
-  if ((await star.getAttribute("aria-expanded")) !== "true") await star.click();
-  await run.page.getByRole("button", { name: "LAN", exact: true }).click();
+  // This is the original native Network button in dialog 0xE2.
+  const frameBeforeNetwork = await run.page.evaluate(async () => {
+    const game = await window.ra2Session;
+    return Atomics.load(game.memory().HEAP32, (game.shared >> 2) + 1); // Shared.frameSeq
+  });
+  console.log(`${run === host ? "host" : "guest"}: clicking native Network`);
+  await run.clickGame(720, 305);
+  await run.page.getByRole("dialog", { name: "LAN multiplayer" }).waitFor({ timeout: 45000 });
+  console.log(`${run === host ? "host" : "guest"}: browser modal opened over native LAN screen`);
+  const snapshot = await run.state();
+  assert.ok(snapshot.lanSession?.request, "native Network must publish a fresh LAN request");
+  const frameAtRequest = await run.page.evaluate(async () => {
+    const game = await window.ra2Session;
+    return Atomics.load(game.memory().HEAP32, (game.shared >> 2) + 1);
+  });
+  assert.notEqual(
+    frameAtRequest,
+    frameBeforeNetwork,
+    "a game frame must be published after native Network before its LAN request is observed",
+  );
+  await run.shot("lan-modal");
+  const frame = await run.page
+    .locator("canvas")
+    .first()
+    .evaluate((canvas) => canvas.toDataURL().split(",")[1]);
+  writeFileSync(path.join(run.shots, "lan-background.png"), Buffer.from(frame, "base64"));
+  return snapshot.lanSession.request;
 };
 
 try {
@@ -43,6 +86,16 @@ try {
     host.waitFor("host main menu", (state) => state?.phase === "running"),
     guest.waitFor("guest main menu", (state) => state?.phase === "running"),
   ]);
+  // Wait for the actual shared frame boundary before reading game files from
+  // WasmFS; the initial menu event can precede first-frame initialization.
+  await Promise.all([waitForPublishedFrame(host), waitForPublishedFrame(guest)]);
+  const requests = await Promise.all([openLan(host), openLan(guest)]);
+  assert.ok(
+    requests.every((request) => request > 0),
+    "each runtime has a nonzero request ID",
+  );
+  // Both runtimes have now published their post-0xBB LAN frames. Read the
+  // staged key only after this game-thread boundary has been observed.
   const keys = await Promise.all(
     [host, guest].map((run) =>
       run.page.evaluate(() => {
@@ -56,10 +109,9 @@ try {
     "each HLE client must stage a 128-digit WOL key",
   );
   assert.notDeepEqual(keys[0], keys[1], "LAN clients must receive distinct WOL keys");
-
-  await Promise.all([openLan(host), openLan(guest)]);
-  // the dialog says PREPARING until its LAN module is up; CREATE before that makes no invitation
-  const create = host.page.getByRole("button", { name: "CREATE", exact: true });
+  // a click before the LAN module is up makes no invitation: the loop below clicks again
+  const create = host.page.getByRole("button", { name: "Create WebRTC session" });
+  await create.click();
   const hostOffer = host.page.getByLabel("LAN invitation", { exact: true });
   await hostOffer.waitFor({ timeout: 45000 });
   for (const deadline = Date.now() + 60000; Date.now() < deadline;) {
@@ -68,20 +120,10 @@ try {
     await host.page.waitForTimeout(1000);
   }
   const offer = await hostOffer.inputValue();
-  const offerFields = await host.page.locator("textarea").evaluateAll((fields) =>
-    fields.map((field) => ({
-      label: field.getAttribute("aria-label"),
-      valueLength: field.value.length,
-    })),
-  );
-  console.log(
-    "Offer field diagnostics:",
-    JSON.stringify({ offerLength: offer.length, offerFields }),
-  );
   await host.shot("lan-host-offer");
   assert.ok(offer.trim().length > 0, "the host must produce a non-empty SDP offer");
 
-  await guest.page.getByRole("radio", { name: "JOIN" }).click();
+  await guest.page.getByRole("button", { name: "Join WebRTC session" }).click();
   const guestOffer = guest.page.getByLabel("LAN invitation to join", { exact: true });
   await guestOffer.fill(offer);
   assert.equal(
@@ -89,11 +131,11 @@ try {
     offer.length,
     "the guest received the full offer text",
   );
-  const join = guest.page.getByRole("button", { name: "JOIN", exact: true });
+  const join = guest.page.getByRole("button", { name: "Join with invitation" });
   await join.waitFor({ state: "visible" });
   await guest.page.waitForFunction(() => {
-    const button = [...document.querySelectorAll('[role="dialog"] button')].find(
-      (item) => item.textContent?.trim() === "JOIN",
+    const button = [...document.querySelectorAll("button")].find((item) =>
+      item.textContent?.includes("Join with invitation"),
     );
     return button instanceof HTMLButtonElement && !button.disabled;
   });
@@ -109,28 +151,24 @@ try {
   const answer = await guestAnswer.inputValue();
 
   await host.page.getByLabel("LAN answer to connect", { exact: true }).fill(answer);
-  await host.page.getByRole("button", { name: "CONNECT", exact: true }).click();
+  await host.page.getByRole("button", { name: "Connect with answer" }).click();
   const connected = async (run) =>
     run.page.waitForFunction(
-      () =>
-        document
-          .querySelector('[role="dialog"] [role="status"]')
-          ?.textContent?.includes("CONNECTED"),
+      () => document.querySelector('[role="status"]')?.textContent?.includes("Connection ready."),
       undefined,
       { timeout: 45000 },
     );
   await Promise.all([connected(host), connected(guest)]);
 
   // Give both players distinct in-game names before entering the IPX lobby.
-  await host.page.getByRole("button", { name: "CLOSE", exact: true }).click();
-  await guest.page.getByRole("button", { name: "CLOSE", exact: true }).click();
+  await host.page.getByRole("button", { name: "Continue to LAN lobby" }).click();
+  await guest.page.getByRole("button", { name: "Continue to LAN lobby" }).click();
   await Promise.all(
     [host, guest].map(async (run) => {
       await run.page.getByRole("dialog").waitFor({ state: "hidden" });
       await run.page.waitForTimeout(500);
     }),
   );
-  await Promise.all([host.clickGame(720, 305), guest.clickGame(720, 305)]);
   await Promise.all([waitForLog(host, "open 0xBB"), waitForLog(guest, "open 0xBB")]);
   await host.shot("lan-host-lobby");
   await guest.shot("lan-guest-lobby");
@@ -168,7 +206,12 @@ try {
   await host.shot("lan-host-setup");
   await guest.page.waitForTimeout(3000);
   await guest.shot("lan-guest-sees-host");
-  await guest.clickGame(500, 103); // select the host's game (row 1)
+  // RA2's native LAN list starts lower than YR's.
+  const hostRowY = opts.edition === "ra2" ? 167 : 103;
+  console.log(`guest: selecting the host game at native row y=${hostRowY}`);
+  await guest.clickGame(500, hostRowY); // select the host's game
+  await guest.page.waitForTimeout(500);
+  await guest.shot("lan-guest-selected-host");
   await guest.clickGame(720, 263); // Join
   await waitForLog(guest, "open 0xBD");
   // The Join dialog is asynchronous; click its Accept button after it opens.
@@ -180,7 +223,7 @@ try {
   await guest.page.waitForTimeout(1000);
   await guest.shot("lan-guest-accepted");
   await Promise.all([waitForLog(host, "recvfrom 0.0.0.0:"), waitForLog(host, "open 0xBC")]);
-  await waitForLog(host, "BrowserGuest,9,", 90000);
+  await waitForLog(host, "BrowserGuest,", 90000);
   // The roster update can precede the guest's check-in packet. Give the host
   // time to process the Accept before requesting the start.
   await host.page.waitForTimeout(5000);
@@ -208,8 +251,24 @@ try {
     "both clients must render non-black match frames",
   );
   await Promise.all([host.shot("lan-host-match"), guest.shot("lan-guest-match")]);
+  const beforeOrders = await Promise.all([picture(host.page), picture(guest.page)]);
+  // The lean fixtures start with one MCV per player. Select it and deploy it:
+  // this produces an observable native world change on each side of the link.
+  await Promise.all(
+    [host, guest].map(async (run) => {
+      await run.page.keyboard.press("N");
+      await run.page.keyboard.press("D");
+      await run.page.waitForTimeout(5000);
+    }),
+  );
+  const afterOrders = await Promise.all([picture(host.page), picture(guest.page)]);
+  assert.ok(
+    afterOrders.every((frame, index) => frame.checksum !== beforeOrders[index].checksum),
+    "each player's native order must produce a changed shared-match frame",
+  );
+  await Promise.all([host.shot("lan-host-order-response"), guest.shot("lan-guest-order-response")]);
   console.log(
-    "PASS: two clients paired over WebRTC, exchanged lobby IPX, and entered the same LAN match.",
+    "PASS: two clients entered Network, paired over WebRTC, exchanged lobby IPX, started the same match, and each produced a changed gameplay frame after an order.",
   );
   assert.equal((await host.state()).phase, "running");
   assert.equal((await guest.state()).phase, "running");

@@ -366,6 +366,60 @@ EMSCRIPTEN_KEEPALIVE int ra2_web_save_reference_reply(uint32_t request, int igno
     return 1;
 }
 
+/* A LAN reply is only queued here; applying it touches the guest window and is
+ * deliberately left to frame_pump on the game thread. */
+static uint32_t g_lan_session_serial, g_lan_session_active, g_lan_session_pending;
+static uint32_t g_lan_reply_state, g_lan_reply_request, g_lan_reply_connected;
+
+uint32_t web_lan_session_begin(void) {
+    uint32_t request = ++g_lan_session_serial;
+    if (!request) request = ++g_lan_session_serial;
+    g_lan_session_active = request;
+    __atomic_store_n(&g_lan_session_pending, request, __ATOMIC_RELEASE);
+    char event[96];
+    snprintf(event, sizeof event, "{\"e\":\"lanSession\",\"request\":%u}", request);
+    web_event_json(event);
+    return request;
+}
+
+void web_lan_session_end(void) {
+    uint32_t request = g_lan_session_active;
+    if (!request) return;
+    g_lan_session_active = 0;
+    __atomic_store_n(&g_lan_session_pending, 0, __ATOMIC_RELEASE);
+    char event[96];
+    snprintf(event, sizeof event, "{\"e\":\"lanSessionEnd\",\"request\":%u}", request);
+    web_event_json(event);
+}
+
+EMSCRIPTEN_KEEPALIVE int ra2_lan_session_reply(uint32_t request, int connected) {
+    if (!request || (connected != 0 && connected != 1)) return 0;
+    uint32_t expected = 0;
+    if (!__atomic_compare_exchange_n(&g_lan_reply_state, &expected, 1, 0,
+                                     __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) return 0;
+    if (__atomic_load_n(&g_lan_session_pending, __ATOMIC_ACQUIRE) != request) {
+        __atomic_store_n(&g_lan_reply_state, 0, __ATOMIC_RELEASE);
+        return 0;
+    }
+    g_lan_reply_request = request;
+    g_lan_reply_connected = (uint32_t)connected;
+    __atomic_store_n(&g_lan_reply_state, 2, __ATOMIC_RELEASE);
+    return 1;
+}
+
+static void apply_lan_reply(void) {
+    uint32_t expected = 2;
+    if (!__atomic_compare_exchange_n(&g_lan_reply_state, &expected, 3, 0,
+                                     __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) return;
+    uint32_t request = g_lan_reply_request;
+    uint32_t connected = g_lan_reply_connected;
+    uint32_t pending = request;
+    if (request && request == g_lan_session_active &&
+        __atomic_compare_exchange_n(&g_lan_session_pending, &pending, 0, 0,
+                                    __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE))
+        web_presenter_apply_lan_reply(request, (int)connected);
+    __atomic_store_n(&g_lan_reply_state, 0, __ATOMIC_RELEASE);
+}
 /* WinMain checks that Blowfish.dll, the Westwood cipher's COM server, can be
  * created, and the MIX archives' headers are decrypted through it: its object
  * is served by blowfish.c. */
@@ -473,6 +527,7 @@ static void frame_pump(void) {
     const uint32_t *pal;
     int w, h, pitch, bpp;
     hle_screen_pump();
+    apply_lan_reply();
     ra2_launcher_poll();
     ra2_wolapi_poll();
     ra2_net_tuning_frame(ra2_wolapi_match_active());

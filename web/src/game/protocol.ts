@@ -1,7 +1,7 @@
 // What the page and the game say to each other (docs/web/protocol.md). The C side is
 // src/web/web_api.h: change the two together, and RA2_WEB_PROTOCOL with them.
 
-export const RA2_WEB_PROTOCOL = 13;
+export const RA2_WEB_PROTOCOL = 14;
 
 export const SCALES = ["sharp", "smooth", "crt", "nearest", "integer"] as const;
 export type Scale = (typeof SCALES)[number];
@@ -106,6 +106,8 @@ export type GameEvent =
    */
   | { e: "open"; url: string; ask: number; seq: number; page?: string }
   | { e: "settingsSaved"; path: string }
+  | { e: "lanSession"; request: number }
+  | { e: "lanSessionEnd"; request: number }
   | { e: "error"; message: string };
 
 const PREFIX = "@ra2 ";
@@ -281,11 +283,13 @@ export function parseEventLine(line: string): GameEvent | null {
     case "exit":
       return typeof value.code === "number" ? { e: "exit", code: value.code } : null;
     case "exitConfirm":
-      return Number.isInteger(value.request) &&
-        Number(value.request) > 0 &&
-        Number(value.request) <= 0xffffffff
-        ? { e: "exitConfirm", request: Number(value.request) }
-        : null;
+      if (
+        !Number.isInteger(value.request) ||
+        Number(value.request) <= 0 ||
+        Number(value.request) > 0xffffffff
+      )
+        return null;
+      return { e: "exitConfirm", request: Number(value.request) };
     case "saveReference":
       return Number.isInteger(value.request) &&
         Number(value.request) > 0 &&
@@ -305,6 +309,17 @@ export function parseEventLine(line: string): GameEvent | null {
       return value.page === undefined
         ? { e: "open", url: value.url, ask: value.ask, seq: value.seq }
         : { e: "open", url: value.url, ask: value.ask, seq: value.seq, page: value.page };
+    case "lanSession":
+    case "lanSessionEnd":
+      if (
+        !Number.isInteger(value.request) ||
+        Number(value.request) <= 0 ||
+        Number(value.request) > 0xffffffff
+      )
+        return null;
+      return value.e === "lanSession"
+        ? { e: "lanSession", request: Number(value.request) }
+        : { e: "lanSessionEnd", request: Number(value.request) };
     case "error":
       return typeof value.message === "string" ? { e: "error", message: value.message } : null;
     default:
@@ -469,6 +484,8 @@ export interface Ra2Exports {
   /** reply to the intercepted Exit confirmation without creating a native dialog */
   ra2_exit_confirmation_reply(request: number, exitGame: number): number;
   ra2_web_save_reference_reply(request: number, ignore: number): number;
+  /** reply to one pending native LAN session prompt: 0 cancel, 1 continue */
+  ra2_lan_session_reply(request: number, connected: number): number;
   /** kind: PointerKind; x and y in game pixels; button as the DOM numbers it (0 left, 1 middle, 2 right) */
   ra2_input_pointer(kind: number, x: number, y: number, button: number): void;
   /** vk: a Windows virtual key; scan: the set-1 scan code */
@@ -505,6 +522,7 @@ export const EXPORT_SIGNATURES: {
   ra2_setting: { returns: null, args: ["number", "number", "number"] },
   ra2_exit_confirmation_reply: { returns: "number", args: ["number", "number"] },
   ra2_web_save_reference_reply: { returns: "number", args: ["number", "number"] },
+  ra2_lan_session_reply: { returns: "number", args: ["number", "number"] },
   ra2_input_pointer: { returns: null, args: ["number", "number", "number", "number"] },
   ra2_input_key: { returns: null, args: ["number", "number", "number"] },
   ra2_input_wheel: { returns: null, args: ["number", "number", "number"] },

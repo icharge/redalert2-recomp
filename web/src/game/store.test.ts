@@ -97,6 +97,75 @@ describe("GameStore", () => {
     expect(store.getSnapshot()).toMatchObject({ phase: "exited", exitCode: 3 });
   });
 
+  it("ignores late events and load callbacks after exit until the next run begins", () => {
+    const store = new GameStore();
+    store.begin();
+    store.line(boot());
+    store.line('@ra2 {"e":"menu"}');
+    store.line('@ra2 {"e":"exit","code":3}');
+    const exited = store.getSnapshot();
+
+    for (const event of [
+      boot(),
+      '@ra2 {"e":"menu"}',
+      '@ra2 {"e":"lanSession","request":123}',
+      '@ra2 {"e":"lanSessionEnd","request":123}',
+      '@ra2 {"e":"exitConfirm","request":456}',
+      '@ra2 {"e":"error","message":"late error"}',
+      '@ra2 {"e":"fps","fps":60,"ms":16}',
+      '@ra2 {"e":"settings","difficulty":2}',
+      '@ra2 {"e":"restart","mod":"late"}',
+      '@ra2 {"e":"mode","w":800,"h":600}',
+      '@ra2 {"e":"exit","code":4}',
+    ]) {
+      store.line(event);
+      expect(store.getSnapshot()).toBe(exited);
+    }
+    store.loading("late load");
+    expect(store.getSnapshot()).toBe(exited);
+    store.copying({ doneBytes: 1, totalBytes: 2, doneFiles: 1, totalFiles: 2, file: "late.mix" });
+    expect(store.getSnapshot()).toBe(exited);
+
+    store.begin();
+    expect(store.getSnapshot()).toMatchObject({ phase: "loading", exitCode: null });
+    store.line(boot());
+    store.line('@ra2 {"e":"menu"}');
+    expect(store.getSnapshot().phase).toBe("running");
+  });
+
+  it("ignores late events after a crash, including menu after a protocol mismatch", () => {
+    for (const crash of [
+      (store: GameStore) => store.crashed("wasm trap"),
+      (store: GameStore) => store.line(boot(RA2_WEB_PROTOCOL + 1)),
+    ]) {
+      const store = new GameStore();
+      store.begin();
+      crash(store);
+      const crashed = store.getSnapshot();
+
+      for (const event of [
+        boot(),
+        '@ra2 {"e":"menu"}',
+        '@ra2 {"e":"lanSession","request":123}',
+        '@ra2 {"e":"lanSessionEnd","request":123}',
+        '@ra2 {"e":"exitConfirm","request":456}',
+        '@ra2 {"e":"error","message":"late error"}',
+        '@ra2 {"e":"fps","fps":60,"ms":16}',
+        '@ra2 {"e":"settings","difficulty":2}',
+        '@ra2 {"e":"restart","mod":"late"}',
+        '@ra2 {"e":"mode","w":800,"h":600}',
+        '@ra2 {"e":"exit","code":4}',
+      ]) {
+        store.line(event);
+        expect(store.getSnapshot()).toBe(crashed);
+      }
+      store.loading("late load");
+      expect(store.getSnapshot()).toBe(crashed);
+      store.copying({ doneBytes: 1, totalBytes: 2, doneFiles: 1, totalFiles: 2, file: "late.mix" });
+      expect(store.getSnapshot()).toBe(crashed);
+    }
+  });
+
   it("keeps the game open while a page confirmation is pending and clears only the matching reply", () => {
     const store = new GameStore();
     store.begin();
@@ -111,6 +180,42 @@ describe("GameStore", () => {
     expect(store.getSnapshot().exitConfirmation).toEqual({ request: 123 });
     store.resolveExitConfirmation(123);
     expect(store.getSnapshot().exitConfirmation).toBeNull();
+  });
+
+  it("tracks only the active LAN session request and clears it on its matching end", () => {
+    const store = new GameStore();
+    store.begin();
+    store.line('@ra2 {"e":"lanSession","request":123}');
+    expect(store.getSnapshot().lanSession).toEqual({ request: 123 });
+    expect(store.getSnapshot().lanSessionActive).toEqual({ request: 123 });
+    store.line('@ra2 {"e":"lanSessionEnd","request":456}');
+    expect(store.getSnapshot().lanSession).toEqual({ request: 123 });
+    store.resolveLanSession(456);
+    expect(store.getSnapshot().lanSession).toEqual({ request: 123 });
+    store.resolveLanSession(123);
+    expect(store.getSnapshot().lanSession).toBeNull();
+    expect(store.getSnapshot().lanSessionActive).toEqual({ request: 123 });
+    store.line('@ra2 {"e":"lanSessionEnd","request":456}');
+    expect(store.getSnapshot().lanSessionActive).toEqual({ request: 123 });
+    store.line('@ra2 {"e":"lanSessionEnd","request":123}');
+    expect(store.getSnapshot().lanSessionActive).toBeNull();
+  });
+
+  it("clears LAN session state on begin, exit, crash and protocol mismatch", () => {
+    const finish = [
+      (s: GameStore) => s.begin(),
+      (s: GameStore) => s.line('@ra2 {"e":"exit","code":0}'),
+      (s: GameStore) => s.crashed("wasm trap"),
+      (s: GameStore) => s.line(boot(RA2_WEB_PROTOCOL + 1)),
+    ];
+    for (const end of finish) {
+      const store = new GameStore();
+      store.begin();
+      store.line('@ra2 {"e":"lanSession","request":123}');
+      end(store);
+      expect(store.getSnapshot().lanSession).toBeNull();
+      expect(store.getSnapshot().lanSessionActive).toBeNull();
+    }
   });
 
   it("can crash from any phase, and an exit afterwards does not hide it", () => {

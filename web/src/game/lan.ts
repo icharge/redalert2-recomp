@@ -24,23 +24,37 @@ function parseDescription(text: string, expected: RTCSdpType): RTCSessionDescrip
   return { type: expected, sdp: value.sdp };
 }
 
-function waitForIceGathering(pc: RTCPeerConnection, timeoutMs: number): Promise<void> {
+function waitForIceGathering(
+  pc: RTCPeerConnection,
+  timeoutMs: number,
+  registerCancel: (cancel: () => void) => void,
+): Promise<void> {
   if (pc.iceGatheringState === "complete") return Promise.resolve();
   return new Promise((resolve, reject) => {
-    const finish = () => {
-      if (pc.iceGatheringState !== "complete") return;
+    let settled = false;
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
-      pc.removeEventListener("icegatheringstatechange", finish);
-      resolve();
+      pc.removeEventListener("icegatheringstatechange", check);
+      if (error) reject(error);
+      else resolve();
     };
-    const timer = setTimeout(() => {
-      pc.removeEventListener("icegatheringstatechange", finish);
-      reject(
-        new Error("LAN candidates did not finish gathering. Try again on the same local network."),
-      );
-    }, timeoutMs);
-    pc.addEventListener("icegatheringstatechange", finish);
-    finish();
+    const check = () => {
+      if (pc.iceGatheringState === "complete") finish();
+    };
+    const timer = setTimeout(
+      () =>
+        finish(
+          new Error(
+            "LAN candidates did not finish gathering. Try again on the same local network.",
+          ),
+        ),
+      timeoutMs,
+    );
+    registerCancel(() => finish(new Error("LAN pairing attempt was closed.")));
+    pc.addEventListener("icegatheringstatechange", check);
+    check();
   });
 }
 
@@ -48,6 +62,9 @@ function waitForIceGathering(pc: RTCPeerConnection, timeoutMs: number): Promise<
 export class LanPeer {
   private pc: RTCPeerConnection | null = null;
   private channel: RTCDataChannel | null = null;
+  private generation = 0;
+  private cancelGathering: (() => void) | null = null;
+  private cancellation: { promise: Promise<void>; cancel: () => void } | null = null;
 
   constructor(
     private readonly onStatus: (status: LanStatus) => void,
@@ -75,41 +92,49 @@ export class LanPeer {
   }
 
   async createOffer(): Promise<string> {
-    this.reset();
+    const generation = this.beginAttempt();
     this.onStatus("preparing");
     try {
       const pc = this.openConnection();
       const channel = pc.createDataChannel("ipx", { ordered: false, maxRetransmits: 0 });
-      this.attachChannel(channel);
-      await pc.setLocalDescription(await pc.createOffer());
-      await waitForIceGathering(pc, this.iceTimeoutMs);
+      this.attachChannel(channel, generation);
+      const offer = await this.awaitCurrent(pc.createOffer(), generation);
+      await this.awaitCurrent(pc.setLocalDescription(offer), generation);
+      await this.gather(pc, generation);
+      this.assertCurrent(generation);
       if (!pc.localDescription?.sdp)
         throw new Error("The browser did not create a LAN invitation.");
       this.onStatus("waiting");
       return JSON.stringify({ type: pc.localDescription.type, sdp: pc.localDescription.sdp });
     } catch (error) {
-      this.reset();
-      this.onStatus("failed");
+      if (this.isCurrent(generation)) {
+        this.disposeConnection();
+        this.onStatus("failed");
+      }
       throw error;
     }
   }
 
   async answerOffer(text: string): Promise<string> {
-    const offer = parseDescription(text, "offer");
-    this.reset();
+    const generation = this.beginAttempt();
     this.onStatus("preparing");
     try {
+      const offer = parseDescription(text, "offer");
       const pc = this.openConnection();
-      pc.ondatachannel = (event) => this.attachChannel(event.channel);
-      await pc.setRemoteDescription(offer);
-      await pc.setLocalDescription(await pc.createAnswer());
-      await waitForIceGathering(pc, this.iceTimeoutMs);
+      pc.ondatachannel = (event) => this.attachChannel(event.channel, generation);
+      await this.awaitCurrent(pc.setRemoteDescription(offer), generation);
+      const answer = await this.awaitCurrent(pc.createAnswer(), generation);
+      await this.awaitCurrent(pc.setLocalDescription(answer), generation);
+      await this.gather(pc, generation);
+      this.assertCurrent(generation);
       if (!pc.localDescription?.sdp) throw new Error("The browser did not create a LAN answer.");
       this.onStatus("waiting");
       return JSON.stringify({ type: pc.localDescription.type, sdp: pc.localDescription.sdp });
     } catch (error) {
-      this.reset();
-      this.onStatus("failed");
+      if (this.isCurrent(generation)) {
+        this.disposeConnection();
+        this.onStatus("failed");
+      }
       throw error;
     }
   }
@@ -120,24 +145,72 @@ export class LanPeer {
       throw new Error("Create an invitation first, then paste the other player's answer.");
     }
     const answer = parseDescription(text, "answer");
+    const generation = this.generation;
     try {
-      await pc.setRemoteDescription(answer);
+      await this.awaitCurrent(pc.setRemoteDescription(answer), generation);
       this.onStatus("connecting");
     } catch (error) {
-      this.onStatus("failed");
+      if (this.isCurrent(generation)) this.onStatus("failed");
       throw error;
     }
   }
 
   close(): void {
-    this.reset();
+    this.generation++;
+    this.disposeConnection();
     this.onStatus("idle");
+  }
+
+  private beginAttempt(): number {
+    this.generation++;
+    this.disposeConnection();
+    let cancel!: () => void;
+    const promise = new Promise<void>((resolve) => {
+      cancel = resolve;
+    });
+    this.cancellation = { promise, cancel };
+    return this.generation;
+  }
+
+  private async awaitCurrent<T>(promise: PromiseLike<T>, generation: number): Promise<T> {
+    const cancellation = this.cancellation;
+    const result = await Promise.race([
+      Promise.resolve(promise).then((value) => ({ value }) as const),
+      cancellation?.promise.then(() => ({ cancelled: true }) as const),
+    ]);
+    this.assertCurrent(generation);
+    if ("cancelled" in (result ?? {})) throw new Error("LAN pairing attempt was closed.");
+    return (result as { value: T }).value;
+  }
+
+  private isCurrent(generation: number): boolean {
+    return generation === this.generation;
+  }
+
+  private assertCurrent(generation: number): void {
+    if (!this.isCurrent(generation)) throw new Error("LAN pairing attempt was closed.");
+  }
+
+  private async gather(pc: RTCPeerConnection, generation: number): Promise<void> {
+    let ownedCancel: (() => void) | null = null;
+    const promise = waitForIceGathering(pc, this.iceTimeoutMs, (cancel) => {
+      ownedCancel = cancel;
+      this.cancelGathering = cancel;
+    });
+    try {
+      await this.awaitCurrent(promise, generation);
+      this.assertCurrent(generation);
+    } finally {
+      if (this.cancelGathering === ownedCancel) this.cancelGathering = null;
+    }
   }
 
   private openConnection(): RTCPeerConnection {
     const pc = this.createConnection();
     this.pc = pc;
+    const generation = this.generation;
     pc.onconnectionstatechange = () => {
+      if (!this.isCurrent(generation)) return;
       if (pc.connectionState === "failed") this.onStatus("failed");
       else if (pc.connectionState === "disconnected") this.onStatus("waiting");
       else if (
@@ -149,21 +222,49 @@ export class LanPeer {
     return pc;
   }
 
-  private attachChannel(channel: RTCDataChannel): void {
+  private attachChannel(channel: RTCDataChannel, generation: number): void {
+    if (!this.isCurrent(generation)) {
+      channel.close();
+      return;
+    }
     this.channel = channel;
     channel.binaryType = "arraybuffer";
-    channel.onopen = () => this.onStatus("connected");
-    channel.onclose = () => this.onStatus("waiting");
-    channel.onerror = () => this.onStatus("failed");
+    channel.onopen = () => {
+      if (this.isCurrent(generation) && this.channel === channel) this.onStatus("connected");
+    };
+    channel.onclose = () => {
+      if (this.isCurrent(generation) && this.channel === channel) this.onStatus("waiting");
+    };
+    channel.onerror = () => {
+      if (this.isCurrent(generation) && this.channel === channel) this.onStatus("failed");
+    };
     channel.onmessage = (event: MessageEvent<unknown>) => {
+      if (!this.isCurrent(generation) || this.channel !== channel) return;
       if (event.data instanceof ArrayBuffer) this.onPacket(new Uint8Array(event.data));
       else if (event.data instanceof Blob) {
-        void event.data.arrayBuffer().then((bytes) => this.onPacket(new Uint8Array(bytes)));
+        void event.data.arrayBuffer().then((bytes) => {
+          if (this.isCurrent(generation) && this.channel === channel)
+            this.onPacket(new Uint8Array(bytes));
+        });
       }
     };
   }
 
-  private reset(): void {
+  private disposeConnection(): void {
+    this.cancellation?.cancel();
+    this.cancellation = null;
+    this.cancelGathering?.();
+    this.cancelGathering = null;
+    if (this.channel) {
+      this.channel.onopen = null;
+      this.channel.onclose = null;
+      this.channel.onerror = null;
+      this.channel.onmessage = null;
+    }
+    if (this.pc) {
+      this.pc.onconnectionstatechange = null;
+      this.pc.ondatachannel = null;
+    }
     this.channel?.close();
     this.channel = null;
     this.pc?.close();
@@ -181,6 +282,7 @@ export interface LanBridgeExports {
 export class LanIpXBridge {
   private timer: ReturnType<typeof setInterval> | null = null;
   private readonly packetBuffer: number;
+  private stopped = false;
 
   constructor(
     private readonly exports: LanBridgeExports,
@@ -193,15 +295,18 @@ export class LanIpXBridge {
 
   start(): void {
     if (this.timer !== null) return;
+    this.stopped = false;
     this.timer = setInterval(() => this.pump(), BRIDGE_POLL_MS);
   }
 
   stop(): void {
+    this.stopped = true;
     if (this.timer !== null) clearInterval(this.timer);
     this.timer = null;
   }
 
   receive(packet: Uint8Array): void {
+    if (this.stopped) return;
     if (packet.byteLength < 4 || packet.byteLength > PACKET_MAX) {
       this.onError("Ignored an invalid LAN IPX datagram.");
       return;
@@ -216,6 +321,7 @@ export class LanIpXBridge {
   }
 
   private pump(): void {
+    if (this.stopped) return;
     try {
       const heap = this.heap();
       // Keep the HLE queue from filling while waiting for a peer; discovery

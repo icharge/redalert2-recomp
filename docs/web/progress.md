@@ -64,9 +64,6 @@ Exact run files and baseline rows remain in the [plan results](../superpowers/pl
 
 # Browser implementation and verification, 23 October 2026
 
-This is a working verification ledger; an implementation without its runtime
-check is still open. `tasks.md` records completed acceptance checks.
-
 - F10 is an accessible browser view of settings owned by the C host. Commands
   cross the input queue; settings events acknowledge the host's saved state.
   There is no second copy of game settings in IndexedDB.
@@ -438,6 +435,50 @@ and settle. The remaining W13.3 gate is separate-network verification, with a
 staging-endpoint question pending. No generated game build is to be published.
 The final fixture additionally waits for both native lobby callbacks and passed
 again (`build-web/wol-yr-finish-final`, frame samples [413,421] -> [585,588]).
+
+
+## 26 October 2026: completed native-entry browser LAN checks (W12)
+
+The browser LAN dialog now follows the game's native Network action. In both
+editions the original `0xBB` LAN screen paints first; the harness records the
+shared published-frame sequence before Network and asserts it advances before
+the matching `lanSession` request is observed. Each client exchanges manual
+SDP, continues into the existing native lobby, and completes the native
+New/Join/Accept/Start flow with a second real browser.
+
+Red Alert 2 uses `RA2.INI`, its `build-web-game` module and 800x600 for stable
+native control coordinates. Yuri's Revenge uses `RA2MD.INI` and `build-web`.
+Both fixtures set LAN scenario 0 and UnitCount 0 in memory; two native `N`/`D`
+orders deploy the starting MCVs. Both clients show nonblack active match
+frames, and the retained order-response images show the construction yards.
+The test keeps distinct random 128-digit WOL-key checks and nonempty IPX receive
+checks.
+
+The standalone failure run passes on both editions: invalid/stale/duplicate
+reply rejection, Escape/cancel and fresh re-entry, clipboard denial, malformed
+SDP retry, modal keyboard/canvas isolation, automatic pointer lock remaining
+off, and a dropped live data channel in the native lobby. During actual ICE
+gathering, the test also observes the shared frame sequence advance, proving
+the presenter/game pump continues while the browser awaits candidates.
+
+Commands, per-client logs and screenshots are recorded in
+[testing.md](testing.md#lan-transport-two-real-browsers). Passing artifacts:
+`work/web-lan-session-yr/`, `work/web-lan-session-ra2-final/`,
+`work/web-lan-session-fail-yr/` and `work/web-lan-session-fail-ra2/`. Earlier
+failed RA2 iterations remain in separately named directories and are not
+passing evidence. Native Cancel/Escape and fresh re-entry smoke captures are
+in `work/lan-implementation/smoke-ra2-fixed/` and
+`smoke-yr-language/`; the shown/hidden flag checks (then a sidebar item) are under
+`work/lan-implementation/toggle-shown/` and `toggle-hidden/`.
+
+Validation: `node e2e/lan-peer.mjs http://127.0.0.1:5178/` passes;
+`cmake --build build-web --parallel 4` and the matching `build-web-game`
+command reported no work. `pnpm --dir web test` passes 442 tests in 44 files,
+and the production build, typecheck and lint pass. The production bundle emits
+the existing large-chunk advisory. No W12.8 commit was made in this worktree.
+
+This is a working verification ledger; an implementation without its runtime
+check is still open. `tasks.md` records completed acceptance checks.
 
 ## Launcher game settings and fast exit, 31 October 2026
 

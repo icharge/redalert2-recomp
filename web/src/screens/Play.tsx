@@ -23,6 +23,7 @@ import { GameAudio } from "../game/audio";
 import { attachInput } from "../game/input";
 import { PageCursor } from "../game/cursor-layer";
 import { LanPanel } from "../components/LanPanel";
+import { networkLanVisible } from "../config";
 import { PmPanel, PmTrayButton } from "../components/PmPanel";
 import type { PmStore } from "../game/pm";
 
@@ -170,6 +171,17 @@ export function Play({ files }: { files: FileSource }) {
   const error = useGameState((s) => s.error);
   const exitCode = useGameState((s) => s.exitCode);
   const exitConfirmation = useGameState((s) => s.exitConfirmation);
+  // the LAN session: a native Network entry asks (lanSession); the transport lives until the game
+  // is back at its main menu (lanSessionActive). The tray's LAN button opens the same dialog.
+  const lanSession = useGameState((s) => s.lanSession);
+  const lanSessionActive = useGameState((s) => s.lanSessionActive);
+  const [lanOpen, setLanOpen] = useState(false);
+  // the LAN dialog owns the keys and the mouse while it shows; the runtime effect reads this ref
+  const lanModal = useRef(false);
+  useEffect(() => {
+    lanModal.current = lanSession !== null || lanOpen;
+    if (lanModal.current && document.pointerLockElement) document.exitPointerLock();
+  }, [lanSession, lanOpen]);
   const saveReferencePrompt = useGameState((s) => s.saveReferencePrompt);
   const openLink = useGameState((s) => s.openLink);
   const mapSearchStatus = useGameState((s) => s.mapSearchStatus);
@@ -643,7 +655,8 @@ export function Play({ files }: { files: FileSource }) {
               !gameStore.getSnapshot().settings?.open &&
               !gameStore.getSnapshot().exitConfirmation &&
               !gameStore.getSnapshot().saveReferencePrompt &&
-              !gameStore.getSnapshot().openLink,
+              !gameStore.getSnapshot().openLink &&
+              !lanModal.current,
           );
         let presenter: GamePresenter | null = null;
         const bindCanvas = (target: HTMLCanvasElement) => {
@@ -660,7 +673,8 @@ export function Play({ files }: { files: FileSource }) {
               !gameStore.getSnapshot().settings?.open &&
               !gameStore.getSnapshot().exitConfirmation &&
               !gameStore.getSnapshot().saveReferencePrompt &&
-              !gameStore.getSnapshot().openLink,
+              !gameStore.getSnapshot().openLink &&
+              !lanModal.current,
             // a right-click on a chat screen: the game says whose name is there (playerPick)
             onSecondaryDown: (point) => {
               if (gameStore.getSnapshot().chatField.open)
@@ -1017,7 +1031,34 @@ export function Play({ files }: { files: FileSource }) {
             FILES
           </button>
         )}
-        {presenter && handle.current && <LanPanel game={handle.current} className={trayItem} />}
+        {presenter && handle.current && (
+          // mounted while the game runs, shown or not: it owns the session's transport
+          <LanPanel
+            game={handle.current}
+            className={trayItem}
+            showTrigger={networkLanVisible()}
+            request={lanSession?.request ?? null}
+            activeRequest={lanSessionActive?.request ?? null}
+            onContinue={(request) => {
+              if (!handle.current?.exports.ra2_lan_session_reply(request, 1)) return false;
+              gameStore.resolveLanSession(request);
+              setLanOpen(false);
+              return true;
+            }}
+            onCancel={(request) => {
+              if (!handle.current?.exports.ra2_lan_session_reply(request, 0)) return false;
+              gameStore.resolveLanSession(request);
+              setLanOpen(false);
+              return true;
+            }}
+            open={lanOpen}
+            onOpenChange={setLanOpen}
+            onCloseAutoFocus={(event) => {
+              event.preventDefault();
+              canvas.current?.focus();
+            }}
+          />
+        )}
         {presenter && handle.current && (
           <PmTrayButton
             pm={handle.current.pm}

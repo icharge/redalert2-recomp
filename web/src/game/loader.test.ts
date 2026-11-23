@@ -753,13 +753,15 @@ describe("startGame", () => {
     module!.callMain = callMain;
     const staged = new Map<string, Uint8Array>();
     module!.FS = testFs(staged);
-    module!.cwrap = (() => () => 0) as never;
+    const cwrap = vi.fn(() => () => 0);
+    module!.cwrap = cwrap as never;
     module!.onRuntimeInitialized!();
     const handle = await startup;
     expect(callMain).toHaveBeenCalledWith(["--run", "--game", "/game"]);
     expect(staged.get("/game/gamemd.exe")).toEqual(runtimeExe);
     expect(staged.get("/game/Blowfish.dll")).toEqual(runtimeBlowfish);
     expect(handle.saves).toBeNull();
+    expect(cwrap).toHaveBeenCalledWith("ra2_lan_session_reply", "number", ["number", "number"]);
   });
   it("says the game isn't built when there is no ra2.js", async () => {
     vi.stubGlobal("fetch", () => answer(true, "text/html"));
