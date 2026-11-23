@@ -10,7 +10,7 @@
 
 **Spec:** The requested flow and constraints below, together with [D13](decisions.md#d13-browser-lan-play-one-peer-over-webrtc-manual-sdp-exchange). This implementation plan was updated on 2026-10-26 to record the shipped build-time visibility flag, native Network entry hook, browser session handshake, and two-edition runtime evidence. Stage 12 is complete for the checks listed below; Internet transport remains Stage 13.
 
-**2026-11-23 rebase:** the branch was rebuilt on `web-port` with the LAN work only. The game sidebar this plan was written beside is not part of it (it stays on `codex/lan-webrtc-joining-sidebar-2026-11-23`), so where the tasks below say sidebar or More menu, the build has `web-port`'s game tray and its **LAN** button, which `VITE_SHOW_NETWORK_LAN=false` hides. The protocol number is 14 (web-port had reached 13). The commits below were made then; the wasm builds and the two-browser runs have not been repeated on the rebased tree.
+**2026-11-23 rebase:** the branch was rebuilt on `web-port` with the LAN work only. The game sidebar this plan was written beside is not part of it (it stays on `codex/lan-webrtc-joining-sidebar-2026-11-23`), so where the tasks below say sidebar or More menu, the build has `web-port`'s game tray and its **LAN** button, which `VITE_SHOW_NETWORK_LAN=false` hides. The protocol number is 14 (web-port had reached 13). The commits below were made then. Both editions were rebuilt on the rebased tree and pass `lan-peer.mjs`, `lan.mjs` and `lan-session.mjs` again ([testing.md](testing.md#lan-transport-two-real-browsers)).
 
 ## Global constraints
 

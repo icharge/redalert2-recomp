@@ -236,16 +236,17 @@ Rerun on 2026-11-23, after the rebase onto `web-port` (protocol 14, the LAN
 button in the game tray). The October fixtures are gone, so the runs use the
 full install read-only (`--game <main checkout>/game`) at `--video 800x600`,
 with the worktree's dev server on 5178 and the fast build
-(`build-web.cmd --mode fast --edition ra2`, with
+(`build-web.cmd --mode fast --edition both`, with
 `--cmake-arg=-DRA2_GAME_DIR=<main checkout>/game` in a worktree):
 
 - `lan-peer.mjs`: PASS.
 - RA2 `lan.mjs`: PASS (pairing from native Network, lobby IPX, the name field
   keeping its typing, a shared match, a changed frame after each player's order).
 - RA2 `lan-session.mjs`: PASS (all failure cases above).
-- Yuri's Revenge: not rerun yet.
+- Yuri's Revenge `lan.mjs` and `lan-session.mjs`: PASS, the same checks.
 
-Captures and logs: `work/lan-2026-11-23/ra2-match/` and `ra2-fail/`. The
+Captures and logs: `work/lan-2026-11-23/` (`ra2-match/`, `ra2-fail/`,
+`yr-match/`, `yr-fail/`). The
 name-field check clicks a different point per edition: the field sits at
 134..273 x 16..37 in Yuri's Revenge's 800x600 menu and at 216..352 x 76..97 in
 Red Alert 2's.
