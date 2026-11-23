@@ -34,6 +34,9 @@
 #include "wol_pages.h"
 #include "wolapi.h"
 
+#define WM_CLOSE        0x0010u
+#define WM_COMMAND      0x0111u
+#define WM_PAINT        0x000Fu
 #define WM_CHAR         0x0102u
 #define WM_ACTIVATEAPP  0x001Cu
 #define WM_MOUSEMOVE    0x0200u
@@ -147,6 +150,12 @@ static struct { uint32_t hwnd, surface; } g_wol_icon_surfaces[256];
 #else
 #define WOL_BSURFACE_VTABLE 0x007E2070u
 #endif
+static uint32_t g_main_menu_window;
+static uint32_t g_lan_window;
+static int g_lan_entry_armed, g_lan_painted, g_lan_frame_ready;
+static volatile int g_lan_input_gated;
+static uint32_t g_head, g_tail;                          /* the page writes head, the game tail */
+static int g_republish;                                  /* set by the game's thread when the page returns */
 static void present_now(void);
 
 #define WOL_ICON_SLOTS (sizeof g_wol_icon_surfaces / sizeof g_wol_icon_surfaces[0])
@@ -312,6 +321,7 @@ static void publish(const uint8_t *px, int w, int h, int pitch, int bpp, const u
     __atomic_store_n(&g_sh.frame_ptr, (uint32_t)(uintptr_t)out, __ATOMIC_SEQ_CST);
     __atomic_store_n(&g_sh.frame_index, index, __ATOMIC_SEQ_CST);
     frame_publish_end(&g_sh.frame_seq, seq);
+    if (g_lan_entry_armed && g_lan_painted) g_lan_frame_ready = 1;
     g_pub_ms += emscripten_get_now() - began, g_pub_n++;
     if ((uint32_t)game_w != last_w || (uint32_t)game_h != last_h) {
         char line[64];
@@ -383,6 +393,55 @@ void web_presenter_dialog_created(uint32_t hwnd, uint32_t resource_id) {
             memset(g_wol_icon_surfaces, 0, sizeof g_wol_icon_surfaces);
         }
     }
+    if (resource_id == 0xE2u) {
+        web_lan_session_end();
+        g_main_menu_window = hwnd;
+        g_lan_entry_armed = 0;
+        g_lan_painted = 0;
+        g_lan_frame_ready = 0;
+        __atomic_store_n(&g_lan_input_gated, 0, __ATOMIC_RELEASE);
+    }
+    if (resource_id == 0xBBu) {
+        g_lan_window = hwnd;
+        g_lan_painted = 0;
+    }
+}
+
+void web_presenter_proc_message(uint32_t hwnd, uint32_t message, uint32_t wparam) {
+    /* A background repaint of the retained LAN dialog must not start a new
+     * session. Arm only when the current main menu's native Network button
+     * (resource 0xE2, control 1400) is actually activated. */
+    if (hwnd == g_main_menu_window && message == WM_COMMAND && (wparam & 0xFFFFu) == 1400u) {
+        g_lan_entry_armed = 1;
+        g_lan_painted = 0;
+        g_lan_frame_ready = 0;
+    }
+    if (hwnd == g_lan_window && message == WM_PAINT && g_lan_entry_armed) {
+        g_lan_painted = 1;
+        __atomic_store_n(&g_lan_input_gated, 1, __ATOMIC_RELEASE);
+        __atomic_store_n(&g_tail, __atomic_load_n(&g_head, __ATOMIC_ACQUIRE), __ATOMIC_RELEASE);
+    }
+}
+
+void web_presenter_apply_lan_reply(uint32_t request, int connected) {
+    (void)request;
+    if (connected) {
+        __atomic_store_n(&g_lan_input_gated, 0, __ATOMIC_RELEASE);
+        return;
+    }
+    if (!g_lan_window || !hle_is_window(g_lan_window)) {
+        web_event_error("Could not cancel the LAN prompt because its window is no longer available.");
+        __atomic_store_n(&g_lan_input_gated, 0, __ATOMIC_RELEASE);
+        return;
+    }
+    uint32_t cancel = hle_dialog_item(g_lan_window, 1472u);
+    if (!cancel) {
+        web_event_error("Could not cancel the LAN prompt because its Cancel control is unavailable.");
+        __atomic_store_n(&g_lan_input_gated, 0, __ATOMIC_RELEASE);
+        return;
+    }
+    /* Stay gated until the game's main menu (resource 0xE2) is recreated. */
+    hle_post_message(g_lan_window, WM_COMMAND, 1472u, cancel);
 }
 
 static int pause_dialog_visible(void) {
@@ -622,9 +681,9 @@ void web_match_chat_end(uint32_t target);                /* match_chat.c */
 typedef struct { uint32_t kind, a, b, c; } input_t;
 #define RING 512
 static input_t g_ring[RING];
-static uint32_t g_head, g_tail;                          /* the page writes head, the game tail */
-
 static void push(uint32_t kind, uint32_t a, uint32_t b, uint32_t c) {
+    if (__atomic_load_n(&g_lan_input_gated, __ATOMIC_ACQUIRE) &&
+        kind != IN_QUIT && kind != IN_FOCUS) return;
     uint32_t h = __atomic_load_n(&g_head, __ATOMIC_RELAXED), t = __atomic_load_n(&g_tail, __ATOMIC_ACQUIRE);
     if (h - t >= RING) return;                           /* the game is not listening: drop it */
     input_t e = { kind, a, b, c };
@@ -702,17 +761,52 @@ EMSCRIPTEN_KEEPALIVE void ra2_resize(int w, int h, float dpr) {
     g_sh.view_w = (uint32_t)(w > 0 ? w : 0), g_sh.view_h = (uint32_t)(h > 0 ? h : 0), g_sh.view_dpr = dpr;
 }
 
+static uint8_t g_page_held_keys[256], g_page_held_buttons[3];
+static uint32_t g_page_key_scan[256];
+static int g_page_pointer_x, g_page_pointer_y, g_gate_released_inputs;
+
+static void release_page_inputs(void) {
+    for (uint32_t vk = 0; vk < 256; vk++) if (g_page_held_keys[vk]) {
+        web_modern_key(0, vk);
+        hle_input_key(0, vk, g_page_key_scan[vk]);
+        g_page_held_keys[vk] = 0;
+    }
+    for (uint32_t button = 0; button < 3; button++) if (g_page_held_buttons[button]) {
+        uint32_t message = button == 2 ? WM_RBUTTONUP : button == 1 ? WM_MBUTTONUP : WM_LBUTTONUP;
+        web_modern_pointer(message, g_page_pointer_x, g_page_pointer_y);
+        hle_input_mouse(message, g_page_pointer_x, g_page_pointer_y);
+        g_page_held_buttons[button] = 0;
+    }
+}
+
 static void drain_input(void) {
     uint32_t t = __atomic_load_n(&g_tail, __ATOMIC_RELAXED);
+    int initially_gated = __atomic_load_n(&g_lan_input_gated, __ATOMIC_ACQUIRE);
+    if (initially_gated && !g_gate_released_inputs) {
+        release_page_inputs();
+        g_gate_released_inputs = 1;
+    } else if (!initially_gated) g_gate_released_inputs = 0;
     while (t != __atomic_load_n(&g_head, __ATOMIC_ACQUIRE)) {
         input_t e = g_ring[t % RING];
         t++;
+        int gated = __atomic_load_n(&g_lan_input_gated, __ATOMIC_ACQUIRE);
+        if (gated && !g_gate_released_inputs) {
+            release_page_inputs();
+            g_gate_released_inputs = 1;
+        } else if (!gated) g_gate_released_inputs = 0;
+        if (gated && e.kind != IN_QUIT && e.kind != IN_FOCUS) {
+            __atomic_store_n(&g_tail, t, __ATOMIC_RELEASE);
+            continue;
+        }
         switch (e.kind) {
         case IN_MOVE:
+            g_page_pointer_x = (int)e.a, g_page_pointer_y = (int)e.b;
             web_modern_pointer(WM_MOUSEMOVE, (int)e.a, (int)e.b);
             hle_input_mouse(WM_MOUSEMOVE, (int)e.a, (int)e.b); break;
         case IN_DOWN: case IN_UP: {
             int down = e.kind == IN_DOWN;
+            g_page_pointer_x = (int)e.a, g_page_pointer_y = (int)e.b;
+            if (e.c < 3) g_page_held_buttons[e.c] = (uint8_t)down;
             uint32_t m = e.c == 2 ? (down ? WM_RBUTTONDOWN : WM_RBUTTONUP)
                        : e.c == 1 ? (down ? WM_MBUTTONDOWN : WM_MBUTTONUP)
                        : (down ? WM_LBUTTONDOWN : WM_LBUTTONUP);
@@ -724,6 +818,10 @@ static void drain_input(void) {
         case IN_KEYDOWN: case IN_KEYUP:
             if (e.a == 0x79) { if (e.kind == IN_KEYDOWN) web_settings_command(RA2_SETTING_MENU, -1, 0); break; }
             if (mods_handle_key((int)e.a, e.kind == IN_KEYDOWN)) break;
+            if (e.a < 256) {
+                g_page_held_keys[e.a] = (uint8_t)(e.kind == IN_KEYDOWN);
+                g_page_key_scan[e.a] = e.b;
+            }
             web_modern_key(e.kind == IN_KEYDOWN, e.a);
             hle_input_key(e.kind == IN_KEYDOWN, e.a, e.b); break;
         case IN_CHAR: {
@@ -798,6 +896,14 @@ void web_presenter_pump(void) {
     /* Dialog paints can finish without a primary Unlock. Sample the game's
      * presented surface at its regular pump boundary as well. */
     present_now();
+    /* hle_proc_hook observes WM_PAINT before the dialog procedure runs. Defer
+     * publication until this pump returns from hle_screen_pump, so the frame
+     * behind the browser prompt has completed painting. */
+    if (g_lan_entry_armed && g_lan_painted && g_lan_frame_ready) {
+        g_lan_entry_armed = 0;
+        g_lan_frame_ready = 0;
+        web_lan_session_begin();
+    }
     hle_dsound_music_gate(g_menu_music || in_match());
     uint32_t now = hle_ticks_ms();
     uint32_t seen = MEM32(RA2_GAME_FRAME_VA);

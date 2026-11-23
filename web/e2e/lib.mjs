@@ -46,17 +46,22 @@ export function options(argv) {
     const at = argv.indexOf(name);
     return at >= 0 ? argv[at + 1] : fallback;
   };
+  const url = option("--url", "http://127.0.0.1:5173/");
+  const requestedEdition = option("--edition", null);
+  const edition =
+    requestedEdition ?? (new URL(url).searchParams.get("target") === "game" ? "ra2" : "ra2md");
   return {
-    url: option("--url", "http://127.0.0.1:5173/"),
+    url,
     shots: path.resolve(option("--shots", "e2e/shots")),
     headed: argv.includes("--headed"),
     chrome: process.env.CHROME_PATH ?? "C:/Program Files/Google/Chrome/Application/chrome.exe",
     pageArgs: argv.filter((a, i) => argv[i - 1] === "--arg"),
     testGame: option("--game", null),
     gameBuild: option("--build", null),
-    edition: option("--edition", "ra2md"),
+    edition,
     // a persistent Chrome profile: an import (OPFS) survives between runs (perf.mjs)
     profile: option("--profile", null),
+    video: option("--video", null),
   };
 }
 
@@ -102,6 +107,22 @@ export async function startPage(opts) {
   if (opts.cookies?.length) await context.addCookies(opts.cookies);
   // opts.setup(context): routes and the like a script needs before the page loads
   if (opts.setup) await opts.setup(context);
+  if (opts.watchChannels) {
+    await context.addInitScript(() => {
+      const Original = window.RTCPeerConnection;
+      window.RTCPeerConnection = class extends Original {
+        constructor(...args) {
+          super(...args);
+          (window.__lanTestConnections ??= []).push(this);
+        }
+        createDataChannel(...args) {
+          const channel = super.createDataChannel(...args);
+          (window.__lanTestChannels ??= []).push(channel);
+          return channel;
+        }
+      };
+    });
+  }
   // Pin a test's module without overwriting another developer's published build.
   if (opts.gameBuild) {
     // Stream the large debug WASM over HTTP; CDP fulfill bodies exceed Chrome's
@@ -112,7 +133,8 @@ export async function startPage(opts) {
         response.writeHead(404).end();
         return;
       }
-      const file = path.resolve(opts.gameBuild, name);
+      // Both CMake build trees emit ra2.*; the page requests ra2md.* for YR.
+      const file = path.resolve(opts.gameBuild, name.replace(/^ra2md\./, "ra2."));
       response.writeHead(200, {
         "Content-Length": statSync(file).size,
         "Content-Type": name.endsWith(".js")
@@ -218,6 +240,9 @@ export async function startPage(opts) {
 
   // `dev`: straight to Play with the dev server's game folder, not the Import and Library screens
   const url = new URL(opts.url);
+  if (opts.video) url.searchParams.set("video", opts.video);
+  if (opts.edition === "ra2") url.searchParams.set("target", "game");
+  else if (opts.edition === "ra2md") url.searchParams.delete("target");
   if (opts.testGame) url.searchParams.set("test", "1");
   else if (!opts.noDev) url.searchParams.set("dev", "1");
   for (const arg of opts.pageArgs) url.searchParams.append("arg", arg);
@@ -249,6 +274,7 @@ export async function startPage(opts) {
   return {
     browser,
     page,
+    shots: opts.shots,
     lines,
     all,
     state,

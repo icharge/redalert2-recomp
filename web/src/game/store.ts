@@ -83,6 +83,11 @@ export interface GameState {
   /** the last join the page asked for (ra2_join_room) and how it went; seq counts them */
   joinRoom: { seq: number; room: string; ok: boolean; reason: string } | null;
   matchChat: MatchChat;
+
+  /** A prompt awaiting Continue/Cancel; resolveLanSession only clears this field. */
+  lanSession: { request: number } | null;
+  /** The transport's lifetime; remains until lanSessionEnd or runtime shutdown. */
+  lanSessionActive: { request: number } | null;
   settings: HostSettings | null;
   restart: { mod: string } | null;
   /** FA2EX Test Map: the test match was set up and its map is loading (testMapStarted) */
@@ -124,6 +129,9 @@ const INITIAL: GameState = {
   playerPick: null,
   joinRoom: null,
   matchChat: { ready: false, lines: [] },
+
+  lanSession: null,
+  lanSessionActive: null,
   settings: null,
   restart: null,
 };
@@ -166,11 +174,13 @@ export class GameStore {
   }
 
   loading(what: string): void {
+    if (this.isTerminal()) return;
     this.set({ phase: "loading", loading: what, copy: null });
   }
 
   /** The copy of the game files moved on. */
   copying(copy: CopyProgress): void {
+    if (this.isTerminal()) return;
     this.set({
       phase: "loading",
       loading: `${copy.file} (${copy.doneFiles} of ${copy.totalFiles})`,
@@ -189,11 +199,14 @@ export class GameStore {
   }
 
   apply(event: GameEvent): void {
+    if (this.isTerminal()) return;
     switch (event.e) {
       case "boot":
         if (event.protocol !== RA2_WEB_PROTOCOL) {
           this.set({
             phase: "crashed",
+            lanSession: null,
+            lanSessionActive: null,
             error:
               `The page speaks protocol ${RA2_WEB_PROTOCOL} and this game build speaks ${event.protocol}: ` +
               "a stale copy of the game is cached. Reload the page.",
@@ -321,6 +334,8 @@ export class GameStore {
             exitCode: event.code,
             exitConfirmation: null,
             openLink: null,
+            lanSession: null,
+            lanSessionActive: null,
           });
         return;
       case "exitConfirm":
@@ -336,6 +351,16 @@ export class GameStore {
         return;
       }
       case "settingsSaved":
+        return;
+      case "lanSession":
+        this.set({
+          lanSession: { request: event.request },
+          lanSessionActive: { request: event.request },
+        });
+        return;
+      case "lanSessionEnd":
+        if (this.state.lanSessionActive?.request === event.request)
+          this.set({ lanSession: null, lanSessionActive: null });
         return;
       case "error":
         this.set({ error: event.message });
@@ -357,9 +382,26 @@ export class GameStore {
     if (this.state.openLink) this.set({ openLink: null });
   }
 
+  resolveLanSession(request: number): void {
+    if (this.state.lanSession?.request === request) this.set({ lanSession: null });
+  }
+
   /** The game's thread died (a trap), or the runtime aborted. */
   crashed(what: string): void {
-    this.set({ phase: "crashed", error: what, exitConfirmation: null, openLink: null });
+    if (this.isTerminal()) return;
+    this.set({
+      phase: "crashed",
+      error: what,
+      exitConfirmation: null,
+      saveReferencePrompt: null,
+      openLink: null,
+      lanSession: null,
+      lanSessionActive: null,
+    });
+  }
+
+  private isTerminal(): boolean {
+    return this.state.phase === "exited" || this.state.phase === "crashed";
   }
 }
 

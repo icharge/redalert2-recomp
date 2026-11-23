@@ -190,20 +190,74 @@ startup abort rejection, and persistence failure/retry before navigation.
 
 ## LAN transport: two real browsers
 
-With the Vite dev server running, `node e2e/lan-peer.mjs` opens two Chrome
-instances, exchanges the WebRTC offer and answer directly, and checks binary
-datagrams in both directions. This covers the browser's host-candidate
-connectivity and `LanPeer`; the game/HLE IPX path is exercised separately by
-`e2e/lan.mjs` with a local game folder.
+With the Vite dev server running on port 5178 and the two browser modules
+built, `e2e/lan-peer.mjs` opens two Chrome instances, exchanges the WebRTC
+offer and answer directly, and checks binary datagrams in both directions.
+This covers host-candidate connectivity and `LanPeer`; `e2e/lan.mjs` exercises
+the real game/HLE path using small local fixtures and edition-specific builds.
 
-For the full game path, run
-`node e2e/lan.mjs --url http://127.0.0.1:5178/ --game ../game --shots ../work/web-lan-match`
-with the Vite server on port 5178. The test exchanges SDP manually, joins and
-starts a LAN lobby match, then waits for active game frame reports and checks
-that both clients render non-black match frames. It saves each client's
-offer/lobby/match screenshots and full log under `--shots`. Before entering
-the lobby it checks that each HLE runtime has a different 128-digit random
-`woldata.key`; both clients then join the same match.
+Use Node 24 for these local real-game scripts. The edition must be explicit
+when choosing fixtures/builds. The RA2 fixture uses `RA2.INI` and the
+`build-web-game` module; Yuri's Revenge uses `RA2MD.INI` and `build-web`.
+`--video 800x600` makes the native menu coordinates reproducible; the YR
+success capture below was run at its fixture's configured 2580x1080 size.
+The harness sets the LAN scenario to 0 and LAN UnitCount to 0 in memory, so
+each player starts with one MCV. It checks distinct WOL keys, nonempty IPX
+receive traffic, active nonblack match frames and changed frames after each
+player's `N`/`D` order. Retained screenshots show the deployed MCVs.
+
+From the repository root:
+
+```powershell
+node web/e2e/lan-peer.mjs http://127.0.0.1:5178/
+node web/e2e/lan.mjs --url http://127.0.0.1:5178/ --game work/lan-implementation/fixture-yr --edition ra2md --build build-web --shots work/web-lan-session-yr
+node web/e2e/lan.mjs --url http://127.0.0.1:5178/ --game work/lan-implementation/fixture-ra2 --edition ra2 --video 800x600 --build build-web-game --shots work/web-lan-session-ra2-final
+node web/e2e/lan-session.mjs --url http://127.0.0.1:5178/ --game work/lan-implementation/fixture-yr --edition ra2md --video 800x600 --build build-web --shots work/web-lan-session-fail-yr
+node web/e2e/lan-session.mjs --url http://127.0.0.1:5178/ --game work/lan-implementation/fixture-ra2 --edition ra2 --video 800x600 --build build-web-game --shots work/web-lan-session-fail-ra2
+```
+
+The success flow clicks the original native Network button first, captures
+the `0xBB` LAN screen before opening the automatic browser dialog, exchanges
+SDP manually, Continues to the native lobby, then creates/joins/Accepts/starts
+the same match. The failure flow covers invalid and duplicate replies,
+Escape/cancel and fresh re-entry, clipboard denial, malformed SDP retry,
+browser input and automatic pointer-lock isolation, and a live data-channel
+drop while the native lobby is active. It verifies that presenter/game pump
+progress continues while ICE candidates gather.
+
+Passing success artifacts are under `work/web-lan-session-yr/` and
+`work/web-lan-session-ra2-final/`; passing failure artifacts are under
+`work/web-lan-session-fail-yr/` and `work/web-lan-session-fail-ra2/`. Each
+directory has native LAN/modal, lobby/setup, match/order-response captures
+and full per-client logs. Earlier failed iterations are retained separately
+under `work/web-lan-session-ra2*` and are not passing evidence.
+
+Rerun on 2026-11-23, after the rebase onto `web-port` (protocol 14, the LAN
+button in the game tray). The October fixtures are gone, so the runs use the
+full install read-only (`--game <main checkout>/game`) at `--video 800x600`,
+with the worktree's dev server on 5178 and the fast build
+(`build-web.cmd --mode fast --edition both`, with
+`--cmake-arg=-DRA2_GAME_DIR=<main checkout>/game` in a worktree):
+
+- `lan-peer.mjs`: PASS.
+- RA2 `lan.mjs`: PASS (pairing from native Network, lobby IPX, the name field
+  keeping its typing, a shared match, a changed frame after each player's order).
+- RA2 `lan-session.mjs`: PASS (all failure cases above).
+- Yuri's Revenge `lan.mjs` and `lan-session.mjs`: PASS, the same checks.
+
+Captures and logs: `work/lan-2026-11-23/` (`ra2-match/`, `ra2-fail/`,
+`yr-match/`, `yr-fail/`). The
+name-field check clicks a different point per edition: the field sits at
+134..273 x 16..37 in Yuri's Revenge's 800x600 menu and at 216..352 x 76..97 in
+Red Alert 2's.
+
+Validation on 2026-10-26: both `cmake --build build-web --parallel 4` and
+`cmake --build build-web-game --parallel 4` reported no work. `pnpm --dir web
+test` passed 442 tests in 44 files; `pnpm --dir web build` and `pnpm --dir web
+lint` passed. The build emitted the existing large-chunk advisory. Native
+re-entry smoke evidence is in `work/lan-implementation/smoke-ra2-fixed/` and
+`smoke-yr-language/`; the Network (LAN) flag shown/hidden checks are in
+`toggle-shown/` and `toggle-hidden/`.
 
 More steps and switches, from chasing the first play's issues ([issues.md](issues.md)):
 

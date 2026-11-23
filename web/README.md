@@ -22,6 +22,15 @@ this machine) so the page can start the game without an import. The first load c
 1 GB into the tab's memory: expect 20 to 40 seconds before the main menu. `RA2_GAME_DIR`
 names another folder.
 
+## Configuration
+
+`VITE_SHOW_NETWORK_LAN` controls whether the game tray offers its **LAN** button. Set it
+in `web/.env.local` (copy `.env.example`) or in the build environment. `false` hides the button;
+`true`, an empty value, an unset variable or any other value shows it. The setting is read when
+the page is built, so restart `pnpm dev` after a change, and rebuild and redeploy the production
+page. It is not a player setting: nothing is stored in the browser, and hiding the button does not
+change the LAN session itself.
+
 ## Commands
 
 |                                                    |                                                                                                     |

@@ -7,7 +7,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
-#define RA2_WEB_PROTOCOL 13
+#define RA2_WEB_PROTOCOL 14
 
 #define RA2_CURSOR_PX 32
 /* The largest cursor frame the page accepts. MOUSE.SHA's header gives 55x43 as
@@ -124,6 +124,9 @@ int ra2_exit_confirmation_reply(uint32_t request, int exit_game);
 int ra2_web_save_reference_prompt(void);
 int ra2_web_save_reference_reply(uint32_t request, int ignore);
 void ra2_web_save_reference_reset(void);
+int ra2_lan_session_reply(uint32_t request, int connected);
+uint32_t web_lan_session_begin(void);
+void web_lan_session_end(void);
 
 enum { RA2_SETTING_SCALE, RA2_SETTING_BARS, RA2_SETTING_HD, RA2_SETTING_MODERN,
        RA2_SETTING_RESOLUTION, RA2_SETTING_MENU };
@@ -142,7 +145,8 @@ void web_modern_pointer(uint32_t message, int x, int y);
 /* the game thread's side (presenter.c) */
 void web_presenter_start(int (*menus_use_windows_cursor)(void));
 void web_presenter_pump(void);       /* from the pump hook: input in, the cursor out, fps */
-
 /* main.c: --clockstats (presenter.c prints the counts once a second) */
 int  ra2_clockstats_on(void);
 void ra2_clockstats_take(uint32_t out[5]);   /* qpc, timeGetTime, GetTickCount, Sleep(n), Sleep(0) since the last take */
+void web_presenter_proc_message(uint32_t hwnd, uint32_t message, uint32_t wparam);
+void web_presenter_apply_lan_reply(uint32_t request, int connected);

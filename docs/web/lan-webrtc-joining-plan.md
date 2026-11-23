@@ -8,7 +8,9 @@
 
 **Tech Stack:** Existing Emscripten C host, React 18, TypeScript, Radix Dialog, WebRTC, Vitest, and Playwright browser scripts.
 
-**Spec:** The requested flow and constraints below, together with [D13](decisions.md#d13-browser-lan-play-one-peer-over-webrtc-manual-sdp-exchange). This is a documentation-only proposal dated 2026-10-25, updated 2026-10-26 to use Vite environment configuration; W12.0 and W12.4–W12.8 are not implemented. Complete W12.0 before every remaining task below.
+**Spec:** The requested flow and constraints below, together with [D13](decisions.md#d13-browser-lan-play-one-peer-over-webrtc-manual-sdp-exchange). This implementation plan was updated on 2026-10-26 to record the shipped build-time visibility flag, native Network entry hook, browser session handshake, and two-edition runtime evidence. Stage 12 is complete for the checks listed below; Internet transport remains Stage 13.
+
+**2026-11-23 rebase:** the branch was rebuilt on `web-port` with the LAN work only. The game sidebar this plan was written beside is not part of it (it stays on `codex/lan-webrtc-joining-sidebar-2026-11-23`), so where the tasks below say sidebar or More menu, the build has `web-port`'s game tray and its **LAN** button, which `VITE_SHOW_NETWORK_LAN=false` hides. The protocol number is 14 (web-port had reached 13). The commits below were made then. Both editions were rebuilt on the rebased tree and pass `lan-peer.mjs`, `lan.mjs` and `lan-session.mjs` again ([testing.md](testing.md#lan-transport-two-real-browsers)).
 
 ## Global constraints
 
@@ -87,12 +89,12 @@ Do not patch generated `src/recomp/gen*/` files. The existing callback is the fi
 
 **Interfaces:** Export `networkLanVisible(value: string | undefined = import.meta.env.VITE_SHOW_NETWORK_LAN): boolean` from `web/src/config.ts`. Return false only for the exact string `"false"`; `"true"`, unset, empty, or unrecognized values return true. Declare `readonly VITE_SHOW_NETWORK_LAN?: string` on `ImportMetaEnv` in `web/src/vite-env.d.ts`. Play passes the resulting read-only `showNetworkLan: boolean` to the sidebar/More menu; expose no Settings change callback.
 
-- [ ] Write failing config tests for `"true"` -> shown, `"false"` -> hidden, and unset/empty/`"0"`/`"FALSE"`/unrecognized -> shown. Include a `vi.stubEnv("VITE_SHOW_NETWORK_LAN", "false")` case exercising the default argument; restore stubbed environment values after each test. Never use `Boolean(envValue)` because the string `"false"` is truthy.
-- [ ] Write failing sidebar/Play integration tests with the environment flag enabled and disabled: the item is present when enabled and absent from visual, keyboard and accessibility navigation when disabled. Assert no player-facing Settings switch or persistence read overrides the flag. Keeping an existing LAN owner mounted must not depend on this rendering condition.
-- [ ] Run `pnpm --dir web test -- src/config.test.ts src/components/GameSidebar.test.tsx src/screens/Play.test.tsx`; confirm the new assertions fail before implementing the configuration.
-- [ ] Implement the environment parser, optional environment type and conditional sidebar action. Keep the LAN session owner mounted independently of visibility. Document both flag values and the default in `web/.env.example` and `web/README.md`, including dev-server restart and production rebuild requirements.
-- [ ] Rerun the focused tests and `pnpm --dir web typecheck`. Verify separate shown/hidden dev or production configurations in the browser before proceeding to W12.4.
-- [ ] Commit only this task's changes when a commit is requested: `feat(web): configure Network LAN sidebar visibility`.
+- [x] Write failing config tests for `"true"` -> shown, `"false"` -> hidden, and unset/empty/`"0"`/`"FALSE"`/unrecognized -> shown. Include a `vi.stubEnv("VITE_SHOW_NETWORK_LAN", "false")` case exercising the default argument; restore stubbed environment values after each test. Never use `Boolean(envValue)` because the string `"false"` is truthy.
+- [x] Write failing sidebar/Play integration tests with the environment flag enabled and disabled: the item is present when enabled and absent from visual, keyboard and accessibility navigation when disabled. Assert no player-facing Settings switch or persistence read overrides the flag. Keeping an existing LAN owner mounted must not depend on this rendering condition.
+- [x] Run `pnpm --dir web test -- src/config.test.ts src/components/GameSidebar.test.tsx src/screens/Play.test.tsx`; confirm the new assertions fail before implementing the configuration.
+- [x] Implement the environment parser, optional environment type and conditional sidebar action. Keep the LAN session owner mounted independently of visibility. Document both flag values and the default in `web/.env.example` and `web/README.md`, including dev-server restart and production rebuild requirements.
+- [x] Rerun the focused tests and `pnpm --dir web typecheck`. Verify separate shown/hidden dev or production configurations in the browser before proceeding to W12.4.
+- [x] Commit only this task's changes when a commit is requested: `feat(web): configure the LAN button's visibility`.
 
 ## Task W12.4: Prove the LAN lifecycle and cancellation boundary
 
@@ -100,11 +102,41 @@ Do not patch generated `src/recomp/gen*/` files. The existing callback is the fi
 
 **Interfaces:** Produces a verified mapping for each edition: LAN enter, first published LAN frame, native Back/Cancel command, host/join transition, main-menu return. These are implementation prerequisites, not guessed virtual addresses.
 
-- [ ] Trace Network (`0xE2:1400`) through `0xBB`, host `0xBC`, join `0xBD`, and return to the main menu in both editions. Record exact cancel control/message and its source handler.
-- [ ] Confirm when the existing creation callback fires relative to visibility and frame publication. Establish an observable frame sequence boundary before prompting; an arbitrary timer is insufficient.
-- [ ] Verify host/join/loading transitions can be distinguished from leaving LAN entirely. Destruction or hiding of `0xBB` alone must not end a connected session.
-- [ ] Capture the original LAN screen and the successful native cancel trace. If the callback cannot support a required boundary, document the smallest verified additional hook before implementing it.
-- [ ] Commit the evidence and final hook mapping separately: `docs: trace LAN session interception boundaries`.
+- [x] Trace Network (`0xE2:1400`) through `0xBB`, host `0xBC`, join `0xBD`, and return to the main menu in both editions. Record exact cancel control/message and its source handler.
+- [x] Confirm when the existing creation callback fires relative to visibility and frame publication. Establish an observable frame sequence boundary before prompting; an arbitrary timer is insufficient.
+- [x] Verify host/join/loading transitions can be distinguished from leaving LAN entirely. Destruction or hiding of `0xBB` alone must not end a connected session.
+- [x] Capture the original LAN screen and the successful native cancel trace. If the callback cannot support a required boundary, document the smallest verified additional hook before implementing it.
+- [x] Commit the evidence and final hook mapping separately: `docs: trace LAN session interception boundaries`.
+
+### W12.4 trace and runtime results (2026-10-26)
+
+`src/recomp/gen` is Yuri's Revenge (gamemd.exe) and `src/recomp/gen_game` is Red Alert 2 (game.exe) (`CMakeLists.txt` `GEN_DIR`). Both editions use the same resource and control IDs.
+
+| Step | Both editions | Evidence |
+|---|---|---|
+| LAN enter | Main menu `0xE2` closes, then `[dialog] open 0xBB`. The opener passes `edx = 0xBB` to the dialog-stack opener (YR `sub_005DC350`, `gen/recomp_0030.c`; RA2 `sub_005BD070`, `gen_game/recomp_0028.c`). The LAN screens are modeless `CreateDialogIndirectParamA` dialogs. | `back-network.web/run.log` (`press 0xE2:1400`, `open 0xBB`) |
+| Creation callback | `dialog_created` (`src/linux/script.c`) runs on the game thread after `create_dialog` returns: after `WM_INITDIALOG` and before any `WM_PAINT`. No callback runs on destroy or hide. | pcrecomp `win32hle/user32.c` `create_dialog` |
+| First LAN frame | `publish()` (`src/web/presenter.c`) bumps `frame_seq` from `present_now()`. The game-thread pump (`frame_pump` in `main.c`), the primary-surface Unlock and the screen-frame hook all call it. Publishes are throttled and can repeat an unchanged picture, so "first publish after creation" can still show the main menu. | `presenter.c` `present_now` |
+| Native Back/Cancel | `0xBB` control `1472` (`GUI:MainMenu`, a button). Post `WM_COMMAND(wParam = 1472, lParam = button HWND)` to the `0xBB` window on the game thread. This is the message the native button sends, and the playtest script's fallback. No coordinate clicks. | `tools/playtest.py` `back-network`; `script.c` press fallback; `work/dialogs.json`, `work/game/dialogs.json` |
+| Host / join | New `0xBB:1740` opens `0xBC`. Join `0xBB:1741` opens `0xBD`, then Accept `0xBD:1439`. `0xBB` stays alive behind both. | `lan-host.log` / `lan-guest.log` (`open 0xBC`/`0xBD`, no `closed 0xBB`) |
+| Loading | `0xBB` and `0xBC`/`0xBD` close only when the match loads. | `About to load a 2 player game.` then `closed 0xBB` |
+| Main-menu return | Back is followed by a new `[dialog] open 0xE2`. `0xBB` is never reported closed, so it stays alive (hidden) until the process exits. | `back-network.web/run.log` |
+
+The initial source-only hook mapping above was superseded after the native smoke
+tests exposed phantom requests on main-menu re-entry. The implemented mapping
+is:
+
+1. **Enter.** Arm only when the known `0xE2` main-menu window receives `WM_COMMAND` with command 1400 (Network). Creating `0xE2` alone does not arm LAN entry.
+2. **Paint boundary.** Count `WM_PAINT` delivered to the armed `0xBB` window and emit `lanSession` from `publish()` only after that paint and a published frame. This needs no timer.
+3. **Cancel.** The pump applies the reply on the game thread by posting `WM_COMMAND 1472` to `0xBB`.
+4. **End.** A `0xE2` creation after a LAN entry is the return to the main menu: emit `lanSessionEnd`. Closing `0xBB`, `0xBC` or `0xBD` (setup or load) never ends the session. Runtime exit and crash are handled by the page.
+
+Both native smoke tests (`work/lan-implementation/smoke-ra2-fixed/` and
+`smoke-yr-language/`) show the LAN background and browser modal, reject stale
+replies, and return to the main menu on Escape/cancel before creating a fresh
+request on re-entry. The two-browser checks below confirm the session survives
+host/join setup and loading into a match. The intercepted event occurs after the
+visible LAN frame boundary in both editions.
 
 ## Task W12.5: Add the game/browser session handshake
 
@@ -112,13 +144,13 @@ Do not patch generated `src/recomp/gen*/` files. The existing callback is the fi
 
 **Interfaces:** New events `{ e: "lanSession"; request: number }` and `{ e: "lanSessionEnd"; request: number }`. New export `int ra2_lan_session_reply(uint32_t request, int connected)` mirrored as `ra2_lan_session_reply(request: number, connected: number): number`. Values 0/1 mean cancel/continue; return 1 accepts exactly one matching pending reply, otherwise 0. New store field `lanSession: { request: number } | null` and `resolveLanSession(request: number): void`.
 
-- [ ] Write parser/store tests: accept nonzero uint32 requests; reject zero, fractional, negative and overflowing IDs; ignore an end event for another request; clear matching state on resolution, begin, exit and crash, including protocol mismatch.
-- [ ] Run `pnpm --dir web test -- src/game/protocol.test.ts src/game/store.test.ts src/game/loader.test.ts`; confirm the new cases fail before implementation.
-- [ ] Implement request allocation and an atomic reply mailbox. Main-thread exports only validate/queue replies; the normal game pump performs native Continue/Cancel work using W12.4's verified mapping. No guest window operations from React and no blocking wait inside the creation callback.
-- [ ] Emit `lanSession` once per fresh entry after the verified LAN frame publication. Emit matching `lanSessionEnd` when leaving the overall LAN flow; do not end on the host/join transition. Keep the current request/generation for the connected session until its actual end.
-- [ ] Increment the protocol in C and TypeScript together (currently 7; use 8 if unchanged at implementation time), add the export binding table entry, and update protocol documentation. Confirm how `EMSCRIPTEN_KEEPALIVE` retains exports before changing linker settings.
-- [ ] Run the focused tests and `pnpm --dir web typecheck`. Use the browser harness from W12.8 to verify that zero, invalid choices, old IDs and duplicate replies return 0 and cannot navigate another lobby.
-- [ ] Commit: `feat: expose browser LAN session requests`.
+- [x] Write parser/store tests: accept nonzero uint32 requests; reject zero, fractional, negative and overflowing IDs; ignore an end event for another request; clear matching state on resolution, begin, exit and crash, including protocol mismatch.
+- [x] Run `pnpm --dir web test -- src/game/protocol.test.ts src/game/store.test.ts src/game/loader.test.ts`; confirm the new cases fail before implementation.
+- [x] Implement request allocation and an atomic reply mailbox. Main-thread exports only validate/queue replies; the normal game pump performs native Continue/Cancel work using W12.4's verified mapping. No guest window operations from React and no blocking wait inside the creation callback.
+- [x] Emit `lanSession` once per fresh entry after the verified LAN frame publication. Emit matching `lanSessionEnd` when leaving the overall LAN flow; do not end on the host/join transition. Keep the current request/generation for the connected session until its actual end.
+- [x] Increment the protocol in C and TypeScript together (currently 7; use 8 if unchanged at implementation time), add the export binding table entry, and update protocol documentation. Confirm how `EMSCRIPTEN_KEEPALIVE` retains exports before changing linker settings.
+- [x] Run the focused tests and `pnpm --dir web typecheck`. Use the browser harness from W12.8 to verify that zero, invalid choices, old IDs and duplicate replies return 0 and cannot navigate another lobby.
+- [x] Commit (W12.5–W12.8 together): `feat(web): pair WebRTC sessions from the native LAN screen`.
 
 ## Task W12.6: Replace toolbar-first pairing with the controlled session dialog
 
@@ -126,13 +158,13 @@ Do not patch generated `src/recomp/gen*/` files. The existing callback is the fi
 
 **Interfaces:** `LanPanel({ game, request, onContinue, onCancel }: { game: GameHandle; request: number | null; onContinue(request: number): void; onCancel(request: number): void })`. The component remains mounted for the live runtime so closing the modal after Continue does not dispose the connected peer/bridge. Play owns acknowledgement and only resolves a request after the export accepts its reply.
 
-- [ ] Write tests for the exact Create/Join choices and offer/answer exchange, Continue disabled until channel open, failed acknowledgement keeping the prompt visible, manual paste when clipboard access is denied, and Escape invoking Cancel once.
-- [ ] Run `pnpm --dir web test -- src/components/LanPanel.test.tsx`; confirm the new cases fail.
-- [ ] Convert local `open`/toolbar ownership to the pending request. Preserve selectable invitation/answer text and clipboard fallbacks; replace the status that currently instructs players to open Network after pairing.
-- [ ] Wire Continue/Cancel through `ra2_lan_session_reply`. Disable duplicate actions while acknowledging, prevent outside dismissal, and restore focus after the game consumes the decision.
-- [ ] Extend both `attachInput.enabled` and automatic pointer-lock predicates in Play to include the LAN modal. Release capture on open; suppress game shortcuts, hidden textarea input, and stale queued pointer/key events while the modal owns focus. Apply the matching gate where presenter input drains so pre-open queued events cannot activate native controls.
-- [ ] Run the component tests, `pnpm --dir web typecheck`, and `pnpm --dir web lint`.
-- [ ] Commit: `feat: pair WebRTC sessions from the native LAN screen`.
+- [x] Write tests for the exact Create/Join choices and offer/answer exchange, Continue disabled until channel open, failed acknowledgement keeping the prompt visible, manual paste when clipboard access is denied, and Escape invoking Cancel once.
+- [x] Run `pnpm --dir web test -- src/components/LanPanel.test.tsx`; confirm the new cases fail.
+- [x] Convert local `open`/toolbar ownership to the pending request. Preserve selectable invitation/answer text and clipboard fallbacks; replace the status that currently instructs players to open Network after pairing.
+- [x] Wire Continue/Cancel through `ra2_lan_session_reply`. Disable duplicate actions while acknowledging, prevent outside dismissal, and restore focus after the game consumes the decision.
+- [x] Extend both `attachInput.enabled` and automatic pointer-lock predicates in Play to include the LAN modal. Release capture on open; suppress game shortcuts, hidden textarea input, and stale queued pointer/key events while the modal owns focus. Apply the matching gate where presenter input drains so pre-open queued events cannot activate native controls.
+- [x] Run the component tests, `pnpm --dir web typecheck`, and `pnpm --dir web lint`.
+- [x] Commit: in the W12.5 commit.
 
 ## Task W12.7: Make cancellation, reconnect and cleanup safe
 
@@ -140,13 +172,13 @@ Do not patch generated `src/recomp/gen*/` files. The existing callback is the fi
 
 **Interfaces:** Preserve `LanPeer.createOffer(): Promise<string>`, `answerOffer(text: string): Promise<string>`, `acceptAnswer(text: string): Promise<void>`, `close(): void`, and existing `LanIpXBridge` methods. Each peer attempt and each dialog request gets an internal generation; obsolete async completions must not emit status/packets or alter a later attempt.
 
-- [ ] Write fake-peer tests for close during ICE gathering, cancel during `setRemoteDescription`, stale callbacks from a replaced peer/channel, retry after malformed SDP, and delayed Blob decoding after disposal. Assert no abandoned invitation, status, packet, or game reply reaches the next request.
-- [ ] Write component lifecycle tests: Continue keeps peer/bridge alive; native host/join transitions keep them alive; main-menu return, explicit disconnect, exit, crash and unmount stop each resource once; React effect cleanup/remount cannot leave duplicate bridge timers.
-- [ ] Run `pnpm --dir web test -- src/game/lan.test.ts src/components/LanPanel.test.tsx src/game/store.test.ts`; confirm the added cases fail.
-- [ ] Add attempt invalidation and cancellable ICE listeners/timers, guarded callbacks, and safe promise settlement. Permit retry for the current request only; never submit Continue from a stale attempt.
-- [ ] Separate modal visibility from transport lifetime. A post-Continue disconnect reports loss; in lobby/setup it can reopen recovery UI for the current session, but gameplay loss must not automatically attach a different peer. Preserve the native game's disconnect handling.
-- [ ] Run the focused tests and `pnpm --dir web typecheck`.
-- [ ] Commit: `fix: invalidate abandoned LAN pairing attempts`.
+- [x] Write fake-peer tests for close during ICE gathering, cancel during `setRemoteDescription`, stale callbacks from a replaced peer/channel, retry after malformed SDP, and delayed Blob decoding after disposal. Assert no abandoned invitation, status, packet, or game reply reaches the next request.
+- [x] Write component lifecycle tests: Continue keeps peer/bridge alive; native host/join transitions keep them alive; main-menu return, explicit disconnect, exit, crash and unmount stop each resource once; React effect cleanup/remount cannot leave duplicate bridge timers.
+- [x] Run `pnpm --dir web test -- src/game/lan.test.ts src/components/LanPanel.test.tsx src/game/store.test.ts`; confirm the added cases fail.
+- [x] Add attempt invalidation and cancellable ICE listeners/timers, guarded callbacks, and safe promise settlement. Permit retry for the current request only; never submit Continue from a stale attempt.
+- [x] Separate modal visibility from transport lifetime. A post-Continue disconnect reports loss; in lobby/setup it can reopen recovery UI for the current session, but gameplay loss must not automatically attach a different peer. Preserve the native game's disconnect handling.
+- [x] Run the focused tests and `pnpm --dir web typecheck`.
+- [x] Commit: in the W12.5 commit.
 
 ## Task W12.8: Verify the requested flow with real games
 
@@ -154,16 +186,16 @@ Do not patch generated `src/recomp/gen*/` files. The existing callback is the fi
 
 **Interfaces:** Reuse `options`, `startPage`, screenshots, game log capture, and module overrides from `web/e2e/lib.mjs`. Keep `lan-peer.mjs` as the transport-only check. Support each edition with its own INI, build and file overrides instead of assuming `RA2MD.INI` for RA2.
 
-- [ ] Change the successful two-client test to click native Network first, wait for `0xBB` and its published frame, then interact with the automatic browser dialog. It must never click the old toolbar LAN trigger.
-- [ ] Before pairing, capture both native LAN backgrounds and the modal. Assert the frame boundary precedes `lanSession`; retain screenshots for visual review. Then exchange SDP, Continue, create/join the original room, Accept and start the same match.
-- [ ] Keep distinct WOL-key assertions, nonempty IPX receive checks, and non-black active match frames on both clients. Add an observable order/response from each player so verification proves ongoing shared gameplay beyond merely loading a map.
-- [ ] Add the failure-flow script: Cancel/Escape to native main menu; re-enter with a fresh request; reject old/duplicate replies; deny clipboard access; retry bad SDP; drop the channel in lobby/setup; ensure modal typing/clicks and pointer-lock attempts never reach the native lobby. Verify presenter/pump progress while ICE waits.
-- [ ] Run the transport check from `web/`: `node e2e/lan-peer.mjs http://127.0.0.1:5178/`.
-- [ ] Build both browser modules with the repository's existing web build commands, then run the full flow with the Vite server: `node web/e2e/lan.mjs --url http://127.0.0.1:5178/ --game game --shots work/web-lan-session-yr` and the equivalent RA2 invocation using its explicit build/INI selection. Run `lan-session.mjs` with the same URL/game/build arguments. Record the actual per-edition commands and logs in testing.md.
-- [ ] Run `pnpm --dir web test`, `pnpm --dir web build`, and `pnpm --dir web lint`. Review the native LAN/modal, resumed lobby and match captures for both editions. Check native `menu-network`/`back-network` using the existing playtest cases if shared host/script behavior changed.
-- [ ] Document the implemented protocol and the new entry flow, then mark W12.4–W12.8 complete only for checks actually passed. Keep Stage 13's Internet transport work separate.
-- [ ] Commit: `test: cover native LAN entry and WebRTC session joining`.
+- [x] Change the successful two-client test to click native Network first, wait for `0xBB` and its published frame, then interact with the automatic browser dialog. It must never click the old toolbar LAN trigger.
+- [x] Before pairing, capture both native LAN backgrounds and the modal. Assert the frame boundary precedes `lanSession`; retain screenshots for visual review. Then exchange SDP, Continue, create/join the original room, Accept and start the same match.
+- [x] Keep distinct WOL-key assertions, nonempty IPX receive checks, and non-black active match frames on both clients. Add an observable order/response from each player so verification proves ongoing shared gameplay beyond merely loading a map.
+- [x] Add the failure-flow script: Cancel/Escape to native main menu; re-enter with a fresh request; reject old/duplicate replies; deny clipboard access; retry bad SDP; drop the channel in lobby/setup; ensure modal typing/clicks and pointer-lock attempts never reach the native lobby. Verify presenter/pump progress while ICE waits.
+- [x] Run the transport check from `web/`: `node e2e/lan-peer.mjs http://127.0.0.1:5178/`.
+- [x] Build both browser modules with the repository's existing web build commands, then run the full flow with the Vite server: `node web/e2e/lan.mjs --url http://127.0.0.1:5178/ --game game --shots work/web-lan-session-yr` and the equivalent RA2 invocation using its explicit build/INI selection. Run `lan-session.mjs` with the same URL/game/build arguments. Record the actual per-edition commands and logs in testing.md.
+- [x] Run `pnpm --dir web test`, `pnpm --dir web build`, and `pnpm --dir web lint`. Review the native LAN/modal, resumed lobby and match captures for both editions. Check native `menu-network`/`back-network` using the existing playtest cases if shared host/script behavior changed.
+- [x] Document the implemented protocol and the new entry flow, then mark W12.4–W12.8 complete only for checks actually passed. Keep Stage 13's Internet transport work separate.
+- [x] Commit: in the W12.5 commit.
 
-## Completion criteria
+## Completion criteria (checked 2026-10-26)
 
-The deployment can show or hide the Network (LAN) sidebar item through `VITE_SHOW_NETWORK_LAN`, with shown as the default and no player preference overriding it. A player clicks Network, sees the original LAN screen with a browser Create/Join dialog, pairs without a separate toolbar step, then completes native host/join setup and a shared match. Cancellation, re-entry, clipboard denial and connection failure have repeatable results; stale requests cannot change a later session. Evidence covers both editions. This plan does not claim those checks have been run yet.
+The deployment can show or hide the Network (LAN) sidebar item through `VITE_SHOW_NETWORK_LAN`, with shown as the default and no player preference overriding it. A player clicks Network, sees the original LAN screen with a browser Create/Join dialog, pairs without a separate toolbar step, then completes native host/join setup and a shared match. Cancellation, re-entry, clipboard denial and connection failure have repeatable results; stale requests cannot change a later session. Evidence covers both editions. The recorded runtime checks passed on 2026-10-26, before the rebase onto `web-port`. Stage 13 Internet transport remains separate.

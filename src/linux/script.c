@@ -37,6 +37,7 @@ void web_chat_box_dialog(uint32_t hwnd, uint32_t resource_id);     /* src/web/ch
 void web_map_search_start(void);
 #include "web_api.h"
 void ra2_setting(int key, int value, int extra);  /* src/web/presenter.c */
+void web_presenter_proc_message(uint32_t hwnd, uint32_t message, uint32_t wparam);
 #endif
 
 #define WM_COMMAND     0x0111u
@@ -256,6 +257,7 @@ static volatile int g_watch_ctrl, g_watch_up, g_watch_cmd;
 static void watch(uint32_t h, uint32_t m, uint32_t w, uint32_t l) {
 #ifdef __EMSCRIPTEN__
     if (m == 0x0082u) web_presenter_window_destroyed(h);   /* WM_NCDESTROY: the presenter's icon map */
+    web_presenter_proc_message(h, m, w);
 #endif
     if (!g_watch_btn) return;
     if (m == WM_LBUTTONUP && h == g_watch_btn) g_watch_up++;

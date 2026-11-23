@@ -56,6 +56,14 @@ describe("parseEventLine", () => {
       ask: 0,
       seq: 3,
     });
+    expect(parseEventLine('@ra2 {"e":"lanSession","request":4294967295}')).toEqual({
+      e: "lanSession",
+      request: 0xffffffff,
+    });
+    expect(parseEventLine('@ra2 {"e":"lanSessionEnd","request":123}')).toEqual({
+      e: "lanSessionEnd",
+      request: 123,
+    });
     expect(parseEventLine('@ra2 {"e":"error","message":"no gamemd.exe in /game"}')).toEqual({
       e: "error",
       message: "no gamemd.exe in /game",
@@ -86,6 +94,9 @@ describe("parseEventLine", () => {
     expect(parseEventLine('@ra2 {"e":"mode","w":"800"}')).toBeNull();
     expect(parseEventLine('@ra2 {"e":"nonsense"}')).toBeNull();
     expect(parseEventLine('@ra2 {"e":"exitConfirm","request":0}')).toBeNull();
+    for (const e of ["lanSession", "lanSessionEnd"])
+      for (const request of [0, -1, 1.5, 0x100000000, "123", null])
+        expect(parseEventLine(`@ra2 ${JSON.stringify({ e, request })}`)).toBeNull();
     for (const request of [-1, 1.5, 0x100000000, "123", null])
       expect(parseEventLine(`@ra2 ${JSON.stringify({ e: "exitConfirm", request })}`)).toBeNull();
     expect(parseEventLine('@ra2 {"e":"exitConfirm","hwnd":123}')).toBeNull();
