@@ -995,17 +995,24 @@ TEST_MAP_SITES = {
     # campaign: the campaign-or-file test before Start_Scenario; file: Start_Scenario on the
     # scenario's own file name, which sits at Scen + name; again: Main_Game's call back into
     # Select_Game once a match is over, won, lost or aborted; first: its first call, which returns
-    # once the map has loaded. RA2's set was found by aligning its
+    # once the map has loaded; reveal: Read_Scenario's no-shroud start (the Rules byte test, then
+    # MapClass::RevealEntireMap on the map object, YR with a NULL house argument); ra2_start:
+    # RA2's start-cell picker (no start choice of its own: random, then farthest). RA2's set was found by aligning its
     # instructions with YR's and checked against game.exe (docs/web/test-map.md).
     'gamemd': dict(menu=(0x0052DC87, '83fe12'), skirmish=(0x0052E10F, 'c70538b2a80005000000'),
                    dialog=(0x0052E168, 0x006AE2C0), end=(0x0055D14A, 0x00685670),
                    again=(0x0048CFAA, 0x0052D9A0), first=(0x0048CDD3, 0x0052D9A0),
+                   reveal=(0x006849D0, '8b0de0718800', 0x006849E7, 0x00577F30, 0x0087F7E8, True),
                    single=(0x0052E527, '8b0d64eba800'), campaign=(0x0052E6E0, '391d38b2a800'),
                    file=(0x0052E737, 'a130b2a800'), scen=0x00A8B230, name=0x125C,
                    difficulty=0x00A8EB64, single_regs=''),
     'game': dict(menu=(0x005138D6, '83fd12'), skirmish=(0x00513D93, 'c70598d2a30005000000'),
                  dialog=(0x00513DEC, 0x00683BF0), end=(0x0053F9BA, 0x0065D7F0),
                  again=(0x00481EDA, 0x005135F0), first=(0x00481D03, 0x005135F0),
+                 reveal=(0x0065CB86, '8b0d48988300', 0x0065CB9B, 0x0055A1F0, 0x008324E0, False),
+                 ra2_start=dict(entry=(0x005B7920, '558bec83e4f8'), site=(0x005B792C, '8b7d10'),
+                                human=(0x005B7978, 0x004F52F0), ret=(0x005B79F9, 'c21000'),
+                                houses=0x00A3229C),
                  single=(0x0051411E, '8b0d1c0ba400'), campaign=(0x0051429A, '391d98d2a300'),
                  file=(0x005142F1, 'a190d2a300'), scen=0x00A3D290, name=0x083C,
                  difficulty=0x00A40B1C, single_regs=' esi = 1u;'),
@@ -1019,11 +1026,16 @@ def test_map_patches(code, cs, target):
         return {}
     t = TEST_MAP_SITES[target]
     raw = lambda va, shape: code[va - cs:va - cs + len(bytes.fromhex(shape))] == bytes.fromhex(shape)
+    rv = t['reveal']
+    st = t.get('ra2_start')
     if (not all(raw(*t[k]) for k in ('menu', 'skirmish', 'single', 'campaign', 'file'))
-            or not all(_call_matches(code, cs, *t[k]) for k in ('dialog', 'end', 'again', 'first'))):
+            or not all(_call_matches(code, cs, *t[k]) for k in ('dialog', 'end', 'again', 'first'))
+            or not raw(rv[0], rv[1]) or not _call_matches(code, cs, rv[2], rv[3])
+            or (st and not (all(raw(*st[k]) for k in ('entry', 'site', 'ret'))
+                            and _call_matches(code, cs, *st['human'])))):
         print('[*] test_map_patches: the sites do not match this build; no Test Map')
         return {}
-    return {
+    patches = {
         t['menu'][0]: ('{ extern int ra2_test_map_pending(void); extern int ra2_test_map_single(char *, int); '
                        'if (ra2_test_map_pending()) { '
                        'const int tm_d = ra2_test_map_single((char *)ADDR(MEM32(0x%08Xu) + 0x%Xu), 0x104); '
@@ -1050,7 +1062,29 @@ def test_map_patches(code, cs, target):
         t['first'][0]: ('@replace:{ RECOMP_CALL(sub_%08X); { extern void ra2_test_map_loaded(void); ra2_test_map_loaded(); } } '
                         '/* FA2EX Test Map: the map has loaded, run_lift.py test_map_patches */'
                         % t['first'][1]),
+        # [Settings] RevealMap=1: Read_Scenario's own no-shroud reveal, whatever the Rules byte says.
+        rv[0]: ('{ extern int ra2_test_map_reveal(void); if (ra2_test_map_reveal()) { %secx = 0x%08Xu; '
+                'RECOMP_CALL(sub_%08X); } } /* FA2EX Test Map: RevealMap, run_lift.py test_map_patches */'
+                % ('PUSH32(esp, 0u); ' if rv[5] else '', rv[4], rv[3])),
     }
+    if st:
+        # RA2 [Settings] Start=: the human's house takes that start; until it does, the start is
+        # held back from the AI houses (marked taken, so they pick around it).
+        patches[st['site'][0]] = (
+            '{ extern int ra2_test_map_start(void); extern int ra2_test_map_held(int); '
+            'const int tm_s = ra2_test_map_start(); const uint32_t tm_list = MEM32(ebp + 0x10u); '
+            'if (tm_s >= 0 && (int32_t)tm_s < (int32_t)MEM32(tm_list + 0x10u)) { '
+            'const uint32_t tm_house = MEM32(MEM32(0x%08Xu) + 4u * MEM32(ebp + 0xCu)); '
+            'const uint32_t tm_taken = MEM32(ebp + 0x14u); uint32_t tm_human = 0; '
+            'if (tm_house) { ecx = tm_house; RECOMP_CALL(sub_%08X); tm_human = LO8(eax); } '
+            'if (tm_human && (!MEM8(tm_taken + (uint32_t)tm_s) || ra2_test_map_held(-1))) { '
+            'MEM8(tm_taken + (uint32_t)tm_s) = 1; ra2_test_map_held(0); '
+            'MEM32(MEM32(ebp + 8u)) = MEM32(MEM32(tm_list + 4u) + 4u * (uint32_t)tm_s); '
+            'edi = POP32_VAL(esp); esi = POP32_VAL(esp); ebx = POP32_VAL(esp); esp = ebp; ebp = POP32_VAL(esp); '
+            'RECOMP_FLAGS_OUT(); esp += 20; { RECOMP_REGS_OUT(); return; } } '
+            'if (!tm_human && !MEM8(tm_taken + (uint32_t)tm_s)) { MEM8(tm_taken + (uint32_t)tm_s) = 1; ra2_test_map_held(1); } } } '
+            '/* FA2EX Test Map: RA2 Start=, run_lift.py test_map_patches */' % (st['houses'], st['human'][1]))
+    return patches
 
 
 # Red Alert 2 itself (game.exe, the same install) is a second target: its own

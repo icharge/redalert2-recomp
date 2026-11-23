@@ -29,7 +29,18 @@
         MEM32(TM_MODE) = MEM32(eax + 0x28u);
         RECOMP_CALL(TM_FN_MODE_OBJECT);               /* the mode object for that mode */
         if (!eax) break;
-        const uint32_t tm_mode = eax;
+        const uint32_t tm_default_mode = eax;
+        uint32_t tm_mode = eax;
+        /* [Settings] GameMode=<id>: the mode number of MPModes(MD).ini (1 Battle, 2 Free For All,
+         * ...), which the mode object keeps at +0x28 and the lookup 0x5D5F30 (RA2 0x5B6FE0, its
+         * compare at 0x5B7096) matches; an id the game does not have falls back to the default */
+        const int tm_want_mode = ra2_test_map_int("Settings", "GameMode", 0);
+        if (tm_want_mode > 0 && (uint32_t)tm_want_mode != MEM32(tm_mode + 0x28u)) {
+            MEM32(TM_MODE) = (uint32_t)tm_want_mode;
+            RECOMP_CALL(TM_FN_MODE_OBJECT);
+            if (eax && MEM32(eax + 0x28u) == (uint32_t)tm_want_mode) tm_mode = eax;
+            else ra2_test_map_note(4, (uint32_t)tm_want_mode);
+        }
         MEM32(TM_MODE_SAVED) = MEM32(tm_mode + 0x28u);
         MEM32(TM_MODE) = MEM32(tm_mode + 0x28u);
 
@@ -50,7 +61,17 @@
         ecx = tm_mode;
         PUSH32(esp, MEM32(tm_items + 4u * (uint32_t)tm_index));   /* the item, not its index (0x006AEB5A) */
         RECOMP_CALL(TM_FN_MODE_OFFERS);               /* is the map offered under this mode? */
+        if (!LO8(eax) && tm_mode != tm_default_mode) {   /* not under the chosen mode: the default */
+            ra2_test_map_note(5, MEM32(tm_mode + 0x28u));
+            tm_mode = tm_default_mode;
+            MEM32(TM_MODE_SAVED) = MEM32(tm_mode + 0x28u);
+            MEM32(TM_MODE) = MEM32(tm_mode + 0x28u);
+            ecx = tm_mode;
+            PUSH32(esp, MEM32(tm_items + 4u * (uint32_t)tm_index));
+            RECOMP_CALL(TM_FN_MODE_OFFERS);
+        }
         if (!LO8(eax)) { ra2_test_map_note(3, 0u); break; }
+        ra2_test_map_note(6, MEM32(tm_mode + 0x28u));
         MEM32(TM_MODE_OBJECT) = tm_mode;
 
         /* -- the human: country (-2 random), colour (-2 random); YR also team (-1) and start (-1) */
@@ -72,7 +93,14 @@
         PUSH32(esp, (uint32_t)ra2_test_map_int("Settings", "Color", -2));
         RECOMP_CALL(TM_FN_SET_COLOUR);                /* 0x006AD636 */
 #if TM_HAS_TEAM_START
-        MEM32(TM_TEAM) = (uint32_t)ra2_test_map_int("Settings", "Team", -1);
+        /* teams (YR's team slots, -1 none, 0..3 A..D): [AIn] Ally=1 puts that AI on the human's
+         * team, team A when [Settings] Team is not given */
+        int tm_team = ra2_test_map_int("Settings", "Team", -1);
+        for (int i = 0; i < 7 && tm_team < 0; i++) {
+            const char tm_sec[4] = { 'A', 'I', (char)('1' + i), 0 };
+            if (ra2_test_map_has(tm_sec) && ra2_test_map_int(tm_sec, "Ally", 0)) tm_team = 0;
+        }
+        MEM32(TM_TEAM) = (uint32_t)tm_team;
         MEM32(TM_START) = (uint32_t)ra2_test_map_int("Settings", "Start", -1);
 #endif
 
@@ -95,7 +123,8 @@
                 MEM32(TM_AI_COUNTRY + slot) = country;
                 MEM32(TM_AI_COLOUR + slot) = colour;
 #if TM_HAS_TEAM_START
-                MEM32(TM_AI_TEAM + slot) = 0xFFFFFFFFu;
+                MEM32(TM_AI_TEAM + slot) = ra2_test_map_int(tm_sec, "Ally", 0)
+                    ? MEM32(TM_TEAM) : (uint32_t)ra2_test_map_int(tm_sec, "Team", -1);
                 MEM32(TM_AI_START + slot) = (uint32_t)ra2_test_map_int(tm_sec, "Start", -1);
 #endif
                 tm_ai++;

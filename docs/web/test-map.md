@@ -8,9 +8,55 @@ test_map_sites.h` holds each one's addresses, `run_lift.py`'s `TEST_MAP_SITES` i
 ## The settings file
 
 `[Settings]` `Mode=skirmish|singleplayer`, `Scenario=` the staged file. A skirmish adds `Name`,
-`Country` (−2 random), `Color`, `Start` (YR only; −1 random), `Credits`, `UnitCount`, `GameSpeed`
+`Country` (−2 random), `Color`, `Start` (−1 random), `Credits`, `UnitCount`, `GameSpeed`
 and the option flags, and `[AI1]`..`[AI7]` (`Difficulty` 0 Easy, 1 Normal, 2 Hard; `Country`,
-`Color`, YR `Start`). A mission adds `Difficulty` 0 (easiest) to 4 (hardest), 2 Normal.
+`Color`, YR `Start`). A mission adds `Difficulty` 0 (easiest) to 4 (hardest), 2 Normal. A
+missing key keeps the behaviour it had before the key existed.
+
+| Key | YR | RA2 | What |
+|---|---|---|---|
+| `[Settings] RevealMap=1` | yes | yes | the map starts revealed for the human, skirmish and mission: Read_Scenario's own no-shroud reveal, `MapClass::RevealEntireMap` (YR `0x577F30` with a NULL house, RA2 `0x55A1F0`), patch site `reveal` |
+| `[Settings] Start=0..7` | yes (the dialog's start, `0xA8B3A4`) | yes, patched | RA2's skirmish has no start choice (random, then farthest, `0x5B7920`). Patch site `ra2_start`: the human's house (`0x4F52F0`, House+0x134) takes that start; until then it is held back from the AI houses, which pick around it |
+| `[Settings] GameMode=<id>` | 1–9 | 1–8 | a mode number of `MPModes(MD).ini` (below); the mode lookup `0x5D5F30` (RA2 `0x5B6FE0`) matches it at the mode's +0x28. An id the game lacks, or a mode the map's `[Basic] GameMode` does not offer, falls back to the default mode with a `[test-map]` line. Every mode works, also those the skirmish dialog does not list |
+| `[AIn] Ally=1` | yes (team) | no | puts that AI on the human's team (YR team slots: human `0xA8B39C`, AI row `0xA8B2DC`; team A when `[Settings] Team` is not given). Cooperative (mode 3) ignores teams: see below |
+| `[AIn] Team=0..3` | yes | no | that AI's team |
+| `[Settings] Observer=1` | no | no | not offered: the country list's Observer entry (item data −3, YR `0x4E3B5D`, RA2 `0x4D169D`) is stored and marked as an observer by `0x69B8C0`, but a skirmish still builds a normal house for the human that takes a start; the observer is a LAN/online feature (`MPObserver.cpp`) |
+
+A mission (`Mode=singleplayer`) takes its houses, AI and speed from the map and the campaign: the
+menu-loop patch jumps to Select_Game's new-campaign block, so the skirmish fill (AI rows, start,
+speed, mode) never runs. The host gives a test mission `-SPEEDCONTROL` (as the launcher's speed
+control preference does), so its speed can be changed in the game.
+
+## Game modes: MPModes.ini
+
+Red Alert 2: `ra2.mix` → `local.mix` → `mpmodes.ini`. Yuri's Revenge: `ra2md.mix` → `localmd.mix` →
+`mpmodesmd.ini`. Each line is `id=GUI:<label>, STT:<tooltip>, <rules overlay INI>, <map filter>,
+<random maps allowed>` under a section that groups modes ([Battle], [ManBattle], [FreeForAll],
+[Unholy], [Cooperative]). The id is what `GameMode=` takes. The CSF label is the first field.
+
+| id | Section | Label | Overlay (RA2 / YR) | Filter |
+|---|---|---|---|---|
+| 1 | Battle | `GUI:Battle` | `MPBattle.ini` / `MPBattleMD.ini` | `standard` |
+| 2 | FreeForAll | `GUI:FreeForAll` | `MPFreeForAll.ini` / `MPFreeForAllMD.ini` | `standard` |
+| 3 | Cooperative | `GUI:Cooperative` | `MPCoop.ini` / `MPCoopMD.ini` | `cooperative` |
+| 4 | Unholy | `GUI:UnholyAlliance` | `MPUnholy.ini` / `MPUnholyMD.ini` | `standard` |
+| 5 | ManBattle | `GUI:Megawealth` | `MPMW.ini` / `MPMWMD.ini` | `megawealth` |
+| 6 | ManBattle | `GUI:Duel` | `MPDuel.ini` / `MPDuelMD.ini` | `duel` |
+| 7 | ManBattle | `GUI:MeatGrind` | `MPMeat.ini` / `MPMeatMD.ini` | `meatgrind` |
+| 8 | ManBattle | `GUI:NavalWar` | `MPNaval.ini` / `MPNavalMD.ini` | `navalwar` |
+| 9 | Battle (YR only) | `GUI:TeamGame` | `MPTeamMD.ini` | `teamgame` |
+
+A map offers a mode when its `[Basic] GameMode=` list (comma-separated keywords) holds the mode's
+filter; the check is `0x5D63E0` (RA2 `0x5B7470`) on the map-list item. The last field is whether
+random maps may use the mode, not whether the skirmish lists it.
+
+**Cooperative (3)** is humans against the computer: "Making Alliances" allies every computer
+player with every other, and the humans together; a team setting does not change that. It needs
+at least one computer player: with none, YR crashed at game frame 33 (a null virtual call from
+`0x49FA00`). The map's own houses and triggers act as in the mission it came from; CnCNet's
+co-op maps (`INI/MPMaps.ini`, `IsCoopMission=yes`) add the enemies as computer players,
+`EnemyHouseN=<side>,<colour>,<start>`, which is what `[AIn] Country=`, `Color=` and `Start=` give
+here.
 
 ## A singleplayer map
 
@@ -162,6 +208,15 @@ looks the same under `--test-map` and in a skirmish started from the menus on th
 ore or bridges near the base. Its `[OverlayPack]` decodes to 262,144 cells with about 730 set,
 types 102–113 almost evenly (RA2's `[OverlayTypes]`: 102–104 `LOBRDG26`–`28`, 105–113
 `TIB01`–`TIB09`), so the encoder's type numbers or cell positions are the place to look.
+
+The keys, under Node (fast builds, a two-start YR map and a four-start RA2 map, both `standard`):
+`RevealMap=1` runs the reveal in YR and RA2 skirmishes and missions (`[test-map] revealing the
+map` between the start assignment and the map's load); RA2 `Start=2` with three AIs: the human's
+house takes start 2 and the AIs take 0, 1 and 3; `GameMode=2` (both editions) and `GameMode=5`
+(YR, on a copy whose `[Basic] GameMode` adds `megawealth`) start in that mode, `GameMode=6` on a
+`standard` map falls back to Battle; a YR co-op copy of `c4w01md` (`GameMode=cooperative` added)
+with `GameMode=3` and three AI rows starts, allies the AIs together, and runs; a test mission gets
+`-SPEEDCONTROL`.
 
 Not checked yet: a match that ends by itself (`testMapDone` from patch 3, then the hold); Yuri's
 Revenge in a browser (no YR import there). The view opens beside the base on the RA2 skirmish

@@ -806,6 +806,12 @@ int main(int argc, char **argv) {
          * --intro said), and no movie during the test either */
         ra2_set_intro_mode(RA2_INTRO_SKIP_MOVIES);
         g_test_map_movies_cut = 1;
+        /* a mission plays at the campaign's own speed; -SPEEDCONTROL lets the player change it */
+        extern const char *ra2_test_map_str(const char *, const char *, const char *);
+        if (!strcasecmp(ra2_test_map_str("Settings", "Mode", "skirmish"), "singleplayer")) {
+            g_speed_control = 1;
+            fprintf(stderr, "[test-map] mission: the game gets -SPEEDCONTROL\n");
+        }
     }
     char game_full[PATH_MAX], exe_host[PATH_MAX + 16];
     if (!realpath(game, game_full)) return fail("no game folder at %s", game);

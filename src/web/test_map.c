@@ -113,6 +113,12 @@ void ra2_test_map_note(int what, uint32_t n) {
         fprintf(stderr, "[test-map] %s is not in the scenario list (%u maps); stage it as .yrm before start-up\n", map, n);
     else if (what == 2)
         fprintf(stderr, "[test-map] the game refused %s\n", map);
+    else if (what == 4)
+        fprintf(stderr, "[test-map] this game has no game mode %u; using the default mode\n", n);
+    else if (what == 5)
+        fprintf(stderr, "[test-map] %s is not offered under game mode %u ([Basic] GameMode); using the default mode\n", map, n);
+    else if (what == 6)
+        fprintf(stderr, "[test-map] game mode %u\n", n);
     else
         fprintf(stderr, "[test-map] %s is not offered under the default game mode; check [Basic] GameMode\n", map);
 }
@@ -183,4 +189,30 @@ int ra2_test_map_hold(void) {
     ra2_test_map_done();
     fprintf(stderr, "[test-map] holding: no menus after a test match\n");
     for (;;) usleep(200000);
+}
+
+/* [Settings] RevealMap=1: Read_Scenario's no-shroud reveal runs for the test match (patch site
+ * `reveal`, the game's own MapClass::RevealEntireMap for the current house). */
+int ra2_test_map_reveal(void) {
+    const int on = g_active && ra2_test_map_int("Settings", "RevealMap", 0) != 0;
+    if (on) fprintf(stderr, "[test-map] revealing the map\n");
+    return on;
+}
+
+/* Red Alert 2 [Settings] Start= (0..7; -1 random): the start the human's house takes in a test
+ * skirmish (patch site `ra2_start`); -1 for a mission, or none given. */
+int ra2_test_map_start(void) {
+    if (!g_active || g_single) return -1;
+    return ra2_test_map_int("Settings", "Start", -1);
+}
+
+/* That start is held back from the AI houses until the human's house takes it: -1 asks whether
+ * it is held, 1 holds it, 0 lets it go (the human took it). */
+int ra2_test_map_held(int set) {
+    static int held;
+    if (set < 0) return held;
+    if (set && !held) fprintf(stderr, "[test-map] start %d held for the human\n", ra2_test_map_start());
+    if (!set) fprintf(stderr, "[test-map] the human takes start %d\n", ra2_test_map_start());
+    held = set;
+    return held;
 }
