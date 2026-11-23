@@ -44,13 +44,16 @@ skirmish has no team or start choice (starts are random); AI rows are level 0xA3
    when FA2EX opened it, else goes to the `return` path with `testmap=done|failed` added (a
    same-origin path only; without one, the launcher's root).
 3. `src/web/test_map.c` reads the file after the game folder is mounted.
-4. `run_lift.py test_map_patches` (three byte-checked sites, `gamemd` only):
+4. `run_lift.py test_map_patches` (byte-checked sites in both editions; YR addresses below, RA2's
+   in `TEST_MAP_SITES['game']`):
 
    | Site | What |
    |---|---|
    | `0x0052DC87` (Select_Game's menu loop, `cmp esi, 0x12`) | `goto L_0052E10F`, Select_Game's own Skirmish case: no main menu, no intro |
    | `0x0052E168` (`call 0x6AE2C0`, the skirmish dialog) | replaced by `src/runtime/test_map_fill.inc`, which does the dialog's work from the settings file and returns al = 1 ("Start Game") |
    | `0x0055D14A` (`call 0x685670`, the end-of-scenario routine) | skipped once a test match ends; the page gets `testMapDone` and closes the tab |
+   | `0x0048CDD3` (Main_Game's first `call 0x52D9A0`, Select_Game; RA2 `0x481D03` → `0x5135F0`) | after it returns, the staged map has loaded: the page's `menu` event (phase running) and the input script's clock |
+   | `0x0048CFAA` (Main_Game's second Select_Game call; RA2 `0x481EDA`) | every way out of a match comes back here (its end, Options → Abort Mission → Quit). After a test match: `testMapDone` (once) and the game thread waits (`ra2_test_map_hold`): no skirmish dialog, no menu, and no exit (an exit sends the page to the launcher) |
 
    The fill runs in the lifted function's own context, so it calls the game with `RECOMP_CALL`.
    Only `run_lift.py` is hashed by the lift check: editing `test_map_fill.inc` needs a rebuild,
@@ -58,6 +61,24 @@ skirmish has no team or start choice (starts are random); AI rows are level 0xA3
 
 5. A failed fill (the map is not in the list, the mode refuses it) prints why, sends
    `testMapFailed`, and returns al = 0: the game falls back to its menus.
+
+## Straight to the match
+
+What a test launch skips, and what it only hides:
+
+- **Skipped: the logo and intro movies, the start-up splash wait.** `--test-map` puts the host in
+  its no-movie start (`startup_order.h` mode 0, whatever `--intro` said): the start-up Binks are
+  cut to two frames and the splash's timed wait is skipped. Every later movie is cut too (a
+  mission's briefing). The launcher passes no intro argument on a `?testmap=1` launch.
+- **Skipped: the main menu, the skirmish dialog, the score screen, the menus after the match.**
+- **Hidden: the boot screen and the map's loading screen.** The scenario still has to load. The
+  launcher keeps its own full loading screen (not the small chip) until the game's `menu` event,
+  which a test sends once the map has loaded (the `0x48CDD3` site). In Chrome on an RA2 skirmish:
+  about 11 s from navigation to the match, all of it behind the launcher's screen. Under Node
+  (Yuri's Revenge skirmish, fast build): 10 s to the test start, 21 s more to load the map.
+
+A launch without `?testmap=1` keeps its intro argument, its logo and the chip over the game's own
+boot screen.
 
 ## What the fill writes (measured from the dialog, gamemd)
 
@@ -113,9 +134,21 @@ FA2EX's dev server on 4001 passing `/emu/` to the launcher's on 5175), with an R
   `maps01.mix`. The same build under Node with `--memfs` on a full install reads `ALL01T.MAP` and
   starts it.
 
-Not checked yet: a match that ends by itself (`testMapDone` from patch 3); Yuri's Revenge in a
-browser (no YR import there). **Abort Mission does not end a test**: Options → Abort Mission →
-Quit lands in the real skirmish dialog with the test's settings, and the page gets no event.
+Abort Mission (fixed with the `0x48CFAA` site; before it, Quit landed in the real skirmish
+dialog). Under Node, each edition, a skirmish and a mission, with `--key 0x1B@6 --press
+0xB5:1314@8 --press 0xB6:1737@10` (Escape; the options dialog's Abort Mission; the abort
+dialog's top button, Quit; the same IDs in both editions): `Game loop finished`, `testMapDone`,
+the hold, and no dialog opens. In Chrome (RA2 skirmish): Escape → Abort Mission → Quit took the
+tab to `/emu/?testmap=done`. A Yuri's Revenge launch without `--test-map` still opens the main
+menu (`0xE2`).
+
+The input script's clock starts at the test map's `menu` event under `--test-map` (there is no
+main menu). `--dump-frames` does not work under Node: its folder is resolved before the game
+folder is mounted.
+
+Not checked yet: a match that ends by itself (`testMapDone` from patch 3, then the hold); Yuri's
+Revenge in a browser (no YR import there). The view opens beside the base on the RA2 skirmish
+map tried (H centres it), as with `--intro`.
 
 ## Map requirements
 
