@@ -22,8 +22,6 @@ export interface CsfApplyFs extends CsfSourceFs {
 }
 
 export interface CsfApplyOptions {
-  /** Thai bytes need the Thai font fix; warn, but do not block, when it is off. */
-  thaiFontFixEnabled?: boolean;
   /** Tests and hosts that already hold strings.json. */
   readStrings?: () => Promise<LauncherStringsConfig>;
   /** the text for `{version}`; defaults to the launcher's package.json version */
@@ -69,7 +67,8 @@ export async function applyCsfOverrides(
   }
   const csf = editionStrings(config, game);
   if (!csf || !csf.enabled) return skipped();
-  if (Object.keys(csf.strings).length === 0) return skipped();
+  // a windows-874 table is rewritten even without overrides, to carry its Thai as Unicode
+  if (Object.keys(csf.strings).length === 0 && csf.encoding !== "windows-874") return skipped();
 
   const base = await findBaseCsf(fs, game);
   if (!base)
@@ -95,10 +94,6 @@ export async function applyCsfOverrides(
         `${result.missing.length} string label${
           result.missing.length === 1 ? " is" : "s are"
         } not in this table and ${result.missing.length === 1 ? "was" : "were"} left unchanged.`,
-      );
-    if (csf.encoding === "windows-874" && !options.thaiFontFixEnabled)
-      warnings.push(
-        "Thai strings were written with windows-874, but the Thai font fix is off; the text may not display correctly.",
       );
     return {
       applied: true,

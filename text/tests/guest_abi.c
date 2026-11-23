@@ -228,6 +228,30 @@ int main(void) {
         free_fixture(&f);
     }
 
+    /* 1c. Sharp edges keep thin strokes: ส (U+0E2A) is ล (U+0E25) with a small
+     * hook, about a third of a pixel thick. A coverage threshold dropped it and
+     * drew both alike; the engine's game style keeps it (text/src/sharp.rs). */
+    {
+        Fixture so = make_fixture(64, 20, 64, 0xFFFF);
+        Fixture lo = make_fixture(64, 20, 64, 0xFFFF);
+        uint16_t s_text[] = { 0x0E2A, 0 };
+        uint16_t l_text[] = { 0x0E25, 0 };
+        int32_t fx = -1;
+        assert(text_guest_label(va(so.font), va(s_text), 4, 2, 0, 0, &fx) == 1);
+        assert(text_guest_label(va(lo.font), va(l_text), 4, 2, 0, 0, &fx) == 1);
+        int differing = 0;
+        for (uint32_t i = 0; i < so.bytes; i += 2) {
+            uint16_t a, b;
+            memcpy(&a, so.pixels + i, 2);
+            memcpy(&b, lo.pixels + i, 2);
+            int ga = (a >> 5) & 0x3F, gb = (b >> 5) & 0x3F; /* white on black: green is brightness */
+            differing += (ga > gb ? ga - gb : gb - ga) >= 32;
+        }
+        assert(differing >= 2);
+        free_fixture(&so);
+        free_fixture(&lo);
+    }
+
     /* The rest of the cases run on Latin text: give the engine every string. */
     text_guest_set_all(1);
 

@@ -88,14 +88,6 @@ describe("arguments", () => {
   it("starts the game from /game, with whatever arg= says", () => {
     expect(gameArguments()).toEqual(["--run", "--game", "/game"]);
     expect(gameArguments(["--hd-voxels"])).toEqual(["--run", "--game", "/game", "--hd-voxels"]);
-    expect(gameArguments([], { enabled: true, fontId: "Tahoma-Th-1f" })).toEqual([
-      "--run",
-      "--game",
-      "/game",
-      "--thai-font-fix",
-      "--thai-font-id",
-      "Tahoma-Th-1f",
-    ]);
   });
 
   it("maps the legacy game speed-control flag to the web host option", () => {

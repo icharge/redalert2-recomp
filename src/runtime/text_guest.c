@@ -138,7 +138,11 @@ uint32_t text_guest_test_cache_entries(void) { return g_cache_used; }
 #endif
 
 static int ensure_engine(void) {
-    if (!g_engine) g_engine = ra2_text_engine_create();
+    if (!g_engine) {
+        g_engine = ra2_text_engine_create();
+        /* sharp edges near the bitmap font's, and Thai at its reading size */
+        if (g_engine) ra2_text_engine_set_game_style(g_engine, 1);
+    }
     return g_engine != NULL;
 }
 
@@ -239,7 +243,9 @@ static uint8_t blend8(uint8_t dst, uint8_t src, uint8_t a) {
 
 /* Max-composite one shaped layout into the target, with its logical origin
  * at (x, y). Coverage is rendered for the ink box only; the origin places ink
- * at (0,0). Pixels outside the clip are never written. */
+ * at (0,0). The engine's game style makes most of it solid with a thin soft
+ * rim (text/src/sharp.rs), which blends here. Pixels outside the clip are
+ * never written. */
 static int draw_layout(const Target *tg, const CacheEntry *e, int32_t x, int32_t y,
                        size_t visible_units) {
     RA2TextMetrics m = e->metrics;

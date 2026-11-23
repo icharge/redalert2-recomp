@@ -33,7 +33,6 @@
 #include "launcher.h"
 #include "web_api.h"
 void web_chat_box_template(uint32_t id, uint32_t tmpl);   /* chat_box.c */
-#include "thai_font.h"
 #include "wolapi.h"
 #include "net_tuning.h"
 extern const uint32_t ra2_entry_va;   /* recomp_dispatch.c */
@@ -98,8 +97,6 @@ EMSCRIPTEN_KEEPALIVE int ra2_udp_push(int length) {
 static int g_debuglog, g_headless, g_fullscreen = -1;   /* -1: as ra2.ini says */
 static const char *g_scale;
 static const char *g_mod;              /* --mod NAME */
-static int g_thai_font_fix;
-static const char *g_thai_font_id;
 static int g_speed_control;            /* forwards the guest's -SPEEDCONTROL switch */
 static int g_classic_latency;          /* --classic-latency: keep the game's stock MaxAhead */
 static int g_net_delay_ms;             /* --net-delay MS: command-delay target for WOL matches */
@@ -653,61 +650,6 @@ static int fail(const char *fmt, ...) {
     return 1;
 }
 
-/* The browser loader stages the explicitly selected font at game.fnt and
- * excludes imported and mod copies when the fix is enabled. Check that the
- * file the guest will actually open is a complete Thai-capable FNT. */
-static int thai_font_check(void) {
-    FILE *f = fopen("game.fnt", "rb");
-    if (!f) return fail("selected Thai font is missing at game.fnt");
-    uint8_t header[28];
-    if (fread(header, 1, sizeof header, f) != sizeof header || memcmp(header, "fonT", 4)) {
-        fclose(f);
-        return fail("selected Thai font has an invalid FNT header");
-    }
-    uint32_t height = (uint32_t)header[12] | (uint32_t)header[13] << 8 |
-                      (uint32_t)header[14] << 16 | (uint32_t)header[15] << 24;
-    uint32_t count = (uint32_t)header[20] | (uint32_t)header[21] << 8 |
-                     (uint32_t)header[22] << 16 | (uint32_t)header[23] << 24;
-    uint32_t stride = (uint32_t)header[24] | (uint32_t)header[25] << 8 |
-                      (uint32_t)header[26] << 16 | (uint32_t)header[27] << 24;
-    if (height != 16 || !count || stride < 49) {
-        fclose(f);
-        return fail("selected Thai font has unsupported FNT dimensions");
-    }
-    if (fseek(f, 0, SEEK_END) != 0) {
-        fclose(f);
-        return fail("cannot inspect selected Thai font");
-    }
-    long length = ftell(f);
-    uint64_t expected = 28u + 0x20000u + (uint64_t)count * stride;
-    if (length < 0 || (uint64_t)length != expected) {
-        fclose(f);
-        return fail("selected Thai font has a truncated glyph table");
-    }
-    static const unsigned first[] = { 0xA1, 0xDF, 0xE0 };
-    static const unsigned last[] = { 0xDA, 0xDF, 0xFB };
-    for (unsigned range = 0; range < 3; ++range) {
-        for (unsigned code = first[range]; code <= last[range]; ++code) {
-            if (fseek(f, 28 + (long)code * 2, SEEK_SET) != 0) {
-                fclose(f);
-                return fail("cannot read selected Thai font's CP874 map");
-            }
-            uint8_t map[2];
-            if (fread(map, 1, sizeof map, f) != sizeof map) {
-                fclose(f);
-                return fail("selected Thai font has an incomplete CP874 map");
-            }
-            uint32_t glyph = (uint32_t)map[0] | (uint32_t)map[1] << 8;
-            if (!glyph || glyph > count) {
-                fclose(f);
-                return fail("selected Thai font is missing CP874 glyph 0x%02X", code);
-            }
-        }
-    }
-    fclose(f);
-    fprintf(stderr, "[thaifont] using selected font %s at game.fnt\n", g_thai_font_id);
-    return 0;
-}
 static void on_exit_event(int code) { web_event_exit(code); }
 static void on_file_written(const char *path) {
     char escaped[1024], event[1200];
@@ -753,8 +695,6 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--headless")) g_headless = 1;
         else if (!strcmp(argv[i], "--fullscreen")) g_fullscreen = 1;
         else if (!strcmp(argv[i], "--scale") && i + 1 < argc) g_scale = argv[++i];
-        else if (!strcmp(argv[i], "--thai-font-fix")) g_thai_font_fix = 1;
-        else if (!strcmp(argv[i], "--thai-font-id") && i + 1 < argc) g_thai_font_id = argv[++i];
         else if (!strcmp(argv[i], "--debuglog")) g_debuglog = 1;
         else if (!strcmp(argv[i], "--no-menu-music")) ra2_set_menu_music(0);
         else if (!strcmp(argv[i], "--mute")) hle_dsound_set_master(0.0f);
@@ -792,7 +732,8 @@ int main(int argc, char **argv) {
             g_dump_dir = dir;                /* the run chdirs into the game folder */
         }
         else {
-            printf("usage: ra2 [--run] [--headless | --fullscreen] [--scale sharp|smooth|crt|nearest|integer] [--game DIR] [--mod NAME|none] [--thai-font-fix --thai-font-id ID] [--no-ttf-text | --ttf-text-all] [--debuglog] [--mute] [--trace] [--heartbeat S] [--memfs] [--intro | --no-intro] [--trap N] [--dump-frames DIR] [--hd-voxels] [--hd-voxels-dump DIR] [--clockstats] [--speedcontrol] [--test-map INI] [--classic-latency] [--net-delay MS]\n"
+            printf("usage: ra2 [--run] [--headless | --fullscreen] [--scale sharp|smooth|crt|nearest|integer] [--game DIR] [--mod NAME|none] [--no-ttf-text | --ttf-text-all] [--debuglog] [--mute] [--trace] [--heartbeat S] [--memfs] [--intro | --no-intro] [--trap N] [--dump-frames DIR] [--hd-voxels] [--hd-voxels-dump DIR] [--clockstats] [--speedcontrol] [--test-map INI] [--classic-latency] [--net-delay MS]
+"
                    "           [--press DLG:CTRL@s] [--select DLG:CTRL=N@s] [--waitlog TEXT@s] [--move|--click x,y@s]\n"
                    "           [--key [c][s][a]+vk@s] [--wait VA@s] [--drag x1,y1,x2,y2@s]\n");
             return !strcmp(argv[i], "--help") || !strcmp(argv[i], "-h") ? 0 : 1;
@@ -888,10 +829,6 @@ int main(int argc, char **argv) {
         return 0;
     }
     if (chdir(game_full) != 0) return fail("cannot enter %s", game_full);
-    if (g_thai_font_fix && (!g_thai_font_id || !g_thai_font_id[0]))
-        return fail("the Thai font fix is enabled without a selected font");
-    if (g_thai_font_fix && thai_font_check() != 0) return 1;
-    thai_font_set_enabled(g_thai_font_fix);
     web_settings_start(g_scale);
     hle_screen_cursor_hook = menus_use_windows_cursor;
     if (hle_screen_open(RA2_TITLE, g_fullscreen > 0, 1) != 0) return 1;

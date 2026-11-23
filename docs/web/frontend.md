@@ -231,8 +231,8 @@ bar, Play's footer stacks, and the Settings sections become a row.
 Game settings stay in the game's own files, so each setting has one copy. The launcher's Settings
 screen edits them for every edition of the install (All games, above): its Launcher tab has Skip
 intro, the host presentation settings (scaling, menu bars, cursor, HD vehicles, FPS counter; HD vehicles
-is off and disabled for now, as it makes the game lag, and the host ignores a saved `hdvox=1`) and
-the Thai font, and its Gameplay,
+is off and disabled for now, as it makes the game lag, and the host ignores a saved `hdvox=1`), and
+its Gameplay,
 Audio, Video and Keyboard tabs read and write the per-edition
 `RA2.INI`/`RA2MD.INI` and `KEYBOARD.INI`/`KEYBOARDMD.INI` in
 `save/<storage>/`. The host settings live in `.host/<edition>.ini`; a fresh

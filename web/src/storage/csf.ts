@@ -7,10 +7,13 @@
 //     "STR " or "WRTS", character count, inverted UTF-16LE code units
 //     (a WRTS value also carries an extra length and raw extra bytes)
 //
-// The code units are byte values: with windows-1252 the low byte is the
-// character code, and the Thai tables use windows-874 bytes. The game's text
-// renderer and the Thai font fix both expect those byte values, not Unicode
-// code points, so values are converted through an explicit code page.
+// The stock tables' code units are byte values: with windows-1252 the low byte
+// is the character code, so values are converted through an explicit code page.
+// Thai is different (23 November 2026): the game's TrueType text engine draws
+// strings with real Unicode Thai (U+0E00..U+0E7F, docs/ttf-text.md), so the
+// windows-874 encoding writes Thai as UTF-16 code units. It still reads
+// windows-874 bytes (the old Thai font option's tables), and a rewrite converts
+// any entry stored that way.
 //
 // Rewriting keeps each untouched entry's original bytes. That matters for
 // WRTS entries, whose extra data is a sound name or another opaque payload,
@@ -127,10 +130,10 @@ function cp874Decode(byte: number): string {
   return "\ufffd";
 }
 
-function cp874Encode(codePoint: number): number {
+/** Thai as its own UTF-16 unit; ASCII and the no-break space as themselves. */
+function thaiEncode(codePoint: number): number {
   if (codePoint < 0x80 || codePoint === 0xa0) return codePoint;
-  if (codePoint >= 0x0e01 && codePoint <= 0x0e3a) return 0xa0 + (codePoint - 0x0e00);
-  if (codePoint >= 0x0e3f && codePoint <= 0x0e5b) return 0xdf + (codePoint - 0x0e3f);
+  if (isThaiCode(codePoint)) return codePoint;
   throw new Error(
     `windows-874 cannot represent U+${codePoint.toString(16).toUpperCase().padStart(4, "0")}.`,
   );
@@ -153,12 +156,36 @@ function encodeText(text: string, encoding: CsfEncoding): number[] {
   for (const char of text) {
     const codePoint = char.codePointAt(0) ?? 0;
     try {
-      out.push(encoding === "windows-874" ? cp874Encode(codePoint) : cp1252Encode(codePoint));
+      out.push(encoding === "windows-874" ? thaiEncode(codePoint) : cp1252Encode(codePoint));
     } catch (error) {
       throw new Error(`${(error as Error).message} The ${encoding} table cannot store this value.`);
     }
   }
   return out;
+}
+
+function isThaiCode(codePoint: number): boolean {
+  return (
+    (codePoint >= 0x0e01 && codePoint <= 0x0e3a) || (codePoint >= 0x0e3f && codePoint <= 0x0e5b)
+  );
+}
+
+/** A value with Thai in it that the table stores as windows-874 bytes, not Unicode. */
+function storesThaiAsBytes(entry: CsfEntry): boolean {
+  const view = new DataView(entry.raw.buffer, entry.raw.byteOffset, entry.raw.byteLength);
+  let at = 12 + view.getUint32(8, true);
+  for (let pair = 0; pair < entry.values.length; pair++) {
+    const magic = view.getUint32(at, true);
+    const count = view.getUint32(at + 4, true);
+    at += 8;
+    for (let unit = 0; unit < count; unit++) {
+      const value = ~view.getUint16(at + unit * 2, true) & 0xffff;
+      if (value >= 0xa1 && value <= 0xfb) return true;
+    }
+    at += count * 2;
+    if (magic === STRING_EXTRA_MAGIC) at += 4 + view.getUint32(at, true);
+  }
+  return false;
 }
 
 function readU32(view: DataView, offset: number, end: number): number {
@@ -286,6 +313,15 @@ function writeLabel(label: string, values: CsfValue[], encoding: CsfEncoding): U
   return out;
 }
 
+/** An untouched entry re-encoded with Unicode Thai, or its bytes when a unit has no Unicode reading. */
+function convertedOrRaw(entry: CsfEntry, encoding: CsfEncoding): Uint8Array {
+  try {
+    return writeLabel(entry.label, entry.values, encoding);
+  } catch {
+    return entry.raw;
+  }
+}
+
 function concat(parts: Uint8Array[]): Uint8Array {
   const total = parts.reduce((sum, part) => sum + part.length, 0);
   const out = new Uint8Array(total);
@@ -300,6 +336,8 @@ function concat(parts: Uint8Array[]): Uint8Array {
 /**
  * Apply text overrides to a parsed table. Untouched entries are copied as their
  * original bytes; changed entries are re-encoded in the requested code page.
+ * With windows-874, an untouched entry whose Thai is stored as bytes is
+ * re-encoded too, so the whole table carries Thai as Unicode.
  */
 export function rewriteCsf(base: CsfFile, changes: CsfChanges): CsfRewriteResult {
   const encoding = changes.encoding ?? "windows-1252";
@@ -311,7 +349,11 @@ export function rewriteCsf(base: CsfFile, changes: CsfChanges): CsfRewriteResult
   for (const [label, extra] of Object.entries(changes.extra ?? {})) {
     replacements.set(label.toUpperCase(), extra);
   }
-  if (wanted.size === 0 && !changes.inject) {
+  const convert = (entry: CsfEntry) =>
+    encoding === "windows-874" &&
+    entry.values.some((value) => [...value.value].some((c) => isThaiCode(c.codePointAt(0) ?? 0))) &&
+    storesThaiAsBytes(entry);
+  if (wanted.size === 0 && !changes.inject && !base.entries.some(convert)) {
     return { data: base.raw, missing: [], injected: [] };
   }
 
@@ -328,7 +370,7 @@ export function rewriteCsf(base: CsfFile, changes: CsfChanges): CsfRewriteResult
     const label = entry.label.toUpperCase();
     const value = wanted.get(label);
     if (value === undefined) {
-      parts.push(entry.raw);
+      parts.push(convert(entry) ? convertedOrRaw(entry, encoding) : entry.raw);
       continue;
     }
     const values = entry.values.map((current, index) => {

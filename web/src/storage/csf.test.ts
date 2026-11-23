@@ -1,97 +1,20 @@
 import { describe, expect, it } from "vitest";
 import { parseCsf, rewriteCsf, type CsfEncoding } from "./csf";
 
-const CP874: Record<string, number> = {
-  ก: 0xa1,
-  ข: 0xa2,
-  ค: 0xa3,
-  ง: 0xa4,
-  จ: 0xa5,
-  ฉ: 0xa6,
-  ช: 0xa7,
-  ซ: 0xa8,
-  ฌ: 0xa9,
-  ญ: 0xaa,
-  ฎ: 0xab,
-  ฏ: 0xac,
-  ฐ: 0xad,
-  ฑ: 0xae,
-  ฒ: 0xaf,
-  ณ: 0xb0,
-  ด: 0xb1,
-  ต: 0xb2,
-  ถ: 0xb3,
-  ท: 0xb4,
-  ธ: 0xb5,
-  น: 0xb6,
-  บ: 0xb7,
-  ป: 0xb8,
-  ผ: 0xb9,
-  ฝ: 0xba,
-  พ: 0xbb,
-  ฟ: 0xbc,
-  ภ: 0xbd,
-  ม: 0xbe,
-  ย: 0xbf,
-  ร: 0xc0,
-  ฤ: 0xc1,
-  ล: 0xc2,
-  ฦ: 0xc3,
-  ว: 0xc4,
-  ศ: 0xc5,
-  ษ: 0xc6,
-  ส: 0xc7,
-  ห: 0xc8,
-  ฬ: 0xc9,
-  อ: 0xca,
-  ฮ: 0xcb,
-  ฯ: 0xcc,
-  ะ: 0xcd,
-  "ั": 0xce,
-  า: 0xcf,
-  ำ: 0xd0,
-  "ิ": 0xd1,
-  "ี": 0xd2,
-  "ึ": 0xd3,
-  "ื": 0xd4,
-  "ุ": 0xd5,
-  "ู": 0xd6,
-  "ฺ": 0xd7,
-  "์": 0xd8,
-  "฿": 0xdf,
-  เ: 0xe0,
-  แ: 0xe1,
-  โ: 0xe2,
-  ใ: 0xe3,
-  ไ: 0xe4,
-  ๅ: 0xe5,
-  ๆ: 0xe6,
-  "็": 0xe7,
-  "่": 0xe8,
-  "้": 0xe9,
-  "๊": 0xea,
-  "๋": 0xeb,
-  "๎": 0xec,
-  "๏": 0xed,
-  "๐": 0xee,
-  "๑": 0xef,
-  "๒": 0xf0,
-  "๓": 0xf1,
-  "๔": 0xf2,
-  "๕": 0xf3,
-  "๖": 0xf4,
-  "๗": 0xf5,
-  "๘": 0xf6,
-  "๙": 0xf7,
-  "๚": 0xf8,
-  "๛": 0xf9,
-};
+/** Windows-874: Thai U+0E01..U+0E3A at 0xA1.., U+0E3F..U+0E5B at 0xDF..; ASCII as itself. */
+function cp874Byte(char: string): number | undefined {
+  const code = char.codePointAt(0) ?? 0;
+  if (code < 0x80) return code;
+  if (code >= 0x0e01 && code <= 0x0e3a) return 0xa0 + (code - 0x0e00);
+  if (code >= 0x0e3f && code <= 0x0e5b) return 0xdf + (code - 0x0e3f);
+  return undefined;
+}
 
 function codeUnits(text: string, encoding: CsfEncoding): number[] {
   const units: number[] = [];
   for (const char of text) {
     if (encoding === "windows-874") {
-      const byte = CP874[char];
+      const byte = cp874Byte(char);
       if (byte === undefined) throw new Error(`no CP874 mapping for ${char}`);
       units.push(byte);
     } else {
@@ -312,6 +235,36 @@ describe("rewriteCsf", () => {
     });
     const rewritten = parseCsf(result.data, "windows-874");
     expect(rewritten.entries[0]?.values[0]?.value).toBe("ออกเกม");
+  });
+
+  it("writes Thai as UTF-16 code units, which the TrueType text engine draws", () => {
+    const file = parseCsf(makeCsf(baseEntries), "windows-874");
+    const result = rewriteCsf(file, {
+      strings: { "GUI:ExitGame": "ออกเกม v1" },
+      encoding: "windows-874",
+    });
+    // read back without the code page: only real Unicode units come out as Thai
+    expect(parseCsf(result.data).entries[0]?.values[0]?.value).toBe("ออกเกม v1");
+  });
+
+  it("converts untouched Thai entries stored as windows-874 bytes, and keeps the rest's bytes", () => {
+    const entries = [
+      { label: "GUI:ExitGame", values: [{ text: "ออกเกม" }] },
+      { label: "GUI:Options", values: [{ text: "Options" }] },
+    ];
+    const base = makeCsf(entries, { encoding: "windows-874" });
+    const file = parseCsf(base, "windows-874");
+    const result = rewriteCsf(file, { strings: {}, encoding: "windows-874" });
+    const rewritten = parseCsf(result.data);
+    expect(rewritten.entries[0]?.values[0]?.value).toBe("ออกเกม");
+    expect(Array.from(rewritten.entries[1]?.raw ?? [])).toEqual(Array.from(file.entries[1]!.raw));
+  });
+
+  it("leaves a windows-874 table without Thai byte for byte", () => {
+    const base = makeCsf(baseEntries);
+    const file = parseCsf(base, "windows-874");
+    const result = rewriteCsf(file, { strings: {}, encoding: "windows-874" });
+    expect(result.data).toBe(base);
   });
 
   it("rejects a Thai value when windows-1252 is selected", () => {

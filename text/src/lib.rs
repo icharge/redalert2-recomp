@@ -1,3 +1,5 @@
+mod sharp;
+
 use std::{
     collections::HashMap,
     panic::{AssertUnwindSafe, catch_unwind},
@@ -31,7 +33,20 @@ pub struct RA2TextEngine {
     layout_cx: LayoutContext<()>,
     families: HashMap<u32, String>,
     next_font_id: u32,
+    /// The game's own look (ra2_text_engine_set_game_style): sharp edges and
+    /// Thai at its reading size.
+    game_style: bool,
 }
+
+/// Thai's reading size as a share of the requested (Latin-fitted) size, and
+/// its weight and width, under the game style. Thai hangs marks above and
+/// below a short letter body, which at the Latin 12.6 px is about 7 pixels:
+/// too few for its hooks and ticks. VERA20K reads Thai at 13.4 px, weight 600,
+/// full width; 14 px keeps the same 9-pixel body and is the smallest size at
+/// which ซ and ช come out apart in whole pixels (sharp.rs's tests).
+const THAI_SIZE_RATIO: f32 = 14.0 / 12.6;
+const THAI_WEIGHT: f32 = 600.0;
+const THAI_WIDTH: f32 = 1.0;
 
 #[repr(C)]
 pub struct RA2TextLayout {
@@ -104,6 +119,7 @@ impl RA2TextEngine {
             layout_cx: LayoutContext::new(),
             families,
             next_font_id: id,
+            game_style: false,
         }
     }
 }
@@ -212,6 +228,23 @@ fn make_layout(
         builder.push_default(StyleProperty::FontWeight(FontWeight::new(font_weight)));
     }
     builder.push_default(StyleProperty::FontWidth(FontWidth::from_ratio(font_width)));
+    if engine.game_style {
+        for range in thai_runs(&decoded) {
+            builder.push(
+                StyleProperty::FontSize(font_size_px * THAI_SIZE_RATIO),
+                range.clone(),
+            );
+            builder.push(
+                StyleProperty::FontWeight(FontWeight::new(THAI_WEIGHT)),
+                range.clone(),
+            );
+            builder.push(
+                StyleProperty::FontWidth(FontWidth::from_ratio(THAI_WIDTH)),
+                range,
+            );
+        }
+    }
+    let game_style = engine.game_style;
     let mut layout: Layout<()> = builder.build(&decoded);
     layout.break_all_lines(if wrap_width_px == 0.0 {
         None
@@ -246,7 +279,7 @@ fn make_layout(
         byte_to_units[byte + ch.len_utf8()] = units_at;
     }
     let (mask_origin_x, mask_origin_y, mask_width, mask_height, mask, glyphs, ink_bounds) =
-        raster_layout(&layout, width, height, &byte_to_units)?;
+        raster_layout(&layout, width, height, &byte_to_units, game_style)?;
     let line = layout.lines().next();
     let baseline = line.map(|l| l.metrics().baseline).unwrap_or(0.0);
     let (ink_x, ink_y, ink_width, ink_height) =
@@ -330,11 +363,30 @@ fn preflight_outline_bounds(
     Ok(pixels)
 }
 
+/// The byte ranges of `text` that are Thai (U+0E00..U+0E7F), each run whole.
+fn thai_runs(text: &str) -> Vec<std::ops::Range<usize>> {
+    let mut runs: Vec<std::ops::Range<usize>> = Vec::new();
+    for (at, c) in text.char_indices() {
+        if !(0x0E00..=0x0E7F).contains(&(c as u32)) {
+            continue;
+        }
+        let end = at + c.len_utf8();
+        match runs.last_mut() {
+            Some(run) if run.end == at => run.end = end,
+            _ => runs.push(at..end),
+        }
+    }
+    runs
+}
+
+/// `game_style`: glyphs drawn sharp from unhinted outlines ([`sharp`]), not
+/// plain smoothed coverage.
 fn raster_layout(
     layout: &Layout<()>,
     logical_width: u32,
     logical_height: u32,
     byte_to_units: &[usize],
+    game_style: bool,
 ) -> Result<
     (
         i32,
@@ -367,7 +419,7 @@ fn raster_layout(
             let mut scaler_builder = scale_context
                 .builder(font_ref)
                 .size(run.run().font_size())
-                .hint(true);
+                .hint(!game_style);
             if !coords.is_empty() {
                 scaler_builder =
                     scaler_builder.normalized_coords(coords.iter().map(|c| c.to_bits()));
@@ -416,15 +468,37 @@ fn raster_layout(
                 let remaining_pixels = MAX_MASK_PIXELS.saturating_sub(glyph_pixel_count);
                 let max_glyph_pixels =
                     preflight_outline_bounds(outline.bounds(), remaining_pixels)?;
-                if !render_glyph(&renderer, &mut scaler, glyph_id, &mut image)
-                    || image.content != Content::Mask
-                {
-                    continue;
-                }
-                let left = glyph.x.floor() as i32 + image.placement.left;
-                let top = glyph.y.floor() as i32 - image.placement.top;
-                let gw = image.placement.width as usize;
-                let gh = image.placement.height as usize;
+                // Drawn on the layout's grid: at a fractional pen the mask can
+                // reach one pixel further each way than the bounds.
+                let glyph_limit = if game_style {
+                    let bounds = outline.bounds();
+                    let w = (bounds.max.x - bounds.min.x).max(0.0).ceil() as usize + 2;
+                    let h = (bounds.max.y - bounds.min.y).max(0.0).ceil() as usize + 2;
+                    (w * h).min(remaining_pixels)
+                } else {
+                    max_glyph_pixels
+                };
+                let (left, top, gw, gh) = if game_style {
+                    let Some(mask) = sharp::rasterize(&outline, glyph.x, glyph.y, glyph_limit)
+                    else {
+                        continue;
+                    };
+                    image.clear();
+                    image.data.extend_from_slice(&mask.data);
+                    (mask.left, mask.top, mask.width, mask.height)
+                } else {
+                    if !render_glyph(&renderer, &mut scaler, glyph_id, &mut image)
+                        || image.content != Content::Mask
+                    {
+                        continue;
+                    }
+                    (
+                        glyph.x.floor() as i32 + image.placement.left,
+                        glyph.y.floor() as i32 - image.placement.top,
+                        image.placement.width as usize,
+                        image.placement.height as usize,
+                    )
+                };
                 let Some(glyph_pixels) = gw.checked_mul(gh) else {
                     return Err(Status::LimitExceeded);
                 };
@@ -434,7 +508,7 @@ fn raster_layout(
                 if image.data.len() < glyph_pixels {
                     return Err(Status::InternalError);
                 }
-                if glyph_pixels > max_glyph_pixels || total_glyph_pixels > MAX_MASK_PIXELS {
+                if glyph_pixels > glyph_limit || total_glyph_pixels > MAX_MASK_PIXELS {
                     return Err(Status::LimitExceeded);
                 }
                 glyph_pixel_count = total_glyph_pixels;
@@ -498,6 +572,28 @@ fn raster_layout(
 pub extern "C" fn ra2_text_engine_create() -> *mut RA2TextEngine {
     status_boundary(std::ptr::null_mut(), || {
         Box::into_raw(Box::new(RA2TextEngine::new()))
+    })
+}
+
+/// The game's own look for layouts made from now on: sharp glyphs (mostly
+/// solid pixels with a thin soft rim, near the bitmap font) and Thai at its
+/// reading size. Off by default: hinted smoothed coverage at the requested
+/// size and weight.
+///
+/// # Safety
+///
+/// `engine` is null or a live engine from `ra2_text_engine_create`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ra2_text_engine_set_game_style(
+    engine: *mut RA2TextEngine,
+    enabled: i32,
+) -> i32 {
+    status_boundary(Status::InternalError as i32, || {
+        let Some(engine) = (unsafe { engine.as_mut() }) else {
+            return Status::InvalidArgument as i32;
+        };
+        engine.game_style = enabled != 0;
+        Status::Ok as i32
     })
 }
 

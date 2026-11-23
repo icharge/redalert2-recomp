@@ -244,10 +244,12 @@ The chat panel and the lobby chat box (22 November).
   `src/web/match_chat.c`, where target is 0 for another player's line and the chat
   target dword for the player's own echo. That emits a `matchChat` event with the
   name, the text as the game's units, the colour index, `own` and `to`. The page
-  (`web/src/components/MatchChat.tsx`) reads U+00A1..U+00FB as Thai when the
-  player's Thai font is on.
+  (`web/src/components/MatchChat.tsx`) shows the units as they are: Thai arrives
+  as Unicode (U+0E01..), which the game draws with its TrueType engine
+  (`docs/ttf-text.md`).
 - **Sent:** the page calls `ra2_match_chat_send(text, target)`. The text goes
-  through the input ring as Windows-874 units (`push_text` in `presenter.c`) and
+  through the input ring as code points, Unicode while the TrueType engine is on
+  and Windows-874 without it (`push_text` and `web_text_char` in `presenter.c`), and
   is queued in `match_chat.c` (4 lines, dropped after 3 s). C after the pre-hook's
   `mov edx, [ebp]` (YR `0x0055E46C`, RA2 `0x00540C6C`) calls
   `web_match_chat_take(GameMode, chunk, target)`. In mode 3 or 4 with a line
@@ -397,6 +399,12 @@ The chat panel and the lobby chat box (22 November).
     players as text. ra2web `WolServer.handlePrivmsg` now gives them to the bot
     in game rooms too (not in the Quick Match lobbies); the answer is private.
     The game still echoes the player's own `/help` line on their own screen.
+- **Thai** (23 November): a line typed in the lobby box or the match panel
+  reaches the game as code points, leaves as real Unicode (UTF-8 on WOL, the
+  game's UTF-16 in a match packet), and the game draws any text with Thai
+  through the TrueType engine, shaped and sharp (`docs/ttf-text.md`).
+  `chat-box.mjs` and `quickmatch.mjs --row 11` send Thai lines and shoot them
+  (`chat-box-thai`, `match-chat-thai`).
 - **Escape in a chat box** closes the box and does not release the capture:
   `browser-controls.ts` skips its own release for `[data-game-text]`. In
   fullscreen, where Keyboard Lock gives the page Escape, the mouse stays

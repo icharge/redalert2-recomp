@@ -38,6 +38,10 @@ typedef struct RA2TextMetrics {
    Panic-to-error conversion works only in unwind builds; builds using panic=abort terminate on panic. */
 RA2TextEngine *ra2_text_engine_create(void);
 void ra2_text_engine_destroy(RA2TextEngine *engine);
+/* The game's own look for layouts made from now on: glyphs as whole pixels
+ * (ink or not, as the bitmap font draws) and Thai at its reading size. Off by
+ * default. */
+int32_t ra2_text_engine_set_game_style(RA2TextEngine *engine, int32_t enabled);
 
 /* Register a TTF/OTF byte buffer with scalable outlines. Fonts without scalable outlines are
    rejected; embedded bitmap-only glyphs are skipped during rendering. The bytes are copied.

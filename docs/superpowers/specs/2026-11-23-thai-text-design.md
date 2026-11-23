@@ -190,3 +190,34 @@ it in `docs/ttf-text.md`.
   lists them as not covered. Found by the e2e screenshots.
 - Conflicts in the merge of 177 commits.
 - Whether `src/runtime/thai_font.c` keeps any part.
+
+## Outcome (23 November 2026)
+
+Built as designed, merged into `web-port` (merge `aebda903`, then `df3eb1db`),
+with these departures and answers:
+
+- **Edges.** Not in this design: after seeing the first shots, the player
+  asked for sharper text. The engine's game style
+  (`ra2_text_engine_set_game_style`, `text/src/sharp.rs`) draws steep
+  smoothing, and Thai runs at 14 px (14/12.6 of the size), weight 600, full
+  width. Hard thresholds and VERA20K's whole-pixel rule were tried first and
+  lost Thai's thin strokes; `docs/ttf-text.md`, "Rendering boundary", has the
+  table.
+- **`thai_font.c`** stays: `recomp_thai_call` is the dispatch point the TTF
+  routing hangs off. Its bitmap shaping is off now that nothing passes
+  `--thai-font-fix`.
+- **Thai check** (left to the builder): every string the adapter reads is
+  checked for a unit in U+0E00..U+0E7F after `read_units`, which honours
+  `max_units`; the answer is not cached per pointer, as layouts are cached by
+  content already.
+- **Other text paths**: the lobby transcript and the game's match message
+  rows are drawn by the engine (the e2e shots show them shaped); which entry
+  point each uses was not traced.
+  Paragraphs with line breaks are declined by the adapter, so multi-line Thai
+  (dialogs) falls back unshaped. Not done.
+- **CSF**: the explicit `windows-874` encoding writes UTF-16 Thai and converts
+  byte-stored entries; a Thai mod's table without a `strings.json` is not
+  detected or converted.
+- **Size**: measured on production builds and recorded in `docs/ttf-text.md`.
+- **Not checked**: native Windows and Linux hosts. The English-only screen
+  check was by eye on the lobby (identical labels), not a pixel diff.
