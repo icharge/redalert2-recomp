@@ -190,12 +190,14 @@ static recomp_func_t bink_func(const char *name) {
     return NULL;
 }
 
+static int g_test_map_movies_cut;   /* --test-map: every movie is cut, a mission's briefing too */
+
 static void ra2_BinkOpen(void) {
     static recomp_func_t real;
     if (!real) real = bink_func("_BinkOpen@8");
     real();
     uint32_t handle = g_eax;
-    if (handle && ra2_startup_movies_skipped() && !web_menu_seen) {
+    if (handle && ((ra2_startup_movies_skipped() && !web_menu_seen) || g_test_map_movies_cut)) {
         uint32_t *bink = (uint32_t *)(uintptr_t)handle;      /* Width, Height, Frames, FrameNum, LastFrameNum, FrameRate, FrameRateDiv */
         uint32_t was = bink[2];
         bink[2] = 2, bink[5] = 15, bink[6] = 1;
@@ -800,6 +802,10 @@ int main(int argc, char **argv) {
     if (test_map) {   /* read after the mount: under Node the file is in the mounted game folder */
         extern int ra2_test_map_load(const char *);
         if (!ra2_test_map_load(test_map)) return fail("no test map settings at %s", test_map);
+        /* straight to the match: no logo or intro movie, no start-up splash wait (whatever
+         * --intro said), and no movie during the test either */
+        ra2_set_intro_mode(RA2_INTRO_SKIP_MOVIES);
+        g_test_map_movies_cut = 1;
     }
     char game_full[PATH_MAX], exe_host[PATH_MAX + 16];
     if (!realpath(game, game_full)) return fail("no game folder at %s", game);

@@ -126,7 +126,10 @@ declare global {
 function startOnce(files: FileSource, thaiFontFix: ThaiFontPreference): Promise<GameHandle> {
   const game = sourceStorage(files);
   const args = argsFromQuery(window.location.search);
-  if (!args.some((arg) => arg.toLowerCase() === "--intro"))
+  const testMap = testMapRequest(window.location.search);
+  // A Test Map launch goes straight to the match: no intro argument, so the host skips the
+  // start-up movies (startup_order.h); --test-map makes the game skip the rest.
+  if (!testMap && !args.some((arg) => arg.toLowerCase() === "--intro"))
     args.push(...introArguments(window.location.search, game));
   if (!args.some((arg) => /^-{1,2}speedcontrol$/i.test(arg)))
     args.push(...speedControlArguments(window.location.search, game));
@@ -134,7 +137,7 @@ function startOnce(files: FileSource, thaiFontFix: ThaiFontPreference): Promise<
     files,
     thaiFontFix,
     args,
-    testMap: testMapRequest(window.location.search),
+    testMap,
   });
   return window.ra2Session;
 }
@@ -877,6 +880,7 @@ export function Play({ files }: { files: FileSource }) {
   }, [files]);
 
   const crashed = phase === "crashed";
+  const testMapLaunch = testMapRequest(window.location.search) !== null;
   const crashLog = gameStore.getLog();
   const unresolvedSaveReference = crashLog.some((line) =>
     line.includes("[save] unresolved object reference"),
@@ -1125,7 +1129,12 @@ export function Play({ files }: { files: FileSource }) {
       <FrameStats presenter={presenter} on={statsOn} onToggle={toggleStats} />
       {waiting && <LoadingScreen state={{ phase, copy, title, edition: sourceGame(files) }} />}
       {phase === "booting" && !startError && !crashed && (
-        <LoadingScreen state={{ phase, copy, title }} variant="chip" />
+        // A Test Map launch keeps the full screen over the game's boot and map-loading screens
+        // until the match runs (the game's menu event, sent when the map has loaded).
+        <LoadingScreen
+          state={{ phase, copy, title, edition: sourceGame(files) }}
+          variant={testMapLaunch ? "full" : "chip"}
+        />
       )}
       {startError instanceof GameNotBuilt && (
         <Flex className={styles.overlay} align="center" justify="center" p="6">
