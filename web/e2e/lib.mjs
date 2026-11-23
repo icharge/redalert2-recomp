@@ -100,6 +100,8 @@ export async function startPage(opts) {
   }
   // opts.cookies: cookies the browser has before the page loads (a launcher session, for one)
   if (opts.cookies?.length) await context.addCookies(opts.cookies);
+  // opts.setup(context): routes and the like a script needs before the page loads
+  if (opts.setup) await opts.setup(context);
   // Pin a test's module without overwriting another developer's published build.
   if (opts.gameBuild) {
     // Stream the large debug WASM over HTTP; CDP fulfill bodies exceed Chrome's

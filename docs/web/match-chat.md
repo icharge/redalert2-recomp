@@ -244,10 +244,12 @@ The chat panel and the lobby chat box (22 November).
   `src/web/match_chat.c`, where target is 0 for another player's line and the chat
   target dword for the player's own echo. That emits a `matchChat` event with the
   name, the text as the game's units, the colour index, `own` and `to`. The page
-  (`web/src/components/MatchChat.tsx`) reads U+00A1..U+00FB as Thai when the
-  player's Thai font is on.
+  (`web/src/components/MatchChat.tsx`) shows the units as they are: Thai arrives
+  as Unicode (U+0E01..), which the game draws with its TrueType engine
+  (`docs/ttf-text.md`).
 - **Sent:** the page calls `ra2_match_chat_send(text, target)`. The text goes
-  through the input ring as Windows-874 units (`push_text` in `presenter.c`) and
+  through the input ring as code points, Unicode while the TrueType engine is on
+  and Windows-874 without it (`push_text` and `web_text_char` in `presenter.c`), and
   is queued in `match_chat.c` (4 lines, dropped after 3 s). C after the pre-hook's
   `mov edx, [ebp]` (YR `0x0055E46C`, RA2 `0x00540C6C`) calls
   `web_match_chat_take(GameMode, chunk, target)`. In mode 3 or 4 with a line

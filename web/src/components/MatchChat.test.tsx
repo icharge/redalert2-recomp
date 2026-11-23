@@ -6,7 +6,6 @@ import {
   MATCH_CHAT_IDLE_MS,
   MatchChat,
   Target,
-  gameText,
   lineTime,
   panelAnchor,
   playerColour,
@@ -23,14 +22,6 @@ const line = (id: number, over: Partial<MatchChatLine> = {}): MatchChatLine => (
   to: 0,
   at: 1000,
   ...over,
-});
-
-describe("gameText", () => {
-  it("reads widened Windows-874 as Thai with the Thai font, and leaves it without", () => {
-    const widened = "ÊÇÑÊ´Õ"; // สวัสดี as the game keeps it
-    expect(gameText(`hi ${widened}`, true)).toBe("hi สวัสดี");
-    expect(gameText(widened, false)).toBe(widened);
-  });
 });
 
 describe("lineTime", () => {
@@ -77,7 +68,6 @@ describe("MatchChat", () => {
         chat={{ ready: true, lines: [line(1), line(2, { name: "bob", colour: 2, text: "gg" })] }}
         typing={null}
         onTyping={() => {}}
-        thai={false}
         send={vi.fn()}
         now={() => 2000}
       />,
@@ -98,7 +88,7 @@ describe("MatchChat", () => {
       chat,
       typing: null,
       onTyping: () => {},
-      thai: false,
+
       send: null,
       now: () => at,
     };
@@ -115,7 +105,6 @@ describe("MatchChat", () => {
         chat={{ ready: false, lines: [line(1)] }}
         typing={null}
         onTyping={() => {}}
-        thai={false}
         send={vi.fn()}
         now={() => 1000 + MATCH_CHAT_FADE_MS + 1}
       />,
@@ -127,7 +116,7 @@ describe("MatchChat", () => {
     const send = vi.fn();
     const onTyping = vi.fn();
     const onTarget = vi.fn();
-    const props = { chat: { ready: true, lines: [] }, onTyping, onTarget, thai: false, send };
+    const props = { chat: { ready: true, lines: [] }, onTyping, onTarget, send };
     const { rerender } = render(<MatchChat {...props} typing={Target.all} />);
     let box = screen.getByRole("textbox", { name: "Message to all" });
     expect(box).toHaveFocus();
@@ -161,7 +150,6 @@ describe("MatchChat", () => {
         typing={null}
         onTyping={onTyping}
         remembered={Target.allies}
-        thai={false}
         send={vi.fn()}
       />,
     );
@@ -175,7 +163,7 @@ describe("MatchChat", () => {
     const send = vi.fn();
     const onTyping = vi.fn();
     const onHint = vi.fn();
-    const props = { chat: { ready: true, lines: [] }, onTyping, onHint, thai: false, send };
+    const props = { chat: { ready: true, lines: [] }, onTyping, onHint, send };
     const { rerender } = render(<MatchChat {...props} typing={Target.all} />);
     let box = screen.getByRole("textbox", { name: "Message to all" });
     fireEvent.change(box, { target: { value: "/r gg" } });
@@ -199,7 +187,6 @@ describe("MatchChat", () => {
         chat={{ ready: true, lines: [] }}
         typing={Target.all}
         onTyping={onTyping}
-        thai={false}
         send={send}
       />,
     );
@@ -219,7 +206,6 @@ describe("MatchChat", () => {
         }}
         typing={null}
         onTyping={() => {}}
-        thai={false}
         send={vi.fn()}
         now={() => 2000}
       />,
@@ -235,7 +221,6 @@ describe("MatchChat", () => {
         chat={{ ready: false, lines: [line(1, { system: true, name: "", text: "old row" })] }}
         typing={null}
         onTyping={() => {}}
-        thai={false}
         send={null}
         now={() => 1000 + MATCH_CHAT_FADE_MS + 1}
       />,
@@ -262,7 +247,6 @@ describe("MatchChat", () => {
         chat={{ ready: true, lines }}
         typing={null}
         onTyping={() => {}}
-        thai={false}
         send={vi.fn()}
         now={() => 1000}
       />,
@@ -289,7 +273,7 @@ describe("MatchChat", () => {
     const props = {
       chat: { ready: true, lines: [line(1)] },
       onTyping: () => {},
-      thai: false,
+
       send: vi.fn(),
       now: () => at,
     };
@@ -315,7 +299,7 @@ describe("MatchChat", () => {
       onTyping: () => {},
       onWhisper,
       onTarget,
-      thai: false,
+
       send,
       whispers: true,
       replyTo: "Ann",
@@ -366,7 +350,6 @@ describe("MatchChat", () => {
         chat={{ ready: true, lines: [] }}
         typing={Target.all}
         onTyping={() => {}}
-        thai={false}
         send={send}
         replyTo="Ann"
       />,
@@ -389,7 +372,6 @@ describe("MatchChat", () => {
         chat={{ ready: false, lines: [] }}
         typing={null}
         onTyping={() => {}}
-        thai={false}
         send={vi.fn()}
       />,
     );

@@ -37,7 +37,7 @@ At run time, where the engine is built in:
 | Switch | Effect |
 |---|---|
 | (none) | on, Thai text only |
-| `--no-ttf-text`, `RA2_TTF_TEXT=0` | off: Thai goes to the bitmap font (boxes or the old Thai font option) and typing sends Windows-874 bytes |
+| `--no-ttf-text`, `RA2_TTF_TEXT=0` | off: Thai goes to the bitmap font, which has no Thai glyphs, and typing sends Windows-874 bytes |
 | `--ttf-text-all`, `RA2_TTF_TEXT=all` | every string through the engine (testing; changes English screens) |
 | `--ttf-text`, `RA2_TTF_TEXT=1` | on (the default; kept for old links) |
 
@@ -57,6 +57,45 @@ reveals complete shaped clusters. This keeps wrapping and positioning stable
 for callers that measure before drawing. The visible text uses the font's
 foreground color; the bitmap renderer's palette highlight is not reproduced.
 Use the default renderer to retain that original highlight appearance.
+
+Glyph edges are sharp, near the bitmap font's (23 November 2026). The guest
+adapter turns on the engine's game style (`ra2_text_engine_set_game_style`):
+
+- **Steep smoothing** (`text/src/sharp.rs`): each pixel's share inside the
+  unhinted outline goes through a steep curve: a quarter or less is clear,
+  three quarters or more solid, the half between ramps. Letters are mostly
+  solid pixels with a thin soft rim, which the adapter blends as before.
+- **Thai at its reading size**: Thai runs (U+0E00..U+0E7F) are laid out at
+  14/12.6 of the requested size, weight 600, full width, while Latin keeps
+  the fitted 12.6 px, weight 700, 82%.
+
+How it got there, all at the game's text size, where a Thai letter body at
+the Latin 12.6 px is about 7 pixels:
+
+| Tried | Result |
+|---|---|
+| Plain smoothing (hinted, Thai at 12.6 px) | readable, but softer than the game's letters |
+| Threshold at half coverage (128) | ส drew as ล: its hook is one pixel a third covered |
+| Threshold at a quarter (64) | hook kept, loops of อ and ม filled (ม read as บ) |
+| Whole pixels, VERA20K's rule, Thai at 13.4 px | crisp; ซ and ช the same pixels (the tick is under a pixel) |
+| Whole pixels, Thai at 14 px | ซ and ช two pixels apart; ถ is ก but for one pixel |
+| Steep smoothing, Thai at 14 px (chosen by the player) | sharp, and sub-pixel details stay as a faint pixel |
+
+VERA20K (`../vera20k/src/render/text_engine/`, read for the method; no code
+taken, VERA is GPLv3) draws every glyph as whole pixels: a pixel is ink when
+its centre is inside the outline, with TrueType's dropout control for strokes
+thinner than a pixel, and it reads Brahmic scripts at 13.4 px, weight 600.
+Its Thai size and weight are what this uses, raised to 14 px. The engine's
+tests (`sharp.rs`) check eleven look-alike pairs at every pen phase (ซ and ช
+now differ by about four pixels of ink), and the guest harness's case 1c
+checks ส and ล through the adapter. Noto Sans Thai is the modern loopless
+design (VERA bundles the same file); Noto Sans Thai Looped, the traditional
+one, is not bundled.
+
+The launcher's Thai font option (bundled Thai `game.fnt` files and the
+`--thai-font-fix` switch) was retired on the same day. `src/runtime/thai_font.c`
+stays: its `recomp_thai_call` is the lifted text calls' dispatch point that
+`recomp_ttf_call` hangs off, and its bitmap shaping is off without the switch.
 
 The C ABI is in [text_engine.h](../src/runtime/text_engine.h). It accepts
 explicit UTF-16 lengths, supports caller-supplied scalable fonts, and owns
@@ -116,17 +155,31 @@ logs are in the working tree's `work/ttf-review-captures/`. This covers
 those gamemd screens. Tactical chat, lobby chat, other paragraphs and
 fields, and the RA2 edition's browser runtime remain unverified.
 
-The current fast-link gamemd module is approximately 168.4 MB of Wasm,
-31.7 MB Brotli, and 40.4 MB gzip. These are iteration build sizes, not release
-sizes or a measured feature delta.
+### Size
+
+Production builds (`build-web.cmd --mode prod`, `-O3` link), the Wasm the page
+downloads. Before is the production build of 22 November 2026, without the
+engine; after is 23 November with it (Noto Sans and Noto Sans Thai only). The
+difference also holds the other commits between the two, which are small C
+changes; most of it is the engine (Parley, Swash, Rust's `std`).
+
+| Edition | Wasm before | Wasm after | Brotli before | Brotli after | gzip after |
+|---|---|---|---|---|---|
+| RA2 | 126.2 MB | 135.0 MB (+8.7) | 12.0 MB | 15.9 MB (+3.9) | 23.2 MB |
+| YR | 123.9 MB | 132.4 MB (+8.6) | 13.2 MB | 17.2 MB (+4.0) | 24.0 MB |
+
+The two fonts are 2.27 MB of that (1.03 MB Brotli; Noto Sans is 2.05 MB of
+it, a variable font with Greek and Cyrillic the Thai-only routing never uses).
+The page also no longer ships the retired option's Thai bitmap fonts (11 MB of
+`public/thai-fonts/`, fetched only when that option was on).
 
 ## Typing
 
-With `--ttf-text`, text committed in the page's TYPE box reaches the game's
-edit controls as Unicode: each code point in the Basic Multilingual Plane is
-posted as its own `WM_CHAR` value, which the game's edit control stores as
-one UTF-16 unit. Without the flag, typing sends Windows-874 bytes as before,
-for the Thai FNT. See [the input diagnosis](thai-input-diagnosis.md) for the
+With the engine on (the default), text committed in the page's TYPE box and
+chat boxes reaches the game's edit controls as Unicode: each code point in the
+Basic Multilingual Plane is posted as its own `WM_CHAR` value, which the game's
+edit control stores as one UTF-16 unit. With `--no-ttf-text`, typing sends
+Windows-874 bytes as before. See [the input diagnosis](thai-input-diagnosis.md) for the
 edit control's contract and the probe results.
 
 This covers the game's wide edit fields, such as the LAN lobby chat draft,

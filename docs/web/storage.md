@@ -129,7 +129,7 @@ game/slot-2/                         another installation's own files
 
 Common files are copied once within an installation. New installations do
 not share files based on names, sizes, or timestamps. Saves, mod lists,
-mod overlays, and Thai-font preferences use each edition record's storage
+and mod overlays use each edition record's storage
 namespace. The guest still sees its fixed `/game` filesystem.
 
 IndexedDB database `ra2-web`, schema version 2:
@@ -170,7 +170,7 @@ The game's thread mounts OPFS at `/opfs` before `main()` reads anything (`src/we
 reads through `src/web/opfs_read.js`, which keeps a read-only handle open between opens of the same
 file, and `src/web/read_cache.c`, which answers repeated small `ReadFile` calls from 1 MiB blocks in
 memory. A write to `/game` never goes through a link: saves, the
-Thai font and mod overlays remove a link first (`replaceFile`), and the save watcher skips links.
+mod overlays remove a link first (`replaceFile`), and the save watcher skips links.
 The game's own save does the same: a campaign save of 1 MiB or more that came with the import is a
 link, and writing through it fails with `EACCES` (the handle the menu's read left open) and would
 change the imported file, so `write_cfb` (pcrecomp `storage.c`) unlinks it first ([issues.md](issues.md), row 20).
@@ -231,8 +231,11 @@ starts. A loose table shadows the MIX copy. The generated file exists only in
 the in-memory `/game`; it is applied before `startSaveSync` takes its opening
 snapshot and is not copied to `save/<storage>/`.
 
-`windows-1252` is the shipped English encoding. `windows-874` is for Thai text
-and should be used with the Thai font fix (the launcher warns when it is off).
+`windows-1252` is the shipped English encoding. `windows-874` is for Thai text:
+Thai is written as UTF-16 code units (U+0E01..), which the game's TrueType text
+engine draws (`docs/ttf-text.md`), and a base table that stores Thai as
+Windows-874 bytes (made for the retired Thai font option) is converted entry by
+entry, with or without overrides.
 A missing label is left unchanged and reported; `inject` appends it. Invalid
 JSON, an unrepresentable character, or no base table leaves the game unchanged.
 

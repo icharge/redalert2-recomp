@@ -68,7 +68,6 @@ import {
   type FileSource,
   type GameHandle,
 } from "../game/loader";
-import { readThaiFontPreference, type ThaiFontPreference } from "../storage/thai-fonts";
 import {
   readFullscreenPreference,
   type FullscreenPreference,
@@ -122,14 +121,14 @@ declare global {
     ra2Presenter?: GamePresenter;
   }
 }
-function startOnce(files: FileSource, thaiFontFix: ThaiFontPreference): Promise<GameHandle> {
+function startOnce(files: FileSource): Promise<GameHandle> {
   const game = sourceStorage(files);
   const args = argsFromQuery(window.location.search);
   if (!args.some((arg) => arg.toLowerCase() === "--intro"))
     args.push(...introArguments(window.location.search, game));
   if (!args.some((arg) => /^-{1,2}speedcontrol$/i.test(arg)))
     args.push(...speedControlArguments(window.location.search, game));
-  window.ra2Session ??= startGame({ files, thaiFontFix, args });
+  window.ra2Session ??= startGame({ files, args });
   return window.ra2Session;
 }
 
@@ -153,7 +152,6 @@ export function Play({ files }: { files: FileSource }) {
   const [pmOpen, setPmOpen] = useState(false);
   const [chatTyping, setChatTyping] = useState<Target | null>(null);
   const gameId = sourceStorage(files);
-  const [thaiFontFix] = useState(() => readThaiFontPreference(gameId));
   const [fullscreenPreference] = useState<FullscreenPreference>(() =>
     readFullscreenPreference(gameId),
   );
@@ -618,7 +616,7 @@ export function Play({ files }: { files: FileSource }) {
     let cancelled = false;
     let stop = () => {};
     let unsubscribe = () => {};
-    startOnce(files, thaiFontFix).then(
+    startOnce(files).then(
       (game) => {
         if (cancelled || !runtimeLive()) return;
         let activeCanvas = element;
@@ -968,7 +966,6 @@ export function Play({ files }: { files: FileSource }) {
             setChatTyping(typing);
             if (typing === null) canvas.current?.focus();
           }}
-          thai={thaiFontFix.enabled}
           presenter={presenter}
           stage={stage}
           canvas={canvas}

@@ -3,7 +3,6 @@ import { MOD_DATA, MOD_PATCH, MOD_PATCH_PROBLEM } from "./install";
 import { Manifest } from "./manifest";
 import { gamePath, mountedPath, READ_IN_PLACE_BYTES, readGameFile, type CopyTarget } from "./opfs";
 import type { FsLike } from "./saves";
-import { shouldLoadImportedGameFile } from "./thai-fonts";
 
 export interface ModRecord {
   name: string;
@@ -84,7 +83,7 @@ export async function removeMod(
 export async function loadMods(
   fs: FsLike,
   game: string,
-  options: { excludeGameFont?: boolean; inPlace?: boolean } = {},
+  options: { inPlace?: boolean } = {},
 ): Promise<string[]> {
   const manifest = await Manifest.open();
   try {
@@ -94,7 +93,6 @@ export async function loadMods(
     for (const mod of mods) {
       fs.mkdir(`/game/mods/${mod.name}`);
       for (const file of mod.files) {
-        if (!shouldLoadImportedGameFile(file.name, options.excludeGameFont ?? false)) continue;
         const path = `mods/${mod.name}/${file.name}`;
         if (options.inPlace && fs.symlink && file.size >= READ_IN_PLACE_BYTES)
           fs.symlink(mountedPath(gamePath(game, path)), `/game/${path}`);

@@ -16,8 +16,13 @@ commit after each entry is where to read more.
 - **Thai in chat, shaped**: Thai typed in the lobby, the game rooms and the
   match panel now reaches the other players as Thai, and the game draws it
   with a TrueType font (Noto Sans Thai) with the vowels and tone marks in
-  place. It works without the Thai font option. Only text with Thai is drawn
-  this way; English screens look as before.
+  place. Its edges are sharp like the game's own letters, and it is a
+  little larger than English so the marks stay clear. Only text with Thai
+  is drawn this way; English screens look as before.
+- **Thai translations draw shaped too**: a Thai `strings.json`
+  (`"encoding": "windows-874"`) is written into the game as real Thai, and a
+  Thai string table made for the old Thai font is converted when the game
+  starts.
 
 - **Tabs in the match panel**: All, Allies, PM (whispers, yours too) and
   System (the game's own messages). A tab with something new is marked. Lines
@@ -37,6 +42,11 @@ commit after each entry is where to read more.
   put when you switch.
 - The match panel's All tab shows the players' lines and whispers; the
   game's own messages are under System only.
+
+### Removed
+
+- The Thai font option and its seven bundled Thai bitmap fonts (11 MB): Thai
+  now draws without them. A saved choice is ignored.
 
 ### Fixed
 

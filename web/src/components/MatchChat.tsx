@@ -53,15 +53,6 @@ export function playerColour(index: number): string {
   return PLAYER_COLOURS[index] ?? "#d8d8d8";
 }
 
-/**
- * The game's text as the player reads it: with the Thai font, Windows-874 bytes widened to
- * U+00A1..U+00FB are Thai (U+0E01..U+0E5B); without it they are the Latin-1 the game draws.
- */
-export function gameText(text: string, thai: boolean): string {
-  if (!thai) return text;
-  return text.replace(/[¡-û]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xa0 + 0x0e00));
-}
-
 /** The game's command bar along the picture's bottom edge, in game pixels: the panel sits above it. */
 const COMMAND_BAR = 24;
 
@@ -177,12 +168,12 @@ function Time({ at, on }: { at: number; on: boolean }) {
   return on ? <span className={styles.time}>{lineTime(at)} </span> : null;
 }
 
-function Line({ line, thai, times }: { line: MatchChatLine; thai: boolean; times: boolean }) {
+function Line({ line, times }: { line: MatchChatLine; times: boolean }) {
   if (line.system)
     return (
       <li className={styles.line}>
         <Time at={line.at} on={times} />
-        <span className={line.pm ? styles.pm : styles.system}>{gameText(line.text, thai)}</span>
+        <span className={line.pm ? styles.pm : styles.system}>{line.text}</span>
       </li>
     );
   return (
@@ -190,9 +181,9 @@ function Line({ line, thai, times }: { line: MatchChatLine; thai: boolean; times
       <Time at={line.at} on={times} />
       {line.to === Target.allies && <span className={styles.to}>[Allies] </span>}
       <span className={styles.name} style={{ color: playerColour(line.colour) }}>
-        {gameText(line.name, thai)}:
+        {line.name}:
       </span>{" "}
-      <span className={styles.text}>{gameText(line.text, thai)}</span>
+      <span className={styles.text}>{line.text}</span>
     </li>
   );
 }
@@ -216,7 +207,6 @@ export function MatchChat({
   onWhisper,
   whispers = false,
   onHint,
-  thai,
   send,
   now = Date.now,
   times = readChatTimePreference(),
@@ -241,7 +231,6 @@ export function MatchChat({
   whispers?: boolean;
   /** a line for the player only (the chat log): /r with nobody to answer */
   onHint?: (text: string) => void;
-  thai: boolean;
   send: ((text: string, target: Target) => void) | null;
   now?: () => number;
   /** each line starts with its local time (Settings › Launcher › ONLINE › Chat times) */
@@ -381,7 +370,7 @@ export function MatchChat({
       )}
       <ol ref={list} data-page-scroll className={styles.lines} aria-live="polite">
         {shown.map((line) => (
-          <Line key={line.id} line={line} thai={thai} times={times} />
+          <Line key={line.id} line={line} times={times} />
         ))}
       </ol>
       <div className={styles.bar}>

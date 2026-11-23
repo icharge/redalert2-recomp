@@ -206,18 +206,16 @@ describe("applyCsfOverrides", () => {
     expect(result.warning).toMatch(/not in this table/);
   });
 
-  it("warns when Thai text is written without the Thai font fix", async () => {
+  it("writes Thai text as Unicode, with no warning", async () => {
     const fs = new MemFs();
     fs.put("/game/ra2md.csf", makeCsf([{ label: "GUI:ExitGame", text: "Exit Game" }]));
     const result = await applyCsfOverrides(fs, "ra2md", {
-      thaiFontFixEnabled: false,
       readStrings: async () => overrides({ "GUI:EXITGAME": "ออกเกม" }, { encoding: "windows-874" }),
     });
     expect(result.applied).toBe(true);
-    expect(result.warning).toMatch(/Thai font fix is off/);
-    expect(
-      parseCsf(fs.readFile("/game/ra2md.csf"), "windows-874").entries[0]?.values[0]?.value,
-    ).toBe("ออกเกม");
+    expect(result.warning).toBeNull();
+    // read without the code page: the units are Unicode Thai
+    expect(parseCsf(fs.readFile("/game/ra2md.csf")).entries[0]?.values[0]?.value).toBe("ออกเกม");
   });
 
   it("fails closed when the value cannot be encoded", async () => {

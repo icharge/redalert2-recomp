@@ -34,11 +34,6 @@ import { liveGameFileSource, type ReadOnlyFileSource } from "../storage/file-bro
 import { ensureDefaultHostSettings, ensureDefaultMainSettings } from "../storage/game-settings";
 import type { LauncherStringsConfig } from "../storage/launcher-strings";
 import {
-  readThaiFont,
-  shouldLoadImportedGameFile,
-  type ThaiFontPreference,
-} from "../storage/thai-fonts";
-import {
   redeemTicket,
   takeLaunchTicket,
   ticketEdition,
@@ -381,8 +376,6 @@ export function stageVideoSize(
 
 export interface StartOptions {
   files: FileSource;
-  /** When enabled, an app-managed Thai font replaces imported and mod game.fnt files before startup. */
-  thaiFontFix?: ThaiFontPreference;
   /** extra game arguments, after --run and --game */
   args?: string[];
   store?: GameStore;
@@ -395,20 +388,11 @@ export function argsFromQuery(search: string): string[] {
   return new URLSearchParams(search).getAll("arg");
 }
 
-export function gameArguments(
-  extra: string[] = [],
-  thaiFontFix: ThaiFontPreference = { enabled: false, fontId: "" },
-): string[] {
+export function gameArguments(extra: string[] = []): string[] {
   const hostArgs = extra.map((arg) =>
     arg.toLowerCase() === "-speedcontrol" ? "--speedcontrol" : arg,
   );
-  return [
-    "--run",
-    "--game",
-    "/game",
-    ...hostArgs,
-    ...(thaiFontFix.enabled ? ["--thai-font-fix", "--thai-font-id", thaiFontFix.fontId] : []),
-  ];
+  return ["--run", "--game", "/game", ...hostArgs];
 }
 
 /** Whether this game's module is there. The dev server answers a missing file with the page, so check build.json. */
@@ -472,7 +456,6 @@ async function loadDevFiles(
   fetcher: typeof fetch = fetch,
   base = "/dev-game",
   game: GameId = "ra2md",
-  thaiFontFix: ThaiFontPreference = { enabled: false, fontId: "" },
 ): Promise<void> {
   const response = await fetcher(`${base}/index.json`);
   if (!response.ok)
@@ -480,9 +463,7 @@ async function loadDevFiles(
   const index = (await response.json()) as DevIndex;
   if (index.files.length === 0) throw new Error("The dev server's game folder has no game files.");
   fs.mkdir("/game");
-  const files = index.files.filter((file) =>
-    shouldLoadImportedGameFile(file.name, thaiFontFix.enabled),
-  );
+  const files = index.files;
   const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
   let doneBytes = 0;
   let doneFiles = 0;
@@ -529,16 +510,7 @@ async function loadDevFiles(
   }
   await stageBundledLogo(fs, game, new Set(files.map((file) => file.name.toLowerCase())), fetcher);
   stageWolDataKey(fs, game);
-  await stageThaiFont(fs, thaiFontFix);
   store.loading("the game");
-}
-
-/** Stage the explicit choice at the game's canonical path after imported files and mods load. */
-async function stageThaiFont(fs: EmscriptenFs, preference: ThaiFontPreference): Promise<void> {
-  if (!preference.enabled) return;
-  if (!preference.fontId) throw new Error("Choose a Thai font before enabling the Thai font fix.");
-  const bytes = await readThaiFont(preference.fontId);
-  replaceFile(fs, "/game/game.fnt", bytes);
 }
 
 /**
@@ -553,12 +525,9 @@ async function loadOpfsFiles(
   store: GameStore,
   record: GameRecord,
   video: VideoSize | null,
-  thaiFontFix: ThaiFontPreference,
 ): Promise<void> {
   fs.mkdir("/game");
-  const names = Object.keys(record.files).filter(
-    (name) => !isRuntimeInput(name) && shouldLoadImportedGameFile(name, thaiFontFix.enabled),
-  );
+  const names = Object.keys(record.files).filter((name) => !isRuntimeInput(name));
   const totalBytes = names.reduce((sum, name) => sum + (record.files[name]?.size ?? 0), 0);
   let doneBytes = 0;
   let doneFiles = 0;
@@ -601,10 +570,7 @@ async function loadOpfsFiles(
     if (!importedNames.has(name)) fs.writeFile(`/game/${name}`, EMPTY_ARCHIVE);
   }
   await stageBundledLogo(fs, record.id, importedNames);
-  const mods = await loadMods(fs, record.storage, {
-    excludeGameFont: thaiFontFix.enabled,
-    inPlace: true,
-  });
+  const mods = await loadMods(fs, record.storage, { inPlace: true });
   // A fresh import has no settings of its own; give the game the launcher's defaults first.
   await ensureDefaultMainSettings(record);
   await ensureDefaultHostSettings(record);
@@ -619,7 +585,6 @@ async function loadOpfsFiles(
   // Restored browser settings include the game's INI and can contain a stale mode.
   // The launcher's explicit choice must win for this session and the next save sync.
   stageVideoSize(fs, record.id, video);
-  await stageThaiFont(fs, thaiFontFix);
   store.loading("the game");
 }
 
@@ -678,7 +643,6 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
         return null;
       })
     : null;
-  const thaiFontFix = options.thaiFontFix ?? { enabled: false, fontId: "" };
   const baseScriptUrl = gameScript(game);
   const moduleBase = baseScriptUrl.slice(0, baseScriptUrl.lastIndexOf("/") + 1);
   store.begin();
@@ -705,7 +669,7 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
     };
 
     const module = {
-      arguments: gameArguments(options.args, thaiFontFix),
+      arguments: gameArguments(options.args),
       print: onLine,
       printErr: onLine,
       onAbort: (what: unknown) => {
@@ -857,11 +821,10 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
     module.noInitialRun = true;
     const files = options.files;
     const loadFiles = (fs: EmscriptenFs): Promise<void> => {
-      if (files.kind === "opfs")
-        return loadOpfsFiles(fs, store, files.record, files.video ?? null, thaiFontFix);
+      if (files.kind === "opfs") return loadOpfsFiles(fs, store, files.record, files.video ?? null);
       if (files.kind === "dev-folder" || files.kind === "test-folder") {
         const base = appPath(files.kind === "test-folder" ? "test-game" : "dev-game");
-        return loadDevFiles(fs, store, files.video ?? null, fetch, base, game, thaiFontFix);
+        return loadDevFiles(fs, store, files.video ?? null, fetch, base, game);
       }
       return Promise.resolve();
     };
@@ -940,12 +903,7 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
         };
         loadFiles(fs)
           .then(() => stageRuntimeBundle(fs, game, runtimeGame))
-          .then(() =>
-            applyCsfOverrides(csfFs, game, {
-              thaiFontFixEnabled: thaiFontFix.enabled,
-              readStrings: options.readStrings,
-            }),
-          )
+          .then(() => applyCsfOverrides(csfFs, game, { readStrings: options.readStrings }))
           .then((csf) => {
             if (csf.warning) console.warn(`[csf] ${csf.warning}`);
           })
