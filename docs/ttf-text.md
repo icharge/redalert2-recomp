@@ -50,7 +50,8 @@ Both editions have adapters for the bitmap-font measurement, label, and
 paragraph entry points. Paragraphs use the original surface setup/release
 calls. Center and right alignment use the game's original flag bits, `0x1`
 and `0x2`. Layouts use the font object's line height and a fitted Noto Sans
-style; this changes the appearance and width of opted-in text.
+style (Thai runs their own size, below); this changes the appearance and width
+of the text the engine draws, which by default is only text with Thai.
 
 TTF reveal uses that same full-string layout throughout the animation and
 reveals complete shaped clusters. This keeps wrapping and positioning stable
@@ -108,12 +109,17 @@ and temporary layout allocations are outside that cache budget.
 
 This is a limited rendering integration. GDI text, individual glyph calls,
 and unsupported control-character paths can still use the original
-renderer. It does not establish complete screen coverage. Existing FNT and
-legacy CP874 mod behavior remain available with TTF disabled.
+renderer. A paragraph with a line break (`has_layout_control` in the adapter)
+is one of them: multi-line Thai, such as a dialog's text, falls back to the
+bitmap font and is not shaped. It does not establish complete screen
+coverage. Existing FNT and legacy CP874 mod behavior remain available with
+TTF disabled.
 
 ## Fonts
 
-Bundled OFL Noto faces cover Latin/Greek/Cyrillic, Thai, Arabic, and CJK.
+The game builds bundle two OFL Noto faces: Noto Sans (Latin, Greek,
+Cyrillic) and Noto Sans Thai. The Arabic and CJK faces in `assets/fonts/` are
+built only into the engine's own tests (Cargo feature `all-scripts`, above).
 See [the asset provenance and notices](../assets/fonts/README.md). Font
 assets were taken from the licensed local Vera font set; no Vera renderer
 source was copied.
@@ -152,8 +158,23 @@ the same rebuilt module and local retail files. Pixel bounds for all six
 main-menu captions confirmed that they were centered and stayed inside
 their buttons; both screens were also visually inspected. Captures and
 logs are in the working tree's `work/ttf-review-captures/`. This covers
-those gamemd screens. Tactical chat, lobby chat, other paragraphs and
-fields, and the RA2 edition's browser runtime remain unverified.
+those gamemd screens.
+
+On 2026-11-23, with Thai-only routing and the game style, on the production
+builds of both editions:
+
+- Rust: 7 unit tests (4 in `lib.rs`, 3 in `sharp.rs`) and 11 behavior tests,
+  `cargo test` with default features. With `--no-default-features` the CJK
+  shaping test fails by design (no CJK face).
+- The six harnesses under Emscripten, with two new cases in `text_guest_abi`:
+  1b (a Latin string is refused, a Thai one drawn) and 1c (ส and ล through
+  the adapter; fails with the game style off).
+- Browser e2e, RA2 and YR: `web/e2e/chat-box.mjs` (Thai typed in the lobby
+  goes out on WOL as UTF-8 Thai, and the lobby transcript draws it shaped),
+  `quickmatch.mjs --row 11` (Thai from A's match panel reaches B's panel, and
+  the game's own message row draws it), and `thai-csf.mjs` (a Thai
+  `strings.json` reaches the CSF as UTF-16 and the main menu draws it).
+- Not checked: the native Windows and Linux hosts, and multi-line Thai.
 
 ### Size
 
@@ -179,12 +200,16 @@ With the engine on (the default), text committed in the page's TYPE box and
 chat boxes reaches the game's edit controls as Unicode: each code point in the
 Basic Multilingual Plane is posted as its own `WM_CHAR` value, which the game's
 edit control stores as one UTF-16 unit. With `--no-ttf-text`, typing sends
-Windows-874 bytes as before. See [the input diagnosis](thai-input-diagnosis.md) for the
+Windows-874 bytes as before. The page's chat boxes type code points into the
+game the same way (`web_text_char` in `src/web/presenter.c`). See [the input diagnosis](thai-input-diagnosis.md) for the
 edit control's contract and the probe results.
 
 This covers the game's wide edit fields, such as the LAN lobby chat draft,
 which the 2026-11-15 probe confirmed holds and draws Thai. Player name fields
 are byte-only in the game and refuse characters past `0xFF`, so Thai names
-are still not possible. No IME composition display, physical Thai keyboard
-layout, network encoding or saved-setting change has been added. Tactical
-chat and the RA2 edition were not checked.
+are still not possible (and player names are English only by policy). No
+IME composition display or physical Thai keyboard layout has been added.
+
+Chat leaves the game as real Unicode: a WOL line as UTF-8 (the wolapi shim
+builds its string from the game's UTF-16), a match chat packet as the game's
+UTF-16 (`src/web/match_chat.c`). The page's panels show what arrives as is.

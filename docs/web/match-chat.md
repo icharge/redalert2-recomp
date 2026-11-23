@@ -399,6 +399,12 @@ The chat panel and the lobby chat box (22 November).
     players as text. ra2web `WolServer.handlePrivmsg` now gives them to the bot
     in game rooms too (not in the Quick Match lobbies); the answer is private.
     The game still echoes the player's own `/help` line on their own screen.
+- **Thai** (23 November): a line typed in the lobby box or the match panel
+  reaches the game as code points, leaves as real Unicode (UTF-8 on WOL, the
+  game's UTF-16 in a match packet), and the game draws any text with Thai
+  through the TrueType engine, shaped and sharp (`docs/ttf-text.md`).
+  `chat-box.mjs` and `quickmatch.mjs --row 11` send Thai lines and shoot them
+  (`chat-box-thai`, `match-chat-thai`).
 - **Escape in a chat box** closes the box and does not release the capture:
   `browser-controls.ts` skips its own release for `[data-game-text]`. In
   fullscreen, where Keyboard Lock gives the page Escape, the mouse stays

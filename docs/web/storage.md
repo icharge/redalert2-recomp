@@ -235,7 +235,9 @@ snapshot and is not copied to `save/<storage>/`.
 Thai is written as UTF-16 code units (U+0E01..), which the game's TrueType text
 engine draws (`docs/ttf-text.md`), and a base table that stores Thai as
 Windows-874 bytes (made for the retired Thai font option) is converted entry by
-entry, with or without overrides.
+entry, with or without overrides. `web/e2e/thai-csf.mjs` serves a Thai
+`strings.json` to the page and checks the generated table's units and the main
+menu (shot `thai-csf-menu`), in either edition.
 A missing label is left unchanged and reported; `inject` appends it. Invalid
 JSON, an unrepresentable character, or no base table leaves the game unchanged.
 
