@@ -59,6 +59,18 @@ int web_match_chat_open(uint32_t mode, uint32_t target) { (void)mode, (void)targ
 void web_wol_icon_surface(uint32_t hwnd, uint32_t surface) { (void)hwnd; (void)surface; }
 uint32_t ra2_net_tuning_timing_send_rate(uint32_t stock) { return stock; }
 uint32_t ra2_net_tuning_timing_max_ahead(uint32_t stock) { return stock; }
+/* run_lift.py test_map_patches: the web host reads --test-map (src/web/test_map.c); native has none. */
+int ra2_test_map_pending(void) { return 0; }
+int ra2_test_map_single(char *name, int cap) { (void)name, (void)cap; return -1; }
+int ra2_test_map_single_active(void) { return 0; }
+int ra2_test_map_done(void) { return 0; }
+int ra2_test_map_int(const char *s, const char *k, int def) { (void)s, (void)k; return def; }
+const char *ra2_test_map_str(const char *s, const char *k, const char *def) { (void)s, (void)k; return def; }
+int ra2_test_map_has(const char *s) { (void)s; return 0; }
+void ra2_test_map_started(int ok) { (void)ok; }
+int ra2_test_map_is_scenario(const char *item) { (void)item; return 0; }
+int ra2_test_map_name(char *dst, int cap) { (void)dst, (void)cap; return 0; }
+void ra2_test_map_note(int what, uint32_t n) { (void)what, (void)n; }
 #endif
 
 #define RA2_IMAGE_BASE 0x00400000u
