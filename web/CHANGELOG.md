@@ -9,7 +9,9 @@ The native releases (v0.1.0 to v0.1.3) are in the repository's
 [CHANGELOG.md](../CHANGELOG.md); none of them include the browser build. The
 commit after each entry is where to read more.
 
-## [Unreleased]
+## [0.5.0] - 2026-11-23
+
+Changes since 0.4.0.
 
 ### Added
 
@@ -23,7 +25,6 @@ commit after each entry is where to read more.
   (`"encoding": "windows-874"`) is written into the game as real Thai, and a
   Thai string table made for the old Thai font is converted when the game
   starts.
-
 - **Tabs in the match panel**: All, Allies, PM (whispers, yours too) and
   System (the game's own messages). A tab with something new is marked. Lines
   to allies show `[Allies]` for everyone on this build, not only for you.
@@ -32,6 +33,16 @@ commit after each entry is where to read more.
   without typing the command again. Typing `/r ` or `/p name ` at the start
   of a line switches it at once. Tab goes All, Allies, then the player;
   Backspace and `\` go back to allies and everyone.
+- **XCC mod packs in the MODS tab**: install a .xmlf or .exe made by XCC Mod
+  Creator with INSTALL MOD or by dropping it. Its rules, art, maps and string
+  table are unpacked into a mod folder, and the launcher lists what it could
+  not bring yet.
+- **Test Map from FA2EX**: the browser map editor's Test Map opens the game
+  straight into the map, in either edition: a skirmish on a multiplayer map,
+  the mission on a singleplayer one. No intro, menus or score screen; the
+  game's own loading screen shows, and the tab closes when the test ends
+  (Abort Mission). The editor can reveal the map and choose your start and
+  the game mode, and in Yuri's Revenge the AI players' teams.
 
 ### Changed
 
@@ -98,10 +109,6 @@ Changes since 0.3.0.
   into the game room a friend is in, and while you are in a room INVITE asks
   a friend into it. The friend sees the invitation in their chat and in
   MESSAGES with a JOIN button.
-- **XCC mod packs in the MODS tab**: install a .xmlf or .exe made by XCC Mod
-  Creator with INSTALL MOD or by dropping it. Its rules, art, maps and string
-  table are unpacked into a mod folder, and the launcher lists what it could
-  not bring yet.
 
 ### Changed
 
