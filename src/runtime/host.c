@@ -64,6 +64,8 @@ int ra2_test_map_pending(void) { return 0; }
 int ra2_test_map_single(char *name, int cap) { (void)name, (void)cap; return -1; }
 int ra2_test_map_single_active(void) { return 0; }
 int ra2_test_map_done(void) { return 0; }
+int ra2_test_map_hold(void) { return 0; }
+void ra2_test_map_loaded(void) {}
 int ra2_test_map_int(const char *s, const char *k, int def) { (void)s, (void)k; return def; }
 const char *ra2_test_map_str(const char *s, const char *k, const char *def) { (void)s, (void)k; return def; }
 int ra2_test_map_has(const char *s) { (void)s; return 0; }

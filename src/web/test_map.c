@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <unistd.h>
 
 #include "web_api.h"
 
@@ -25,6 +26,7 @@ static int g_count;
 static int g_pending;     /* set by a readable --test-map file; cleared once the dialog is skipped */
 static int g_active;      /* a test-map match was started: its end goes to the page */
 static int g_single;      /* the staged map is a singleplayer mission, started as a campaign one */
+static int g_ran;         /* a test-map match was started; the game never goes back to its menus */
 
 const char *ra2_test_map_str(const char *section, const char *key, const char *def);
 
@@ -142,6 +144,7 @@ int ra2_test_map_pending(void) { return g_pending; }
 void ra2_test_map_started(int ok) {
     g_pending = 0;
     g_active = ok;
+    g_ran = ok;
     if (!ok) {
         fprintf(stderr, "[test-map] the test map could not be set up; showing the menus\n");
         web_event_json("{\"e\":\"testMapFailed\"}");
@@ -158,4 +161,25 @@ int ra2_test_map_done(void) {
     fprintf(stderr, "[test-map] match over\n");
     web_event_json("{\"e\":\"testMapDone\"}");
     return 1;
+}
+
+/* Patch site 5: Main_Game's first Select_Game call has returned, so the test map has loaded and
+ * the match is about to run. No main menu ever opens, so this stands in for it: the page's menu
+ * event (phase running, its loading screen goes) and the input script's clock (script.c). */
+void ra2_test_map_loaded(void) {
+    if (!g_ran) return;
+    fprintf(stderr, "[test-map] the map has loaded\n");
+    void script_test_map_started(void);
+    script_test_map_started();
+}
+
+/* Patch site 4: Main_Game's call back into Select_Game, which every way out of the match reaches
+ * (its end, Options > Abort Mission > Quit, a lost mission's Quit). After a test match the page
+ * gets testMapDone, once, and the game thread waits here for the page to leave: no menu opens,
+ * and the game does not exit (an exit sends the page to the launcher). 0 when no test ran. */
+int ra2_test_map_hold(void) {
+    if (!g_ran) return 0;
+    ra2_test_map_done();
+    fprintf(stderr, "[test-map] holding: no menus after a test match\n");
+    for (;;) usleep(200000);
 }

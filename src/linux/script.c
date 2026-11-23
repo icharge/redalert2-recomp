@@ -152,6 +152,16 @@ static void dialog_created(uint32_t h, uint32_t id) {
     if (id == 0xE2) g_main_menu = h;
 }
 
+/* --test-map (src/web/test_map.c): no main menu opens, so the loaded test map stands in for it:
+ * the script's clock starts and the page leaves its loading screen (phase running). */
+void script_test_map_started(void) {
+    if (__sync_lock_test_and_set(&g_menu_open, 1)) return;
+    g_t0 = now_ms();
+#ifdef __EMSCRIPTEN__
+    web_event_menu();
+#endif
+}
+
 /* Whether the main menu is up: nothing to lose by restarting (mods.c). */
 int script_at_main_menu(void) { return g_main_menu && hle_is_window(g_main_menu); }
 static uint32_t find_dialog(int id) {

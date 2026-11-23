@@ -993,15 +993,19 @@ TEST_MAP_SITES = {
     # skirmish: its Skirmish case; dialog: the skirmish dialog call; end: the end-of-scenario call;
     # single: the new-campaign difficulty block (needs eax = Scen, ebx = 0, and in RA2 esi = 1);
     # campaign: the campaign-or-file test before Start_Scenario; file: Start_Scenario on the
-    # scenario's own file name, which sits at Scen + name. RA2's set was found by aligning its
+    # scenario's own file name, which sits at Scen + name; again: Main_Game's call back into
+    # Select_Game once a match is over, won, lost or aborted; first: its first call, which returns
+    # once the map has loaded. RA2's set was found by aligning its
     # instructions with YR's and checked against game.exe (docs/web/test-map.md).
     'gamemd': dict(menu=(0x0052DC87, '83fe12'), skirmish=(0x0052E10F, 'c70538b2a80005000000'),
                    dialog=(0x0052E168, 0x006AE2C0), end=(0x0055D14A, 0x00685670),
+                   again=(0x0048CFAA, 0x0052D9A0), first=(0x0048CDD3, 0x0052D9A0),
                    single=(0x0052E527, '8b0d64eba800'), campaign=(0x0052E6E0, '391d38b2a800'),
                    file=(0x0052E737, 'a130b2a800'), scen=0x00A8B230, name=0x125C,
                    difficulty=0x00A8EB64, single_regs=''),
     'game': dict(menu=(0x005138D6, '83fd12'), skirmish=(0x00513D93, 'c70598d2a30005000000'),
                  dialog=(0x00513DEC, 0x00683BF0), end=(0x0053F9BA, 0x0065D7F0),
+                 again=(0x00481EDA, 0x005135F0), first=(0x00481D03, 0x005135F0),
                  single=(0x0051411E, '8b0d1c0ba400'), campaign=(0x0051429A, '391d98d2a300'),
                  file=(0x005142F1, 'a190d2a300'), scen=0x00A3D290, name=0x083C,
                  difficulty=0x00A40B1C, single_regs=' esi = 1u;'),
@@ -1016,7 +1020,7 @@ def test_map_patches(code, cs, target):
     t = TEST_MAP_SITES[target]
     raw = lambda va, shape: code[va - cs:va - cs + len(bytes.fromhex(shape))] == bytes.fromhex(shape)
     if (not all(raw(*t[k]) for k in ('menu', 'skirmish', 'single', 'campaign', 'file'))
-            or not _call_matches(code, cs, *t['dialog']) or not _call_matches(code, cs, *t['end'])):
+            or not all(_call_matches(code, cs, *t[k]) for k in ('dialog', 'end', 'again', 'first'))):
         print('[*] test_map_patches: the sites do not match this build; no Test Map')
         return {}
     return {
@@ -1037,6 +1041,15 @@ def test_map_patches(code, cs, target):
                          % t['dialog'][1]),
         t['end'][0]: ('@replace:{ extern int ra2_test_map_done(void); if (!ra2_test_map_done()) RECOMP_CALL(sub_%08X); } '
                       '/* FA2EX Test Map: no score screen, run_lift.py test_map_patches */' % t['end'][1]),
+        # Every way out of a test match (its end, Abort Mission, a mission's Quit) comes back to
+        # Main_Game's second Select_Game call: the page gets testMapDone and no menu opens.
+        t['again'][0]: ('@replace:{ extern int ra2_test_map_hold(void); if (!ra2_test_map_hold()) RECOMP_CALL(sub_%08X); } '
+                        '/* FA2EX Test Map: back to FA2EX, not to the menus, run_lift.py test_map_patches */'
+                        % t['again'][1]),
+        # Select_Game returns once the scenario has loaded: the page drops its loading screen.
+        t['first'][0]: ('@replace:{ RECOMP_CALL(sub_%08X); { extern void ra2_test_map_loaded(void); ra2_test_map_loaded(); } } '
+                        '/* FA2EX Test Map: the map has loaded, run_lift.py test_map_patches */'
+                        % t['first'][1]),
     }
 
 
