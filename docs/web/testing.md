@@ -232,6 +232,24 @@ directory has native LAN/modal, lobby/setup, match/order-response captures
 and full per-client logs. Earlier failed iterations are retained separately
 under `work/web-lan-session-ra2*` and are not passing evidence.
 
+Rerun on 2026-11-23, after the rebase onto `web-port` (protocol 14, the LAN
+button in the game tray). The October fixtures are gone, so the runs use the
+full install read-only (`--game <main checkout>/game`) at `--video 800x600`,
+with the worktree's dev server on 5178 and the fast build
+(`build-web.cmd --mode fast --edition ra2`, with
+`--cmake-arg=-DRA2_GAME_DIR=<main checkout>/game` in a worktree):
+
+- `lan-peer.mjs`: PASS.
+- RA2 `lan.mjs`: PASS (pairing from native Network, lobby IPX, the name field
+  keeping its typing, a shared match, a changed frame after each player's order).
+- RA2 `lan-session.mjs`: PASS (all failure cases above).
+- Yuri's Revenge: not rerun yet.
+
+Captures and logs: `work/lan-2026-11-23/ra2-match/` and `ra2-fail/`. The
+name-field check clicks a different point per edition: the field sits at
+134..273 x 16..37 in Yuri's Revenge's 800x600 menu and at 216..352 x 76..97 in
+Red Alert 2's.
+
 Validation on 2026-10-26: both `cmake --build build-web --parallel 4` and
 `cmake --build build-web-game --parallel 4` reported no work. `pnpm --dir web
 test` passed 442 tests in 44 files; `pnpm --dir web build` and `pnpm --dir web

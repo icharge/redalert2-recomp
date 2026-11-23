@@ -174,11 +174,13 @@ try {
   await guest.shot("lan-guest-lobby");
 
   // The page's chat box takes only the typing meant for the chat line: the LAN screen's own name
-  // field ("Your Name", Edit 0x541, at 134..273 x 16..37 in the 800x600 menu) keeps its keys.
+  // field ("Your Name", Edit 0x541) keeps its keys. It sits at 134..273 x 16..37 in Yuri's Revenge's
+  // 800x600 menu and at 216..352 x 76..97 in Red Alert 2's.
   {
     const box = host.page.getByRole("textbox", { name: "Chat message" });
     await box.waitFor({ timeout: 15000 });
-    await host.clickGame(205, 27);
+    if (opts.edition === "ra2") await host.clickGame(284, 87);
+    else await host.clickGame(205, 27);
     await host.page.waitForTimeout(500);
     assert.equal((await host.state()).chatField.keys, false, "the game's name field has the focus");
     await host.page.keyboard.type("Zq", { delay: 80 });
