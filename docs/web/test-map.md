@@ -218,8 +218,17 @@ house takes start 2 and the AIs take 0, 1 and 3; `GameMode=2` (both editions) an
 with `GameMode=3` and three AI rows starts, allies the AIs together, and runs; a test mission gets
 `-SPEEDCONTROL`.
 
+In Chrome (RA2, FA2EX's own generated map, one AI): `Start=2` with `RevealMap=1` starts the human
+at start 2 with its units and the whole map revealed. The first build of the `ra2_start` patch
+left eax holding the human flag on its early return; the caller reads the start cell through the
+returned eax (`0x5B7C74`: `mov eax, [eax]`), so every house got a bad base centre and was
+defeated at once. Under Node that did not show (only the log line was checked). The early return
+now leaves eax, ecx and edx as the picker's own exit does.
+
 Not checked yet: a match that ends by itself (`testMapDone` from patch 3, then the hold); Yuri's
-Revenge in a browser (no YR import there). The view opens beside the base on the RA2 skirmish
+Revenge in a browser (no YR import there). When every house was defeated at once (the bug above), RA2 showed its skirmish
+score dialog (`0x108`) instead of `testMapDone`: that end does not pass the `end` site; after
+Continue, Main_Game's `again` site would still end the test. The view opens beside the base on the RA2 skirmish
 map tried (H centres it), as with `--intro`.
 
 ## Map requirements

@@ -1069,7 +1069,9 @@ def test_map_patches(code, cs, target):
     }
     if st:
         # RA2 [Settings] Start=: the human's house takes that start; until it does, the start is
-        # held back from the AI houses (marked taken, so they pick around it).
+        # held back from the AI houses (marked taken, so they pick around it). The early return
+        # leaves the registers as the picker's own exit does (0x5B79E4..0x5B79F9): eax the out
+        # pointer, edx the cell, ecx the list, esi the index.
         patches[st['site'][0]] = (
             '{ extern int ra2_test_map_start(void); extern int ra2_test_map_held(int); '
             'const int tm_s = ra2_test_map_start(); const uint32_t tm_list = MEM32(ebp + 0x10u); '
@@ -1079,7 +1081,8 @@ def test_map_patches(code, cs, target):
             'if (tm_house) { ecx = tm_house; RECOMP_CALL(sub_%08X); tm_human = LO8(eax); } '
             'if (tm_human && (!MEM8(tm_taken + (uint32_t)tm_s) || ra2_test_map_held(-1))) { '
             'MEM8(tm_taken + (uint32_t)tm_s) = 1; ra2_test_map_held(0); '
-            'MEM32(MEM32(ebp + 8u)) = MEM32(MEM32(tm_list + 4u) + 4u * (uint32_t)tm_s); '
+            'ecx = MEM32(tm_list + 4u); edx = MEM32(ecx + 4u * (uint32_t)tm_s); esi = (uint32_t)tm_s; '
+            'eax = MEM32(ebp + 8u); MEM32(eax) = edx; '
             'edi = POP32_VAL(esp); esi = POP32_VAL(esp); ebx = POP32_VAL(esp); esp = ebp; ebp = POP32_VAL(esp); '
             'RECOMP_FLAGS_OUT(); esp += 20; { RECOMP_REGS_OUT(); return; } } '
             'if (!tm_human && !MEM8(tm_taken + (uint32_t)tm_s)) { MEM8(tm_taken + (uint32_t)tm_s) = 1; ra2_test_map_held(1); } } } '
