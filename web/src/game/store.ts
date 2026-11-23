@@ -85,10 +85,13 @@ export interface GameState {
   matchChat: MatchChat;
   settings: HostSettings | null;
   restart: { mod: string } | null;
+  /** FA2EX Test Map: the test match was set up and its map is loading (testMapStarted) */
+  testMapStarted: boolean;
 }
 
 const INITIAL: GameState = {
   phase: "idle",
+  testMapStarted: false,
   loading: null,
   copy: null,
   title: null,
@@ -201,6 +204,9 @@ export class GameStore {
         return;
       case "menu":
         this.set({ phase: "running", loading: null });
+        return;
+      case "testMapStarted":
+        this.set({ testMapStarted: true });
         return;
       case "settings":
         this.set({ settings: event });

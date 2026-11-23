@@ -42,6 +42,39 @@ export function testMapReturnUrl(request: TestMapRequest, outcome: "done" | "fai
   return `${path}${join}testmap=${outcome}${hash ? `#${hash}` : ""}`;
 }
 
+/** The bits of `window` the end of a test uses (a parameter for the tests). */
+export interface TestMapWindow {
+  close(): void;
+  readonly closed: boolean;
+  location: { replace(url: string): void };
+}
+
+/** How long a refused `window.close()` gets before the page goes to the return URL instead. */
+export const TEST_MAP_CLOSE_WAIT_MS = 400;
+
+/**
+ * The test is over (testMapDone or testMapFailed). FA2EX opens it in a tab of its own from a
+ * script (`window.open`, then the URL), and such a tab may close itself: close it, so the editor
+ * shows again. A tab the browser will not close (opened by hand, or a refused close) goes to the
+ * return URL instead.
+ */
+export function closeOrReturn(
+  url: string,
+  win: TestMapWindow = window,
+  wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
+): Promise<"closed" | "returned"> {
+  try {
+    win.close();
+  } catch {
+    // a refused close is the same as one that did nothing
+  }
+  return wait(TEST_MAP_CLOSE_WAIT_MS).then(() => {
+    if (win.closed) return "closed";
+    win.location.replace(url);
+    return "returned";
+  });
+}
+
 interface TestMapFs {
   writeFile(path: string, data: Uint8Array): void;
 }

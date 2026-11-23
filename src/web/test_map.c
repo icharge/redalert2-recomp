@@ -150,6 +150,7 @@ void ra2_test_map_started(int ok) {
         web_event_json("{\"e\":\"testMapFailed\"}");
     } else {
         fprintf(stderr, "[test-map] starting the match\n");
+        web_event_json("{\"e\":\"testMapStarted\"}");   /* the page shows the game's loading screen */
     }
 }
 

@@ -40,9 +40,11 @@ skirmish has no team or start choice (starts are random); AI rows are level 0xA3
    `/emu/game?testmap=1&edition=<ra2|ra2md>&return=<editor path>` in a new tab.
 2. The launcher (`web/src/game/test-map.ts`, wired in `loader.ts` and `screens/Play.tsx`) copies
    every file there into `/game` before `callMain` (the game lists maps once, at start-up) and
-   adds `--test-map /game/fa2ex-test.ini`. On `testMapDone` or `testMapFailed` it closes the tab
-   when FA2EX opened it, else goes to the `return` path with `testmap=done|failed` added (a
-   same-origin path only; without one, the launcher's root).
+   adds `--test-map /game/fa2ex-test.ini`. On `testMapDone` or `testMapFailed` it calls
+   `window.close()` (FA2EX opens the tab from a script, `window.open('about:blank')` and then
+   the URL, so the tab may close itself); if the tab is still open 400 ms later (opened by hand,
+   or the close refused) it goes to the `return` path with `testmap=done|failed` added (a
+   same-origin path only; without one, the launcher's root). `closeOrReturn` in `test-map.ts`.
 3. `src/web/test_map.c` reads the file after the game folder is mounted.
 4. `run_lift.py test_map_patches` (byte-checked sites in both editions; YR addresses below, RA2's
    in `TEST_MAP_SITES['game']`):
@@ -71,11 +73,14 @@ What a test launch skips, and what it only hides:
   cut to two frames and the splash's timed wait is skipped. Every later movie is cut too (a
   mission's briefing). The launcher passes no intro argument on a `?testmap=1` launch.
 - **Skipped: the main menu, the skirmish dialog, the score screen, the menus after the match.**
-- **Hidden: the boot screen and the map's loading screen.** The scenario still has to load. The
-  launcher keeps its own full loading screen (not the small chip) until the game's `menu` event,
-  which a test sends once the map has loaded (the `0x48CDD3` site). In Chrome on an RA2 skirmish:
-  about 11 s from navigation to the match, all of it behind the launcher's screen. Under Node
-  (Yuri's Revenge skirmish, fast build): 10 s to the test start, 21 s more to load the map.
+- **Hidden: the boot screen.** The launcher keeps its own full loading screen (not the small
+  chip) until the game's `testMapStarted` event, sent when the test match is set up
+  (`ra2_test_map_started`), just before the scenario loads.
+- **Shown: the game's own map-loading screen**, with its progress, as in a match started from
+  the menus (the user asked to see it). Then the `menu` event, which a test sends once the map
+  has loaded (the `0x48CDD3` site), marks the page running. In Chrome on an RA2 skirmish: about
+  11 s from navigation to the match. Under Node (Yuri's Revenge skirmish, fast build): 10 s to
+  the test start, 21 s more to load the map.
 
 A launch without `?testmap=1` keeps its intro argument, its logo and the chip over the game's own
 boot screen.
@@ -145,6 +150,18 @@ menu (`0xE2`).
 The input script's clock starts at the test map's `menu` event under `--test-map` (there is no
 main menu). `--dump-frames` does not work under Node: its folder is resolved before the game
 folder is mounted.
+
+In Chrome, after the start-up and close changes (RA2, FA2EX's own hand-off): a tab opened from a
+script as FA2EX does showed the game's loading screen for about 4 s, then the match; Abort
+Mission → Quit closed the tab. The same launch typed into a tab went to `/emu/?testmap=done`.
+
+Missing overlay (bridges, ore) on FA2EX's test maps, 2026-11-23: not the test path. A stock RA2
+map (`mp09t3.map` from `multi.mix`, original bytes) staged as `fa2ex-test.mpr` shows its ore
+field under `--test-map` in Chrome. FA2EX's staged map (a generated 74×82 map, "Random 34466")
+looks the same under `--test-map` and in a skirmish started from the menus on the same file: no
+ore or bridges near the base. Its `[OverlayPack]` decodes to 262,144 cells with about 730 set,
+types 102–113 almost evenly (RA2's `[OverlayTypes]`: 102–104 `LOBRDG26`–`28`, 105–113
+`TIB01`–`TIB09`), so the encoder's type numbers or cell positions are the place to look.
 
 Not checked yet: a match that ends by itself (`testMapDone` from patch 3, then the hold); Yuri's
 Revenge in a browser (no YR import there). The view opens beside the base on the RA2 skirmish

@@ -171,6 +171,7 @@ export function Play({ files }: { files: FileSource }) {
   const cursorMarker = useRef<HTMLDivElement | null>(null);
   const pageCursorCanvas = useRef<HTMLCanvasElement | null>(null);
   const phase = useGameState((s) => s.phase);
+  const testMapStarted = useGameState((s) => s.testMapStarted);
   const copy = useGameState((s) => s.copy);
   const title = useGameState((s) => s.title);
   const error = useGameState((s) => s.error);
@@ -1129,11 +1130,11 @@ export function Play({ files }: { files: FileSource }) {
       <FrameStats presenter={presenter} on={statsOn} onToggle={toggleStats} />
       {waiting && <LoadingScreen state={{ phase, copy, title, edition: sourceGame(files) }} />}
       {phase === "booting" && !startError && !crashed && (
-        // A Test Map launch keeps the full screen over the game's boot and map-loading screens
-        // until the match runs (the game's menu event, sent when the map has loaded).
+        // A Test Map launch keeps the full screen over the game's boot until the test match is
+        // set up (testMapStarted); then the game's own map-loading screen shows, as in a match.
         <LoadingScreen
           state={{ phase, copy, title, edition: sourceGame(files) }}
-          variant={testMapLaunch ? "full" : "chip"}
+          variant={testMapLaunch && !testMapStarted ? "full" : "chip"}
         />
       )}
       {startError instanceof GameNotBuilt && (

@@ -30,6 +30,14 @@ describe("GameStore", () => {
     expect(store.getSnapshot()).toMatchObject({ fps: 29, ms: 34 });
   });
 
+  it("notes a Test Map match being set up, before its map has loaded", () => {
+    const store = new GameStore();
+    store.line(boot());
+    expect(store.getSnapshot().testMapStarted).toBe(false);
+    store.line('@ra2 {"e":"testMapStarted"}');
+    expect(store.getSnapshot()).toMatchObject({ phase: "booting", testMapStarted: true });
+  });
+
   it("keeps the map search's status for the no-match label", () => {
     const store = new GameStore();
     expect(store.getSnapshot().mapSearchStatus).toMatchObject({ open: false, noMatches: false });

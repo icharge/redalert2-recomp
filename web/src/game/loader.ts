@@ -55,7 +55,13 @@ import {
 import { PmStore } from "./pm";
 import { assertSecureEndpoint, wolHttpUrl as wolEndpoint } from "../wol-endpoint";
 import { UdpRelay, parseStartHandoff } from "./udp-relay";
-import { stageTestMap, testMapArguments, testMapReturnUrl, type TestMapRequest } from "./test-map";
+import {
+  closeOrReturn,
+  stageTestMap,
+  testMapArguments,
+  testMapReturnUrl,
+  type TestMapRequest,
+} from "./test-map";
 import { leaveGame } from "./lifecycle";
 
 /** The WOL chat socket: the operator's setting, or the HTTP server's as ws(s); wss in a build. */
@@ -399,12 +405,6 @@ export function argsFromQuery(search: string): string[] {
   return new URLSearchParams(search).getAll("arg");
 }
 
-/** FA2EX opens the test in its own tab: close it, so the editor shows again; else go back to it. */
-function closeOrReturn(url: string): void {
-  if (window.opener) window.close();
-  window.location.replace(url);
-}
-
 export function gameArguments(
   extra: string[] = [],
   thaiFontFix: ThaiFontPreference = { enabled: false, fontId: "" },
@@ -717,7 +717,7 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
         void leaveGame(
           window.ra2Session,
           testMapReturnUrl(testMap, event.e === "testMapDone" ? "done" : "failed"),
-          closeOrReturn,
+          (url) => closeOrReturn(url),
         );
     };
 

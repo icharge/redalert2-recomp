@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   TEST_MAP_DIRECTORY,
+  closeOrReturn,
   stageTestMap,
   testMapArguments,
   testMapRequest,
@@ -82,5 +83,31 @@ describe("FA2EX Test Map", () => {
     await expect(stageTestMap(fs, root({ "fa2ex-test.yrm": "x" }))).rejects.toThrow(
       /settings are missing/,
     );
+  });
+
+  function tab(closes: boolean) {
+    const replaced: string[] = [];
+    const win = {
+      closed: false,
+      close() {
+        if (closes) win.closed = true;
+      },
+      location: { replace: (url: string) => replaced.push(url) },
+    };
+    return { win, replaced };
+  }
+
+  it("closes the tab FA2EX opened when the test ends", async () => {
+    const { win, replaced } = tab(true);
+    await expect(closeOrReturn("/fa2/?testmap=done", win, async () => {})).resolves.toBe("closed");
+    expect(replaced).toEqual([]);
+  });
+
+  it("goes back to the editor when the browser keeps the tab open", async () => {
+    const { win, replaced } = tab(false);
+    await expect(closeOrReturn("/fa2/?testmap=failed", win, async () => {})).resolves.toBe(
+      "returned",
+    );
+    expect(replaced).toEqual(["/fa2/?testmap=failed"]);
   });
 });

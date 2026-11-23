@@ -35,6 +35,7 @@ export type GameEvent =
   | { e: "boot"; protocol: number; title: string; exe: string; stamp: number }
   | { e: "menu" }
   /** FA2EX Test Map (--test-map): the match ended, or the staged map could not be set up */
+  | { e: "testMapStarted" }
   | { e: "testMapDone" }
   | { e: "testMapFailed" }
   | ({ e: "settings" } & HostSettings)
@@ -152,6 +153,8 @@ export function parseEventLine(line: string): GameEvent | null {
       return null;
     case "menu":
       return { e: "menu" };
+    case "testMapStarted":
+      return { e: "testMapStarted" };
     case "testMapDone":
       return { e: "testMapDone" };
     case "testMapFailed":
