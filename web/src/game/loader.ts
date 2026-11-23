@@ -55,6 +55,8 @@ import {
 import { PmStore } from "./pm";
 import { assertSecureEndpoint, wolHttpUrl as wolEndpoint } from "../wol-endpoint";
 import { UdpRelay, parseStartHandoff } from "./udp-relay";
+import { stageTestMap, testMapArguments, testMapReturnUrl, type TestMapRequest } from "./test-map";
+import { leaveGame } from "./lifecycle";
 
 /** The WOL chat socket: the operator's setting, or the HTTP server's as ws(s); wss in a build. */
 function wolSocketUrl(httpUrl: string): string {
@@ -388,11 +390,19 @@ export interface StartOptions {
   store?: GameStore;
   /** Tests and hosts that already hold strings.json; normally fetched from the app root. */
   readStrings?: () => Promise<LauncherStringsConfig>;
+  /** FA2EX Test Map: stage its files, start straight into the match, go back when it ends (test-map.ts) */
+  testMap?: TestMapRequest | null;
 }
 
 /** The `arg=` values of a URL query, for tests and debugging (docs/web/protocol.md). */
 export function argsFromQuery(search: string): string[] {
   return new URLSearchParams(search).getAll("arg");
+}
+
+/** FA2EX opens the test in its own tab: close it, so the editor shows again; else go back to it. */
+function closeOrReturn(url: string): void {
+  if (window.opener) window.close();
+  window.location.replace(url);
 }
 
 export function gameArguments(
@@ -702,10 +712,20 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
     const onLine = (line: string) => {
       const event = store.line(line);
       if (event?.e === "settingsSaved") void saves?.flushSettings().catch(() => {});
+      const testMap = options.testMap;
+      if (testMap && (event?.e === "testMapDone" || event?.e === "testMapFailed"))
+        void leaveGame(
+          window.ra2Session,
+          testMapReturnUrl(testMap, event.e === "testMapDone" ? "done" : "failed"),
+          closeOrReturn,
+        );
     };
 
     const module = {
-      arguments: gameArguments(options.args, thaiFontFix),
+      arguments: gameArguments(
+        [...(options.args ?? []), ...(options.testMap ? testMapArguments() : [])],
+        thaiFontFix,
+      ),
       print: onLine,
       printErr: onLine,
       onAbort: (what: unknown) => {
@@ -940,6 +960,7 @@ export async function startGame(options: StartOptions): Promise<GameHandle> {
         };
         loadFiles(fs)
           .then(() => stageRuntimeBundle(fs, game, runtimeGame))
+          .then(() => (options.testMap ? stageTestMap(fs) : undefined))
           .then(() =>
             applyCsfOverrides(csfFs, game, {
               thaiFontFixEnabled: thaiFontFix.enabled,

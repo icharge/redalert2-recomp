@@ -34,6 +34,9 @@ export interface Pacing {
 export type GameEvent =
   | { e: "boot"; protocol: number; title: string; exe: string; stamp: number }
   | { e: "menu" }
+  /** FA2EX Test Map (--test-map): the match ended, or the staged map could not be set up */
+  | { e: "testMapDone" }
+  | { e: "testMapFailed" }
   | ({ e: "settings" } & HostSettings)
   | { e: "restart"; mod: string }
   | { e: "mode"; w: number; h: number }
@@ -149,6 +152,10 @@ export function parseEventLine(line: string): GameEvent | null {
       return null;
     case "menu":
       return { e: "menu" };
+    case "testMapDone":
+      return { e: "testMapDone" };
+    case "testMapFailed":
+      return { e: "testMapFailed" };
     case "restart":
       return typeof value.mod === "string" ? { e: "restart", mod: value.mod } : null;
     case "settings":

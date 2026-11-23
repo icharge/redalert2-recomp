@@ -97,6 +97,7 @@ import { FrameStats } from "./FrameStats";
 import { LoadingScreen } from "./LoadingScreen";
 import styles from "./Play.module.css";
 import { leaveGame } from "../game/lifecycle";
+import { testMapRequest } from "../game/test-map";
 import { statsWanted, writeStatsPreference } from "../storage/stats-preferences";
 import { introArguments } from "../storage/intro-preferences";
 import { speedControlArguments } from "../storage/speed-control-preferences";
@@ -129,7 +130,12 @@ function startOnce(files: FileSource, thaiFontFix: ThaiFontPreference): Promise<
     args.push(...introArguments(window.location.search, game));
   if (!args.some((arg) => /^-{1,2}speedcontrol$/i.test(arg)))
     args.push(...speedControlArguments(window.location.search, game));
-  window.ra2Session ??= startGame({ files, thaiFontFix, args });
+  window.ra2Session ??= startGame({
+    files,
+    thaiFontFix,
+    args,
+    testMap: testMapRequest(window.location.search),
+  });
   return window.ra2Session;
 }
 
