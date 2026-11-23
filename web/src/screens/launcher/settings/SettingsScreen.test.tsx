@@ -380,6 +380,27 @@ describe("SettingsScreen", () => {
     );
   });
 
+  it("turns LAN play off and on for the next launch", async () => {
+    setup({ editions: [ra2, yr] });
+    const lan = screen.getByRole("switch", { name: "LAN play" });
+    expect(lan).toHaveAttribute("aria-checked", "true");
+    await userEvent.click(lan);
+    expect(lan).toHaveAttribute("aria-checked", "false");
+    expect(localStorage.getItem("ra2-lan-play")).toBe("0");
+    await userEvent.click(lan);
+    expect(localStorage.getItem("ra2-lan-play")).toBeNull();
+  });
+
+  it("has no LAN play switch when the build turned LAN play off", () => {
+    vi.stubEnv("VITE_SHOW_NETWORK_LAN", "false");
+    try {
+      setup({ editions: [ra2, yr] });
+      expect(screen.queryByRole("switch", { name: "LAN play" })).toBeNull();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("writes the MOBA-style control to the host file", async () => {
     const { written } = setup();
     await gameplay();

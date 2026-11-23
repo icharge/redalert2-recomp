@@ -24,12 +24,14 @@ names another folder.
 
 ## Configuration
 
-`VITE_SHOW_NETWORK_LAN` controls whether the game tray offers its **LAN** button. Set it
-in `web/.env.local` (copy `.env.example`) or in the build environment. `false` hides the button;
-`true`, an empty value, an unset variable or any other value shows it. The setting is read when
-the page is built, so restart `pnpm dev` after a change, and rebuild and redeploy the production
-page. It is not a player setting: nothing is stored in the browser, and hiding the button does not
-change the LAN session itself.
+`VITE_SHOW_NETWORK_LAN` decides whether the site offers LAN play at all. Set it in
+`web/.env.local` (copy `.env.example`) or in the build environment. `false` turns LAN play off
+for everyone: the game tray has no **LAN** button, the launcher's Settings have no LAN play
+switch, and the game's Network button goes back to the main menu with a note. `true`, an empty
+value, an unset variable or any other value keeps LAN play, and each player can then turn it off
+in Settings, LAUNCHER, **LAN play** (stored in the browser as `ra2-lan-play`). The flag is read
+when the page is built, so restart `pnpm dev` after a change, and rebuild and redeploy the
+production page.
 
 ## Commands
 

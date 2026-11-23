@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
-  /** "false" hides the game tray's LAN button; anything else shows it. */
+  /** "false" turns LAN play off for everyone (config.ts); anything else keeps it. */
   readonly VITE_SHOW_NETWORK_LAN?: string;
 }
 

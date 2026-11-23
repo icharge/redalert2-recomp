@@ -90,8 +90,8 @@ are usable; it must not assume the original Westwood Online servers are live.
 Stage 12's existing manual WebRTC transport has passed the two-client LAN
 match check. Its next planned step is the
 [LAN session joining flow](lan-webrtc-joining-plan.md): first W12.0 adds
-`VITE_SHOW_NETWORK_LAN` to show/hide the Network (LAN) sidebar item (`true`
-shows it, `false` hides it; default shown), then W12.4–W12.8 implement joining. Entering
+`VITE_SHOW_NETWORK_LAN` (`false` turns LAN play off for the whole site;
+otherwise the launcher's LAN play switch decides, on by default), then W12.4–W12.8 implement joining. Entering
 Network first shows the game's original LAN screen, then automatically opens
 a browser dialog to create or join a WebRTC session. After pairing, players
 continue through the native lobby's New/Join, Accept and Start flow. This

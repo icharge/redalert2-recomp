@@ -1,8 +1,10 @@
 /**
- * Whether the game tray shows its LAN button. Only the exact string "false" hides it:
- * unset, empty and unrecognized values keep it. Read at build time, so a change needs a restart.
+ * Whether this build offers LAN play at all. Only the exact string "false" turns it off: the
+ * game tray has no LAN button, the launcher has no LAN setting, and the game's Network button
+ * goes back to the main menu. Unset, empty and unrecognized values keep it. Read at build time,
+ * so a change needs a restart (dev) or a rebuild (production).
  */
-export function networkLanVisible(
+export function buildAllowsLanPlay(
   value: string | undefined = import.meta.env.VITE_SHOW_NETWORK_LAN,
 ): boolean {
   return value !== "false";

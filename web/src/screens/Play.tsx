@@ -23,7 +23,7 @@ import { GameAudio } from "../game/audio";
 import { attachInput } from "../game/input";
 import { PageCursor } from "../game/cursor-layer";
 import { LanPanel } from "../components/LanPanel";
-import { networkLanVisible } from "../config";
+import { lanPlay } from "../storage/lan-preferences";
 import { PmPanel, PmTrayButton } from "../components/PmPanel";
 import type { PmStore } from "../game/pm";
 
@@ -176,12 +176,25 @@ export function Play({ files }: { files: FileSource }) {
   const lanSession = useGameState((s) => s.lanSession);
   const lanSessionActive = useGameState((s) => s.lanSessionActive);
   const [lanOpen, setLanOpen] = useState(false);
+  // LAN play can be off (the build, or the launcher's settings): then the tray has no LAN button
+  // and the game's Network goes straight back to the main menu, with a word on why
+  const [lanAllowed] = useState(lanPlay);
+  const [lanOffNotice, setLanOffNotice] = useState(false);
+  useEffect(() => {
+    if (lanAllowed === "on" || !lanSession) return;
+    // the game's own Cancel: the same reply as the dialog's Cancel button
+    if (handle.current?.exports.ra2_lan_session_reply(lanSession.request, 0))
+      gameStore.resolveLanSession(lanSession.request);
+    setLanOffNotice(true);
+    const timer = window.setTimeout(() => setLanOffNotice(false), 8000);
+    return () => window.clearTimeout(timer);
+  }, [lanAllowed, lanSession]);
   // the LAN dialog owns the keys and the mouse while it shows; the runtime effect reads this ref
   const lanModal = useRef(false);
   useEffect(() => {
-    lanModal.current = lanSession !== null || lanOpen;
+    lanModal.current = (lanAllowed === "on" && lanSession !== null) || lanOpen;
     if (lanModal.current && document.pointerLockElement) document.exitPointerLock();
-  }, [lanSession, lanOpen]);
+  }, [lanAllowed, lanSession, lanOpen]);
   const saveReferencePrompt = useGameState((s) => s.saveReferencePrompt);
   const openLink = useGameState((s) => s.openLink);
   const mapSearchStatus = useGameState((s) => s.mapSearchStatus);
@@ -1036,9 +1049,9 @@ export function Play({ files }: { files: FileSource }) {
           <LanPanel
             game={handle.current}
             className={trayItem}
-            showTrigger={networkLanVisible()}
-            request={lanSession?.request ?? null}
-            activeRequest={lanSessionActive?.request ?? null}
+            showTrigger={lanAllowed === "on"}
+            request={lanAllowed === "on" ? (lanSession?.request ?? null) : null}
+            activeRequest={lanAllowed === "on" ? (lanSessionActive?.request ?? null) : null}
             onContinue={(request) => {
               if (!handle.current?.exports.ra2_lan_session_reply(request, 1)) return false;
               gameStore.resolveLanSession(request);
@@ -1152,6 +1165,18 @@ export function Play({ files }: { files: FileSource }) {
           canvas.current?.focus();
         }}
       />
+      {lanOffNotice && (
+        <Callout.Root className={styles.browserError} role="status">
+          <Callout.Text>
+            {lanAllowed === "build"
+              ? "LAN play is not available on this site."
+              : "LAN play is off. Turn it on in the launcher: Settings, LAUNCHER, LAN play."}
+          </Callout.Text>
+          <Button size="1" onClick={() => setLanOffNotice(false)}>
+            Dismiss
+          </Button>
+        </Callout.Root>
+      )}
       {browserError && (
         <Callout.Root className={styles.browserError} role="alert">
           <Callout.Text>{browserError}</Callout.Text>

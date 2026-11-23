@@ -246,7 +246,12 @@ with the worktree's dev server on 5178 and the fast build
 - Yuri's Revenge `lan.mjs` and `lan-session.mjs`: PASS, the same checks.
 
 Captures and logs: `work/lan-2026-11-23/` (`ra2-match/`, `ra2-fail/`,
-`yr-match/`, `yr-fail/`). The
+`yr-match/`, `yr-fail/`).
+
+`e2e/lan-off.mjs` (same arguments) turns LAN play off in the browser
+(`ra2-lan-play` = `0`) and checks that the tray has no LAN button and that the
+game's Network returns to the main menu with the page's note and no WebRTC
+dialog. It passed for both editions on 2026-11-23 (`work/lan-2026-11-23/off-*`). The
 name-field check clicks a different point per edition: the field sits at
 134..273 x 16..37 in Yuri's Revenge's 800x600 menu and at 216..352 x 76..97 in
 Red Alert 2's.

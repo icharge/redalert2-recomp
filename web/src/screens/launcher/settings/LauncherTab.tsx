@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { buildAllowsLanPlay } from "../../../config";
 import { forEachEdition } from "../../../storage/all-games";
 import {
   readChatTimePreference,
@@ -9,6 +10,7 @@ import {
   readSkipIntroPreference,
   writeSkipIntroPreference,
 } from "../../../storage/intro-preferences";
+import { readLanPlayPreference, writeLanPlayPreference } from "../../../storage/lan-preferences";
 import { readStatsPreference, writeStatsPreference } from "../../../storage/stats-preferences";
 import { Group, Segmented, Toggle } from "./controls";
 import type { TabProps } from "./shared";
@@ -30,6 +32,7 @@ export function LauncherTab({ editions, edition, settings }: TabProps) {
   const [skipIntro, setSkipIntro] = useState(() => readSkipIntroPreference(edition.storage));
   const [fps, setFps] = useState(() => readStatsPreference());
   const [chatTime, setChatTime] = useState(() => readChatTimePreference());
+  const [lan, setLan] = useState(() => readLanPlayPreference());
 
   const saveHost = (key: string, value: string, what: string) =>
     void settings.update(
@@ -88,6 +91,20 @@ export function LauncherTab({ editions, edition, settings }: TabProps) {
           }}
         />
       </Group>
+      {/* a build with VITE_SHOW_NETWORK_LAN=false has no LAN play, and so no switch for it */}
+      {buildAllowsLanPlay() && (
+        <Group title="LAN">
+          <Toggle
+            label="LAN play"
+            info="The game's Network button pairs two browsers over WebRTC, and the game tray has a LAN button. Off: Network goes back to the main menu. Applies at the next launch."
+            checked={lan}
+            onChange={(on) => {
+              setLan(on);
+              writeLanPlayPreference(on);
+            }}
+          />
+        </Group>
+      )}
     </>
   );
 }
