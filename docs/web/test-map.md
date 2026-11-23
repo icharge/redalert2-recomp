@@ -34,10 +34,15 @@ skirmish has no team or start choice (starts are random); AI rows are level 0xA3
 
 ## How it runs
 
-1. FA2EX writes the map and a settings file to OPFS `fa2ex-test/` and opens the launcher at
-   `/game?testmap=1&return=<editor path>` in a new tab (yurinet `src/game/test-map.ts`).
-2. The launcher copies both files into `/game` before `callMain` (the game lists maps once, at
-   start-up) and adds `--test-map /game/fa2ex-test.ini`.
+1. FA2EX writes the map and a settings file to OPFS `fa2ex-test/` (fa2web
+   `src/vfs/testMapHandoff.ts`; production serves it at `/fa2/` beside the launcher at `/emu/`,
+   so they share OPFS) and opens the launcher at
+   `/emu/game?testmap=1&edition=<ra2|ra2md>&return=<editor path>` in a new tab.
+2. The launcher (`web/src/game/test-map.ts`, wired in `loader.ts` and `screens/Play.tsx`) copies
+   every file there into `/game` before `callMain` (the game lists maps once, at start-up) and
+   adds `--test-map /game/fa2ex-test.ini`. On `testMapDone` or `testMapFailed` it closes the tab
+   when FA2EX opened it, else goes to the `return` path with `testmap=done|failed` added (a
+   same-origin path only; without one, the launcher's root).
 3. `src/web/test_map.c` reads the file after the game folder is mounted.
 4. `run_lift.py test_map_patches` (three byte-checked sites, `gamemd` only):
 
