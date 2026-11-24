@@ -27,7 +27,7 @@ names another folder.
 `VITE_SHOW_NETWORK_LAN` decides whether the site offers LAN play at all. Set it in
 `web/.env.local` (copy `.env.example`) or in the build environment. `false` turns LAN play off
 for everyone: the game tray has no **LAN** button, the launcher's Settings have no LAN play
-switch, and the game's Network button goes back to the main menu with a note. `true`, an empty
+switch, and the game's main menu has no Network button. `true`, an empty
 value, an unset variable or any other value keeps LAN play, and each player can then turn it off
 in Settings, LAUNCHER, **LAN play** (stored in the browser as `ra2-lan-play`). The flag is read
 when the page is built, so restart `pnpm dev` after a change, and rebuild and redeploy the

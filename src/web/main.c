@@ -770,6 +770,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--no-ttf-text")) text_guest_set_enabled(0); /* Thai back to the bitmap font */
         else if (!strcmp(argv[i], "--ttf-text-all")) text_guest_set_all(1);    /* every string, not only Thai */
         else if (!strcmp(argv[i], "--speedcontrol")) g_speed_control = 1;
+        else if (!strcmp(argv[i], "--no-lan")) web_presenter_set_lan_off(1);   /* the page has no LAN play: no Network button */
         else if (!strcmp(argv[i], "--test-map") && i + 1 < argc) test_map = argv[++i];   /* FA2EX: one skirmish, no menus (test_map.c) */
         else if (!strcmp(argv[i], "--classic-latency")) g_classic_latency = 1;
         else if (!strcmp(argv[i], "--net-delay") && i + 1 < argc) g_net_delay_ms = atoi(argv[++i]);

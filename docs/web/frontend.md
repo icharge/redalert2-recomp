@@ -230,8 +230,8 @@ bar, Play's footer stacks, and the Settings sections become a row.
 
 Game settings stay in the game's own files, so each setting has one copy. The launcher's Settings
 screen edits them for every edition of the install (All games, above): its Launcher tab has Skip
-intro, LAN play (on by default, stored as `ra2-lan-play`; off, the game's Network button goes
-back to the main menu and the tray has no LAN button; absent when the build sets
+intro, LAN play (on by default, stored as `ra2-lan-play`; off, the page starts the game with
+`--no-lan`, so the main menu has no Network button, and the tray has no LAN button; absent when the build sets
 `VITE_SHOW_NETWORK_LAN=false`), the host presentation settings (scaling, menu bars, cursor, HD vehicles, FPS counter; HD vehicles
 is off and disabled for now, as it makes the game lag, and the host ignores a saved `hdvox=1`), and
 its Gameplay,

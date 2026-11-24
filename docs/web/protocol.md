@@ -36,7 +36,8 @@ The game folder is passed with `--game`, as on Linux; each `arg=` in the page
 URL query is passed to the web host (`?arg=--hd-voxels`, for tests and
 debugging). The game's legacy `?arg=-SPEEDCONTROL` switch is translated into
 the host's `--speedcontrol` option and added to the Windows game's command
-line. Other arguments must be recognized by the web host. The canvas is not
+line. `--no-lan` (the page's LAN play is off) takes the Network button out of
+the main menu (`hide_network_button`, presenter.c). Other arguments must be recognized by the web host. The canvas is not
 handed over: the picture comes back through shared memory.
 
 Where `/game` comes from: the import in OPFS (big files linked and read in place from the

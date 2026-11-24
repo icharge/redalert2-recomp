@@ -151,6 +151,7 @@ static struct { uint32_t hwnd, surface; } g_wol_icon_surfaces[256];
 #define WOL_BSURFACE_VTABLE 0x007E2070u
 #endif
 static uint32_t g_main_menu_window;
+static int g_lan_off;                                     /* --no-lan: no Network button */
 static uint32_t g_lan_window;
 static int g_lan_entry_armed, g_lan_painted, g_lan_frame_ready;
 static volatile int g_lan_input_gated;
@@ -407,11 +408,45 @@ void web_presenter_dialog_created(uint32_t hwnd, uint32_t resource_id) {
     }
 }
 
+void web_presenter_set_lan_off(int off) { g_lan_off = off; }
+
+/* --no-lan: the main menu (0xE2) loses its Network button (control 1400). The host has no
+ * ShowWindow of its own, so the button moves above the dialog, out of sight and out of reach, and
+ * the buttons under it in the same column (Movies & Credits, Options) move up one slot each, so
+ * the column has no gap. Both editions stack these 156x42 buttons 42 pixels apart. Runs from the
+ * pump; once the button is out of sight it does nothing. */
+static void hide_network_button(void) {
+    uint32_t menu = g_main_menu_window;
+    if (!g_lan_off || !menu || !hle_is_window(menu)) return;
+    uint32_t net = hle_dialog_item(menu, 1400u);
+    int ml, mt, mr, mb, l, t, r, b;
+    if (!net || !hle_window_screen_rect(menu, &ml, &mt, &mr, &mb) ||
+        !hle_window_screen_rect(net, &l, &t, &r, &b) || t < mt)
+        return;
+    int w = r - l, h = b - t;
+    for (int slot = 1;; slot++) {
+        uint32_t below = 0;
+        for (uint32_t c = hle_window_first_child(menu); c; c = hle_window_next_sibling(c)) {
+            int cl, ct, cr, cb;
+            if (c != net && hle_window_screen_rect(c, &cl, &ct, &cr, &cb) && cl == l &&
+                cr - cl == w && cb - ct == h && ct == t + slot * h) {
+                below = c;
+                break;
+            }
+        }
+        if (!below) break;
+        hle_move_window(below, l - ml, t - mt + (slot - 1) * h, w, h);
+    }
+    hle_move_window(net, l - ml, -(h + 100), w, h);
+    /* the slot the last button left still shows its picture until the menu paints again */
+    hle_invalidate_all();
+}
+
 void web_presenter_proc_message(uint32_t hwnd, uint32_t message, uint32_t wparam) {
     /* A background repaint of the retained LAN dialog must not start a new
      * session. Arm only when the current main menu's native Network button
      * (resource 0xE2, control 1400) is actually activated. */
-    if (hwnd == g_main_menu_window && message == WM_COMMAND && (wparam & 0xFFFFu) == 1400u) {
+    if (hwnd == g_main_menu_window && message == WM_COMMAND && (wparam & 0xFFFFu) == 1400u && !g_lan_off) {
         g_lan_entry_armed = 1;
         g_lan_painted = 0;
         g_lan_frame_ready = 0;
@@ -893,6 +928,7 @@ void web_presenter_pump(void) {
     web_match_chat_pump();
     update_cursor();
     update_page_cursor();
+    hide_network_button();
     /* Dialog paints can finish without a primary Unlock. Sample the game's
      * presented surface at its regular pump boundary as well. */
     present_now();

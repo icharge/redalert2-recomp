@@ -96,7 +96,7 @@ export function LauncherTab({ editions, edition, settings }: TabProps) {
         <Group title="LAN">
           <Toggle
             label="LAN play"
-            info="The game's Network button pairs two browsers over WebRTC, and the game tray has a LAN button. Off: Network goes back to the main menu. Applies at the next launch."
+            info="The game's Network button pairs two browsers over WebRTC, and the game tray has a LAN button. Off: the main menu has no Network button and the tray no LAN button. Applies at the next launch."
             checked={lan}
             onChange={(on) => {
               setLan(on);

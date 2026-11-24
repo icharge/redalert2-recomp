@@ -133,6 +133,8 @@ function startOnce(files: FileSource): Promise<GameHandle> {
     args.push(...introArguments(window.location.search, game));
   if (!args.some((arg) => /^-{1,2}speedcontrol$/i.test(arg)))
     args.push(...speedControlArguments(window.location.search, game));
+  // LAN play off (the build or the launcher): the game's main menu has no Network button
+  if (lanPlay() !== "on" && !args.includes("--no-lan")) args.push("--no-lan");
   window.ra2Session ??= startGame({ files, args, testMap });
   return window.ra2Session;
 }
@@ -177,18 +179,8 @@ export function Play({ files }: { files: FileSource }) {
   const lanSessionActive = useGameState((s) => s.lanSessionActive);
   const [lanOpen, setLanOpen] = useState(false);
   // LAN play can be off (the build, or the launcher's settings): then the tray has no LAN button
-  // and the game's Network goes straight back to the main menu, with a word on why
+  // and the game's main menu has no Network button (--no-lan, startOnce)
   const [lanAllowed] = useState(lanPlay);
-  const [lanOffNotice, setLanOffNotice] = useState(false);
-  useEffect(() => {
-    if (lanAllowed === "on" || !lanSession) return;
-    // the game's own Cancel: the same reply as the dialog's Cancel button
-    if (handle.current?.exports.ra2_lan_session_reply(lanSession.request, 0))
-      gameStore.resolveLanSession(lanSession.request);
-    setLanOffNotice(true);
-    const timer = window.setTimeout(() => setLanOffNotice(false), 8000);
-    return () => window.clearTimeout(timer);
-  }, [lanAllowed, lanSession]);
   // the LAN dialog owns the keys and the mouse while it shows; the runtime effect reads this ref
   const lanModal = useRef(false);
   useEffect(() => {
@@ -1165,18 +1157,6 @@ export function Play({ files }: { files: FileSource }) {
           canvas.current?.focus();
         }}
       />
-      {lanOffNotice && (
-        <Callout.Root className={styles.browserError} role="status">
-          <Callout.Text>
-            {lanAllowed === "build"
-              ? "LAN play is not available on this site."
-              : "LAN play is off. Turn it on in the launcher: Settings, LAUNCHER, LAN play."}
-          </Callout.Text>
-          <Button size="1" onClick={() => setLanOffNotice(false)}>
-            Dismiss
-          </Button>
-        </Callout.Root>
-      )}
       {browserError && (
         <Callout.Root className={styles.browserError} role="alert">
           <Callout.Text>{browserError}</Callout.Text>

@@ -150,3 +150,5 @@ int  ra2_clockstats_on(void);
 void ra2_clockstats_take(uint32_t out[5]);   /* qpc, timeGetTime, GetTickCount, Sleep(n), Sleep(0) since the last take */
 void web_presenter_proc_message(uint32_t hwnd, uint32_t message, uint32_t wparam);
 void web_presenter_apply_lan_reply(uint32_t request, int connected);
+/* main.c: --no-lan (the page's LAN play is off): the main menu has no Network button */
+void web_presenter_set_lan_off(int off);
