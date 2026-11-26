@@ -44,6 +44,8 @@ from run_lift import (
     thai_font_call_replacements,
     THEME_PLAYSONG_ARG,
     theme_song_guard,
+    DESTROY_ANIM_REMAP_SITES,
+    destroy_anim_remap_patch,
     save_reference_fault_patch,
     web_exit_confirmation_patches,
     WEB_URL_SITES,
@@ -698,6 +700,33 @@ class RA2ModeCapPatchTests(unittest.TestCase):
 
     def test_a_partial_build_match_is_left_unpatched(self):
         self.assertEqual(ra2_mode_cap_patches(self.image(corrupt=RA2_MODE_CAP_SITES[2][0]), 0), {})
+
+
+class DestroyAnimRemapTests(unittest.TestCase):
+    """An AltPalette DestroyAnim gets the owner's remap (run_lift.py destroy_anim_remap_patch)."""
+
+    @staticmethod
+    def image(corrupt=None):
+        code = bytearray(0x00441D60)
+        for va, shape in DESTROY_ANIM_REMAP_SITES:
+            raw = bytes.fromhex(shape)
+            code[va:va + len(raw)] = raw
+        if corrupt is not None:
+            code[corrupt] ^= 0xFF
+        return bytes(code)
+
+    def test_the_no_palette_branch_takes_the_remap_store_for_alt_palette_anims(self):
+        patches = destroy_anim_remap_patch(self.image(), 0)
+        self.assertEqual(set(patches), {0x00441D35})
+        c = patches[0x00441D35]
+        self.assertTrue(c.startswith('@replace:if (CMP_EQ(_flag_a, _flag_b)) {'))
+        self.assertIn('MEM8(MEM32(edi + 0xC8) + 0x361)) goto L_00441D37;', c)
+        self.assertIn('goto L_00441D69; }', c)
+
+    def test_a_different_build_is_untouched(self):
+        for va, _shape in DESTROY_ANIM_REMAP_SITES:
+            with self.subTest(va=hex(va)):
+                self.assertEqual(destroy_anim_remap_patch(self.image(corrupt=va), 0), {})
 
 
 class ThemeSongGuardTests(unittest.TestCase):

@@ -584,6 +584,59 @@ def save_reference_fault_patch(code, cs, target):
                  'run_lift.py save_reference_fault_patch */')}
 
 
+# Yuri's Revenge: a building's DestroyAnim in the owner's house colour.
+# (va, bytes) every instruction destroy_anim_remap_patch relies on, gamemd 1.001.
+DESTROY_ANIM_REMAP_SITES = (
+    # BuildingClass__virtual_315, after the DestroyAnim's AnimClass ctor (edi = the anim):
+    # mov edx,[esi]; mov ecx,esi; call [edx+0x84] (GetTechnoType); cmp [eax+0xDF0],ebx
+    # (the type's custom Palette= scheme list); je 0x441D69 (none: anim+0xD4 stays 0);
+    # mov eax,[esi]; mov ecx,esi; call [eax+0x1E4] (the owner's remap convert);
+    # mov [edi+0xD4],eax (the anim's palette)
+    (0x00441D25, '8b168bceff92840000003998f00d00007432'
+                 '8b068bceff90e40100008987d4000000'),
+    # AnimClass ctor: mov [esi+0xC8],ecx (the AnimType); mov [esi+0xD4],ebx (no remap)
+    (0x00421EE5, '898ec8000000'), (0x00421EFA, '899ed4000000'),
+    # AnimTypeClass INI reader: mov [esi+0x361],al (AltPalette=)
+    (0x00427E14, '888661030000'),
+    # AnimClass__virtual_69 (draw): mov ecx,[esi+0xD4]; test ecx,ecx; je (no remap) ...
+    (0x004232A3, '8b8ed400000085c97421'),
+    # ... then mov cl,[eax+0x361]; test cl,cl; je; mov edx,[0xB054D4]; mov ecx,[edx];
+    # mov edx,[ecx+0x30C]: AltPalette=yes draws ColorSchemes[0]'s unit-palette convert
+    (0x004232D8, '8a886103000084c97412' '8b15d454b0008b0a8b910c030000'),
+    # AnimClass save: looks +0xD4 up among ColorSchemes[i]+0x30C to store an index
+    (0x004253B6, '8b96d400000085d2'),
+)
+
+
+def destroy_anim_remap_patch(code, cs):
+    """Draw an AltPalette=yes DestroyAnim with its building owner's house colour.
+
+    BuildingClass__virtual_315 (0x004415F0) spawns the DestroyAnim and gives it
+    the owner's remap (anim+0xD4 = TechnoClass vslot 121, 0x00705D70) only when
+    the building type has a custom Palette= (TechnoType+0xDF0). Otherwise +0xD4
+    stays 0 and the draw (AnimClass__virtual_69, 0x004232CE) uses anim.pal, or
+    for AltPalette=yes the unit-palette convert of ColorSchemes[0]: a fixed
+    colour whoever owns the building. Building death anims are AltPalette=yes
+    (artmd.ini: "use the unit palette"), so for those take the remap branch as
+    well: vslot 121 then returns ColorSchemes[owner]+0x30C, the same kind of
+    convert (unit palette) as ColorSchemes[0]+0x30C, with the owner's colour.
+    Anims without AltPalette keep anim.pal (a unit-palette convert would draw
+    them in the wrong colours). The save code (0x004253B0) already maps a
+    ColorSchemes convert in +0xD4 to an index and the load restores it.
+    """
+    for va, shape in DESTROY_ANIM_REMAP_SITES:
+        raw = bytes.fromhex(shape)
+        if code[va - cs:va - cs + len(raw)] != raw:
+            print('[*] destroy_anim_remap_patch: 0x%08X does not match this build; no patch' % va)
+            return {}
+    return {0x00441D35: (
+        '@replace:if (CMP_EQ(_flag_a, _flag_b)) { '
+        'if (edi && MEM8(MEM32(edi + 0xC8) + 0x361)) goto L_00441D37; '
+        'goto L_00441D69; } '
+        '/* remaster: an AltPalette DestroyAnim takes the owner colour too, '
+        'run_lift.py destroy_anim_remap_patch */')}
+
+
 # The `mov edi, [esp+0x10]` that loads Theme::PlaySong's song id, in each exe.
 THEME_PLAYSONG_ARG = {'gamemd': 0x00720BDF, 'game': 0x006E7EDF}
 
@@ -1970,7 +2023,8 @@ def targets():
                                                  **web_exit_confirmation_patches(code, cs, 'gamemd'),
                                                  **web_url_patches(code, cs, 'gamemd'),
                                                  **wol_icon_surface_patches(code, cs, 'gamemd'), **chat_time_patches(code, cs, 'gamemd'), **bare_page_patches(code, cs, 'gamemd'), **match_chat_patches(code, cs, 'gamemd'), **test_map_patches(code, cs, 'gamemd'),
-                                                 **net_timing_event_patches(code, cs, 'gamemd')}),
+                                                 **net_timing_event_patches(code, cs, 'gamemd'),
+                                                 **destroy_anim_remap_patch(code, cs)}),
         'game': dict(exe=os.path.join(_HERE, 'game', 'game.exe'),
                      catalog=os.path.join(_HERE, 'work', 'game', 'functions.json'),
                      seeds=os.path.join(_HERE, 'work', 'game', 'rtti_seeds.json'),
