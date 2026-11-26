@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useRef, useState, type RefObject } from "react";
 import type { GamePresenter, PictureRect } from "../game/presenter";
 import type { ChatField } from "../game/store";
 import { NO_REPLY_HINT, expandChatCommand, replyWithoutTarget } from "../game/chat-commands";
 import styles from "./ChatBox.module.css";
+import { usePicturePlace } from "./use-picture-place";
 
 interface Place {
   left: number;
@@ -61,39 +62,23 @@ export function ChatBox({
   /** a line for the player only (the game's chat log): /r with nobody to answer */
   onHint?: (text: string) => void;
 }) {
-  const [place, setPlace] = useState<Place | null>(null);
   const [text, setText] = useState("");
   const composing = useRef(false);
   const showing = field.open && !!send;
-
-  useEffect(() => {
-    if (!showing || !presenter) {
-      setPlace(null);
-      return;
-    }
-    // The picture moves with the window, the canvas and the scale setting; follow it each frame.
-    let frame = 0;
-    const follow = () => {
-      const stageRect = stage.current?.getBoundingClientRect();
-      const canvasRect = canvas.current?.getBoundingClientRect();
-      const game = presenter.gameSize();
-      if (stageRect && canvasRect && game.width > 0 && game.height > 0) {
-        const next = chatBoxPlace(canvasRect, stageRect, presenter.pictureRect(), game, field);
-        setPlace((last) =>
-          last &&
-          last.left === next.left &&
-          last.top === next.top &&
-          last.width === next.width &&
-          last.height === next.height
-            ? last
-            : next,
-        );
-      }
-      frame = requestAnimationFrame(follow);
-    };
-    follow();
-    return () => cancelAnimationFrame(frame);
-  }, [showing, presenter, field, stage, canvas]);
+  // The picture moves with the window, the canvas and the scale setting.
+  const place = usePicturePlace<Place>(
+    presenter,
+    stage,
+    canvas,
+    showing,
+    (canvasRect, stageRect, picture, game) =>
+      chatBoxPlace(canvasRect, stageRect, picture, game, field),
+    (last, next) =>
+      last.left === next.left &&
+      last.top === next.top &&
+      last.width === next.width &&
+      last.height === next.height,
+  );
 
   if (!showing || !place) return null;
   const fontSize = Math.max(12, Math.min(20, Math.round(place.height * 0.8)));

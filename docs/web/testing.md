@@ -727,6 +727,23 @@ draw time rose from 0.17 ms to 0.52 ms. This short idle-battle measurement
 was collected on 23 October 2026; the headless page rate is not a monitor's
 refresh rate.
 
+The match chat panel (MatchChat.tsx) costs the game nothing measurable (26 November 2026,
+headed Chrome, a Yuri's Revenge skirmish, production and `-O1` builds alike). Idle, the
+game held 62 fps, with or without eight lines on the panel. With the pointer moving over
+the battlefield (Playwright, about 135 moves a second) it ran about 50 fps. It ran just as
+slowly with the panel's per-move `elementFromPoint` hit test patched out, and with the
+pointer unlocked, where that hit test never runs. The panel's main-thread share, the hit
+test and its per-frame anchor `getBoundingClientRect` reads together, was 10 to 30 ms a
+second, and the main thread stayed 86% idle. Since then the overlays placed on the picture
+(MatchChat, ChatBox, PageButton and MapSearchStatus) use `usePicturePlace`
+(`web/src/screens/use-picture-place.ts`). It reads the stage's and the canvas's boxes again
+only when a ResizeObserver or a window resize asks. The page's `getBoundingClientRect` time
+in a match fell from 13 to 21 ms a second to 1.4 ms a second while the pointer moves, and
+from about 3 reads a frame to 1 when idle. The cost of a moving pointer is the game
+thread's, not the page's. It is not the TrueType text engine's either. Four runs (10 s
+each, alternating `?arg=--no-ttf-text` with the default) gave the same result: 62 fps
+idle and a median of about 50 while moving, whether the engine was on or off.
+
 ### The frame benchmark: `e2e/perf.mjs`
 
 The benchmark of [the browser frame performance design](superpowers/specs/2026-10-26-web-frame-performance-design.md)

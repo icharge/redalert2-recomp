@@ -1,7 +1,8 @@
-import { useEffect, useState, type RefObject } from "react";
+import type { RefObject } from "react";
 import type { GamePresenter, PictureRect } from "../game/presenter";
 import type { MapSearchStatus as Status } from "../game/store";
 import styles from "./MapSearchStatus.module.css";
+import { usePicturePlace } from "./use-picture-place";
 
 interface Position {
   left: number;
@@ -46,32 +47,17 @@ export function MapSearchStatus({
   stage: RefObject<HTMLDivElement | null>;
   canvas: RefObject<HTMLCanvasElement | null>;
 }) {
-  const [position, setPosition] = useState<Position | null>(null);
   const showing = status.open && status.noMatches;
-
-  useEffect(() => {
-    if (!showing || !presenter) {
-      setPosition(null);
-      return;
-    }
-    // The picture moves with the window, the canvas and the scale setting; follow it each frame
-    // while the label shows.
-    let frame = 0;
-    const place = () => {
-      const stageRect = stage.current?.getBoundingClientRect();
-      const canvasRect = canvas.current?.getBoundingClientRect();
-      const game = presenter.gameSize();
-      if (stageRect && canvasRect && game.width > 0 && game.height > 0) {
-        const next = labelPosition(canvasRect, stageRect, presenter.pictureRect(), game, status);
-        setPosition((last) =>
-          last && last.left === next.left && last.top === next.top ? last : next,
-        );
-      }
-      frame = requestAnimationFrame(place);
-    };
-    place();
-    return () => cancelAnimationFrame(frame);
-  }, [showing, presenter, status, stage, canvas]);
+  // The picture moves with the window, the canvas and the scale setting.
+  const position = usePicturePlace<Position>(
+    presenter,
+    stage,
+    canvas,
+    showing,
+    (canvasRect, stageRect, picture, game) =>
+      labelPosition(canvasRect, stageRect, picture, game, status),
+    (last, next) => last.left === next.left && last.top === next.top,
+  );
 
   if (!showing || !position) return null;
   return (

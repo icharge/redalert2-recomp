@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { usePicturePlace } from "../screens/use-picture-place";
 import type { GamePresenter, PictureRect } from "../game/presenter";
 import {
   NO_REPLY_HINT,
@@ -79,32 +80,22 @@ export function panelAnchor(
   };
 }
 
-/** Follows the picture each frame while the panel shows. */
+/** Follows the picture while the panel shows (usePicturePlace). */
 function useAnchor(
   presenter: Pick<GamePresenter, "pictureRect" | "gameSize"> | undefined,
   stage: RefObject<HTMLElement | null> | undefined,
   canvas: RefObject<HTMLCanvasElement | null> | undefined,
+  active: boolean,
 ): Anchor | null {
-  const [anchor, setAnchor] = useState<Anchor | null>(null);
-  useEffect(() => {
-    if (!presenter || !stage || !canvas) return;
-    let frame = 0;
-    const follow = () => {
-      const stageRect = stage.current?.getBoundingClientRect();
-      const canvasRect = canvas.current?.getBoundingClientRect();
-      const game = presenter.gameSize();
-      if (stageRect && canvasRect && game.width > 0 && game.height > 0 && canvasRect.height > 0) {
-        const next = panelAnchor(canvasRect, stageRect, presenter.pictureRect(), game);
-        setAnchor((last) =>
-          last && last.left === next.left && last.bottom === next.bottom ? last : next,
-        );
-      }
-      frame = requestAnimationFrame(follow);
-    };
-    follow();
-    return () => cancelAnimationFrame(frame);
-  }, [presenter, stage, canvas]);
-  return anchor;
+  return usePicturePlace(
+    presenter,
+    stage,
+    canvas,
+    active,
+    (canvasRect, stageRect, picture, game) =>
+      canvasRect.height > 0 ? panelAnchor(canvasRect, stageRect, picture, game) : null,
+    (last, next) => last.left === next.left && last.bottom === next.bottom,
+  );
 }
 
 function targetLabel(target: Target): string {
@@ -240,7 +231,9 @@ export function MatchChat({
   stage?: RefObject<HTMLElement | null>;
   canvas?: RefObject<HTMLCanvasElement | null>;
 }) {
-  const anchor = useAnchor(presenter, stage, canvas);
+  // an open line stays open if the match's chat goes quiet a moment (what is typed is not lost)
+  const canSend = (chat.ready || typing !== null) && !!send;
+  const anchor = useAnchor(presenter, stage, canvas, canSend || chat.lines.length > 0);
   const [text, setText] = useState("");
   const [target, setTargetState] = useState<Target>(typing ?? remembered);
   const setTarget = (next: Target) => {
@@ -268,8 +261,6 @@ export function MatchChat({
   const open = typing !== null || hover || pinned;
   /** when the panel was last in use: it hides a while after that, and after its last line went */
   const [active, setActive] = useState(now);
-  // an open line stays open if the match's chat goes quiet a moment (what is typed is not lost)
-  const canSend = (chat.ready || typing !== null) && !!send;
 
   useEffect(() => {
     if (typing === null) return;

@@ -1,7 +1,8 @@
-import { useEffect, useState, type RefObject } from "react";
+import type { RefObject } from "react";
 import type { GamePresenter } from "../game/presenter";
 import { chatBoxPlace } from "./ChatBox";
 import styles from "./PageButton.module.css";
+import { usePicturePlace } from "./use-picture-place";
 
 interface Place {
   left: number;
@@ -33,42 +34,21 @@ export function PageButton({
   canvas: RefObject<HTMLCanvasElement | null>;
   onOpen: () => void;
 }) {
-  const [place, setPlace] = useState<Place | null>(null);
   const showing = rect.w > 0 && rect.h > 0;
   const { x, y, w, h } = rect;
-
-  useEffect(() => {
-    if (!showing || !presenter) {
-      setPlace(null);
-      return;
-    }
-    let frame = 0;
-    const follow = () => {
-      const stageRect = stage.current?.getBoundingClientRect();
-      const canvasRect = canvas.current?.getBoundingClientRect();
-      const game = presenter.gameSize();
-      if (stageRect && canvasRect && game.width > 0 && game.height > 0) {
-        const next = chatBoxPlace(canvasRect, stageRect, presenter.pictureRect(), game, {
-          x,
-          y,
-          w,
-          h,
-        });
-        setPlace((last) =>
-          last &&
-          last.left === next.left &&
-          last.top === next.top &&
-          last.width === next.width &&
-          last.height === next.height
-            ? last
-            : next,
-        );
-      }
-      frame = requestAnimationFrame(follow);
-    };
-    follow();
-    return () => cancelAnimationFrame(frame);
-  }, [showing, presenter, x, y, w, h, stage, canvas]);
+  const place = usePicturePlace<Place>(
+    presenter,
+    stage,
+    canvas,
+    showing,
+    (canvasRect, stageRect, picture, game) =>
+      chatBoxPlace(canvasRect, stageRect, picture, game, { x, y, w, h }),
+    (last, next) =>
+      last.left === next.left &&
+      last.top === next.top &&
+      last.width === next.width &&
+      last.height === next.height,
+  );
 
   if (!showing || !place) return null;
   return (
