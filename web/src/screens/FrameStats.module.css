@@ -1,8 +1,8 @@
-/* bottom-left, clear of the page controls at the top-left */
+/* top-left: the match chat panel (MatchChat) owns the bottom-left and the tray the bottom-right */
 .stats {
   position: absolute;
+  top: 12px;
   left: 12px;
-  bottom: 12px;
   z-index: 2;
   padding: 8px 12px;
   background: rgba(5, 12, 8, 0.82);
